@@ -5,7 +5,8 @@ import { VideoPlayer } from '@/components/player/VideoPlayer'
 
 export default function PlayerPage() {
   const navigate = useNavigate()
-  const { currentChannel, setMiniPlayer } = useStore()
+  const currentChannel = useStore((s) => s.currentChannel)
+  const setMiniPlayer = useStore((s) => s.setMiniPlayer)
 
   useEffect(() => {
     setMiniPlayer(false)

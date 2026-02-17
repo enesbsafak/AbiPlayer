@@ -22,14 +22,14 @@ export function AudioTrackSelector() {
       <button
         onClick={() => setOpen(!open)}
         className="rounded-lg p-2 hover:bg-white/10 transition-colors"
-        title="Audio tracks"
+        title="Ses Kanallari"
       >
         <Languages size={18} />
       </button>
       {open && (
         <div className="absolute bottom-full right-0 mb-2 w-48 rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-xl">
-          <p className="px-3 py-1.5 text-xs font-medium text-surface-500 uppercase">Audio</p>
-          {audioTracks.map((track) => (
+          <p className="px-3 py-1.5 text-xs font-medium text-surface-500 uppercase">Ses</p>
+          {audioTracks.map((track, index) => (
             <button
               key={track.id}
               onClick={() => { setCurrentAudioTrack(track.id); setOpen(false) }}
@@ -37,7 +37,7 @@ export function AudioTrackSelector() {
                 track.id === currentAudioTrack ? 'text-accent' : 'text-surface-200'
               }`}
             >
-              {track.name || track.lang || `Track ${track.id + 1}`}
+              {track.name || track.lang || `Ses ${index + 1}`}
             </button>
           ))}
         </div>

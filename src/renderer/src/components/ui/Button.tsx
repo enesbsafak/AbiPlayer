@@ -7,17 +7,17 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className = '', variant = 'primary', size = 'md', children, ...props }, ref) => {
-    const base = 'inline-flex items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-50 disabled:pointer-events-none'
+    const base = 'inline-flex items-center justify-center rounded-xl font-semibold tracking-wide transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:pointer-events-none disabled:opacity-50'
     const variants = {
-      primary: 'bg-accent hover:bg-accent-600 text-white',
-      secondary: 'bg-surface-700 hover:bg-surface-600 text-white',
-      ghost: 'hover:bg-surface-800 text-surface-300 hover:text-white',
-      danger: 'bg-red-600 hover:bg-red-700 text-white'
+      primary: 'border border-[#90bcff]/85 bg-[linear-gradient(170deg,#7eb1ff,#5e92f1)] text-white shadow-[0_10px_24px_rgba(79,132,236,0.38)] hover:brightness-110',
+      secondary: 'border border-white/24 bg-white/12 text-surface-100 backdrop-blur-md hover:bg-white/20',
+      ghost: 'border border-transparent text-surface-200 hover:border-white/20 hover:bg-white/12 hover:text-white',
+      danger: 'border border-red-500/80 bg-red-600 text-white hover:bg-red-700'
     }
     const sizes = {
-      sm: 'px-3 py-1.5 text-xs gap-1.5',
-      md: 'px-4 py-2 text-sm gap-2',
-      lg: 'px-6 py-3 text-base gap-2.5'
+      sm: 'gap-1.5 px-3 py-1.5 text-xs',
+      md: 'gap-2 px-4 py-2 text-sm',
+      lg: 'gap-2.5 px-6 py-3 text-base'
     }
 
     return (

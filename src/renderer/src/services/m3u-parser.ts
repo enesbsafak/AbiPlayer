@@ -9,6 +9,9 @@ interface M3UEntry {
   url: string
 }
 
+const M3U_FETCH_TIMEOUT_MS = 30_000
+const MAX_M3U_SIZE_BYTES = 20 * 1024 * 1024
+
 function parseExtInf(line: string): Omit<M3UEntry, 'url'> {
   const result = { name: '', logo: '', group: '', tvgId: '', tvgName: '' }
 
@@ -48,7 +51,7 @@ export function parseM3U(content: string, sourceId: string): { channels: Channel
     } else if (line && !line.startsWith('#') && !currentEntry) {
       // URL without EXTINF - create minimal entry
       entries.push({
-        name: line.split('/').pop() || 'Unknown',
+        name: line.split('/').pop() || 'Bilinmeyen',
         logo: '',
         group: '',
         tvgId: '',
@@ -83,7 +86,7 @@ export function parseM3U(content: string, sourceId: string): { channels: Channel
 
   const channels: Channel[] = entries.map((e, i) => ({
     id: `${sourceId}_m3u_ch_${i}`,
-    name: e.name || e.tvgName || 'Unknown',
+    name: e.name || e.tvgName || 'Bilinmeyen',
     logo: e.logo || undefined,
     streamUrl: e.url,
     sourceId,
@@ -97,9 +100,52 @@ export function parseM3U(content: string, sourceId: string): { channels: Channel
   return { channels, categories }
 }
 
+async function readResponseTextWithLimit(response: Response, maxSizeBytes: number): Promise<string> {
+  const reader = response.body?.getReader()
+  if (!reader) {
+    const text = await response.text()
+    if (text.length > maxSizeBytes) throw new Error('Liste boyutu cok buyuk (en fazla 20MB)')
+    return text
+  }
+
+  const chunks: Uint8Array[] = []
+  let totalSize = 0
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(value)
+    totalSize += value.length
+    if (totalSize > maxSizeBytes) {
+      await reader.cancel()
+      throw new Error('Liste boyutu cok buyuk (en fazla 20MB)')
+    }
+  }
+
+  const decoder = new TextDecoder()
+  let text = ''
+  for (const chunk of chunks) {
+    text += decoder.decode(chunk, { stream: true })
+  }
+  text += decoder.decode()
+  return text
+}
+
 export async function fetchAndParseM3U(url: string, sourceId: string): Promise<ReturnType<typeof parseM3U>> {
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`Failed to fetch M3U: ${res.status}`)
-  const content = await res.text()
-  return parseM3U(content, sourceId)
+  const parsedUrl = new URL(url)
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw new Error('Yalnizca HTTP/HTTPS oynatma listesi adresleri destekleniyor')
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), M3U_FETCH_TIMEOUT_MS)
+
+  try {
+    const res = await fetch(parsedUrl.toString(), { signal: controller.signal, cache: 'no-store' })
+    if (!res.ok) throw new Error(`M3U indirilemedi: ${res.status}`)
+    const content = await readResponseTextWithLimit(res, MAX_M3U_SIZE_BYTES)
+    return parseM3U(content, sourceId)
+  } finally {
+    clearTimeout(timeout)
+  }
 }

@@ -21,23 +21,26 @@ export function PlaylistImport() {
 
   const handleUrlImport = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!url) return
+    if (!url.trim()) return
     setError('')
     setLoading(true)
 
     try {
-      let hostname = url
-      try { hostname = new URL(url).hostname } catch {}
+      const parsedUrl = new URL(url.trim())
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        throw new Error('Yalnizca HTTP/HTTPS oynatma listesi adresleri destekleniyor')
+      }
+      const normalizedUrl = parsedUrl.toString()
 
       const source: PlaylistSource = {
         id: `m3u_${Date.now()}`,
-        name: name || hostname,
+        name: name || parsedUrl.hostname,
         type: 'm3u_url',
-        url,
+        url: normalizedUrl,
         addedAt: Date.now()
       }
 
-      const { channels, categories } = await fetchAndParseM3U(url, source.id)
+      const { channels, categories } = await fetchAndParseM3U(normalizedUrl, source.id)
       addSource(source)
       addChannels(channels)
       addCategories(categories)
@@ -46,7 +49,7 @@ export function PlaylistImport() {
       setName('')
       navigate('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import failed')
+      setError(err instanceof Error ? err.message : 'Ice aktarma basarisiz oldu')
     } finally {
       setLoading(false)
     }
@@ -58,13 +61,14 @@ export function PlaylistImport() {
 
     try {
       const result = await pickAndReadFile([
-        { name: 'Playlist Files', extensions: ['m3u', 'm3u8', 'txt'] }
+        { name: 'Oynatma Listesi Dosyalari', extensions: ['m3u', 'm3u8', 'txt'] }
       ])
       if (!result) { setLoading(false); return }
+      const fileName = result.path.split(/[\\/]/).pop() || 'Yerel Liste'
 
       const source: PlaylistSource = {
         id: `m3u_file_${Date.now()}`,
-        name: name || result.path.split('/').pop() || 'Local Playlist',
+        name: name || fileName,
         type: 'm3u_file',
         filePath: result.path,
         addedAt: Date.now()
@@ -78,7 +82,7 @@ export function PlaylistImport() {
       setName('')
       navigate('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import failed')
+      setError(err instanceof Error ? err.message : 'Ice aktarma basarisiz oldu')
     } finally {
       setLoading(false)
     }
@@ -91,8 +95,8 @@ export function PlaylistImport() {
           <FileText className="text-emerald-400" size={20} />
         </div>
         <div>
-          <h3 className="font-semibold">M3U Playlist</h3>
-          <p className="text-xs text-surface-400">Import from URL or local file</p>
+          <h3 className="font-semibold">M3U Oynatma Listesi</h3>
+          <p className="text-xs text-surface-400">URL veya yerel dosyadan ice aktar</p>
         </div>
       </div>
 
@@ -101,25 +105,25 @@ export function PlaylistImport() {
           <Link size={14} /> URL
         </Button>
         <Button variant={mode === 'file' ? 'primary' : 'secondary'} size="sm" onClick={() => setMode('file')}>
-          <Upload size={14} /> File
+          <Upload size={14} /> Dosya
         </Button>
       </div>
 
-      <Input id="m3u-name" label="Display Name (optional)" placeholder="My Playlist" value={name} onChange={(e) => setName(e.target.value)} />
+      <Input id="m3u-name" label="Gorunen Ad (opsiyonel)" placeholder="Benim Liste" value={name} onChange={(e) => setName(e.target.value)} />
 
       {mode === 'url' ? (
         <form onSubmit={handleUrlImport} className="flex flex-col gap-4">
-          <Input id="m3u-url" label="Playlist URL" placeholder="https://example.com/playlist.m3u" value={url} onChange={(e) => setUrl(e.target.value)} required />
+          <Input id="m3u-url" label="Liste URL" placeholder="https://example.com/playlist.m3u" value={url} onChange={(e) => setUrl(e.target.value)} required />
           {error && <p className="text-sm text-red-400">{error}</p>}
           <Button type="submit" disabled={loading}>
-            {loading ? <><Spinner size={16} /> Importing...</> : 'Import Playlist'}
+            {loading ? <><Spinner size={16} /> Ice aktariliyor...</> : 'Listeyi Ice Aktar'}
           </Button>
         </form>
       ) : (
         <div className="flex flex-col gap-4">
           {error && <p className="text-sm text-red-400">{error}</p>}
           <Button onClick={handleFileImport} disabled={loading}>
-            {loading ? <><Spinner size={16} /> Reading...</> : <><Upload size={16} /> Browse File</>}
+            {loading ? <><Spinner size={16} /> Okunuyor...</> : <><Upload size={16} /> Dosya Sec</>}
           </Button>
         </div>
       )}

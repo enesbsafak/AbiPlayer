@@ -7,34 +7,47 @@ const config: Config = {
     extend: {
       colors: {
         surface: {
-          50: '#f8f9fa',
-          100: '#e9ecef',
-          200: '#dee2e6',
-          300: '#ced4da',
-          400: '#adb5bd',
-          500: '#6c757d',
-          600: '#495057',
-          700: '#343a40',
-          800: '#212529',
-          900: '#191c20',
-          950: '#0d0f12'
+          50: '#f6f9ff',
+          100: '#e9f0ff',
+          200: '#d2def2',
+          300: '#b8c9e4',
+          400: '#94abd0',
+          500: '#758fb3',
+          600: '#5a7498',
+          700: '#435a7a',
+          800: '#2f415c',
+          900: '#1d2c43',
+          950: '#101b30'
         },
         accent: {
-          DEFAULT: '#6366f1',
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          800: '#3730a3',
-          900: '#312e81'
+          DEFAULT: '#6ea8ff',
+          50: '#f0f6ff',
+          100: '#deebff',
+          200: '#c6ddff',
+          300: '#a6c9ff',
+          400: '#85b5ff',
+          500: '#6ea8ff',
+          600: '#588fe8',
+          700: '#4374c8',
+          800: '#345a9f',
+          900: '#2a4a82'
+        },
+        signal: {
+          DEFAULT: '#57d7c4',
+          100: '#dcfff8',
+          200: '#b8f6ea',
+          300: '#92ebdc',
+          400: '#71e0cf',
+          500: '#57d7c4',
+          600: '#3ab7a3',
+          700: '#2d9686',
+          800: '#26796d',
+          900: '#225f56'
         }
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif']
+        sans: ['SF Pro Text', 'SF Pro Display', 'Avenir Next', 'Segoe UI Variable Display', 'Trebuchet MS', 'sans-serif'],
+        display: ['SF Pro Display', 'Avenir Next Demi Bold', 'Century Gothic', 'sans-serif']
       }
     }
   },

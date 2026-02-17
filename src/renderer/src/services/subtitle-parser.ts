@@ -216,11 +216,13 @@ export function parseASS(content: string): SubtitleCue[] {
         const text = values.slice(textIdx).join(',').trim()
 
         // Remove ASS override tags like {\pos(x,y)} {\an8} etc
-        const cleanText = text
-          .replace(/\{[^}]*\}/g, '')
-          .replace(/\\N/g, '\n')
-          .replace(/\\n/g, '\n')
-          .trim()
+        const cleanText = stripHTMLTags(
+          text
+            .replace(/\{[^}]*\}/g, '')
+            .replace(/\\N/g, '\n')
+            .replace(/\\n/g, '\n')
+            .trim()
+        )
 
         const startIdx = eventFormatFields.indexOf('Start')
         const endIdx = eventFormatFields.indexOf('End')

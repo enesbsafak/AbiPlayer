@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react'
-import { Play, ArrowLeft, Clock, Star, Film } from 'lucide-react'
+import { Play, ArrowLeft, Clock, Star } from 'lucide-react'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
+import {
+  resolveTmdbApiKey,
+  resolveTmdbLanguage,
+  resolveTmdbMovieDetails
+} from '@/services/tmdb-api'
 import { LazyImage } from '@/components/ui/LazyImage'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
@@ -30,64 +35,95 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
   const [info, setInfo] = useState<VODInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
+  const settings = useStore((s) => s.settings)
 
   useEffect(() => {
+    let cancelled = false
     const load = async () => {
       setLoading(true)
+      setInfo(null)
       const creds = getXtreamCredentials(item.sourceId)
-      if (!creds || !item.streamId) {
-        // Use existing channel data if no API access
-        setInfo({
-          name: item.name,
-          plot: item.plot || '',
-          cast: item.cast || '',
-          director: item.director || '',
-          genre: item.genre || '',
-          releaseDate: item.releaseDate || '',
-          duration: item.duration || '',
-          rating: item.rating || '',
-          year: item.year || '',
-          cover: item.logo || item.coverUrl || ''
-        })
-        setLoading(false)
-        return
+      let tmdbId: string | undefined
+      let baseInfo: VODInfo = {
+        name: item.name,
+        plot: item.plot || '',
+        cast: item.cast || '',
+        director: item.director || '',
+        genre: item.genre || '',
+        releaseDate: item.releaseDate || '',
+        duration: item.duration || '',
+        rating: item.rating || '',
+        year: item.year || '',
+        cover: item.coverUrl || item.logo || ''
       }
 
       try {
-        const vodInfo = await xtreamApi.getVodInfo(creds, item.streamId)
-        setInfo({
-          name: vodInfo.info?.name || item.name,
-          plot: vodInfo.info?.plot || item.plot || '',
-          cast: vodInfo.info?.cast || item.cast || '',
-          director: vodInfo.info?.director || item.director || '',
-          genre: vodInfo.info?.genre || item.genre || '',
-          releaseDate: vodInfo.info?.release_date || item.releaseDate || '',
-          duration: vodInfo.info?.duration || item.duration || '',
-          rating: vodInfo.info?.rating || item.rating || '',
-          year: vodInfo.info?.year || item.year || '',
-          cover: vodInfo.info?.movie_image || item.logo || item.coverUrl || ''
-        })
+        if (creds && item.streamId) {
+          const vodInfo = await xtreamApi.getVodInfo(creds, item.streamId)
+          if (cancelled) return
+          tmdbId = vodInfo.info?.tmdb_id
+          baseInfo = {
+            name: vodInfo.info?.name || item.name,
+            plot: vodInfo.info?.plot || item.plot || '',
+            cast: vodInfo.info?.cast || item.cast || '',
+            director: vodInfo.info?.director || item.director || '',
+            genre: vodInfo.info?.genre || item.genre || '',
+            releaseDate: vodInfo.info?.release_date || item.releaseDate || '',
+            duration: vodInfo.info?.duration || item.duration || '',
+            rating: vodInfo.info?.rating || item.rating || '',
+            year: vodInfo.info?.year || item.year || '',
+            cover: vodInfo.info?.movie_image || item.coverUrl || item.logo || ''
+          }
+        }
       } catch (err) {
-        console.error('Failed to load VOD info:', err)
-        // Fallback to channel data
-        setInfo({
-          name: item.name,
-          plot: item.plot || '',
-          cast: item.cast || '',
-          director: item.director || '',
-          genre: item.genre || '',
-          releaseDate: item.releaseDate || '',
-          duration: item.duration || '',
-          rating: item.rating || '',
-          year: item.year || '',
-          cover: item.logo || item.coverUrl || ''
-        })
-      } finally {
+        if (!cancelled) console.error('Failed to load VOD info:', err)
+      }
+
+      const tmdbApiKey = resolveTmdbApiKey(settings.tmdbApiKey)
+      if (tmdbApiKey) {
+        try {
+          const tmdbDetails = await resolveTmdbMovieDetails({
+            apiKey: tmdbApiKey,
+            language: resolveTmdbLanguage(settings.language),
+            tmdbId,
+            name: baseInfo.name,
+            year: baseInfo.year || baseInfo.releaseDate
+          })
+          if (tmdbDetails && !cancelled) {
+            baseInfo = {
+              ...baseInfo,
+              name: tmdbDetails.title || baseInfo.name,
+              plot: tmdbDetails.overview || baseInfo.plot,
+              cast: tmdbDetails.cast.join(', ') || baseInfo.cast,
+              director: tmdbDetails.directors.join(', ') || baseInfo.director,
+              genre: tmdbDetails.genres.join(', ') || baseInfo.genre,
+              releaseDate: tmdbDetails.releaseDate || baseInfo.releaseDate,
+              duration: tmdbDetails.runtime ? `${tmdbDetails.runtime} dk` : baseInfo.duration,
+              rating:
+                typeof tmdbDetails.rating === 'number'
+                  ? tmdbDetails.rating.toFixed(1)
+                  : baseInfo.rating,
+              year:
+                tmdbDetails.releaseDate?.slice(0, 4) ||
+                baseInfo.year,
+              cover: tmdbDetails.posterPath || baseInfo.cover
+            }
+          }
+        } catch (error) {
+          if (!cancelled) console.warn('TMDB enrichment failed for movie detail', error)
+        }
+      }
+
+      if (!cancelled) {
+        setInfo(baseInfo)
         setLoading(false)
       }
     }
-    load()
-  }, [item, getXtreamCredentials])
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [item, getXtreamCredentials, settings.tmdbApiKey, settings.language])
 
   if (loading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>
 
@@ -96,12 +132,12 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
   return (
     <div className="flex flex-col gap-6">
       <Button variant="ghost" size="sm" onClick={onBack} className="self-start">
-        <ArrowLeft size={16} /> Back
+        <ArrowLeft size={16} /> Geri
       </Button>
 
       <div className="flex flex-col md:flex-row gap-6">
         <div className="shrink-0 w-48">
-          <LazyImage src={detail.cover} alt={detail.name} className="w-full rounded-xl" />
+          <LazyImage src={detail.cover} alt={detail.name} className="aspect-[2/3] w-full rounded-xl" eager />
         </div>
         <div className="flex flex-col gap-3">
           <h1 className="text-2xl font-bold">{detail.name}</h1>
@@ -136,13 +172,13 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
           )}
 
           <div className="flex flex-col gap-1 text-xs text-surface-500 mt-1">
-            {detail.director && <span>Director: {detail.director}</span>}
-            {detail.cast && <span>Cast: {detail.cast}</span>}
-            {detail.releaseDate && <span>Release: {detail.releaseDate}</span>}
+            {detail.director && <span>Yonetmen: {detail.director}</span>}
+            {detail.cast && <span>Oyuncular: {detail.cast}</span>}
+            {detail.releaseDate && <span>Yayin Tarihi: {detail.releaseDate}</span>}
           </div>
 
           <Button onClick={() => onPlay(item)} className="mt-4 self-start">
-            <Play size={16} fill="currentColor" /> Play Movie
+            <Play size={16} fill="currentColor" /> Filmi Oynat
           </Button>
         </div>
       </div>

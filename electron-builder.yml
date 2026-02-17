@@ -1,5 +1,5 @@
-appId: com.iptv.player
-productName: IPTV Player
+appId: com.abiplayer.beta
+productName: Abi Player
 directories:
   buildResources: build
 files:
@@ -11,7 +11,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: iptv-player
+  executableName: abi-player
   target:
     - nsis
 nsis:

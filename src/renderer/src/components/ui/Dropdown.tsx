@@ -15,7 +15,7 @@ interface DropdownProps {
   className?: string
 }
 
-export function Dropdown({ items, value, onSelect, placeholder = 'Select...', className = '' }: DropdownProps) {
+export function Dropdown({ items, value, onSelect, placeholder = 'Seciniz...', className = '' }: DropdownProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const selected = items.find((i) => i.id === value)

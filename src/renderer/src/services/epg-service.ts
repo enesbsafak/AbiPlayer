@@ -42,11 +42,11 @@ export async function fetchAndParseEPG(url: string): Promise<EPGData> {
 
   try {
     const res = await fetch(url, { signal: controller.signal })
-    if (!res.ok) throw new Error(`Failed to fetch EPG: ${res.status}`)
+    if (!res.ok) throw new Error(`EPG indirilemedi: ${res.status}`)
 
     // Read as text - for very large files, limit to ~50MB
     const reader = res.body?.getReader()
-    if (!reader) throw new Error('No response body')
+    if (!reader) throw new Error('Sunucudan gecerli veri gelmedi')
 
     const chunks: Uint8Array[] = []
     let totalSize = 0
@@ -134,7 +134,7 @@ export function parseEPGXml(xml: string): EPGData {
 
     programs[channelId].push({
       channelId,
-      title: title || 'No Title',
+      title: title || 'Baslik Yok',
       description: desc || undefined,
       start,
       end,

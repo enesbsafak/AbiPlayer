@@ -1,23 +1,44 @@
-import { Minus, Square, X, Maximize2 } from 'lucide-react'
+import { Minus, X, Maximize2 } from 'lucide-react'
 import { isElectron, windowMinimize, windowMaximize, windowClose } from '@/services/platform'
+import { APP_NAME, APP_VERSION_LABEL } from '@/constants/app-info'
 
 export function TitleBar() {
   if (!isElectron()) return null
 
   return (
-    <div className="drag-region flex h-8 items-center justify-between bg-surface-950 px-2">
-      <div className="flex items-center gap-2 no-drag">
-        <span className="text-xs font-semibold text-accent">IPTV Player</span>
+    <div className="drag-region relative z-40 flex h-11 items-center justify-between border-b border-white/20 bg-[linear-gradient(180deg,rgba(48,67,103,0.74),rgba(21,34,62,0.62))] px-3 shadow-[0_12px_26px_rgba(0,0,0,0.33)] backdrop-blur-2xl">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.16),transparent_35%)]" />
+      <div className="no-drag flex items-center gap-2.5">
+        <span className="font-display text-[11px] uppercase tracking-[0.22em] text-surface-100">{APP_NAME}</span>
+        <span className="rounded-full border border-white/30 bg-white/10 px-2 py-0.5 text-[10px] font-semibold tracking-[0.12em] text-surface-200">
+          {APP_VERSION_LABEL}
+        </span>
       </div>
-      <div className="flex items-center no-drag">
-        <button onClick={windowMinimize} className="flex h-8 w-10 items-center justify-center hover:bg-surface-800 transition-colors">
-          <Minus size={14} className="text-surface-400" />
+
+      <div className="no-drag relative flex items-center gap-1.5 rounded-2xl border border-white/30 bg-black/25 p-1 shadow-[0_10px_24px_rgba(0,0,0,0.38)] backdrop-blur-xl">
+        <button
+          onClick={windowMinimize}
+          title="Asagi Al"
+          aria-label="Pencereyi asagi al"
+          className="group relative flex h-7 w-7 items-center justify-center rounded-full border border-black/25 bg-[#f7c04a] shadow-[inset_0_1px_0_rgba(255,255,255,0.36)] transition-all hover:-translate-y-[1px] hover:brightness-110"
+        >
+          <Minus size={12} className="text-black/80" />
         </button>
-        <button onClick={windowMaximize} className="flex h-8 w-10 items-center justify-center hover:bg-surface-800 transition-colors">
-          <Maximize2 size={12} className="text-surface-400" />
+        <button
+          onClick={windowMaximize}
+          title="Boyut Degistir"
+          aria-label="Pencere boyutunu degistir"
+          className="group relative flex h-7 w-7 items-center justify-center rounded-full border border-black/25 bg-[#35c768] shadow-[inset_0_1px_0_rgba(255,255,255,0.34)] transition-all hover:-translate-y-[1px] hover:brightness-110"
+        >
+          <Maximize2 size={11} className="text-black/80" />
         </button>
-        <button onClick={windowClose} className="flex h-8 w-10 items-center justify-center hover:bg-red-600 transition-colors">
-          <X size={14} className="text-surface-400" />
+        <button
+          onClick={windowClose}
+          title="Kapat"
+          aria-label="Pencereyi kapat"
+          className="group relative flex h-7 w-7 items-center justify-center rounded-full border border-black/25 bg-[#ff5f57] shadow-[inset_0_1px_0_rgba(255,255,255,0.34)] transition-all hover:-translate-y-[1px] hover:brightness-110"
+        >
+          <X size={11} className="text-black/80" />
         </button>
       </div>
     </div>

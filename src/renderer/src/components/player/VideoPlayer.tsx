@@ -1,10 +1,12 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useCallback, useState, type MouseEvent } from 'react'
 import { useStore } from '@/store'
 import { usePlayer } from '@/hooks/usePlayer'
+import { useMpvPlayer } from '@/hooks/useMpvPlayer'
 import { PlayerControls } from './PlayerControls'
 import { SubtitleOverlay } from './SubtitleOverlay'
 import { Spinner } from '@/components/ui/Spinner'
 import { AlertCircle } from 'lucide-react'
+import { mpvIsAvailable, mpvSetFullscreen, windowSetFullscreen } from '@/services/platform'
 
 interface VideoPlayerProps {
   className?: string
@@ -14,13 +16,31 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const [mpvAvailable, setMpvAvailable] = useState(false)
 
   const {
     currentChannel, isBuffering, playerError, showControls,
-    setShowControls, isFullscreen, setFullscreen
+    playbackEngine, setShowControls, isFullscreen, setFullscreen, setPlaybackEngine
   } = useStore()
+  const mpvEnabled = mpvAvailable && playbackEngine === 'mpv'
 
-  usePlayer(videoRef)
+  usePlayer(videoRef, { disabled: mpvEnabled })
+  useMpvPlayer(mpvEnabled)
+
+  useEffect(() => {
+    let cancelled = false
+    const detectMpv = async () => {
+      const available = await mpvIsAvailable().catch(() => false)
+      if (cancelled) return
+      setMpvAvailable(available)
+      setPlaybackEngine(available ? 'mpv' : 'html5')
+    }
+
+    void detectMpv()
+    return () => {
+      cancelled = true
+    }
+  }, [setPlaybackEngine])
 
   const handleMouseMove = useCallback(() => {
     setShowControls(true)
@@ -29,6 +49,13 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
   }, [setShowControls])
 
   const toggleFullscreen = useCallback(async () => {
+    if (mpvEnabled) {
+      const next = !isFullscreen
+      await Promise.allSettled([windowSetFullscreen(next), mpvSetFullscreen(next)])
+      setFullscreen(next)
+      return
+    }
+
     if (!containerRef.current) return
     if (!document.fullscreenElement) {
       await containerRef.current.requestFullscreen()
@@ -37,30 +64,43 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
       await document.exitFullscreen()
       setFullscreen(false)
     }
-  }, [setFullscreen])
+  }, [isFullscreen, mpvEnabled, setFullscreen])
+
+  const handleContainerDoubleClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null
+    if (!target) return
+    if (target.closest('[data-player-controls]')) return
+    void toggleFullscreen()
+  }, [toggleFullscreen])
 
   useEffect(() => {
+    if (mpvEnabled) return
     const handler = () => setFullscreen(!!document.fullscreenElement)
     document.addEventListener('fullscreenchange', handler)
     return () => document.removeEventListener('fullscreenchange', handler)
-  }, [setFullscreen])
+  }, [mpvEnabled, setFullscreen])
 
   if (!currentChannel) return null
 
   return (
     <div
       ref={containerRef}
-      className={`relative bg-black overflow-hidden ${className}`}
+      data-player-container
+      className={`relative overflow-hidden ${mpvEnabled ? '' : 'bg-black'} ${className}`}
       onMouseMove={handleMouseMove}
       onMouseLeave={() => setShowControls(false)}
-      onDoubleClick={toggleFullscreen}
+      onDoubleClick={handleContainerDoubleClick}
     >
-      <video
-        ref={videoRef}
-        className="h-full w-full"
-        playsInline
-        autoPlay
-      />
+      {mpvEnabled ? (
+        <div className="absolute inset-0 pointer-events-none" />
+      ) : (
+        <video
+          ref={videoRef}
+          className="h-full w-full"
+          playsInline
+          autoPlay
+        />
+      )}
 
       {isBuffering && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/30">
@@ -80,7 +120,6 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
       <div className={`absolute inset-x-0 bottom-0 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
         <PlayerControls
           videoRef={videoRef}
-          containerRef={containerRef}
           onToggleFullscreen={toggleFullscreen}
         />
       </div>

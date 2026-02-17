@@ -1,5 +1,5 @@
 export interface AudioTrack {
-  id: number
+  id: string
   name: string
   lang?: string
   default?: boolean
@@ -45,7 +45,7 @@ export interface PlayerState {
   isPiP: boolean
   error: string | null
   audioTracks: AudioTrack[]
-  currentAudioTrack: number
+  currentAudioTrack: string | null
   subtitleTracks: SubtitleTrack[]
   currentSubtitleTrack: string | null
   subtitleCues: SubtitleCue[]

@@ -4,19 +4,29 @@ import { useStore } from '@/store'
 import { Button } from '@/components/ui/Button'
 import { xtreamApi } from '@/services/xtream-api'
 import { fetchAndParseM3U } from '@/services/m3u-parser'
+import { secureCredentialService } from '@/services/secure-credentials'
 
 export function SourceManager() {
   const {
     sources, activeSourceId, xtreamAuth,
     setActiveSource, removeSource, removeChannelsBySource, removeCategoriesBySource,
-    setXtreamAuth, addChannels, addCategories, getXtreamCredentials
+    setXtreamAuth, addChannels, addCategories, getXtreamCredentials, clearEpg
   } = useStore()
   const [refreshingId, setRefreshingId] = useState<string | null>(null)
 
-  const handleRemove = (id: string) => {
+  const handleRemove = async (id: string, type: string) => {
+    if (type === 'xtream') {
+      try {
+        await secureCredentialService.delete(id)
+      } catch (err) {
+        console.error('Failed to remove secure credentials:', err)
+      }
+    }
+
     removeSource(id)
     removeChannelsBySource(id)
     removeCategoriesBySource(id)
+    clearEpg()
   }
 
   const handleRefresh = async (sourceId: string) => {
@@ -36,6 +46,7 @@ export function SourceManager() {
         // Clear old channels and reload on next page visit
         removeChannelsBySource(sourceId)
         removeCategoriesBySource(sourceId)
+        clearEpg()
       } else if (source.type === 'm3u_url' && source.url) {
         removeChannelsBySource(sourceId)
         removeCategoriesBySource(sourceId)
@@ -58,15 +69,15 @@ export function SourceManager() {
   if (sources.length === 0) {
     return (
       <div className="text-center py-8 text-surface-500">
-        <p>No sources added yet.</p>
-        <p className="text-sm mt-1">Add an Xtream Codes server or M3U playlist to get started.</p>
+        <p>Henuz kaynak eklenmedi.</p>
+        <p className="text-sm mt-1">Baslamak icin bir Xtream Codes sunucusu veya M3U listesi ekleyin.</p>
       </div>
     )
   }
 
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium text-surface-400 mb-1">Your Sources</h3>
+      <h3 className="text-sm font-medium text-surface-400 mb-1">Kaynaklariniz</h3>
       {sources.map((source) => {
         const connected = isConnected(source.id, source.type)
         const isRefreshing = refreshingId === source.id
@@ -94,8 +105,8 @@ export function SourceManager() {
                 <div>
                   <p className="text-sm font-medium">{source.name}</p>
                   <p className="text-xs text-surface-500">
-                    {source.type === 'xtream' ? 'Xtream Codes' : source.type === 'm3u_url' ? 'M3U URL' : 'M3U File'}
-                    {source.type === 'xtream' && !connected && ' — reconnecting...'}
+                    {source.type === 'xtream' ? 'Xtream Codes' : source.type === 'm3u_url' ? 'M3U URL' : 'M3U Dosya'}
+                    {source.type === 'xtream' && !connected && ' - yeniden baglaniyor...'}
                   </p>
                 </div>
               </div>
@@ -113,7 +124,14 @@ export function SourceManager() {
                   <RefreshCw size={14} />
                 )}
               </Button>
-              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleRemove(source.id) }}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void handleRemove(source.id, source.type)
+                }}
+              >
                 <Trash2 size={14} className="text-red-400" />
               </Button>
             </div>

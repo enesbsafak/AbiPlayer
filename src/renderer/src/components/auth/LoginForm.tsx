@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
+import { secureCredentialService } from '@/services/secure-credentials'
 import type { PlaylistSource } from '@/types/playlist'
 
 export function LoginForm() {
@@ -30,16 +31,20 @@ export function LoginForm() {
       if (!/^https?:\/\//i.test(normalizedUrl)) {
         normalizedUrl = `http://${normalizedUrl}`
       }
+      const parsedUrl = new URL(normalizedUrl)
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        throw new Error('Yalnizca HTTP/HTTPS sunucu adresleri destekleniyor')
+      }
+      normalizedUrl = parsedUrl.toString().replace(/\/+$/, '')
 
       const creds = { url: normalizedUrl, username, password }
       const auth = await xtreamApi.authenticate(creds)
 
       if (auth.user_info.auth !== 1) {
-        throw new Error('Authentication failed')
+        throw new Error('Kimlik dogrulama basarisiz oldu')
       }
 
-      let hostname = normalizedUrl
-      try { hostname = new URL(normalizedUrl).host } catch {}
+      const hostname = parsedUrl.host
 
       const source: PlaylistSource = {
         id: `xtream_${Date.now()}`,
@@ -51,6 +56,7 @@ export function LoginForm() {
         addedAt: Date.now()
       }
 
+      await secureCredentialService.set(source.id, creds)
       addSource(source)
       setActiveSource(source.id)
       setXtreamAuth(source.id, auth)
@@ -64,7 +70,7 @@ export function LoginForm() {
       // Navigate to home to see channels
       navigate('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Connection failed')
+      setError(err instanceof Error ? err.message : 'Baglanti basarisiz oldu')
     } finally {
       setLoading(false)
     }
@@ -78,19 +84,19 @@ export function LoginForm() {
         </div>
         <div>
           <h3 className="font-semibold">Xtream Codes</h3>
-          <p className="text-xs text-surface-400">Connect to an Xtream Codes server</p>
+          <p className="text-xs text-surface-400">Xtream Codes sunucusuna baglan</p>
         </div>
       </div>
 
-      <Input id="xtream-name" label="Display Name (optional)" placeholder="My IPTV" value={name} onChange={(e) => setName(e.target.value)} />
-      <Input id="xtream-url" label="Server URL" placeholder="http://example.com:8080" value={url} onChange={(e) => setUrl(e.target.value)} required />
-      <Input id="xtream-user" label="Username" placeholder="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
-      <Input id="xtream-pass" label="Password" type="password" placeholder="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+      <Input id="xtream-name" label="Gorunen Ad (opsiyonel)" placeholder="Benim Kaynagim" value={name} onChange={(e) => setName(e.target.value)} />
+      <Input id="xtream-url" label="Sunucu URL" placeholder="http://example.com:8080" value={url} onChange={(e) => setUrl(e.target.value)} required />
+      <Input id="xtream-user" label="Kullanici Adi" placeholder="kullanici_adi" value={username} onChange={(e) => setUsername(e.target.value)} required />
+      <Input id="xtream-pass" label="Sifre" type="password" placeholder="sifre" value={password} onChange={(e) => setPassword(e.target.value)} required />
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       <Button type="submit" disabled={loading} className="mt-2">
-        {loading ? <><Spinner size={16} /> Connecting...</> : 'Connect'}
+        {loading ? <><Spinner size={16} /> Baglaniliyor...</> : 'Baglan'}
       </Button>
     </form>
   )

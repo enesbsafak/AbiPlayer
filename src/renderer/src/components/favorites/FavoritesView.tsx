@@ -9,7 +9,8 @@ interface FavoritesViewProps {
 }
 
 export function FavoritesView({ onPlay }: FavoritesViewProps) {
-  const { channels, favoriteIds } = useStore()
+  const channels = useStore((s) => s.channels)
+  const favoriteIds = useStore((s) => s.favoriteIds)
   const favorites = useMemo(
     () => channels.filter((c) => favoriteIds.has(c.id)),
     [channels, favoriteIds]
@@ -17,10 +18,10 @@ export function FavoritesView({ onPlay }: FavoritesViewProps) {
 
   if (favorites.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-surface-500">
+      <div className="flex flex-col items-center justify-center py-20 text-surface-400">
         <Heart size={48} className="mb-4" />
-        <p className="text-lg">No favorites yet</p>
-        <p className="text-sm mt-1">Star channels to add them to your favorites</p>
+        <p className="text-lg">Henuz favori yok</p>
+        <p className="text-sm mt-1">Favorilere eklemek icin kanallari yildizlayin</p>
       </div>
     )
   }

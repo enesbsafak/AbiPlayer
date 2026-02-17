@@ -1,6 +1,67 @@
 import type { XtreamCredentials, XtreamAuthResponse, XtreamCategory, XtreamLiveStream, XtreamVODStream, XtreamVODInfo, XtreamSeriesStream, XtreamSeriesInfo } from '@/types/xtream'
 import type { Channel, Category } from '@/types/playlist'
 
+const XTREAM_REQUEST_TIMEOUT_MS = 20_000
+const PREVIEW_SCAN_CATEGORY_LIMIT = 12
+const XTREAM_DEFAULT_CACHE_TTL_MS = 45_000
+
+const requestCache = new Map<string, { expiresAt: number; data: unknown }>()
+const inflightRequests = new Map<string, Promise<unknown>>()
+
+async function collectPreviewFromCategories<T, K extends string | number>({
+  categoryIds,
+  maxItems,
+  maxCategories = PREVIEW_SCAN_CATEGORY_LIMIT,
+  maxConcurrency = 4,
+  fetchByCategory,
+  getKey
+}: {
+  categoryIds: string[]
+  maxItems: number
+  maxCategories?: number
+  maxConcurrency?: number
+  fetchByCategory: (categoryId: string) => Promise<T[]>
+  getKey: (item: T) => K
+}): Promise<T[]> {
+  const result: T[] = []
+  const seen = new Set<K>()
+  const queue = categoryIds.slice(0, maxCategories)
+  const workerCount = Math.max(1, Math.min(maxConcurrency, queue.length || 1))
+  let cursor = 0
+  let done = false
+
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (!done) {
+      const index = cursor
+      cursor += 1
+      if (index >= queue.length) return
+
+      const categoryId = queue[index]
+      let items: T[] = []
+      try {
+        items = await fetchByCategory(categoryId)
+      } catch {
+        continue
+      }
+
+      for (const item of items) {
+        const key = getKey(item)
+        if (seen.has(key)) continue
+        seen.add(key)
+        result.push(item)
+
+        if (result.length >= maxItems) {
+          done = true
+          return
+        }
+      }
+    }
+  })
+
+  await Promise.all(workers)
+  return result
+}
+
 function buildUrl(creds: XtreamCredentials, action: string, params?: Record<string, string>): string {
   const base = creds.url.replace(/\/+$/, '')
   const url = new URL(`${base}/player_api.php`)
@@ -13,21 +74,79 @@ function buildUrl(creds: XtreamCredentials, action: string, params?: Record<stri
   return url.toString()
 }
 
-async function fetchJSON<T>(url: string): Promise<T> {
+async function fetchJSON<T>(
+  url: string,
+  options?: { bypassCache?: boolean; cacheTtlMs?: number }
+): Promise<T> {
+  const bypassCache = options?.bypassCache ?? false
+  const cacheTtlMs = options?.cacheTtlMs ?? XTREAM_DEFAULT_CACHE_TTL_MS
+
+  if (!bypassCache && cacheTtlMs > 0) {
+    const cached = requestCache.get(url)
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data as T
+    }
+
+    const existing = inflightRequests.get(url)
+    if (existing) {
+      return existing as Promise<T>
+    }
+  }
+
+  const request = (async () => {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), XTREAM_REQUEST_TIMEOUT_MS)
+
   // Use cache: no-store to avoid stale responses, and don't auto-upgrade HTTP
-  const res = await fetch(url, {
-    cache: 'no-store',
-    // @ts-ignore - Electron supports this to prevent HTTP->HTTPS upgrade
-    mode: 'cors'
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
-  return res.json()
+  try {
+    const res = await fetch(url, {
+      cache: 'no-store',
+      signal: controller.signal,
+      // @ts-ignore - Electron supports this to prevent HTTP->HTTPS upgrade
+      mode: 'cors'
+    })
+
+    const body = await res.text()
+    if (!res.ok) {
+      const sample = body.slice(0, 160).replace(/\s+/g, ' ').trim()
+      throw new Error(`HTTP ${res.status}: ${res.statusText}${sample ? ` (${sample})` : ''}`)
+    }
+
+    try {
+      const data = JSON.parse(body) as T
+      if (!bypassCache && cacheTtlMs > 0) {
+        requestCache.set(url, { data, expiresAt: Date.now() + cacheTtlMs })
+      }
+      return data
+    } catch {
+      const sample = body.slice(0, 200).replace(/\s+/g, ' ').trim()
+      throw new Error(`Gecersiz sunucu yaniti. JSON bekleniyordu: ${sample || 'bos govde'}`)
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(`Istek zaman asimina ugradi (${XTREAM_REQUEST_TIMEOUT_MS / 1000}s)`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
+  })()
+
+  if (!bypassCache && cacheTtlMs > 0) {
+    inflightRequests.set(url, request as Promise<unknown>)
+  }
+
+  try {
+    return await request
+  } finally {
+    inflightRequests.delete(url)
+  }
 }
 
 export const xtreamApi = {
   async authenticate(creds: XtreamCredentials): Promise<XtreamAuthResponse> {
     const url = buildUrl(creds, '')
-    return fetchJSON<XtreamAuthResponse>(url)
+    return fetchJSON<XtreamAuthResponse>(url, { bypassCache: true })
   },
 
   // Live TV
@@ -40,6 +159,22 @@ export const xtreamApi = {
     return fetchJSON(buildUrl(creds, 'get_live_streams', params))
   },
 
+  async getLivePreviewStreams(creds: XtreamCredentials, maxItems = 500): Promise<XtreamLiveStream[]> {
+    const categories = await xtreamApi.getLiveCategories(creds).catch(() => [])
+    const categoryIds = categories.map((cat) => cat.category_id).filter(Boolean)
+
+    const byCategories = await collectPreviewFromCategories<XtreamLiveStream, number>({
+      categoryIds,
+      maxItems,
+      fetchByCategory: (categoryId) => xtreamApi.getLiveStreams(creds, categoryId),
+      getKey: (stream) => stream.stream_id
+    })
+    if (byCategories.length > 0) return byCategories.slice(0, maxItems)
+
+    const all = await xtreamApi.getLiveStreams(creds)
+    return all.slice(0, maxItems)
+  },
+
   // VOD
   async getVodCategories(creds: XtreamCredentials): Promise<XtreamCategory[]> {
     return fetchJSON(buildUrl(creds, 'get_vod_categories'))
@@ -50,8 +185,24 @@ export const xtreamApi = {
     return fetchJSON(buildUrl(creds, 'get_vod_streams', params))
   },
 
+  async getVodPreviewStreams(creds: XtreamCredentials, maxItems = 500): Promise<XtreamVODStream[]> {
+    const categories = await xtreamApi.getVodCategories(creds).catch(() => [])
+    const categoryIds = categories.map((cat) => cat.category_id).filter(Boolean)
+
+    const byCategories = await collectPreviewFromCategories<XtreamVODStream, number>({
+      categoryIds,
+      maxItems,
+      fetchByCategory: (categoryId) => xtreamApi.getVodStreams(creds, categoryId),
+      getKey: (stream) => stream.stream_id
+    })
+    if (byCategories.length > 0) return byCategories.slice(0, maxItems)
+
+    const all = await xtreamApi.getVodStreams(creds)
+    return all.slice(0, maxItems)
+  },
+
   async getVodInfo(creds: XtreamCredentials, vodId: number): Promise<XtreamVODInfo> {
-    return fetchJSON(buildUrl(creds, 'get_vod_info', { vod_id: String(vodId) }))
+    return fetchJSON(buildUrl(creds, 'get_vod_info', { vod_id: String(vodId) }), { cacheTtlMs: 5 * 60 * 1000 })
   },
 
   // Series
@@ -64,8 +215,24 @@ export const xtreamApi = {
     return fetchJSON(buildUrl(creds, 'get_series', params))
   },
 
+  async getSeriesPreviewStreams(creds: XtreamCredentials, maxItems = 500): Promise<XtreamSeriesStream[]> {
+    const categories = await xtreamApi.getSeriesCategories(creds).catch(() => [])
+    const categoryIds = categories.map((cat) => cat.category_id).filter(Boolean)
+
+    const byCategories = await collectPreviewFromCategories<XtreamSeriesStream, number>({
+      categoryIds,
+      maxItems,
+      fetchByCategory: (categoryId) => xtreamApi.getSeries(creds, categoryId),
+      getKey: (stream) => stream.series_id
+    })
+    if (byCategories.length > 0) return byCategories.slice(0, maxItems)
+
+    const all = await xtreamApi.getSeries(creds)
+    return all.slice(0, maxItems)
+  },
+
   async getSeriesInfo(creds: XtreamCredentials, seriesId: number): Promise<XtreamSeriesInfo> {
-    return fetchJSON(buildUrl(creds, 'get_series_info', { series_id: String(seriesId) }))
+    return fetchJSON(buildUrl(creds, 'get_series_info', { series_id: String(seriesId) }), { cacheTtlMs: 5 * 60 * 1000 })
   },
 
   // URL builders

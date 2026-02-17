@@ -1,8 +1,10 @@
 import type { StateCreator } from 'zustand'
 import type { AudioTrack, SubtitleTrack, SubtitleCue } from '@/types/player'
 import type { Channel } from '@/types/playlist'
+import { isPlayableChannel } from '@/services/playback'
 
 export interface PlayerSlice {
+  playbackEngine: 'html5' | 'mpv'
   currentChannel: Channel | null
   isPlaying: boolean
   isPaused: boolean
@@ -15,13 +17,14 @@ export interface PlayerSlice {
   isPiP: boolean
   playerError: string | null
   audioTracks: AudioTrack[]
-  currentAudioTrack: number
+  currentAudioTrack: string | null
   subtitleTracks: SubtitleTrack[]
   currentSubtitleTrack: string | null
   subtitleCues: SubtitleCue[]
   activeSubtitleCues: SubtitleCue[]
   showControls: boolean
   isMiniPlayer: boolean
+  setPlaybackEngine: (engine: 'html5' | 'mpv') => void
   playChannel: (channel: Channel) => void
   stopPlayback: () => void
   setPlaying: (playing: boolean) => void
@@ -35,7 +38,7 @@ export interface PlayerSlice {
   setPiP: (pip: boolean) => void
   setPlayerError: (error: string | null) => void
   setAudioTracks: (tracks: AudioTrack[]) => void
-  setCurrentAudioTrack: (id: number) => void
+  setCurrentAudioTrack: (id: string | null) => void
   setSubtitleTracks: (tracks: SubtitleTrack[]) => void
   setCurrentSubtitleTrack: (id: string | null) => void
   setSubtitleCues: (cues: SubtitleCue[]) => void
@@ -45,6 +48,7 @@ export interface PlayerSlice {
 }
 
 export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> = (set) => ({
+  playbackEngine: 'html5',
   currentChannel: null,
   isPlaying: false,
   isPaused: false,
@@ -57,28 +61,44 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
   isPiP: false,
   playerError: null,
   audioTracks: [],
-  currentAudioTrack: -1,
+  currentAudioTrack: null,
   subtitleTracks: [],
   currentSubtitleTrack: null,
   subtitleCues: [],
   activeSubtitleCues: [],
   showControls: true,
   isMiniPlayer: false,
+  setPlaybackEngine: (engine) => set({ playbackEngine: engine }),
 
   playChannel: (channel) =>
-    set({
-      currentChannel: channel,
-      isPlaying: true,
-      isPaused: false,
-      playerError: null,
-      currentTime: 0,
-      duration: 0,
-      audioTracks: [],
-      currentAudioTrack: -1,
-      subtitleTracks: [],
-      currentSubtitleTrack: null,
-      subtitleCues: [],
-      activeSubtitleCues: []
+    set((state) => {
+      if (!isPlayableChannel(channel)) {
+        return {
+          ...state,
+          currentChannel: null,
+          isPlaying: false,
+          isPaused: false,
+          isBuffering: false,
+          currentTime: 0,
+          duration: 0,
+          playerError: 'Secilen icerik dogrudan oynatilamiyor.'
+        }
+      }
+
+      return {
+        currentChannel: channel,
+        isPlaying: true,
+        isPaused: false,
+        playerError: null,
+        currentTime: 0,
+        duration: 0,
+        audioTracks: [],
+        currentAudioTrack: null,
+        subtitleTracks: [],
+        currentSubtitleTrack: null,
+        subtitleCues: [],
+        activeSubtitleCues: []
+      }
     }),
 
   stopPlayback: () =>
@@ -91,7 +111,9 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
       duration: 0,
       playerError: null,
       audioTracks: [],
+      currentAudioTrack: null,
       subtitleTracks: [],
+      currentSubtitleTrack: null,
       subtitleCues: [],
       activeSubtitleCues: []
     }),

@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
 import { format, addHours, startOfHour } from 'date-fns'
+import { tr } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useStore } from '@/store'
 import { Button } from '@/components/ui/Button'
@@ -10,7 +11,9 @@ const HEADER_HEIGHT = 40
 const CHANNEL_WIDTH = 180
 
 export function EPGGrid() {
-  const { epgData, channels } = useStore()
+  const epgData = useStore((s) => s.epgData)
+  const channels = useStore((s) => s.channels)
+  const activeSourceId = useStore((s) => s.activeSourceId)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [timeOffset, setTimeOffset] = useState(0)
 
@@ -20,15 +23,21 @@ export function EPGGrid() {
   const totalWidth = HOUR_WIDTH * 4
 
   const liveChannels = useMemo(
-    () => channels.filter((c) => c.type === 'live' && c.epgChannelId),
-    [channels]
+    () =>
+      channels.filter(
+        (c) =>
+          c.type === 'live' &&
+          c.epgChannelId &&
+          (activeSourceId ? c.sourceId === activeSourceId : true)
+      ),
+    [channels, activeSourceId]
   )
 
   if (!epgData || liveChannels.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-surface-500">
-        <p className="text-lg">No EPG data available</p>
-        <p className="text-sm mt-1">EPG data will load automatically when connected to an Xtream source</p>
+        <p className="text-lg">EPG verisi bulunamadi</p>
+        <p className="text-sm mt-1">Xtream kaynagina baglaninca EPG verisi otomatik yuklenir</p>
       </div>
     )
   }
@@ -39,14 +48,14 @@ export function EPGGrid() {
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 mb-3">
         <Button variant="ghost" size="sm" onClick={() => setTimeOffset((t) => t - 4)}>
-          <ChevronLeft size={16} /> Earlier
+          <ChevronLeft size={16} /> Onceki
         </Button>
-        <Button variant="secondary" size="sm" onClick={() => setTimeOffset(0)}>Now</Button>
+        <Button variant="secondary" size="sm" onClick={() => setTimeOffset(0)}>Simdi</Button>
         <Button variant="ghost" size="sm" onClick={() => setTimeOffset((t) => t + 4)}>
-          Later <ChevronRight size={16} />
+          Sonraki <ChevronRight size={16} />
         </Button>
         <span className="text-sm text-surface-400 ml-2">
-          {format(new Date(startTime), 'MMM d, HH:mm')} - {format(new Date(endTime), 'HH:mm')}
+          {format(new Date(startTime), 'd MMM, HH:mm', { locale: tr })} - {format(new Date(endTime), 'HH:mm', { locale: tr })}
         </span>
       </div>
 
