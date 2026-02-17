@@ -64,13 +64,16 @@ Abi Player yalnizca genel amacli bir medya oynaticidir.
 
 ## Teknoloji Yigini
 
-- Electron
-- React 18
-- TypeScript
-- Zustand
-- Tailwind CSS
-- hls.js
-- ffmpeg / ffprobe yardimci araclari
+- Electron 40 + electron-vite (masaustu runtime ve build)
+- React 18 + React Router 7
+- TypeScript 5
+- Zustand (persist middleware ile state yonetimi)
+- Tailwind CSS + PostCSS
+- MPV (native, gomulu oynatma backend'i)
+- hls.js (HTML5 playback fallback)
+- ffmpeg-static + ffprobe-static (altyazi/probe islemleri)
+- fast-xml-parser (EPG/XMLTV parse)
+- idb (istemci tarafi depolama)
 
 ## Sistem Gereksinimleri
 
