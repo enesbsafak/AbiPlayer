@@ -11,13 +11,22 @@ import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 
+const loadedSeriesCategoryCache = new Set<string>()
+
+function clearSourceCategoryCache(cache: Set<string>, sourceId: string) {
+  const prefix = `${sourceId}:`
+  for (const key of cache) {
+    if (key.startsWith(prefix)) cache.delete(key)
+  }
+}
+
 export default function SeriesPage() {
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedSeries, setSelectedSeries] = useState<{ seriesId: number; sourceId: string } | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
-  const loadedCatsRef = useRef(new Set<string>())
+  const loadedCatsRef = useRef(loadedSeriesCategoryCache)
 
   const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
@@ -40,7 +49,6 @@ export default function SeriesPage() {
   }, [setChannelFilter])
 
   useEffect(() => {
-    loadedCatsRef.current.clear()
     setSelectedCategory(null)
     setSelectedSeries(null)
     setLoadError(null)
@@ -51,7 +59,7 @@ export default function SeriesPage() {
     const hasChannelsForSource = channels.some(
       (channel) => channel.sourceId === activeSourceId && channel.type === 'series'
     )
-    if (!hasChannelsForSource) loadedCatsRef.current.clear()
+    if (!hasChannelsForSource) clearSourceCategoryCache(loadedCatsRef.current, activeSourceId)
   }, [channels, activeSourceId])
 
   useEffect(() => {
@@ -96,6 +104,22 @@ export default function SeriesPage() {
 
     const cacheKey = `${activeSourceId}:${rawCatId || '__all__'}`
     if (loadedCatsRef.current.has(cacheKey)) return
+
+    const hasCategoryInMemory = rawCatId
+      ? channels.some(
+          (channel) =>
+            channel.sourceId === activeSourceId &&
+            channel.type === 'series' &&
+            channel.categoryId === `${activeSourceId}_series_${rawCatId}`
+        )
+      : channels.some(
+          (channel) => channel.sourceId === activeSourceId && channel.type === 'series'
+        )
+
+    if (hasCategoryInMemory) {
+      loadedCatsRef.current.add(cacheKey)
+      return
+    }
 
     let cancelled = false
     const load = async () => {
@@ -216,7 +240,11 @@ export default function SeriesPage() {
               size="sm"
               variant="secondary"
               onClick={() => {
-                loadedCatsRef.current.clear()
+                if (activeSourceId) {
+                  clearSourceCategoryCache(loadedCatsRef.current, activeSourceId)
+                } else {
+                  loadedCatsRef.current.clear()
+                }
                 setReloadToken((v) => v + 1)
               }}
             >

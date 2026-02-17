@@ -17,11 +17,11 @@ export const ChannelCard = memo(function ChannelCard({ channel, onPlay }: Channe
 
   return (
     <div
-      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-white/16 bg-[linear-gradient(172deg,rgba(38,56,88,0.7),rgba(21,34,58,0.65))] shadow-[0_12px_26px_rgba(0,0,0,0.26)] transition-all duration-300 hover:-translate-y-1 hover:border-accent/70 hover:shadow-[0_22px_34px_rgba(0,0,0,0.36)]"
+      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(172deg,rgba(28,24,54,0.72),rgba(16,14,36,0.68))] shadow-[0_12px_26px_rgba(0,0,0,0.36)] transition-all duration-300 hover:-translate-y-1 hover:border-accent/60 hover:shadow-[0_22px_34px_rgba(0,0,0,0.48)]"
       onClick={() => onPlay(channel)}
     >
       <div className="relative flex aspect-video items-center justify-center bg-surface-800/80">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(110,168,255,0.32),transparent_46%),radial-gradient(circle_at_82%_18%,rgba(87,215,196,0.2),transparent_56%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(124,106,247,0.26),transparent_46%),radial-gradient(circle_at_82%_18%,rgba(45,212,191,0.16),transparent_56%)]" />
         {artwork ? (
           <LazyImage
             src={artwork}
@@ -42,7 +42,7 @@ export const ChannelCard = memo(function ChannelCard({ channel, onPlay }: Channe
         </div>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/45 to-transparent" />
         {channel.type === 'live' && (
-          <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full border border-red-300/35 bg-red-500/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
+          <div className="absolute left-2 top-2 flex items-center gap-1 rounded-md border border-red-300/30 bg-red-600/80 px-2 py-0.5 text-[10px] font-semibold text-white">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
             Canli
           </div>
@@ -50,8 +50,8 @@ export const ChannelCard = memo(function ChannelCard({ channel, onPlay }: Channe
       </div>
       <div className="flex items-start justify-between gap-2 p-3.5">
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-semibold tracking-wide text-surface-50">{channel.name}</p>
-          <p className="mt-1 truncate text-[11px] uppercase tracking-[0.12em] text-surface-400">
+          <p className="truncate text-[13px] font-semibold text-white">{channel.name}</p>
+          <p className="mt-0.5 truncate text-[11px] text-surface-500">
             {channel.group || channel.categoryName || (channel.type === 'live' ? 'Yayin' : 'Medya')}
           </p>
         </div>

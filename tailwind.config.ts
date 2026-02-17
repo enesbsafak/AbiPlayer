@@ -7,47 +7,47 @@ const config: Config = {
     extend: {
       colors: {
         surface: {
-          50: '#f6f9ff',
-          100: '#e9f0ff',
-          200: '#d2def2',
-          300: '#b8c9e4',
-          400: '#94abd0',
-          500: '#758fb3',
-          600: '#5a7498',
-          700: '#435a7a',
-          800: '#2f415c',
-          900: '#1d2c43',
-          950: '#101b30'
+          50: '#f5f5fa',
+          100: '#eaeaf4',
+          200: '#d0d0e6',
+          300: '#adadcc',
+          400: '#8585aa',
+          500: '#636388',
+          600: '#4b4b6c',
+          700: '#363650',
+          800: '#222236',
+          900: '#131325',
+          950: '#0b0b1a'
         },
         accent: {
-          DEFAULT: '#6ea8ff',
-          50: '#f0f6ff',
-          100: '#deebff',
-          200: '#c6ddff',
-          300: '#a6c9ff',
-          400: '#85b5ff',
-          500: '#6ea8ff',
-          600: '#588fe8',
-          700: '#4374c8',
-          800: '#345a9f',
-          900: '#2a4a82'
+          DEFAULT: '#7c6af7',
+          50: '#f3f1fe',
+          100: '#e9e5fd',
+          200: '#d5ccfc',
+          300: '#b8a9f9',
+          400: '#9d84f8',
+          500: '#7c6af7',
+          600: '#6247ef',
+          700: '#4f35d4',
+          800: '#3e2aaa',
+          900: '#342488'
         },
         signal: {
-          DEFAULT: '#57d7c4',
-          100: '#dcfff8',
-          200: '#b8f6ea',
-          300: '#92ebdc',
-          400: '#71e0cf',
-          500: '#57d7c4',
-          600: '#3ab7a3',
-          700: '#2d9686',
-          800: '#26796d',
-          900: '#225f56'
+          DEFAULT: '#2dd4bf',
+          100: '#ccfdf7',
+          200: '#99f9ef',
+          300: '#5ef0e5',
+          400: '#2dd4bf',
+          500: '#14b8a6',
+          600: '#0d9488',
+          700: '#0f766e',
+          800: '#115e59',
+          900: '#134e4a'
         }
       },
       fontFamily: {
-        sans: ['SF Pro Text', 'SF Pro Display', 'Avenir Next', 'Segoe UI Variable Display', 'Trebuchet MS', 'sans-serif'],
-        display: ['SF Pro Display', 'Avenir Next Demi Bold', 'Century Gothic', 'sans-serif']
+        sans: ['"Inter Variable"', 'Inter', 'system-ui', 'sans-serif'],
+        display: ['"Inter Variable"', 'Inter', 'system-ui', 'sans-serif']
       }
     }
   },

@@ -176,7 +176,7 @@ export function SettingsContent() {
         </div>
 
         <div className="mt-4 rounded-xl border border-surface-700 bg-surface-900/70 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-surface-500">Altyazi Onizleme</p>
+          <p className="text-xs font-medium text-surface-500">Altyazı Önizleme</p>
           <div className="mt-3 rounded-lg border border-surface-800 bg-black/70 p-6 text-center">
             <span
               className="inline-block rounded px-3 py-1 leading-relaxed"

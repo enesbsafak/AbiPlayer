@@ -28,7 +28,7 @@ export function AudioTrackSelector() {
       </button>
       {open && (
         <div className="absolute bottom-full right-0 mb-2 w-48 rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-xl">
-          <p className="px-3 py-1.5 text-xs font-medium text-surface-500 uppercase">Ses</p>
+          <p className="px-3 py-1.5 text-xs font-medium text-surface-500">Ses Kanalı</p>
           {audioTracks.map((track, index) => (
             <button
               key={track.id}

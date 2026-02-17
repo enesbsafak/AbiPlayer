@@ -15,15 +15,20 @@ export default function HomePage() {
   const sources = useStore((s) => s.sources)
   const favoriteIds = useStore((s) => s.favoriteIds)
   const isLoading = useStore((s) => s.isLoading)
+  const isLoadingPlaylist = useStore((s) => s.isLoadingPlaylist)
   const activeSourceId = useStore((s) => s.activeSourceId)
+  const hydratedSourceIds = useStore((s) => s.hydratedSourceIds)
   const xtreamAuth = useStore((s) => s.xtreamAuth)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const addChannels = useStore((s) => s.addChannels)
   const addCategories = useStore((s) => s.addCategories)
   const setPlaylistLoading = useStore((s) => s.setPlaylistLoading)
+  const markSourceHydrated = useStore((s) => s.markSourceHydrated)
   const playChannel = useStore((s) => s.playChannel)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
+  const [isBootstrappingSource, setIsBootstrappingSource] = useState(false)
+  const [scanMessage, setScanMessage] = useState('Icerikler taraniyor...')
   const [reloadToken, setReloadToken] = useState(0)
   const bootstrapAttemptedRef = useRef(new Set<string>())
 
@@ -44,7 +49,8 @@ export default function HomePage() {
     if (!source || source.type !== 'xtream') return
 
     const hasChannelsForSource = channels.some((channel) => channel.sourceId === activeSourceId)
-    if (hasChannelsForSource) return
+    if (!hasChannelsForSource) bootstrapAttemptedRef.current.delete(activeSourceId)
+    if (hydratedSourceIds[activeSourceId]) return
     if (!xtreamAuth[activeSourceId]) return
     if (bootstrapAttemptedRef.current.has(activeSourceId)) return
 
@@ -55,6 +61,8 @@ export default function HomePage() {
     let cancelled = false
     const bootstrap = async () => {
       setBootstrapError(null)
+      setIsBootstrappingSource(true)
+      setScanMessage('Kaynak kategorileri taraniyor...')
       setPlaylistLoading(true)
       try {
         const [liveCats, vodCats, seriesCats] = await Promise.all([
@@ -69,9 +77,18 @@ export default function HomePage() {
           ...xtreamApi.categoriesToApp(seriesCats, activeSourceId, 'series')
         ])
 
-        const livePromise = xtreamApi.getLivePreviewStreams(creds, 180)
-        const vodPromise = xtreamApi.getVodPreviewStreams(creds, 80)
-        const seriesPromise = xtreamApi.getSeriesPreviewStreams(creds, 80)
+        setScanMessage('Tum canli, film ve dizi icerikleri taraniyor...')
+
+        // Full catalog scan once per source; keep results in-memory until app closes.
+        const livePromise = xtreamApi
+          .getLiveStreams(creds)
+          .catch(() => xtreamApi.getLivePreviewStreams(creds, 2000))
+        const vodPromise = xtreamApi
+          .getVodStreams(creds)
+          .catch(() => xtreamApi.getVodPreviewStreams(creds, 1500))
+        const seriesPromise = xtreamApi
+          .getSeries(creds)
+          .catch(() => xtreamApi.getSeriesPreviewStreams(creds, 1500))
         const [live, vod, series] = await Promise.all([livePromise, vodPromise, seriesPromise])
         if (cancelled) return
 
@@ -80,11 +97,16 @@ export default function HomePage() {
           ...xtreamApi.vodStreamsToChannels(vod, creds, activeSourceId),
           ...xtreamApi.seriesToChannels(series, activeSourceId)
         ])
+        markSourceHydrated(activeSourceId, true)
       } catch (error) {
         if (cancelled) return
         setBootstrapError(error instanceof Error ? error.message : 'Ana sayfa icerikleri yuklenemedi')
       } finally {
-        if (!cancelled) setPlaylistLoading(false)
+        if (!cancelled) {
+          setPlaylistLoading(false)
+          setIsBootstrappingSource(false)
+          setScanMessage('Icerikler taraniyor...')
+        }
       }
     }
 
@@ -96,10 +118,12 @@ export default function HomePage() {
     activeSourceId,
     sources,
     channels,
+    hydratedSourceIds,
     xtreamAuth,
     getXtreamCredentials,
     addChannels,
     addCategories,
+    markSourceHydrated,
     setPlaylistLoading,
     reloadToken
   ])
@@ -130,8 +154,8 @@ export default function HomePage() {
             <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-accent/40 bg-accent/15">
               <Tv size={40} className="text-accent" />
             </div>
-            <h1 className="font-display text-3xl uppercase tracking-[0.1em]">{APP_NAME}'a Hos Geldin</h1>
-            <p className="rounded-full border border-white/25 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.12em] text-surface-200">
+            <h1 className="text-2xl font-bold text-white">{APP_NAME}'a Hos Geldin</h1>
+            <p className="rounded-md border border-white/12 bg-white/8 px-2.5 py-1 text-xs font-medium text-surface-400">
               {APP_VERSION_LABEL} surumu test asamasindadir.
             </p>
             <p className="max-w-md text-surface-300">
@@ -146,12 +170,23 @@ export default function HomePage() {
     )
   }
 
-  if (isLoading && channels.length === 0) {
+  const showInitialLoading =
+    channels.length === 0 &&
+    sources.length > 0 &&
+    (isLoading || isLoadingPlaylist || isBootstrappingSource)
+
+  if (showInitialLoading) {
+    const loadingMessage =
+      isLoading && !isLoadingPlaylist ? 'Kaynaklar baglaniyor...' : scanMessage
+
     return (
       <div className="h-full p-3">
-        <div className="panel-glass flex h-full flex-col items-center justify-center gap-3 rounded-2xl">
+        <div className="panel-glass flex h-full flex-col items-center justify-center gap-3 rounded-2xl text-center">
           <Activity size={20} className="animate-pulse text-accent" />
-          <p className="text-sm text-surface-300">Kaynaklar esleniyor, kanallar yakinda gorunecek...</p>
+          <p className="text-sm text-surface-300">{loadingMessage}</p>
+          <p className="max-w-md text-xs text-surface-400">
+            Ilk taramada biraz surebilir. Tarama tamamlaninca ayni oturum boyunca veriler cache'de tutulur.
+          </p>
         </div>
       </div>
     )
@@ -165,6 +200,7 @@ export default function HomePage() {
           <Button
             onClick={() => {
               if (activeSourceId) bootstrapAttemptedRef.current.delete(activeSourceId)
+              if (activeSourceId) markSourceHydrated(activeSourceId, false)
               setBootstrapError(null)
               setReloadToken((v) => v + 1)
             }}
@@ -184,9 +220,9 @@ export default function HomePage() {
         <div className="pointer-events-none absolute -left-8 top-8 h-32 w-32 rounded-full bg-signal/20 blur-3xl" />
         <div className="relative flex items-center justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-surface-400">Yayin Merkezi</p>
-            <h1 className="font-display text-2xl uppercase tracking-[0.08em] text-surface-100">{APP_NAME} Kontrol Merkezi</h1>
-            <p className="mt-1 text-xs uppercase tracking-[0.12em] text-surface-400">{APP_VERSION_LABEL} surumu</p>
+            <p className="text-xs font-medium text-surface-500">Yayin Merkezi</p>
+            <h1 className="text-xl font-semibold text-white mt-0.5">{APP_NAME}</h1>
+            <p className="mt-1 text-xs text-surface-500">{APP_VERSION_LABEL}</p>
             <p className="mt-1 text-sm text-surface-300">
               Canli yayin, film ve dizilerde toplam {channels.length} icerik hazir.
             </p>
@@ -203,7 +239,7 @@ export default function HomePage() {
       {favChannels.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="flex items-center gap-2 text-lg font-semibold uppercase tracking-[0.08em] text-surface-100">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
               <Star size={20} className="text-accent" /> Favoriler
             </h2>
             <Button variant="ghost" size="sm" onClick={() => navigate('/favorites')}>Tumunu Gor</Button>
@@ -215,7 +251,7 @@ export default function HomePage() {
       {recentLive.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="flex items-center gap-2 text-lg font-semibold uppercase tracking-[0.08em] text-surface-100">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
               <Tv size={20} className="text-accent" /> Canli TV
             </h2>
             <Button variant="ghost" size="sm" onClick={() => navigate('/live')}>Tumunu Gor</Button>
@@ -227,7 +263,7 @@ export default function HomePage() {
       {recentVod.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="flex items-center gap-2 text-lg font-semibold uppercase tracking-[0.08em] text-surface-100">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
               <Film size={20} className="text-signal" /> Filmler
             </h2>
             <Button variant="ghost" size="sm" onClick={() => navigate('/vod')}>Tumunu Gor</Button>
@@ -239,7 +275,7 @@ export default function HomePage() {
       {recentSeries.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="flex items-center gap-2 text-lg font-semibold uppercase tracking-[0.08em] text-surface-100">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
               <Clapperboard size={20} className="text-signal" /> Diziler
             </h2>
             <Button variant="ghost" size="sm" onClick={() => navigate('/series')}>Tumunu Gor</Button>

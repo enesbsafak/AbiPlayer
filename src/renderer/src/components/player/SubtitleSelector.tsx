@@ -72,7 +72,7 @@ export function SubtitleSelector() {
       </button>
       {open && (
         <div className="absolute bottom-full right-0 mb-2 w-64 rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-xl">
-          <p className="px-3 py-1.5 text-xs font-medium text-surface-500 uppercase">Altyazi</p>
+          <p className="px-3 py-1.5 text-xs font-medium text-surface-500">Altyazı</p>
           <button
             onClick={handleOff}
             className={`flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-800 transition-colors ${
@@ -93,8 +93,8 @@ export function SubtitleSelector() {
             </button>
           ))}
           <div className="border-t border-surface-700 mt-1 px-3 py-2">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-surface-500">
-              Altyazi Stili
+            <p className="text-[11px] font-medium text-surface-500">
+              Altyazı Stili
             </p>
             <div className="mt-2 flex items-center justify-between text-xs text-surface-400">
               <span>Yazi boyutu</span>

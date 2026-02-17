@@ -13,7 +13,7 @@ export const VODCard = memo(function VODCard({ item, onPlay }: VODCardProps) {
 
   return (
     <div
-      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-white/16 bg-[linear-gradient(176deg,rgba(36,54,86,0.78),rgba(20,31,52,0.7))] shadow-[0_14px_28px_rgba(0,0,0,0.28)] transition-all duration-300 hover:-translate-y-1 hover:border-signal/70 hover:shadow-[0_24px_34px_rgba(0,0,0,0.38)]"
+      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(176deg,rgba(24,20,48,0.8),rgba(14,12,30,0.74))] shadow-[0_14px_28px_rgba(0,0,0,0.38)] transition-all duration-300 hover:-translate-y-1 hover:border-signal/60 hover:shadow-[0_24px_34px_rgba(0,0,0,0.5)]"
       onClick={() => onPlay(item)}
     >
       <div className="relative aspect-[2/3] bg-surface-800">
@@ -30,10 +30,10 @@ export const VODCard = memo(function VODCard({ item, onPlay }: VODCardProps) {
         )}
       </div>
       <div className="p-3.5">
-        <p className="truncate text-sm font-semibold tracking-wide text-surface-50">{item.name}</p>
-        <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.13em] text-surface-400">
+        <p className="truncate text-sm font-semibold text-white">{item.name}</p>
+        <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-surface-500">
           <span className="truncate">{item.group || item.categoryName || 'Film'}</span>
-          {item.year && <span className="shrink-0 text-surface-300">{item.year}</span>}
+          {item.year && <span className="shrink-0 text-surface-400">{item.year}</span>}
         </div>
       </div>
     </div>

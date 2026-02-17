@@ -24,7 +24,7 @@ export default function FavoritesPage() {
   return (
     <div className="h-full p-3">
       <div className="panel-glass h-full overflow-y-auto rounded-2xl p-5">
-        <h1 className="font-display text-xl uppercase tracking-[0.08em] text-surface-100">Favoriler</h1>
+        <h1 className="text-lg font-semibold text-white">Favoriler</h1>
         <div className="mt-5">
           <FavoritesView onPlay={handlePlay} />
         </div>

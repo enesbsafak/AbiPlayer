@@ -9,7 +9,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className = '', variant = 'primary', size = 'md', children, ...props }, ref) => {
     const base = 'inline-flex items-center justify-center rounded-xl font-semibold tracking-wide transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:pointer-events-none disabled:opacity-50'
     const variants = {
-      primary: 'border border-[#90bcff]/85 bg-[linear-gradient(170deg,#7eb1ff,#5e92f1)] text-white shadow-[0_10px_24px_rgba(79,132,236,0.38)] hover:brightness-110',
+      primary: 'border border-[#9d84f8]/80 bg-[linear-gradient(170deg,#8b74f9,#6247ef)] text-white shadow-[0_10px_24px_rgba(124,106,247,0.38)] hover:brightness-110',
       secondary: 'border border-white/24 bg-white/12 text-surface-100 backdrop-blur-md hover:bg-white/20',
       ghost: 'border border-transparent text-surface-200 hover:border-white/20 hover:bg-white/12 hover:text-white',
       danger: 'border border-red-500/80 bg-red-600 text-white hover:bg-red-700'

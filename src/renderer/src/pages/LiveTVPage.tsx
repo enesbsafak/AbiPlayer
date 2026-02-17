@@ -10,12 +10,21 @@ import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 
+const loadedLiveCategoryCache = new Set<string>()
+
+function clearSourceCategoryCache(cache: Set<string>, sourceId: string) {
+  const prefix = `${sourceId}:`
+  for (const key of cache) {
+    if (key.startsWith(prefix)) cache.delete(key)
+  }
+}
+
 export default function LiveTVPage() {
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
-  const loadedCatsRef = useRef(new Set<string>())
+  const loadedCatsRef = useRef(loadedLiveCategoryCache)
 
   const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
@@ -38,7 +47,6 @@ export default function LiveTVPage() {
   }, [setChannelFilter])
 
   useEffect(() => {
-    loadedCatsRef.current.clear()
     setSelectedCategory(null)
     setLoadError(null)
   }, [activeSourceId, setSelectedCategory])
@@ -48,7 +56,7 @@ export default function LiveTVPage() {
     const hasChannelsForSource = channels.some(
       (channel) => channel.sourceId === activeSourceId && channel.type === 'live'
     )
-    if (!hasChannelsForSource) loadedCatsRef.current.clear()
+    if (!hasChannelsForSource) clearSourceCategoryCache(loadedCatsRef.current, activeSourceId)
   }, [channels, activeSourceId])
 
   // Load categories first.
@@ -95,6 +103,22 @@ export default function LiveTVPage() {
 
     const cacheKey = `${activeSourceId}:${rawCatId || '__all__'}`
     if (loadedCatsRef.current.has(cacheKey)) return
+
+    const hasCategoryInMemory = rawCatId
+      ? channels.some(
+          (channel) =>
+            channel.sourceId === activeSourceId &&
+            channel.type === 'live' &&
+            channel.categoryId === `${activeSourceId}_live_${rawCatId}`
+        )
+      : channels.some(
+          (channel) => channel.sourceId === activeSourceId && channel.type === 'live'
+        )
+
+    if (hasCategoryInMemory) {
+      loadedCatsRef.current.add(cacheKey)
+      return
+    }
 
     let cancelled = false
     const load = async () => {
@@ -187,7 +211,11 @@ export default function LiveTVPage() {
               size="sm"
               variant="secondary"
               onClick={() => {
-                loadedCatsRef.current.clear()
+                if (activeSourceId) {
+                  clearSourceCategoryCache(loadedCatsRef.current, activeSourceId)
+                } else {
+                  loadedCatsRef.current.clear()
+                }
                 setReloadToken((v) => v + 1)
               }}
             >

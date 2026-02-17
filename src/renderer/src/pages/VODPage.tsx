@@ -11,13 +11,22 @@ import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 
+const loadedVodCategoryCache = new Set<string>()
+
+function clearSourceCategoryCache(cache: Set<string>, sourceId: string) {
+  const prefix = `${sourceId}:`
+  for (const key of cache) {
+    if (key.startsWith(prefix)) cache.delete(key)
+  }
+}
+
 export default function VODPage() {
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedVOD, setSelectedVOD] = useState<Channel | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
-  const loadedCatsRef = useRef(new Set<string>())
+  const loadedCatsRef = useRef(loadedVodCategoryCache)
 
   const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
@@ -40,7 +49,6 @@ export default function VODPage() {
   }, [setChannelFilter])
 
   useEffect(() => {
-    loadedCatsRef.current.clear()
     setSelectedCategory(null)
     setSelectedVOD(null)
     setLoadError(null)
@@ -51,7 +59,7 @@ export default function VODPage() {
     const hasChannelsForSource = channels.some(
       (channel) => channel.sourceId === activeSourceId && channel.type === 'vod'
     )
-    if (!hasChannelsForSource) loadedCatsRef.current.clear()
+    if (!hasChannelsForSource) clearSourceCategoryCache(loadedCatsRef.current, activeSourceId)
   }, [channels, activeSourceId])
 
   useEffect(() => {
@@ -96,6 +104,22 @@ export default function VODPage() {
 
     const cacheKey = `${activeSourceId}:${rawCatId || '__all__'}`
     if (loadedCatsRef.current.has(cacheKey)) return
+
+    const hasCategoryInMemory = rawCatId
+      ? channels.some(
+          (channel) =>
+            channel.sourceId === activeSourceId &&
+            channel.type === 'vod' &&
+            channel.categoryId === `${activeSourceId}_vod_${rawCatId}`
+        )
+      : channels.some(
+          (channel) => channel.sourceId === activeSourceId && channel.type === 'vod'
+        )
+
+    if (hasCategoryInMemory) {
+      loadedCatsRef.current.add(cacheKey)
+      return
+    }
 
     let cancelled = false
     const load = async () => {
@@ -202,7 +226,11 @@ export default function VODPage() {
               size="sm"
               variant="secondary"
               onClick={() => {
-                loadedCatsRef.current.clear()
+                if (activeSourceId) {
+                  clearSourceCategoryCache(loadedCatsRef.current, activeSourceId)
+                } else {
+                  loadedCatsRef.current.clear()
+                }
                 setReloadToken((v) => v + 1)
               }}
             >

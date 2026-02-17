@@ -146,8 +146,8 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
   const seekBackLabel = '10 saniye geri sar'
   const seekForwardLabel = '10 saniye ileri sar'
 
-  const progressTrackColor = '#3b82f6'
-  const progressBackColor = '#586a88'
+  const progressTrackColor = '#7c6af7'
+  const progressBackColor = '#36364e'
 
   return (
     <div

@@ -4,6 +4,7 @@ import type { Channel, Category } from '@/types/playlist'
 export interface PlaylistSlice {
   channels: Channel[]
   categories: Category[]
+  hydratedSourceIds: Record<string, true>
   selectedCategoryId: string | null
   selectedChannelId: string | null
   channelFilter: 'live' | 'vod' | 'series'
@@ -17,6 +18,7 @@ export interface PlaylistSlice {
   setSelectedCategory: (id: string | null) => void
   setSelectedChannel: (id: string | null) => void
   setChannelFilter: (filter: 'live' | 'vod' | 'series') => void
+  markSourceHydrated: (sourceId: string, hydrated?: boolean) => void
   setPlaylistLoading: (loading: boolean) => void
   getFilteredChannels: () => Channel[]
   getChannelById: (id: string) => Channel | undefined
@@ -26,6 +28,7 @@ export interface PlaylistSlice {
 export const createPlaylistSlice: StateCreator<PlaylistSlice, [], [], PlaylistSlice> = (set, get) => ({
   channels: [],
   categories: [],
+  hydratedSourceIds: {},
   selectedCategoryId: null,
   selectedChannelId: null,
   channelFilter: 'live',
@@ -40,7 +43,15 @@ export const createPlaylistSlice: StateCreator<PlaylistSlice, [], [], PlaylistSl
       return { channels: [...state.channels, ...newChannels] }
     }),
   removeChannelsBySource: (sourceId) =>
-    set((state) => ({ channels: state.channels.filter((c) => c.sourceId !== sourceId) })),
+    set((state) => {
+      const nextHydratedSourceIds = { ...state.hydratedSourceIds }
+      delete nextHydratedSourceIds[sourceId]
+
+      return {
+        channels: state.channels.filter((c) => c.sourceId !== sourceId),
+        hydratedSourceIds: nextHydratedSourceIds
+      }
+    }),
 
   setCategories: (categories) => set({ categories }),
   addCategories: (categories) =>
@@ -56,6 +67,16 @@ export const createPlaylistSlice: StateCreator<PlaylistSlice, [], [], PlaylistSl
   setSelectedCategory: (id) => set({ selectedCategoryId: id }),
   setSelectedChannel: (id) => set({ selectedChannelId: id }),
   setChannelFilter: (filter) => set({ channelFilter: filter, selectedCategoryId: null }),
+  markSourceHydrated: (sourceId, hydrated = true) =>
+    set((state) => {
+      const nextHydratedSourceIds = { ...state.hydratedSourceIds }
+      if (hydrated) {
+        nextHydratedSourceIds[sourceId] = true
+      } else {
+        delete nextHydratedSourceIds[sourceId]
+      }
+      return { hydratedSourceIds: nextHydratedSourceIds }
+    }),
   setPlaylistLoading: (loading) => set({ isLoadingPlaylist: loading }),
 
   getFilteredChannels: () => {

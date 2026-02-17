@@ -8,14 +8,14 @@ export function Header() {
   const activeSource = useStore((s) => s.sources.find((src) => src.id === s.activeSourceId))
 
   return (
-    <header className="mx-3 mt-3 flex h-16 items-center justify-between rounded-3xl border border-white/20 bg-[linear-gradient(120deg,rgba(29,45,74,0.7),rgba(18,30,52,0.56))] px-5 shadow-[0_16px_34px_rgba(0,0,0,0.3)] backdrop-blur-xl">
+    <header className="mx-3 mt-3 flex h-16 items-center justify-between rounded-3xl border border-white/10 bg-[linear-gradient(120deg,rgba(26,22,52,0.72),rgba(14,12,34,0.6))] px-5 shadow-[0_16px_34px_rgba(0,0,0,0.4)] backdrop-blur-xl">
       <div className="flex min-w-0 items-center gap-4">
-        <div className="hidden rounded-full border border-white/25 bg-white/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-surface-100 lg:block">
+        <div className="hidden rounded-md border border-white/12 bg-white/6 px-2.5 py-1 text-[11px] font-medium text-surface-400 lg:block">
           {APP_VERSION_LABEL}
         </div>
         {activeSource && (
-          <div className="flex min-w-0 items-center gap-2 rounded-full border border-[#57d7c4]/35 bg-[#57d7c4]/14 px-3 py-1 text-xs uppercase tracking-[0.14em] text-surface-100">
-            <div className="h-2 w-2 rounded-full bg-[#57d7c4] shadow-[0_0_0_4px_rgba(87,215,196,0.26)]" />
+          <div className="flex min-w-0 items-center gap-2 rounded-full border border-[#2dd4bf]/30 bg-[#2dd4bf]/10 px-3 py-1 text-xs font-medium text-surface-200">
+            <div className="h-2 w-2 rounded-full bg-[#2dd4bf] shadow-[0_0_0_4px_rgba(45,212,191,0.22)]" />
             <span className="max-w-[260px] truncate">{activeSource.name}</span>
           </div>
         )}
@@ -33,7 +33,7 @@ export function Header() {
 
         <button
           onClick={() => navigate('/settings')}
-          className="flex items-center gap-2 rounded-xl border border-[#8ab8ff]/80 bg-[linear-gradient(160deg,#78acff,#5d8ff0)] px-3 py-2 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(79,132,236,0.4)] transition-all hover:brightness-110"
+          className="flex items-center gap-2 rounded-xl border border-[#9d84f8]/70 bg-[linear-gradient(160deg,#8b74f9,#6a50ef)] px-3 py-2 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(124,106,247,0.4)] transition-all hover:brightness-110"
         >
           <Plus size={16} />
           <span className="hidden sm:block">Kaynak Ekle</span>

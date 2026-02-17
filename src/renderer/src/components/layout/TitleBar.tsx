@@ -6,11 +6,11 @@ export function TitleBar() {
   if (!isElectron()) return null
 
   return (
-    <div className="drag-region relative z-40 flex h-11 items-center justify-between border-b border-white/20 bg-[linear-gradient(180deg,rgba(48,67,103,0.74),rgba(21,34,62,0.62))] px-3 shadow-[0_12px_26px_rgba(0,0,0,0.33)] backdrop-blur-2xl">
+    <div className="drag-region relative z-40 flex h-11 items-center justify-between border-b border-white/10 bg-[linear-gradient(180deg,rgba(30,26,60,0.82),rgba(16,12,38,0.72))] px-3 shadow-[0_8px_24px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.16),transparent_35%)]" />
       <div className="no-drag flex items-center gap-2.5">
-        <span className="font-display text-[11px] uppercase tracking-[0.22em] text-surface-100">{APP_NAME}</span>
-        <span className="rounded-full border border-white/30 bg-white/10 px-2 py-0.5 text-[10px] font-semibold tracking-[0.12em] text-surface-200">
+        <span className="text-[13px] font-semibold text-white">{APP_NAME}</span>
+        <span className="rounded-md border border-white/15 bg-white/8 px-1.5 py-0.5 text-[10px] font-medium text-surface-400">
           {APP_VERSION_LABEL}
         </span>
       </div>
