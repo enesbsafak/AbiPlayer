@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/renderer/src/*"]
+    },
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "./out",
+    "rootDir": "src/renderer/src",
+    "lib": ["DOM", "DOM.Iterable", "ES2023"]
+  },
+  "include": ["src/renderer/src/**/*", "src/preload/*.d.ts"]
+}
