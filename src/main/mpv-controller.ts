@@ -3,6 +3,7 @@ import net from 'net'
 import { randomUUID } from 'crypto'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { existsSync } from 'fs'
 import { unlink } from 'fs/promises'
 
 const MPV_REQUEST_TIMEOUT_MS = 5000
@@ -64,6 +65,20 @@ function createMpvSocketPath(): string {
   return join(tmpdir(), `freeiptv-mpv-${process.pid}-${randomUUID()}.sock`)
 }
 
+function resolveBundledMpvPath(): string | null {
+  if (process.platform !== 'win32') return null
+
+  const candidates = [
+    join(process.resourcesPath, 'mpv', 'mpv.exe'),
+    join(process.resourcesPath, 'resources', 'mpv', 'win32-x64', 'mpv.exe'),
+    join(process.resourcesPath, 'app.asar.unpacked', 'resources', 'mpv', 'win32-x64', 'mpv.exe'),
+    join(__dirname, '../../resources/mpv/win32-x64/mpv.exe'),
+    join(process.cwd(), 'resources', 'mpv', 'win32-x64', 'mpv.exe')
+  ]
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? null
+}
+
 function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   return fallback
@@ -90,7 +105,7 @@ export class MpvController {
   private pendingRequests = new Map<number, MpvPendingRequest>()
   private availabilityChecked = false
   private availability = false
-  private readonly mpvPath = process.env['MPV_PATH'] || 'mpv'
+  private readonly mpvPath = process.env['MPV_PATH'] || resolveBundledMpvPath() || 'mpv'
   private subtitleStyle: MpvSubtitleStyle = {
     fontSize: 24,
     color: '#ffffff',

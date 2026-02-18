@@ -5,6 +5,7 @@ directories:
 files:
   - '!**/.vscode/*'
   - '!src/*'
+  - '!resources/mpv/**'
   - '!electron.vite.config.*'
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
@@ -14,6 +15,11 @@ win:
   executableName: abi-player
   target:
     - nsis
+  extraResources:
+    - from: resources/mpv/win32-x64
+      to: mpv
+      filter:
+        - '**/*'
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
