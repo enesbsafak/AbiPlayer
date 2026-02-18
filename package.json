@@ -4,7 +4,7 @@
   "description": "Abi Player - beta IPTV player with Xtream Codes API + M3U support",
   "main": "./out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "npm run prepare:mpv:win && electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps",
