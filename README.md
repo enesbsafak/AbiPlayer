@@ -87,8 +87,8 @@ Abi Player yalnizca genel amacli bir medya oynaticidir.
 ## Kurulum
 
 ```bash
-git clone https://github.com/enesbsafak/freeiptv.git
-cd freeiptv
+git clone https://github.com/enesbsafak/AbiPlayer.git
+cd AbiPlayer
 npm install
 ```
 
