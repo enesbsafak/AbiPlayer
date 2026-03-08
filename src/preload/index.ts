@@ -43,6 +43,21 @@ type MpvSubtitleStyle = {
   color: string
   background: string
 }
+type AppUpdateState = {
+  status: 'unsupported' | 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+  currentVersion: string
+  availableVersion: string | null
+  downloadedVersion: string | null
+  progress: number | null
+  transferredBytes: number | null
+  totalBytes: number | null
+  bytesPerSecond: number | null
+  message: string | null
+  releaseDate: string | null
+  canCheck: boolean
+  updateReadyToInstall: boolean
+  lastCheckedAt: number | null
+}
 
 const api = {
   pickFileContent: (filters?: FileFilter[]) =>
@@ -84,7 +99,17 @@ const api = {
   windowIsMaximized: () => ipcRenderer.invoke('window-is-maximized'),
   windowSetFullscreen: (fullscreen: boolean) =>
     ipcRenderer.invoke('window-set-fullscreen', fullscreen) as Promise<void>,
-  windowIsFullscreen: () => ipcRenderer.invoke('window-is-fullscreen') as Promise<boolean>
+  windowIsFullscreen: () => ipcRenderer.invoke('window-is-fullscreen') as Promise<boolean>,
+  getAppUpdateState: () => ipcRenderer.invoke('app-update-get-state') as Promise<AppUpdateState>,
+  checkForAppUpdates: () => ipcRenderer.invoke('app-update-check') as Promise<AppUpdateState>,
+  installAppUpdate: () => ipcRenderer.invoke('app-update-install') as Promise<boolean>,
+  onAppUpdateStateChange: (listener: (state: AppUpdateState) => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, state: AppUpdateState) => listener(state)
+    ipcRenderer.on('app-update-state', wrapped)
+    return () => {
+      ipcRenderer.removeListener('app-update-state', wrapped)
+    }
+  }
 }
 
 if (process.contextIsolated) {

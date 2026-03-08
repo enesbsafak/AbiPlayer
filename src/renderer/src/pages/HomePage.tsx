@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Tv, Film, Clapperboard, Star, Plus, Activity, RefreshCw } from 'lucide-react'
 import { useStore } from '@/store'
 import { ChannelGrid } from '@/components/channels/ChannelGrid'
@@ -7,9 +7,11 @@ import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
 import { xtreamApi } from '@/services/xtream-api'
 import { isPlayableChannel } from '@/services/playback'
+import { openPlayerFromRoute } from '@/services/player-navigation'
 import { APP_NAME, APP_VERSION_LABEL } from '@/constants/app-info'
 
 export default function HomePage() {
+  const location = useLocation()
   const navigate = useNavigate()
   const channels = useStore((s) => s.channels)
   const sources = useStore((s) => s.sources)
@@ -26,6 +28,7 @@ export default function HomePage() {
   const markSourceHydrated = useStore((s) => s.markSourceHydrated)
   const playChannel = useStore((s) => s.playChannel)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
+  const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
   const [isBootstrappingSource, setIsBootstrappingSource] = useState(false)
   const [scanMessage, setScanMessage] = useState('Icerikler taraniyor...')
@@ -40,8 +43,8 @@ export default function HomePage() {
 
     playChannel(channel)
     setMiniPlayer(false)
-    navigate('/player')
-  }, [playChannel, setMiniPlayer, navigate])
+    openPlayerFromRoute({ location, navigate, setPlayerReturnTarget })
+  }, [location, playChannel, setMiniPlayer, navigate, setPlayerReturnTarget])
 
   useEffect(() => {
     if (!activeSourceId) return

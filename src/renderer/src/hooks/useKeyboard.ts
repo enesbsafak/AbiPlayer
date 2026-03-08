@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
+import { navigateToPlayerReturnTarget } from '@/services/player-navigation'
 import {
   mpvSeek,
   mpvSetFullscreen,
@@ -21,7 +22,7 @@ export function useKeyboard() {
   const setVolume = useStore((s) => s.setVolume)
   const isMuted = useStore((s) => s.isMuted)
   const setMuted = useStore((s) => s.setMuted)
-  const stopPlayback = useStore((s) => s.stopPlayback)
+  const playerReturnTarget = useStore((s) => s.playerReturnTarget)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
 
   useEffect(() => {
@@ -141,9 +142,8 @@ export function useKeyboard() {
             setFullscreen(false)
           } else if (location.pathname === '/player' && currentChannel) {
             e.preventDefault()
-            setMiniPlayer(false)
-            stopPlayback()
-            navigate('/')
+            setMiniPlayer(true)
+            navigateToPlayerReturnTarget({ navigate, target: playerReturnTarget })
           }
           break
       }
@@ -163,7 +163,7 @@ export function useKeyboard() {
     setFullscreen,
     navigate,
     location.pathname,
-    stopPlayback,
+    playerReturnTarget,
     setMiniPlayer
   ])
 }

@@ -1,0 +1,306 @@
+import { app, BrowserWindow, dialog } from 'electron'
+import { is } from '@electron-toolkit/utils'
+import {
+  autoUpdater,
+  type ProgressInfo,
+  type UpdateDownloadedEvent,
+  type UpdateInfo
+} from 'electron-updater'
+
+const AUTO_CHECK_DELAY_MS = 15_000
+const PERIODIC_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
+
+export type AppUpdateStatus =
+  | 'unsupported'
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'not-available'
+  | 'error'
+
+export interface AppUpdateState {
+  status: AppUpdateStatus
+  currentVersion: string
+  availableVersion: string | null
+  downloadedVersion: string | null
+  progress: number | null
+  transferredBytes: number | null
+  totalBytes: number | null
+  bytesPerSecond: number | null
+  message: string | null
+  releaseDate: string | null
+  canCheck: boolean
+  updateReadyToInstall: boolean
+  lastCheckedAt: number | null
+}
+
+const APP_UPDATE_EVENT = 'app-update-state'
+
+let initialized = false
+let periodicCheckTimer: ReturnType<typeof setInterval> | null = null
+let checkInFlight: Promise<AppUpdateState> | null = null
+let installPromptVisible = false
+
+const state: AppUpdateState = {
+  status: 'idle',
+  currentVersion: app.getVersion(),
+  availableVersion: null,
+  downloadedVersion: null,
+  progress: null,
+  transferredBytes: null,
+  totalBytes: null,
+  bytesPerSecond: null,
+  message: null,
+  releaseDate: null,
+  canCheck: false,
+  updateReadyToInstall: false,
+  lastCheckedAt: null
+}
+
+function shouldEnableAutoUpdates(): boolean {
+  if (is.dev) return false
+  if (!app.isPackaged) return false
+  return ['win32', 'darwin', 'linux'].includes(process.platform)
+}
+
+function cloneState(): AppUpdateState {
+  return { ...state }
+}
+
+function broadcastState(): void {
+  const snapshot = cloneState()
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (window.isDestroyed()) continue
+    window.webContents.send(APP_UPDATE_EVENT, snapshot)
+  }
+}
+
+function setState(partial: Partial<AppUpdateState>): AppUpdateState {
+  Object.assign(state, partial)
+  broadcastState()
+  return cloneState()
+}
+
+function resetProgress(): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (window.isDestroyed()) continue
+    window.setProgressBar(-1)
+  }
+}
+
+function setProgress(progress: number): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (window.isDestroyed()) continue
+    window.setProgressBar(Math.max(0, Math.min(1, progress)))
+  }
+}
+
+function toReleaseDate(info: UpdateInfo | UpdateDownloadedEvent): string | null {
+  const value = info.releaseDate
+  return typeof value === 'string' && value.trim().length > 0 ? value : null
+}
+
+function summarizeError(error: unknown): string {
+  if (error instanceof Error) {
+    const message = error.message.trim()
+    return message || 'Guncelleme sirasinda bilinmeyen bir hata olustu'
+  }
+  return 'Guncelleme sirasinda bilinmeyen bir hata olustu'
+}
+
+async function promptToInstallDownloadedUpdate(): Promise<void> {
+  if (installPromptVisible) return
+  installPromptVisible = true
+
+  try {
+    const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const versionLabel = state.downloadedVersion ? ` ${state.downloadedVersion}` : ''
+    const result = await dialog.showMessageBox(window ?? undefined, {
+      type: 'info',
+      buttons: ['Yeniden Baslat ve Yukle', 'Daha Sonra'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+      title: 'Guncelleme Hazir',
+      message: `Abi Player${versionLabel} indirildi`,
+      detail: 'Guncellemeyi tamamlamak icin uygulama yeniden baslatilacak.'
+    })
+
+    if (result.response === 0) {
+      installDownloadedUpdate()
+    }
+  } finally {
+    installPromptVisible = false
+  }
+}
+
+function registerUpdaterEventHandlers(): void {
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.allowPrerelease = true
+
+  autoUpdater.on('checking-for-update', () => {
+    setState({
+      status: 'checking',
+      message: 'Guncellemeler kontrol ediliyor...',
+      progress: null,
+      transferredBytes: null,
+      totalBytes: null,
+      bytesPerSecond: null,
+      lastCheckedAt: Date.now()
+    })
+    resetProgress()
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    setState({
+      status: 'available',
+      availableVersion: info.version || null,
+      downloadedVersion: null,
+      progress: 0,
+      transferredBytes: 0,
+      totalBytes: null,
+      bytesPerSecond: null,
+      releaseDate: toReleaseDate(info),
+      updateReadyToInstall: false,
+      message: `Yeni surum bulundu (${info.version}). Indirme baslatildi...`
+    })
+  })
+
+  autoUpdater.on('download-progress', (progressInfo: ProgressInfo) => {
+    const normalizedProgress = Math.max(0, Math.min(100, progressInfo.percent || 0)) / 100
+    setProgress(normalizedProgress)
+    setState({
+      status: 'downloading',
+      progress: normalizedProgress,
+      transferredBytes: progressInfo.transferred ?? null,
+      totalBytes: progressInfo.total ?? null,
+      bytesPerSecond: progressInfo.bytesPerSecond ?? null,
+      message: `Guncelleme indiriliyor... %${Math.round(normalizedProgress * 100)}`
+    })
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    resetProgress()
+    setState({
+      status: 'not-available',
+      availableVersion: null,
+      downloadedVersion: null,
+      progress: null,
+      transferredBytes: null,
+      totalBytes: null,
+      bytesPerSecond: null,
+      releaseDate: null,
+      updateReadyToInstall: false,
+      message: 'Bu surum zaten guncel'
+    })
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    resetProgress()
+    setState({
+      status: 'downloaded',
+      availableVersion: info.version || state.availableVersion,
+      downloadedVersion: info.version || null,
+      progress: 1,
+      transferredBytes: null,
+      totalBytes: null,
+      bytesPerSecond: null,
+      releaseDate: toReleaseDate(info),
+      updateReadyToInstall: true,
+      message: 'Guncelleme hazir. Yeniden baslatarak kurabilirsiniz.'
+    })
+
+    void promptToInstallDownloadedUpdate()
+  })
+
+  autoUpdater.on('error', (error) => {
+    resetProgress()
+    setState({
+      status: 'error',
+      progress: null,
+      transferredBytes: null,
+      totalBytes: null,
+      bytesPerSecond: null,
+      updateReadyToInstall: false,
+      message: summarizeError(error)
+    })
+  })
+}
+
+export function initializeAppUpdater(): void {
+  if (initialized) return
+  initialized = true
+
+  const canCheck = shouldEnableAutoUpdates()
+  setState({
+    canCheck,
+    status: canCheck ? 'idle' : 'unsupported',
+    message: canCheck ? 'Guncelleme kontrolu hazir' : 'Otomatik guncelleme sadece paketli uygulamada kullanilabilir'
+  })
+
+  if (!canCheck) return
+
+  registerUpdaterEventHandlers()
+
+  setTimeout(() => {
+    void checkForAppUpdates()
+  }, AUTO_CHECK_DELAY_MS)
+
+  periodicCheckTimer = setInterval(() => {
+    void checkForAppUpdates()
+  }, PERIODIC_CHECK_INTERVAL_MS)
+
+  app.once('before-quit', () => {
+    if (!periodicCheckTimer) return
+    clearInterval(periodicCheckTimer)
+    periodicCheckTimer = null
+  })
+}
+
+export function getAppUpdateState(): AppUpdateState {
+  return cloneState()
+}
+
+export async function checkForAppUpdates(): Promise<AppUpdateState> {
+  if (!state.canCheck) {
+    return setState({
+      status: 'unsupported',
+      message: 'Otomatik guncelleme sadece paketli uygulamada kullanilabilir'
+    })
+  }
+
+  if (checkInFlight) {
+    return checkInFlight
+  }
+
+  checkInFlight = (async () => {
+    try {
+      await autoUpdater.checkForUpdates()
+      return cloneState()
+    } catch (error) {
+      return setState({
+        status: 'error',
+        progress: null,
+        transferredBytes: null,
+        totalBytes: null,
+        bytesPerSecond: null,
+        updateReadyToInstall: false,
+        message: summarizeError(error)
+      })
+    } finally {
+      checkInFlight = null
+    }
+  })()
+
+  return checkInFlight
+}
+
+export function installDownloadedUpdate(): boolean {
+  if (!state.updateReadyToInstall) return false
+  autoUpdater.quitAndInstall(false, true)
+  return true
+}
+

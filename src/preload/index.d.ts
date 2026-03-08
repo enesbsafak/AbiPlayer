@@ -65,6 +65,52 @@ declare global {
       windowIsMaximized: () => Promise<boolean>
       windowSetFullscreen: (fullscreen: boolean) => Promise<void>
       windowIsFullscreen: () => Promise<boolean>
+      getAppUpdateState: () => Promise<{
+        status: 'unsupported' | 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+        currentVersion: string
+        availableVersion: string | null
+        downloadedVersion: string | null
+        progress: number | null
+        transferredBytes: number | null
+        totalBytes: number | null
+        bytesPerSecond: number | null
+        message: string | null
+        releaseDate: string | null
+        canCheck: boolean
+        updateReadyToInstall: boolean
+        lastCheckedAt: number | null
+      }>
+      checkForAppUpdates: () => Promise<{
+        status: 'unsupported' | 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+        currentVersion: string
+        availableVersion: string | null
+        downloadedVersion: string | null
+        progress: number | null
+        transferredBytes: number | null
+        totalBytes: number | null
+        bytesPerSecond: number | null
+        message: string | null
+        releaseDate: string | null
+        canCheck: boolean
+        updateReadyToInstall: boolean
+        lastCheckedAt: number | null
+      }>
+      installAppUpdate: () => Promise<boolean>
+      onAppUpdateStateChange: (listener: (state: {
+        status: 'unsupported' | 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+        currentVersion: string
+        availableVersion: string | null
+        downloadedVersion: string | null
+        progress: number | null
+        transferredBytes: number | null
+        totalBytes: number | null
+        bytesPerSecond: number | null
+        message: string | null
+        releaseDate: string | null
+        canCheck: boolean
+        updateReadyToInstall: boolean
+        lastCheckedAt: number | null
+      }) => void) => () => void
     }
   }
 }

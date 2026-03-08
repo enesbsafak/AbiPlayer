@@ -6,9 +6,17 @@ import { createPlaylistSlice, type PlaylistSlice } from './playlist-slice'
 import { createPlayerSlice, type PlayerSlice } from './player-slice'
 import { createEpgSlice, type EpgSlice } from './epg-slice'
 import { createFavoritesSlice, type FavoritesSlice } from './favorites-slice'
+import { createNavigationSlice, type NavigationSlice } from './navigation-slice'
 import type { PlaylistSource } from '@/types/playlist'
 
-export type AppStore = SettingsSlice & AuthSlice & PlaylistSlice & PlayerSlice & EpgSlice & FavoritesSlice
+export type AppStore =
+  & SettingsSlice
+  & AuthSlice
+  & PlaylistSlice
+  & PlayerSlice
+  & EpgSlice
+  & FavoritesSlice
+  & NavigationSlice
 
 function isPersistedSource(source: unknown): source is PlaylistSource {
   if (!source || typeof source !== 'object') return false
@@ -35,7 +43,8 @@ export const useStore = create<AppStore>()(
       ...createPlaylistSlice(...a),
       ...createPlayerSlice(...a),
       ...createEpgSlice(...a),
-      ...createFavoritesSlice(...a)
+      ...createFavoritesSlice(...a),
+      ...createNavigationSlice(...a)
     }),
     {
       name: 'iptv-player-store',

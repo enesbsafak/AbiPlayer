@@ -1,17 +1,35 @@
-import { useState, useCallback, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { useStore } from '@/store'
 import { ChannelGrid } from '@/components/channels/ChannelGrid'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
+import { openPlayerFromRoute } from '@/services/player-navigation'
 
 export default function SearchPage() {
+  const location = useLocation()
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const channels = useStore((s) => s.channels)
   const playChannel = useStore((s) => s.playChannel)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
+  const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
+
+  useEffect(() => {
+    const state = location.state as { restoreSearchQuery?: string } | null
+    if (typeof state?.restoreSearchQuery !== 'string') return
+
+    setQuery(state.restoreSearchQuery)
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+        hash: location.hash
+      },
+      { replace: true, state: null }
+    )
+  }, [location.hash, location.pathname, location.search, location.state, navigate])
 
   const results = useMemo(() => {
     if (!query || query.length < 2) return []
@@ -31,8 +49,13 @@ export default function SearchPage() {
 
     playChannel(channel)
     setMiniPlayer(false)
-    navigate('/player')
-  }, [playChannel, setMiniPlayer, navigate])
+    openPlayerFromRoute({
+      location,
+      navigate,
+      returnState: query.length >= 2 ? { restoreSearchQuery: query } : undefined,
+      setPlayerReturnTarget
+    })
+  }, [location, playChannel, query, setMiniPlayer, navigate, setPlayerReturnTarget])
 
   return (
     <div className="h-full p-3">

@@ -1,11 +1,12 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { CategoryList } from '@/components/channels/CategoryList'
 import { ChannelSearch } from '@/components/channels/ChannelSearch'
 import { VODGrid } from '@/components/vod/VODGrid'
 import { SeriesDetail } from '@/components/series/SeriesDetail'
 import { xtreamApi } from '@/services/xtream-api'
+import { openPlayerFromRoute } from '@/services/player-navigation'
 import { Spinner } from '@/components/ui/Spinner'
 import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
@@ -21,11 +22,13 @@ function clearSourceCategoryCache(cache: Set<string>, sourceId: string) {
 }
 
 export default function SeriesPage() {
+  const location = useLocation()
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedSeries, setSelectedSeries] = useState<{ seriesId: number; sourceId: string } | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
+  const [pendingRestoreSeries, setPendingRestoreSeries] = useState<{ seriesId: number; sourceId: string } | null>(null)
   const loadedCatsRef = useRef(loadedSeriesCategoryCache)
 
   const channels = useStore((s) => s.channels)
@@ -43,6 +46,39 @@ export default function SeriesPage() {
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const setSelectedCategory = useStore((s) => s.setSelectedCategory)
   const categories = useStore((s) => s.categories)
+  const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
+
+  useEffect(() => {
+    const state = location.state as {
+      restoreSelectedSeries?: { seriesId: number; sourceId: string }
+    } | null
+
+    const restore = state?.restoreSelectedSeries
+    if (
+      !restore ||
+      typeof restore.seriesId !== 'number' ||
+      !Number.isFinite(restore.seriesId) ||
+      typeof restore.sourceId !== 'string'
+    ) {
+      return
+    }
+
+    setPendingRestoreSeries(restore)
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+        hash: location.hash
+      },
+      { replace: true, state: null }
+    )
+  }, [location.hash, location.pathname, location.search, location.state, navigate])
+
+  useEffect(() => {
+    if (!pendingRestoreSeries) return
+    setSelectedSeries(pendingRestoreSeries)
+    setPendingRestoreSeries(null)
+  }, [pendingRestoreSeries])
 
   useEffect(() => {
     setChannelFilter('series')
@@ -203,9 +239,14 @@ export default function SeriesPage() {
       if (!isPlayableChannel(episodeChannel)) return
       playChannel(episodeChannel)
       setMiniPlayer(false)
-      navigate('/player')
+      openPlayerFromRoute({
+        location,
+        navigate,
+        returnState: selectedSeries ? { restoreSelectedSeries: selectedSeries } : undefined,
+        setPlayerReturnTarget
+      })
     },
-    [playChannel, setMiniPlayer, navigate]
+    [location, navigate, playChannel, selectedSeries, setMiniPlayer, setPlayerReturnTarget]
   )
 
   if (selectedSeries) {

@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { initializeAppUpdater } from './app-updater'
 import { registerIpcHandlers } from './ipc-handlers'
 
 // Enable native audio track API in Chromium so multi-audio streams can be switched.
@@ -79,6 +80,7 @@ app.whenReady().then(() => {
 
   registerIpcHandlers()
   createWindow()
+  initializeAppUpdater()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

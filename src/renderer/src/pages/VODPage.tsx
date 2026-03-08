@@ -1,11 +1,12 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { CategoryList } from '@/components/channels/CategoryList'
 import { ChannelSearch } from '@/components/channels/ChannelSearch'
 import { VODGrid } from '@/components/vod/VODGrid'
 import { VODDetail } from '@/components/vod/VODDetail'
 import { xtreamApi } from '@/services/xtream-api'
+import { openPlayerFromRoute } from '@/services/player-navigation'
 import { Spinner } from '@/components/ui/Spinner'
 import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
@@ -21,11 +22,13 @@ function clearSourceCategoryCache(cache: Set<string>, sourceId: string) {
 }
 
 export default function VODPage() {
+  const location = useLocation()
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedVOD, setSelectedVOD] = useState<Channel | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
+  const [pendingRestoreVodId, setPendingRestoreVodId] = useState<string | null>(null)
   const loadedCatsRef = useRef(loadedVodCategoryCache)
 
   const channels = useStore((s) => s.channels)
@@ -43,6 +46,34 @@ export default function VODPage() {
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const setSelectedCategory = useStore((s) => s.setSelectedCategory)
   const categories = useStore((s) => s.categories)
+  const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
+
+  useEffect(() => {
+    const state = location.state as { restoreSelectedVODId?: string } | null
+    if (typeof state?.restoreSelectedVODId !== 'string') return
+
+    setPendingRestoreVodId(state.restoreSelectedVODId)
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+        hash: location.hash
+      },
+      { replace: true, state: null }
+    )
+  }, [location.hash, location.pathname, location.search, location.state, navigate])
+
+  useEffect(() => {
+    if (!pendingRestoreVodId) return
+
+    const restoredVOD =
+      channels.find((channel) => channel.id === pendingRestoreVodId && channel.type === 'vod') || null
+
+    if (!restoredVOD) return
+
+    setSelectedVOD(restoredVOD)
+    setPendingRestoreVodId(null)
+  }, [channels, pendingRestoreVodId])
 
   useEffect(() => {
     setChannelFilter('vod')
@@ -194,9 +225,14 @@ export default function VODPage() {
       if (!isPlayableChannel(item)) return
       playChannel(item)
       setMiniPlayer(false)
-      navigate('/player')
+      openPlayerFromRoute({
+        location,
+        navigate,
+        returnState: selectedVOD ? { restoreSelectedVODId: selectedVOD.id } : undefined,
+        setPlayerReturnTarget
+      })
     },
-    [playChannel, setMiniPlayer, navigate]
+    [location, navigate, playChannel, selectedVOD, setMiniPlayer, setPlayerReturnTarget]
   )
 
   if (selectedVOD) {

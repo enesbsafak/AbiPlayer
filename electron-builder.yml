@@ -1,5 +1,9 @@
 appId: com.abiplayer.beta
 productName: Abi Player
+publish:
+  provider: github
+  owner: enesbsafak
+  repo: AbiPlayer
 directories:
   buildResources: build
 files:

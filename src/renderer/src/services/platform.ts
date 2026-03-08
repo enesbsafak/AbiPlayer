@@ -46,6 +46,21 @@ export interface MpvSubtitleStyle {
   color: string
   background: string
 }
+export interface AppUpdateState {
+  status: 'unsupported' | 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+  currentVersion: string
+  availableVersion: string | null
+  downloadedVersion: string | null
+  progress: number | null
+  transferredBytes: number | null
+  totalBytes: number | null
+  bytesPerSecond: number | null
+  message: string | null
+  releaseDate: string | null
+  canCheck: boolean
+  updateReadyToInstall: boolean
+  lastCheckedAt: number | null
+}
 
 export async function pickAndReadFile(
   filters?: { name: string; extensions: string[] }[]
@@ -162,4 +177,24 @@ export async function windowSetFullscreen(fullscreen: boolean): Promise<void> {
 export async function windowIsFullscreen(): Promise<boolean> {
   if (!isElectron() || !window.electron?.windowIsFullscreen) return false
   return window.electron.windowIsFullscreen()
+}
+
+export async function getAppUpdateState(): Promise<AppUpdateState | null> {
+  if (!isElectron() || !window.electron?.getAppUpdateState) return null
+  return window.electron.getAppUpdateState()
+}
+
+export async function checkForAppUpdates(): Promise<AppUpdateState | null> {
+  if (!isElectron() || !window.electron?.checkForAppUpdates) return null
+  return window.electron.checkForAppUpdates()
+}
+
+export async function installAppUpdate(): Promise<boolean> {
+  if (!isElectron() || !window.electron?.installAppUpdate) return false
+  return window.electron.installAppUpdate()
+}
+
+export function onAppUpdateStateChange(listener: (state: AppUpdateState) => void): (() => void) | null {
+  if (!isElectron() || !window.electron?.onAppUpdateStateChange) return null
+  return window.electron.onAppUpdateStateChange(listener)
 }

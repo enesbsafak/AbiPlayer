@@ -1,13 +1,14 @@
 import { useNavigate } from 'react-router-dom'
 import { type RefObject, useMemo } from 'react'
 import {
-  Play, Pause, Volume2, VolumeX, Maximize, Minimize,
+  ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize,
   Rewind, FastForward, SkipBack, SkipForward, PictureInPicture2, X
 } from 'lucide-react'
 import { useStore } from '@/store'
 import { AudioTrackSelector } from './AudioTrackSelector'
 import { SubtitleSelector } from './SubtitleSelector'
 import { isPlayableChannel } from '@/services/playback'
+import { navigateToPlayerReturnTarget } from '@/services/player-navigation'
 import {
   mpvSeek,
   mpvSeekTo,
@@ -27,8 +28,8 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
   const navigate = useNavigate()
   const {
     isPlaying, isPaused, currentTime, duration, volume, isMuted, isFullscreen,
-    channels, currentChannel, playbackEngine,
-    setVolume, setMuted, setPiP, stopPlayback, setMiniPlayer, playChannel
+    channels, currentChannel, playbackEngine, playerReturnTarget,
+    clearPlayerReturnTarget, setVolume, setMuted, setPiP, stopPlayback, setMiniPlayer, playChannel
   } = useStore()
 
   const video = videoRef.current
@@ -91,6 +92,22 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
     } catch {}
   }
 
+  const navigateBackToOrigin = () => {
+    navigateToPlayerReturnTarget({ navigate, target: playerReturnTarget })
+  }
+
+  const leavePlayer = async () => {
+    if (playbackEngine === 'mpv' && isFullscreen) {
+      await Promise.allSettled([windowSetFullscreen(false), mpvSetFullscreen(false)])
+    } else if (document.fullscreenElement) {
+      await document.exitFullscreen().catch(() => undefined)
+    }
+
+    setPiP(false)
+    setMiniPlayer(true)
+    navigateBackToOrigin()
+  }
+
   const exitPlayer = async () => {
     if (playbackEngine === 'mpv' && isFullscreen) {
       await Promise.allSettled([windowSetFullscreen(false), mpvSetFullscreen(false)])
@@ -101,7 +118,8 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
     setPiP(false)
     setMiniPlayer(false)
     stopPlayback()
-    navigate('/')
+    clearPlayerReturnTarget()
+    navigateBackToOrigin()
   }
 
   const formatTime = (s: number) => {
@@ -184,6 +202,13 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1">
           <button
+            onClick={() => void leavePlayer()}
+            className="rounded-lg p-2 hover:bg-white/10 transition-colors"
+            title="Geri don"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <button
             onClick={() => playAdjacent('prev')}
             disabled={!previousChannel}
             className="rounded-lg p-2 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
@@ -236,7 +261,7 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
         </div>
 
         <div className="flex items-center gap-1">
-          <button onClick={() => void exitPlayer()} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title="Oynaticidan cik (Esc)">
+          <button onClick={() => void exitPlayer()} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title="Durdur ve cik">
             <X size={18} />
           </button>
           <AudioTrackSelector />

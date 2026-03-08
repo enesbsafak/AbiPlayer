@@ -2,10 +2,12 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { VideoPlayer } from '@/components/player/VideoPlayer'
+import { navigateToPlayerReturnTarget } from '@/services/player-navigation'
 
 export default function PlayerPage() {
   const navigate = useNavigate()
   const currentChannel = useStore((s) => s.currentChannel)
+  const playerReturnTarget = useStore((s) => s.playerReturnTarget)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
 
   useEffect(() => {
@@ -13,8 +15,10 @@ export default function PlayerPage() {
   }, [setMiniPlayer])
 
   useEffect(() => {
-    if (!currentChannel) navigate('/')
-  }, [currentChannel, navigate])
+    if (!currentChannel) {
+      navigateToPlayerReturnTarget({ navigate, target: playerReturnTarget })
+    }
+  }, [currentChannel, navigate, playerReturnTarget])
 
   if (!currentChannel) return null
 

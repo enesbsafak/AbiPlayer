@@ -1,10 +1,11 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { CategoryList } from '@/components/channels/CategoryList'
 import { ChannelGrid } from '@/components/channels/ChannelGrid'
 import { ChannelSearch } from '@/components/channels/ChannelSearch'
 import { xtreamApi } from '@/services/xtream-api'
+import { openPlayerFromRoute } from '@/services/player-navigation'
 import { Spinner } from '@/components/ui/Spinner'
 import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
@@ -20,6 +21,7 @@ function clearSourceCategoryCache(cache: Set<string>, sourceId: string) {
 }
 
 export default function LiveTVPage() {
+  const location = useLocation()
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -41,6 +43,7 @@ export default function LiveTVPage() {
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const setSelectedCategory = useStore((s) => s.setSelectedCategory)
   const categories = useStore((s) => s.categories)
+  const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
 
   useEffect(() => {
     setChannelFilter('live')
@@ -189,9 +192,9 @@ export default function LiveTVPage() {
       if (!isPlayableChannel(channel)) return
       playChannel(channel)
       setMiniPlayer(false)
-      navigate('/player')
+      openPlayerFromRoute({ location, navigate, setPlayerReturnTarget })
     },
-    [playChannel, setMiniPlayer, navigate]
+    [location, playChannel, setMiniPlayer, navigate, setPlayerReturnTarget]
   )
 
   return (

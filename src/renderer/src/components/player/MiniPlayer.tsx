@@ -4,7 +4,7 @@ import { useStore } from '@/store'
 
 export function MiniPlayer() {
   const navigate = useNavigate()
-  const { currentChannel, stopPlayback, setMiniPlayer } = useStore()
+  const { clearPlayerReturnTarget, currentChannel, stopPlayback, setMiniPlayer } = useStore()
 
   if (!currentChannel) return null
 
@@ -21,7 +21,14 @@ export function MiniPlayer() {
         <button onClick={handleExpand} className="rounded-lg p-1.5 hover:bg-surface-700 transition-colors">
           <Maximize2 size={14} className="text-surface-400" />
         </button>
-        <button onClick={stopPlayback} className="rounded-lg p-1.5 hover:bg-surface-700 transition-colors">
+        <button
+          onClick={() => {
+            setMiniPlayer(false)
+            stopPlayback()
+            clearPlayerReturnTarget()
+          }}
+          className="rounded-lg p-1.5 hover:bg-surface-700 transition-colors"
+        >
           <X size={14} className="text-surface-400" />
         </button>
       </div>

@@ -4,6 +4,12 @@ import { dirname, join } from 'path'
 import { spawn } from 'child_process'
 import ffmpegPath from 'ffmpeg-static'
 import ffprobeStatic from 'ffprobe-static'
+import {
+  checkForAppUpdates,
+  getAppUpdateState,
+  installDownloadedUpdate,
+  type AppUpdateState
+} from './app-updater'
 import { MpvController, type MpvStateSnapshot, type MpvSubtitleStyle } from './mpv-controller'
 
 const MAX_LOCAL_FILE_SIZE_BYTES = 20 * 1024 * 1024
@@ -461,6 +467,18 @@ export function registerIpcHandlers(): void {
       BrowserWindow.getFocusedWindow() ??
       BrowserWindow.getAllWindows()[0]
     return window?.isFullScreen() ?? false
+  })
+
+  ipcMain.handle('app-update-get-state', (): AppUpdateState => {
+    return getAppUpdateState()
+  })
+
+  ipcMain.handle('app-update-check', async (): Promise<AppUpdateState> => {
+    return checkForAppUpdates()
+  })
+
+  ipcMain.handle('app-update-install', (): boolean => {
+    return installDownloadedUpdate()
   })
 
   ipcMain.handle('secure-credentials-get-all', async (): Promise<SecureCredentialStore> => {

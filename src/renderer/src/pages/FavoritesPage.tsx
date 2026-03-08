@@ -1,14 +1,17 @@
 import { useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { FavoritesView } from '@/components/favorites/FavoritesView'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
+import { openPlayerFromRoute } from '@/services/player-navigation'
 
 export default function FavoritesPage() {
+  const location = useLocation()
   const navigate = useNavigate()
   const playChannel = useStore((s) => s.playChannel)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
+  const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
 
   const handlePlay = useCallback((channel: Channel) => {
     if (!isPlayableChannel(channel)) {
@@ -18,8 +21,8 @@ export default function FavoritesPage() {
 
     playChannel(channel)
     setMiniPlayer(false)
-    navigate('/player')
-  }, [playChannel, setMiniPlayer, navigate])
+    openPlayerFromRoute({ location, navigate, setPlayerReturnTarget })
+  }, [location, playChannel, setMiniPlayer, navigate, setPlayerReturnTarget])
 
   return (
     <div className="h-full p-3">
