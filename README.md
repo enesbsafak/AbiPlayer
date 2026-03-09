@@ -2,7 +2,7 @@
 
 Modern, hizli ve masaustu odakli bir IPTV oynatici.
 
-**Surum:** `0.2.1-beta`  
+**Surum:** `0.2.2-beta`  
 **Durum:** Public Beta
 
 Abi Player, Electron + React + TypeScript ile gelistirilmistir. Xtream Codes ve M3U kaynaklariyla calisir, MPV native playback ile daha stabil oynatma hedefler ve beta asamasinda aktif olarak gelistirilmektedir.
