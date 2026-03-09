@@ -1,3 +1,4 @@
+import { existsSync } from 'fs'
 import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -19,6 +20,7 @@ function isAllowedExternalUrl(url: string): boolean {
 }
 
 function createWindow(): void {
+  const windowIconPath = join(app.getAppPath(), 'build', 'icon.png')
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -29,6 +31,7 @@ function createWindow(): void {
     titleBarStyle: 'hidden',
     transparent: process.platform === 'win32',
     backgroundColor: process.platform === 'win32' ? '#00000000' : '#0d0f12',
+    ...(existsSync(windowIconPath) ? { icon: windowIconPath } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,

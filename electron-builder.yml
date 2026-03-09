@@ -16,6 +16,7 @@ files:
 asarUnpack:
   - resources/**
 win:
+  icon: build/icon.ico
   executableName: abi-player
   target:
     - nsis
@@ -26,6 +27,9 @@ win:
         - '**/*'
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
