@@ -94,7 +94,8 @@ function runLogged(command, args) {
   const result = spawnSync(command, args, {
     cwd: process.cwd(),
     encoding: 'utf8',
-    stdio: 'inherit'
+    stdio: 'inherit',
+    shell: process.platform === 'win32' && command.toLowerCase().endsWith('.cmd')
   })
 
   if (result.error) {
