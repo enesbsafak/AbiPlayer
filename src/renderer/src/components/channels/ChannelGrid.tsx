@@ -107,8 +107,13 @@ export function ChannelGrid({ channels, onPlay }: ChannelGridProps) {
     return (
       <div ref={parentRef}>
         <div className="grid gap-3.5" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-          {channels.map((channel) => (
-            <ChannelCard key={channel.id} channel={channel} onPlay={onPlay} />
+          {channels.map((channel, index) => (
+            <ChannelCard
+              key={channel.id}
+              channel={channel}
+              onPlay={onPlay}
+              eagerImage={index < cols * 2}
+            />
           ))}
         </div>
       </div>
@@ -131,8 +136,13 @@ export function ChannelGrid({ channels, onPlay }: ChannelGridProps) {
               className="grid gap-3.5 pb-3.5"
               style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
             >
-              {(rows[virtualRow.index] ?? []).map((channel) => (
-                <ChannelCard key={channel.id} channel={channel} onPlay={onPlay} />
+              {(rows[virtualRow.index] ?? []).map((channel, index) => (
+                <ChannelCard
+                  key={channel.id}
+                  channel={channel}
+                  onPlay={onPlay}
+                  eagerImage={virtualRow.index * cols + index < cols * 2}
+                />
               ))}
             </div>
           </div>

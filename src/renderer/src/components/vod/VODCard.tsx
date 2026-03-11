@@ -1,14 +1,20 @@
 import { memo } from 'react'
 import { Play, Star } from 'lucide-react'
 import { LazyImage } from '@/components/ui/LazyImage'
+import { ClampText } from '@/components/ui'
 import type { Channel } from '@/types/playlist'
 
 interface VODCardProps {
   item: Channel
   onPlay: (item: Channel) => void
+  eagerImage?: boolean
 }
 
-export const VODCard = memo(function VODCard({ item, onPlay }: VODCardProps) {
+export const VODCard = memo(function VODCard({
+  item,
+  onPlay,
+  eagerImage = false
+}: VODCardProps) {
   const artwork = item.coverUrl || item.logo
 
   return (
@@ -17,7 +23,7 @@ export const VODCard = memo(function VODCard({ item, onPlay }: VODCardProps) {
       onClick={() => onPlay(item)}
     >
       <div className="relative aspect-[2/3] bg-surface-800">
-        <LazyImage src={artwork} alt={item.name} className="h-full w-full" />
+        <LazyImage src={artwork} alt={item.name} className="h-full w-full" eager={eagerImage} />
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_34%,rgba(0,0,0,0.72)_100%)]" />
         <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-all group-hover:bg-black/35">
           <Play size={36} className="opacity-0 transition-opacity group-hover:opacity-100" fill="white" color="white" />
@@ -30,9 +36,13 @@ export const VODCard = memo(function VODCard({ item, onPlay }: VODCardProps) {
         )}
       </div>
       <div className="p-3.5">
-        <p className="truncate text-sm font-semibold text-white">{item.name}</p>
+        <ClampText as="p" lines={2} className="text-sm font-semibold leading-5 text-white">
+          {item.name}
+        </ClampText>
         <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-surface-500">
-          <span className="truncate">{item.group || item.categoryName || 'Film'}</span>
+          <ClampText as="span" lines={2} className="min-w-0 flex-1 leading-4">
+            {item.group || item.categoryName || 'Film'}
+          </ClampText>
           {item.year && <span className="shrink-0 text-surface-400">{item.year}</span>}
         </div>
       </div>

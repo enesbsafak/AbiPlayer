@@ -1,15 +1,21 @@
 import { memo } from 'react'
 import { Star, Play, Radio } from 'lucide-react'
 import { LazyImage } from '@/components/ui/LazyImage'
+import { ClampText } from '@/components/ui'
 import { useStore } from '@/store'
 import type { Channel } from '@/types/playlist'
 
 interface ChannelCardProps {
   channel: Channel
   onPlay: (channel: Channel) => void
+  eagerImage?: boolean
 }
 
-export const ChannelCard = memo(function ChannelCard({ channel, onPlay }: ChannelCardProps) {
+export const ChannelCard = memo(function ChannelCard({
+  channel,
+  onPlay,
+  eagerImage = false
+}: ChannelCardProps) {
   const isFavorite = useStore((s) => s.isFavorite)
   const toggleFavorite = useStore((s) => s.toggleFavorite)
   const fav = isFavorite(channel.id)
@@ -28,6 +34,7 @@ export const ChannelCard = memo(function ChannelCard({ channel, onPlay }: Channe
             alt={channel.name}
             className={channel.type === 'live' ? 'h-full w-full p-4' : 'h-full w-full'}
             fit={channel.type === 'live' ? 'contain' : 'cover'}
+            eager={eagerImage}
           />
         ) : (
           <Radio size={32} className="text-surface-500" />
@@ -50,10 +57,12 @@ export const ChannelCard = memo(function ChannelCard({ channel, onPlay }: Channe
       </div>
       <div className="flex items-start justify-between gap-2 p-3.5">
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-semibold text-white">{channel.name}</p>
-          <p className="mt-0.5 truncate text-[11px] text-surface-500">
+          <ClampText as="p" lines={2} className="text-[13px] font-semibold leading-5 text-white">
+            {channel.name}
+          </ClampText>
+          <ClampText as="p" lines={2} className="mt-0.5 text-[11px] leading-4 text-surface-500">
             {channel.group || channel.categoryName || (channel.type === 'live' ? 'Yayin' : 'Medya')}
-          </p>
+          </ClampText>
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); toggleFavorite(channel.id) }}

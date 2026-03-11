@@ -12,9 +12,39 @@ interface LazyImageProps {
 
 type ImageStatus = 'idle' | 'loading' | 'loaded' | 'error'
 
-const imageStatusCache = new Map<string, Exclude<ImageStatus, 'idle' | 'loading'>>()
-const IMAGE_LOAD_TIMEOUT_MS = 12000
-const MAX_RETRY_COUNT = 1
+type CachedImageStatus = {
+  status: Exclude<ImageStatus, 'idle' | 'loading'>
+  expiresAt: number | null
+}
+
+const imageStatusCache = new Map<string, CachedImageStatus>()
+const IMAGE_LOAD_TIMEOUT_MS = 10000
+const IMAGE_ERROR_CACHE_TTL_MS = 45_000
+const MAX_RETRY_COUNT = 2
+
+function getCachedImageStatus(src?: string): Exclude<ImageStatus, 'idle' | 'loading'> | undefined {
+  if (!src) return undefined
+
+  const cached = imageStatusCache.get(src)
+  if (!cached) return undefined
+
+  if (cached.expiresAt !== null && cached.expiresAt <= Date.now()) {
+    imageStatusCache.delete(src)
+    return undefined
+  }
+
+  return cached.status
+}
+
+function setCachedImageStatus(
+  src: string,
+  status: Exclude<ImageStatus, 'idle' | 'loading'>
+): void {
+  imageStatusCache.set(src, {
+    status,
+    expiresAt: status === 'loaded' ? null : Date.now() + IMAGE_ERROR_CACHE_TTL_MS
+  })
+}
 
 function findScrollParent(el: HTMLElement | null): HTMLElement | null {
   let current = el?.parentElement ?? null
@@ -56,7 +86,7 @@ export function LazyImage({
 }: LazyImageProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const normalizedSrc = useMemo(() => normalizeImageSrc(src), [src])
-  const cachedStatus = normalizedSrc ? imageStatusCache.get(normalizedSrc) : undefined
+  const cachedStatus = getCachedImageStatus(normalizedSrc)
   const [isVisible, setIsVisible] = useState(() => eager || Boolean(cachedStatus))
   const [retryAttempt, setRetryAttempt] = useState(0)
   const [status, setStatus] = useState<ImageStatus>(() => {
@@ -67,7 +97,7 @@ export function LazyImage({
   })
 
   useEffect(() => {
-    const cached = normalizedSrc ? imageStatusCache.get(normalizedSrc) : undefined
+    const cached = getCachedImageStatus(normalizedSrc)
     if (!normalizedSrc) {
       setStatus('error')
       setIsVisible(false)
@@ -109,7 +139,7 @@ export function LazyImage({
       },
       {
         root: findScrollParent(element),
-        rootMargin: '320px 0px',
+        rootMargin: '720px 0px',
         threshold: 0.01
       }
     )
@@ -131,7 +161,7 @@ export function LazyImage({
         return
       }
 
-      imageStatusCache.set(normalizedSrc, 'error')
+      setCachedImageStatus(normalizedSrc, 'error')
       setStatus('error')
     }, IMAGE_LOAD_TIMEOUT_MS)
 
@@ -146,7 +176,7 @@ export function LazyImage({
 
   const handleLoad = () => {
     if (!normalizedSrc) return
-    imageStatusCache.set(normalizedSrc, 'loaded')
+    setCachedImageStatus(normalizedSrc, 'loaded')
     setStatus('loaded')
   }
 
@@ -157,7 +187,7 @@ export function LazyImage({
       return
     }
 
-    imageStatusCache.set(normalizedSrc, 'error')
+    setCachedImageStatus(normalizedSrc, 'error')
     setStatus('error')
   }
 
@@ -181,6 +211,7 @@ export function LazyImage({
           alt={alt}
           loading={eager ? 'eager' : 'lazy'}
           decoding="async"
+          fetchPriority={eager ? 'high' : 'auto'}
           draggable={false}
           onLoad={handleLoad}
           onError={handleError}

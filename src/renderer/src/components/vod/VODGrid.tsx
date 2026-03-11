@@ -106,8 +106,13 @@ export function VODGrid({ items, onPlay }: VODGridProps) {
     return (
       <div ref={parentRef}>
         <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-          {items.map((item) => (
-            <VODCard key={item.id} item={item} onPlay={onPlay} />
+          {items.map((item, index) => (
+            <VODCard
+              key={item.id}
+              item={item}
+              onPlay={onPlay}
+              eagerImage={index < cols * 2}
+            />
           ))}
         </div>
       </div>
@@ -127,8 +132,13 @@ export function VODGrid({ items, onPlay }: VODGridProps) {
             }}
           >
             <div className="grid gap-4 pb-4" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-              {(rows[virtualRow.index] ?? []).map((item) => (
-                <VODCard key={item.id} item={item} onPlay={onPlay} />
+              {(rows[virtualRow.index] ?? []).map((item, index) => (
+                <VODCard
+                  key={item.id}
+                  item={item}
+                  onPlay={onPlay}
+                  eagerImage={virtualRow.index * cols + index < cols * 2}
+                />
               ))}
             </div>
           </div>

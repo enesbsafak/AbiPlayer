@@ -25,7 +25,8 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
   const mpvEnabled = mpvAvailable && playbackEngine === 'mpv'
 
   usePlayer(videoRef, { disabled: mpvEnabled })
-  useMpvPlayer(mpvEnabled)
+  const isMpvStarting = useMpvPlayer(mpvEnabled)
+  const showLoadingOverlay = isBuffering || isMpvStarting
 
   useEffect(() => {
     let cancelled = false
@@ -102,7 +103,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
         />
       )}
 
-      {isBuffering && (
+      {showLoadingOverlay && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/30">
           <Spinner size={48} />
         </div>

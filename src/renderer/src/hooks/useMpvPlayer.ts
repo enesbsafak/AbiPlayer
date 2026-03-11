@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AudioTrack, SubtitleTrack } from '@/types/player'
 import {
+  type MpvStateSnapshot,
   mpvGetState,
   mpvIsAvailable,
   mpvOpen,
@@ -21,6 +22,23 @@ import { useStore } from '@/store'
 
 const MPV_AUDIO_TRACK_PREFIX = 'mpv-a:'
 const MPV_SUBTITLE_TRACK_PREFIX = 'mpv-s:'
+const MPV_STARTUP_OVERLAY_TIMEOUT_MS = 15000
+
+export function shouldKeepStartupOverlay(
+  snapshot: MpvStateSnapshot,
+  expectedUrl: string | null,
+  startedAt: number | null,
+  now = Date.now()
+): boolean {
+  if (!expectedUrl || startedAt === null) return false
+  if (snapshot.error) return false
+  if (now - startedAt >= MPV_STARTUP_OVERLAY_TIMEOUT_MS) return false
+  if (snapshot.buffering) return false
+  if (snapshot.timePos > 0) return false
+  if (snapshot.duration > 0) return false
+  if (snapshot.tracks.length > 0) return false
+  return true
+}
 
 function clampVolume(value: number): number {
   return Math.max(0, Math.min(1, value))
@@ -52,6 +70,10 @@ export function useMpvPlayer(enabled: boolean) {
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioPreferenceAppliedRef = useRef(false)
   const subtitlePreferenceAppliedRef = useRef(false)
+  const startupUrlRef = useRef<string | null>(null)
+  const startupStartedAtRef = useRef<number | null>(null)
+  const startupVisibleRef = useRef(false)
+  const [isStarting, setIsStarting] = useState(false)
   const {
     currentChannel,
     currentAudioTrack,
@@ -77,10 +99,23 @@ export function useMpvPlayer(enabled: boolean) {
     setMuted
   } = useStore()
 
+  const updateStartupVisibility = (next: boolean) => {
+    if (startupVisibleRef.current === next) return
+    startupVisibleRef.current = next
+    setIsStarting(next)
+  }
+
   useEffect(() => {
     audioPreferenceAppliedRef.current = false
     subtitlePreferenceAppliedRef.current = false
   }, [enabled, currentChannel?.id, currentChannel?.streamUrl])
+
+  useEffect(() => {
+    if (enabled) return
+    startupUrlRef.current = null
+    startupStartedAtRef.current = null
+    updateStartupVisibility(false)
+  }, [enabled])
 
   useEffect(() => {
     if (!enabled) return
@@ -91,6 +126,9 @@ export function useMpvPlayer(enabled: boolean) {
       if (cancelled) return
 
       if (!available) {
+        startupUrlRef.current = null
+        startupStartedAtRef.current = null
+        updateStartupVisibility(false)
         setPlaybackEngine('html5')
         return
       }
@@ -98,6 +136,9 @@ export function useMpvPlayer(enabled: boolean) {
       setPlaybackEngine('mpv')
 
       if (!currentChannel?.streamUrl) {
+        startupUrlRef.current = null
+        startupStartedAtRef.current = null
+        updateStartupVisibility(false)
         await mpvStop().catch(() => undefined)
         setAudioTracks([])
         setSubtitleTracks([])
@@ -115,6 +156,9 @@ export function useMpvPlayer(enabled: boolean) {
 
       try {
         const defaultVolume = clampVolume(settings.defaultVolume)
+        startupUrlRef.current = currentChannel.streamUrl
+        startupStartedAtRef.current = Date.now()
+        updateStartupVisibility(true)
         setVolume(defaultVolume)
         setMuted(false)
         await mpvOpen(currentChannel.streamUrl)
@@ -123,6 +167,9 @@ export function useMpvPlayer(enabled: boolean) {
         await Promise.allSettled([mpvSetVolume(defaultVolume), mpvSetMute(false)])
       } catch (error) {
         if (cancelled) return
+        startupUrlRef.current = null
+        startupStartedAtRef.current = null
+        updateStartupVisibility(false)
         setPlaybackEngine('html5')
         setPlayerError(error instanceof Error ? error.message : 'mpv oynatim baslatilamadi')
       }
@@ -136,6 +183,9 @@ export function useMpvPlayer(enabled: boolean) {
         clearInterval(pollTimerRef.current)
         pollTimerRef.current = null
       }
+      startupUrlRef.current = null
+      startupStartedAtRef.current = null
+      updateStartupVisibility(false)
       void mpvStop().catch(() => undefined)
     }
   }, [
@@ -168,6 +218,10 @@ export function useMpvPlayer(enabled: boolean) {
       ])
       if (!snapshot) return
 
+      const now = Date.now()
+      updateStartupVisibility(
+        shouldKeepStartupOverlay(snapshot, startupUrlRef.current, startupStartedAtRef.current, now)
+      )
       setPlaying(snapshot.running && !snapshot.paused)
       setPaused(snapshot.paused)
       setBuffering(snapshot.buffering)
@@ -299,4 +353,6 @@ export function useMpvPlayer(enabled: boolean) {
     setActiveSubtitleCues([])
     void mpvSetSubtitleTrack(rawId).catch(() => undefined)
   }, [enabled, currentSubtitleTrack, setActiveSubtitleCues, setSubtitleCues])
+
+  return isStarting
 }

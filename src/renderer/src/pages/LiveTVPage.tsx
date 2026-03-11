@@ -10,8 +10,12 @@ import { Spinner } from '@/components/ui/Spinner'
 import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
+import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
 
 const loadedLiveCategoryCache = new Set<string>()
+const loadedLivePreviewSourceCache = new Set<string>()
+const loadedLiveFullSourceCache = new Set<string>()
+const syncingLiveFullSourceCache = new Set<string>()
 
 function clearSourceCategoryCache(cache: Set<string>, sourceId: string) {
   const prefix = `${sourceId}:`
@@ -20,30 +24,51 @@ function clearSourceCategoryCache(cache: Set<string>, sourceId: string) {
   }
 }
 
+function clearSourceLiveCaches(sourceId: string) {
+  clearSourceCategoryCache(loadedLiveCategoryCache, sourceId)
+  loadedLivePreviewSourceCache.delete(sourceId)
+  loadedLiveFullSourceCache.delete(sourceId)
+  syncingLiveFullSourceCache.delete(sourceId)
+}
+
 export default function LiveTVPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
+  const [foregroundLoadingMessage, setForegroundLoadingMessage] = useState<string | null>(null)
+  const [isForegroundLoading, setIsForegroundLoading] = useState(false)
+  const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false)
   const loadedCatsRef = useRef(loadedLiveCategoryCache)
 
   const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
   const sources = useStore((s) => s.sources)
+  const hydratedSourceIds = useStore((s) => s.hydratedSourceIds)
   const selectedCategoryId = useStore((s) => s.selectedCategoryId)
-  const isLoadingPlaylist = useStore((s) => s.isLoadingPlaylist)
   const channelFilter = useStore((s) => s.channelFilter)
   const setChannelFilter = useStore((s) => s.setChannelFilter)
   const playChannel = useStore((s) => s.playChannel)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
   const addChannels = useStore((s) => s.addChannels)
   const addCategories = useStore((s) => s.addCategories)
-  const setPlaylistLoading = useStore((s) => s.setPlaylistLoading)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const setSelectedCategory = useStore((s) => s.setSelectedCategory)
   const categories = useStore((s) => s.categories)
   const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
+
+  const source = useMemo(
+    () => sources.find((item) => item.id === activeSourceId) ?? null,
+    [sources, activeSourceId]
+  )
+  const rawCategoryId = useMemo(() => {
+    if (!activeSourceId || !selectedCategoryId) return null
+    const livePrefix = `${activeSourceId}_live_`
+    return selectedCategoryId.startsWith(livePrefix)
+      ? selectedCategoryId.replace(livePrefix, '')
+      : null
+  }, [activeSourceId, selectedCategoryId])
 
   useEffect(() => {
     setChannelFilter('live')
@@ -52,6 +77,9 @@ export default function LiveTVPage() {
   useEffect(() => {
     setSelectedCategory(null)
     setLoadError(null)
+    setForegroundLoadingMessage(null)
+    setIsForegroundLoading(false)
+    setIsBackgroundSyncing(false)
   }, [activeSourceId, setSelectedCategory])
 
   useEffect(() => {
@@ -59,13 +87,19 @@ export default function LiveTVPage() {
     const hasChannelsForSource = channels.some(
       (channel) => channel.sourceId === activeSourceId && channel.type === 'live'
     )
-    if (!hasChannelsForSource) clearSourceCategoryCache(loadedCatsRef.current, activeSourceId)
+    if (!hasChannelsForSource) clearSourceLiveCaches(activeSourceId)
   }, [channels, activeSourceId])
 
-  // Load categories first.
   useEffect(() => {
     if (!activeSourceId) return
-    const source = sources.find((s) => s.id === activeSourceId)
+    if (hydratedSourceIds[activeSourceId]) {
+      loadedLiveFullSourceCache.add(activeSourceId)
+      loadedLivePreviewSourceCache.add(activeSourceId)
+    }
+  }, [activeSourceId, hydratedSourceIds])
+
+  useEffect(() => {
+    if (!activeSourceId) return
     if (!source || source.type !== 'xtream') return
     if (categories.some((c) => c.type === 'live' && c.sourceId === activeSourceId)) return
 
@@ -88,35 +122,24 @@ export default function LiveTVPage() {
     return () => {
       cancelled = true
     }
-  }, [activeSourceId, sources, categories, getXtreamCredentials, addCategories])
+  }, [activeSourceId, source, categories, getXtreamCredentials, addCategories])
 
-  // Load streams for selected category.
   useEffect(() => {
-    if (!activeSourceId) return
-    const source = sources.find((s) => s.id === activeSourceId)
+    if (!activeSourceId || !rawCategoryId) return
     if (!source || source.type !== 'xtream') return
 
     const creds = getXtreamCredentials(activeSourceId)
     if (!creds) return
 
-    const livePrefix = `${activeSourceId}_live_`
-    const rawCatId = selectedCategoryId?.startsWith(livePrefix)
-      ? selectedCategoryId.replace(livePrefix, '')
-      : null
-
-    const cacheKey = `${activeSourceId}:${rawCatId || '__all__'}`
+    const cacheKey = `${activeSourceId}:${rawCategoryId}`
     if (loadedCatsRef.current.has(cacheKey)) return
 
-    const hasCategoryInMemory = rawCatId
-      ? channels.some(
-          (channel) =>
-            channel.sourceId === activeSourceId &&
-            channel.type === 'live' &&
-            channel.categoryId === `${activeSourceId}_live_${rawCatId}`
-        )
-      : channels.some(
-          (channel) => channel.sourceId === activeSourceId && channel.type === 'live'
-        )
+    const hasCategoryInMemory = channels.some(
+      (channel) =>
+        channel.sourceId === activeSourceId &&
+        channel.type === 'live' &&
+        channel.categoryId === `${activeSourceId}_live_${rawCategoryId}`
+    )
 
     if (hasCategoryInMemory) {
       loadedCatsRef.current.add(cacheKey)
@@ -126,32 +149,23 @@ export default function LiveTVPage() {
     let cancelled = false
     const load = async () => {
       setLoadError(null)
-      setPlaylistLoading(true)
+      setForegroundLoadingMessage('Secili kategori yukleniyor...')
+      setIsForegroundLoading(true)
 
       try {
-        if (rawCatId) {
-          const streams = await xtreamApi.getLiveStreams(creds, rawCatId)
-          if (cancelled) return
-          addChannels(xtreamApi.liveStreamsToChannels(streams, creds, activeSourceId))
-        } else {
-          const hasAnyLive = channels.some((c) => c.type === 'live' && c.sourceId === activeSourceId)
-          if (hasAnyLive) {
-            loadedCatsRef.current.add(cacheKey)
-            return
-          }
-
-          const streams = await xtreamApi.getLivePreviewStreams(creds, 500)
-          if (cancelled) return
-          addChannels(xtreamApi.liveStreamsToChannels(streams, creds, activeSourceId))
-        }
-
+        const streams = await xtreamApi.getLiveStreams(creds, rawCategoryId)
+        if (cancelled) return
+        addChannels(xtreamApi.liveStreamsToChannels(streams, creds, activeSourceId))
         loadedCatsRef.current.add(cacheKey)
       } catch (err) {
         if (cancelled) return
         console.error('Failed to load live streams:', err)
         setLoadError(err instanceof Error ? err.message : 'Kanallar yuklenemedi')
       } finally {
-        if (!cancelled) setPlaylistLoading(false)
+        if (!cancelled) {
+          setIsForegroundLoading(false)
+          setForegroundLoadingMessage(null)
+        }
       }
     }
 
@@ -161,12 +175,97 @@ export default function LiveTVPage() {
     }
   }, [
     activeSourceId,
-    selectedCategoryId,
-    sources,
+    rawCategoryId,
+    source,
     channels,
     getXtreamCredentials,
     addChannels,
-    setPlaylistLoading,
+    reloadToken
+  ])
+
+  useEffect(() => {
+    if (!activeSourceId || rawCategoryId) return
+    if (!source || source.type !== 'xtream') return
+
+    const creds = getXtreamCredentials(activeSourceId)
+    if (!creds) return
+
+    let cancelled = false
+
+    const syncSource = async () => {
+      if (hydratedSourceIds[activeSourceId]) {
+        loadedLiveFullSourceCache.add(activeSourceId)
+        loadedLivePreviewSourceCache.add(activeSourceId)
+        return
+      }
+
+      const hasSourceChannels = channels.some(
+        (channel) => channel.sourceId === activeSourceId && channel.type === 'live'
+      )
+
+      if (!loadedLivePreviewSourceCache.has(activeSourceId) && !hasSourceChannels) {
+        setLoadError(null)
+        setForegroundLoadingMessage('Kanallar hizli on izleme listesiyle aciliyor...')
+        setIsForegroundLoading(true)
+
+        try {
+          const previewStreams = await xtreamApi.getLivePreviewStreams(creds, 500)
+          if (cancelled) return
+          addChannels(xtreamApi.liveStreamsToChannels(previewStreams, creds, activeSourceId))
+          loadedLivePreviewSourceCache.add(activeSourceId)
+        } catch (err) {
+          if (cancelled) return
+          console.error('Failed to load live preview:', err)
+          setLoadError(err instanceof Error ? err.message : 'Kanallar yuklenemedi')
+          return
+        } finally {
+          if (!cancelled) {
+            setIsForegroundLoading(false)
+            setForegroundLoadingMessage(null)
+          }
+        }
+      } else if (hasSourceChannels) {
+        loadedLivePreviewSourceCache.add(activeSourceId)
+      }
+
+      if (loadedLiveFullSourceCache.has(activeSourceId) || syncingLiveFullSourceCache.has(activeSourceId)) {
+        return
+      }
+
+      syncingLiveFullSourceCache.add(activeSourceId)
+      if (!cancelled) setIsBackgroundSyncing(true)
+
+      try {
+        const allStreams = await xtreamApi.getLiveStreams(creds)
+        if (cancelled) return
+        addChannels(xtreamApi.liveStreamsToChannels(allStreams, creds, activeSourceId))
+        loadedLiveFullSourceCache.add(activeSourceId)
+      } catch (err) {
+        if (cancelled) return
+        console.error('Failed to fully sync live channels:', err)
+        setLoadError(
+          err instanceof Error
+            ? `Tam kanal listesi arka planda tamamlanamadi: ${err.message}`
+            : 'Tam kanal listesi arka planda tamamlanamadi'
+        )
+      } finally {
+        syncingLiveFullSourceCache.delete(activeSourceId)
+        if (!cancelled) setIsBackgroundSyncing(false)
+      }
+    }
+
+    void syncSource()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activeSourceId,
+    rawCategoryId,
+    source,
+    channels,
+    hydratedSourceIds,
+    getXtreamCredentials,
+    addChannels,
     reloadToken
   ])
 
@@ -186,6 +285,14 @@ export default function LiveTVPage() {
 
     return list
   }, [channels, activeSourceId, channelFilter, selectedCategoryId, searchQuery])
+  const displayedChannels = useRetainedListWhileLoading(filtered, isForegroundLoading, activeSourceId)
+  const isPreviewMode =
+    !rawCategoryId &&
+    source?.type === 'xtream' &&
+    !!activeSourceId &&
+    !loadedLiveFullSourceCache.has(activeSourceId)
+  const showBlockingLoader = isForegroundLoading && displayedChannels.length === 0
+  const showInlineLoader = isForegroundLoading && displayedChannels.length > 0
 
   const handlePlay = useCallback(
     (channel: Channel) => {
@@ -199,13 +306,31 @@ export default function LiveTVPage() {
 
   return (
     <div className="flex h-full gap-3 p-3">
-      <div className="panel-glass w-56 shrink-0 overflow-y-auto rounded-2xl p-3">
+      <div className="panel-glass w-64 shrink-0 overflow-y-auto rounded-2xl p-3">
         <CategoryList />
       </div>
       <div className="panel-glass flex-1 overflow-y-auto rounded-2xl p-5">
         <div className="mb-5">
           <ChannelSearch onSearch={setSearchQuery} />
         </div>
+
+        {isPreviewMode && !loadError && (
+          <div className="mb-4 rounded-xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+            <div className="flex items-start gap-3">
+              {(isBackgroundSyncing || isForegroundLoading) && <Spinner size={16} className="mt-0.5 text-sky-200" />}
+              <div>
+                <p className="font-medium">
+                  {isBackgroundSyncing
+                    ? 'On izleme listesi gosteriliyor, tam liste arka planda tamamlaniyor'
+                    : 'Bu sayfa once hizli bir on izleme listesiyle aciliyor'}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-sky-100/80">
+                  Tam senkron bitene kadar arama ve toplam sonuc sayisi eksik olabilir.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {loadError && (
           <div className="mb-4 flex items-center justify-between rounded-xl border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -215,10 +340,16 @@ export default function LiveTVPage() {
               variant="secondary"
               onClick={() => {
                 if (activeSourceId) {
-                  clearSourceCategoryCache(loadedCatsRef.current, activeSourceId)
+                  clearSourceLiveCaches(activeSourceId)
                 } else {
                   loadedCatsRef.current.clear()
+                  loadedLivePreviewSourceCache.clear()
+                  loadedLiveFullSourceCache.clear()
+                  syncingLiveFullSourceCache.clear()
                 }
+                setIsForegroundLoading(false)
+                setForegroundLoadingMessage(null)
+                setIsBackgroundSyncing(false)
                 setReloadToken((v) => v + 1)
               }}
             >
@@ -227,12 +358,26 @@ export default function LiveTVPage() {
           </div>
         )}
 
-        {isLoadingPlaylist ? (
+        {showInlineLoader && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-surface-200">
+            <Spinner size={16} />
+            <span>{foregroundLoadingMessage || 'Icerikler yukleniyor...'}</span>
+          </div>
+        )}
+
+        {showBlockingLoader ? (
           <div className="flex items-center justify-center py-20">
-            <Spinner size={32} />
+            <div className="flex flex-col items-center gap-3 text-center">
+              <Spinner size={32} />
+              <p className="text-sm text-surface-300">
+                {foregroundLoadingMessage || 'Kanallar yukleniyor...'}
+              </p>
+            </div>
           </div>
         ) : (
-          <ChannelGrid channels={filtered} onPlay={handlePlay} />
+          <div className={showInlineLoader ? 'pointer-events-none opacity-60 transition-opacity' : 'transition-opacity'}>
+            <ChannelGrid channels={displayedChannels} onPlay={handlePlay} />
+          </div>
         )}
       </div>
     </div>
