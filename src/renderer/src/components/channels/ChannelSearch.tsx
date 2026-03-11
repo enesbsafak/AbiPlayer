@@ -1,12 +1,20 @@
+import { useEffect } from 'react'
 import { Search, X } from 'lucide-react'
 import { useSearch } from '@/hooks/useSearch'
 
 interface ChannelSearchProps {
+  value?: string
   onSearch: (query: string) => void
 }
 
-export function ChannelSearch({ onSearch }: ChannelSearchProps) {
+export function ChannelSearch({ value, onSearch }: ChannelSearchProps) {
   const { query, setQuery } = useSearch(onSearch, 300)
+
+  useEffect(() => {
+    if (typeof value !== 'string') return
+    if (value === query) return
+    setQuery(value)
+  }, [query, setQuery, value])
 
   return (
     <div className="relative">

@@ -31,6 +31,11 @@ function clearSourceLiveCaches(sourceId: string) {
   syncingLiveFullSourceCache.delete(sourceId)
 }
 
+interface LiveTVRouteState {
+  restoreSearchQuery?: string
+  restoreSelectedCategoryId?: string | null
+}
+
 export default function LiveTVPage() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -41,6 +46,7 @@ export default function LiveTVPage() {
   const [isForegroundLoading, setIsForegroundLoading] = useState(false)
   const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false)
   const loadedCatsRef = useRef(loadedLiveCategoryCache)
+  const previousSourceIdRef = useRef<string | null>(null)
 
   const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
@@ -71,10 +77,47 @@ export default function LiveTVPage() {
   }, [activeSourceId, selectedCategoryId])
 
   useEffect(() => {
+    const state = location.state as LiveTVRouteState | null
+    if (!state) return
+
+    let shouldClearLocationState = false
+
+    if (typeof state.restoreSearchQuery === 'string') {
+      setSearchQuery(state.restoreSearchQuery)
+      shouldClearLocationState = true
+    }
+
+    if ('restoreSelectedCategoryId' in state) {
+      setSelectedCategory(
+        typeof state.restoreSelectedCategoryId === 'string' ? state.restoreSelectedCategoryId : null
+      )
+      shouldClearLocationState = true
+    }
+
+    if (!shouldClearLocationState) return
+
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+        hash: location.hash
+      },
+      { replace: true, state: null }
+    )
+  }, [location.hash, location.pathname, location.search, location.state, navigate, setSelectedCategory])
+
+  useEffect(() => {
     setChannelFilter('live')
   }, [setChannelFilter])
 
   useEffect(() => {
+    const previousSourceId = previousSourceIdRef.current
+    previousSourceIdRef.current = activeSourceId
+
+    if (previousSourceId === null) return
+    if (previousSourceId === activeSourceId) return
+
+    setSearchQuery('')
     setSelectedCategory(null)
     setLoadError(null)
     setForegroundLoadingMessage(null)
@@ -299,9 +342,17 @@ export default function LiveTVPage() {
       if (!isPlayableChannel(channel)) return
       playChannel(channel)
       setMiniPlayer(false)
-      openPlayerFromRoute({ location, navigate, setPlayerReturnTarget })
+      openPlayerFromRoute({
+        location,
+        navigate,
+        returnState: {
+          restoreSearchQuery: searchQuery,
+          restoreSelectedCategoryId: selectedCategoryId
+        },
+        setPlayerReturnTarget
+      })
     },
-    [location, playChannel, setMiniPlayer, navigate, setPlayerReturnTarget]
+    [location, navigate, playChannel, searchQuery, selectedCategoryId, setMiniPlayer, setPlayerReturnTarget]
   )
 
   return (
@@ -309,10 +360,10 @@ export default function LiveTVPage() {
       <div className="panel-glass w-64 shrink-0 overflow-y-auto rounded-2xl p-3">
         <CategoryList />
       </div>
-      <div className="panel-glass flex-1 overflow-y-auto rounded-2xl p-5">
-        <div className="mb-5">
-          <ChannelSearch onSearch={setSearchQuery} />
-        </div>
+        <div className="panel-glass flex-1 overflow-y-auto rounded-2xl p-5">
+          <div className="mb-5">
+            <ChannelSearch value={searchQuery} onSearch={setSearchQuery} />
+          </div>
 
         {isPreviewMode && !loadError && (
           <div className="mb-4 rounded-xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">

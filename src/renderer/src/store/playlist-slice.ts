@@ -66,7 +66,11 @@ export const createPlaylistSlice: StateCreator<PlaylistSlice, [], [], PlaylistSl
 
   setSelectedCategory: (id) => set({ selectedCategoryId: id }),
   setSelectedChannel: (id) => set({ selectedChannelId: id }),
-  setChannelFilter: (filter) => set({ channelFilter: filter, selectedCategoryId: null }),
+  setChannelFilter: (filter) =>
+    set((state) => {
+      if (state.channelFilter === filter) return state
+      return { channelFilter: filter, selectedCategoryId: null }
+    }),
   markSourceHydrated: (sourceId, hydrated = true) =>
     set((state) => {
       const nextHydratedSourceIds = { ...state.hydratedSourceIds }

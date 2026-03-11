@@ -32,6 +32,12 @@ function clearSourceVodCaches(sourceId: string) {
   syncingVodFullSourceCache.delete(sourceId)
 }
 
+interface VODRouteState {
+  restoreSearchQuery?: string
+  restoreSelectedCategoryId?: string | null
+  restoreSelectedVODId?: string
+}
+
 export default function VODPage() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -44,6 +50,7 @@ export default function VODPage() {
   const [isForegroundLoading, setIsForegroundLoading] = useState(false)
   const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false)
   const loadedCatsRef = useRef(loadedVodCategoryCache)
+  const previousSourceIdRef = useRef<string | null>(null)
 
   const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
@@ -74,10 +81,30 @@ export default function VODPage() {
   }, [activeSourceId, selectedCategoryId])
 
   useEffect(() => {
-    const state = location.state as { restoreSelectedVODId?: string } | null
-    if (typeof state?.restoreSelectedVODId !== 'string') return
+    const state = location.state as VODRouteState | null
+    if (!state) return
 
-    setPendingRestoreVodId(state.restoreSelectedVODId)
+    let shouldClearLocationState = false
+
+    if (typeof state.restoreSelectedVODId === 'string') {
+      setPendingRestoreVodId(state.restoreSelectedVODId)
+      shouldClearLocationState = true
+    }
+
+    if (typeof state.restoreSearchQuery === 'string') {
+      setSearchQuery(state.restoreSearchQuery)
+      shouldClearLocationState = true
+    }
+
+    if ('restoreSelectedCategoryId' in state) {
+      setSelectedCategory(
+        typeof state.restoreSelectedCategoryId === 'string' ? state.restoreSelectedCategoryId : null
+      )
+      shouldClearLocationState = true
+    }
+
+    if (!shouldClearLocationState) return
+
     navigate(
       {
         pathname: location.pathname,
@@ -86,7 +113,7 @@ export default function VODPage() {
       },
       { replace: true, state: null }
     )
-  }, [location.hash, location.pathname, location.search, location.state, navigate])
+  }, [location.hash, location.pathname, location.search, location.state, navigate, setSelectedCategory])
 
   useEffect(() => {
     if (!pendingRestoreVodId) return
@@ -105,8 +132,16 @@ export default function VODPage() {
   }, [setChannelFilter])
 
   useEffect(() => {
+    const previousSourceId = previousSourceIdRef.current
+    previousSourceIdRef.current = activeSourceId
+
+    if (previousSourceId === null) return
+    if (previousSourceId === activeSourceId) return
+
+    setSearchQuery('')
     setSelectedCategory(null)
     setSelectedVOD(null)
+    setPendingRestoreVodId(null)
     setLoadError(null)
     setForegroundLoadingMessage(null)
     setIsForegroundLoading(false)
@@ -337,11 +372,15 @@ export default function VODPage() {
       openPlayerFromRoute({
         location,
         navigate,
-        returnState: selectedVOD ? { restoreSelectedVODId: selectedVOD.id } : undefined,
+        returnState: {
+          restoreSearchQuery: searchQuery,
+          restoreSelectedCategoryId: selectedCategoryId,
+          ...(selectedVOD ? { restoreSelectedVODId: selectedVOD.id } : {})
+        },
         setPlayerReturnTarget
       })
     },
-    [location, navigate, playChannel, selectedVOD, setMiniPlayer, setPlayerReturnTarget]
+    [location, navigate, playChannel, searchQuery, selectedCategoryId, selectedVOD, setMiniPlayer, setPlayerReturnTarget]
   )
 
   if (selectedVOD) {
@@ -361,7 +400,7 @@ export default function VODPage() {
       </div>
       <div className="panel-glass flex-1 overflow-y-auto rounded-2xl p-5">
         <div className="mb-5">
-          <ChannelSearch onSearch={setSearchQuery} />
+          <ChannelSearch value={searchQuery} onSearch={setSearchQuery} />
         </div>
 
         {isPreviewMode && !loadError && (

@@ -32,18 +32,31 @@ function clearSourceSeriesCaches(sourceId: string) {
   syncingSeriesFullSourceCache.delete(sourceId)
 }
 
+interface SeriesSelectionState {
+  seriesId: number
+  sourceId: string
+  seasonNumber?: number
+}
+
+interface SeriesRouteState {
+  restoreSearchQuery?: string
+  restoreSelectedCategoryId?: string | null
+  restoreSelectedSeries?: SeriesSelectionState
+}
+
 export default function SeriesPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedSeries, setSelectedSeries] = useState<{ seriesId: number; sourceId: string } | null>(null)
+  const [selectedSeries, setSelectedSeries] = useState<SeriesSelectionState | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
-  const [pendingRestoreSeries, setPendingRestoreSeries] = useState<{ seriesId: number; sourceId: string } | null>(null)
+  const [pendingRestoreSeries, setPendingRestoreSeries] = useState<SeriesSelectionState | null>(null)
   const [foregroundLoadingMessage, setForegroundLoadingMessage] = useState<string | null>(null)
   const [isForegroundLoading, setIsForegroundLoading] = useState(false)
   const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false)
   const loadedCatsRef = useRef(loadedSeriesCategoryCache)
+  const previousSourceIdRef = useRef<string | null>(null)
 
   const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
@@ -74,21 +87,36 @@ export default function SeriesPage() {
   }, [activeSourceId, selectedCategoryId])
 
   useEffect(() => {
-    const state = location.state as {
-      restoreSelectedSeries?: { seriesId: number; sourceId: string }
-    } | null
+    const state = location.state as SeriesRouteState | null
+    if (!state) return
+
+    let shouldClearLocationState = false
 
     const restore = state?.restoreSelectedSeries
     if (
-      !restore ||
-      typeof restore.seriesId !== 'number' ||
-      !Number.isFinite(restore.seriesId) ||
-      typeof restore.sourceId !== 'string'
+      restore &&
+      typeof restore.seriesId === 'number' &&
+      Number.isFinite(restore.seriesId) &&
+      typeof restore.sourceId === 'string'
     ) {
-      return
+      setPendingRestoreSeries(restore)
+      shouldClearLocationState = true
     }
 
-    setPendingRestoreSeries(restore)
+    if (typeof state.restoreSearchQuery === 'string') {
+      setSearchQuery(state.restoreSearchQuery)
+      shouldClearLocationState = true
+    }
+
+    if ('restoreSelectedCategoryId' in state) {
+      setSelectedCategory(
+        typeof state.restoreSelectedCategoryId === 'string' ? state.restoreSelectedCategoryId : null
+      )
+      shouldClearLocationState = true
+    }
+
+    if (!shouldClearLocationState) return
+
     navigate(
       {
         pathname: location.pathname,
@@ -97,7 +125,7 @@ export default function SeriesPage() {
       },
       { replace: true, state: null }
     )
-  }, [location.hash, location.pathname, location.search, location.state, navigate])
+  }, [location.hash, location.pathname, location.search, location.state, navigate, setSelectedCategory])
 
   useEffect(() => {
     if (!pendingRestoreSeries) return
@@ -110,8 +138,16 @@ export default function SeriesPage() {
   }, [setChannelFilter])
 
   useEffect(() => {
+    const previousSourceId = previousSourceIdRef.current
+    previousSourceIdRef.current = activeSourceId
+
+    if (previousSourceId === null) return
+    if (previousSourceId === activeSourceId) return
+
+    setSearchQuery('')
     setSelectedCategory(null)
     setSelectedSeries(null)
+    setPendingRestoreSeries(null)
     setLoadError(null)
     setForegroundLoadingMessage(null)
     setIsForegroundLoading(false)
@@ -337,7 +373,7 @@ export default function SeriesPage() {
   }, [])
 
   const handlePlayEpisode = useCallback(
-    (url: string, title: string) => {
+    (url: string, title: string, seasonNumber?: number) => {
       const episodeChannel = {
         id: `ep_${Date.now()}`,
         name: title,
@@ -351,11 +387,22 @@ export default function SeriesPage() {
       openPlayerFromRoute({
         location,
         navigate,
-        returnState: selectedSeries ? { restoreSelectedSeries: selectedSeries } : undefined,
+        returnState: {
+          restoreSearchQuery: searchQuery,
+          restoreSelectedCategoryId: selectedCategoryId,
+          ...(selectedSeries
+            ? {
+                restoreSelectedSeries: {
+                  ...selectedSeries,
+                  seasonNumber: seasonNumber ?? selectedSeries.seasonNumber
+                }
+              }
+            : {})
+        },
         setPlayerReturnTarget
       })
     },
-    [location, navigate, playChannel, selectedSeries, setMiniPlayer, setPlayerReturnTarget]
+    [location, navigate, playChannel, searchQuery, selectedCategoryId, selectedSeries, setMiniPlayer, setPlayerReturnTarget]
   )
 
   if (selectedSeries) {
@@ -365,7 +412,13 @@ export default function SeriesPage() {
           <SeriesDetail
             seriesId={selectedSeries.seriesId}
             sourceId={selectedSeries.sourceId}
+            initialSeasonNumber={selectedSeries.seasonNumber}
             onBack={() => setSelectedSeries(null)}
+            onSeasonChange={(seasonNumber) =>
+              setSelectedSeries((current) =>
+                current ? { ...current, seasonNumber } : current
+              )
+            }
             onPlayEpisode={handlePlayEpisode}
           />
         </div>
@@ -380,7 +433,7 @@ export default function SeriesPage() {
       </div>
       <div className="panel-glass flex-1 overflow-y-auto rounded-2xl p-5">
         <div className="mb-5">
-          <ChannelSearch onSearch={setSearchQuery} />
+          <ChannelSearch value={searchQuery} onSearch={setSearchQuery} />
         </div>
 
         {isPreviewMode && !loadError && (

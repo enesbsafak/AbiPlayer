@@ -16,11 +16,20 @@ import type { SeriesDetail as SeriesDetailType } from '@/types/playlist'
 interface SeriesDetailProps {
   seriesId: number
   sourceId: string
+  initialSeasonNumber?: number
   onBack: () => void
-  onPlayEpisode: (url: string, title: string) => void
+  onSeasonChange?: (seasonNumber: number) => void
+  onPlayEpisode: (url: string, title: string, seasonNumber?: number) => void
 }
 
-export function SeriesDetail({ seriesId, sourceId, onBack, onPlayEpisode }: SeriesDetailProps) {
+export function SeriesDetail({
+  seriesId,
+  sourceId,
+  initialSeasonNumber,
+  onBack,
+  onSeasonChange,
+  onPlayEpisode
+}: SeriesDetailProps) {
   const [detail, setDetail] = useState<SeriesDetailType | null>(null)
   const [selectedSeason, setSelectedSeason] = useState<number>(1)
   const [tmdbTvId, setTmdbTvId] = useState<number | null>(null)
@@ -124,7 +133,15 @@ export function SeriesDetail({ seriesId, sourceId, onBack, onPlayEpisode }: Seri
         if (cancelled) return
         setDetail(nextDetail)
 
-        if (seasons.length > 0) setSelectedSeason(seasons[0].seasonNumber)
+        if (seasons.length > 0) {
+          const preferredSeasonNumber =
+            typeof initialSeasonNumber === 'number' &&
+            seasons.some((season) => season.seasonNumber === initialSeasonNumber)
+              ? initialSeasonNumber
+              : seasons[0].seasonNumber
+
+          setSelectedSeason(preferredSeasonNumber)
+        }
       } catch (err) {
         if (!cancelled) console.error('Failed to load series info:', err)
       } finally {
@@ -135,7 +152,20 @@ export function SeriesDetail({ seriesId, sourceId, onBack, onPlayEpisode }: Seri
     return () => {
       cancelled = true
     }
-  }, [seriesId, sourceId, getXtreamCredentials, settings.tmdbApiKey, settings.language])
+  }, [getXtreamCredentials, initialSeasonNumber, seriesId, settings.language, settings.tmdbApiKey, sourceId])
+
+  useEffect(() => {
+    if (!detail) return
+    if (typeof initialSeasonNumber !== 'number') return
+    if (!detail.seasons.some((season) => season.seasonNumber === initialSeasonNumber)) return
+    if (selectedSeason === initialSeasonNumber) return
+    setSelectedSeason(initialSeasonNumber)
+  }, [detail, initialSeasonNumber, selectedSeason])
+
+  useEffect(() => {
+    if (!detail) return
+    onSeasonChange?.(selectedSeason)
+  }, [detail, onSeasonChange, selectedSeason])
 
   useEffect(() => {
     let cancelled = false
@@ -253,7 +283,13 @@ export function SeriesDetail({ seriesId, sourceId, onBack, onPlayEpisode }: Seri
           <div
             key={ep.id}
             className="flex items-center gap-4 rounded-lg border border-surface-800 bg-surface-900 p-3 hover:border-surface-600 transition-colors cursor-pointer"
-            onClick={() => onPlayEpisode(ep.streamUrl, `${detail.name} - S${ep.season}E${ep.episodeNum} - ${ep.title}`)}
+            onClick={() =>
+              onPlayEpisode(
+                ep.streamUrl,
+                `${detail.name} - S${ep.season}E${ep.episodeNum} - ${ep.title}`,
+                ep.season
+              )
+            }
           >
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-800">
               <Play size={16} className="text-accent" fill="currentColor" />
