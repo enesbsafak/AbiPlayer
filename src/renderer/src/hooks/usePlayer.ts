@@ -3,6 +3,12 @@ import Hls from 'hls.js'
 import { useStore } from '@/store'
 import type { AudioTrack, SubtitleCue, SubtitleTrack } from '@/types/player'
 import { extractEmbeddedSubtitle, probeEmbeddedSubtitles } from '@/services/platform'
+import {
+  AUTO_VIDEO_QUALITY_ID,
+  buildVideoQualityOptions,
+  getActiveVideoQualityId,
+  getVideoQualityLevelIndex
+} from '@/services/quality'
 import { parseSubtitles } from '@/services/subtitle-parser'
 import {
   pickPreferredAudioTrackId,
@@ -58,10 +64,11 @@ export function usePlayer(
   const subtitlePreferenceAppliedRef = useRef(false)
 
   const {
-    currentChannel, volume, isMuted, currentAudioTrack, currentSubtitleTrack, settings,
+    currentChannel, volume, isMuted, currentAudioTrack, currentSubtitleTrack, currentVideoQuality, settings,
     setPlaying, setPaused, setBuffering, setCurrentTime, setDuration,
     setPlayerError, setAudioTracks, setCurrentAudioTrack,
-    setSubtitleTracks, setCurrentSubtitleTrack, setSubtitleCues,
+    setSubtitleTracks, setCurrentSubtitleTrack, setVideoQualityOptions,
+    setCurrentVideoQuality, setActiveVideoQuality, setSubtitleCues,
     subtitleCues, setActiveSubtitleCues, setVolume, setMuted
   } = useStore()
 
@@ -383,6 +390,28 @@ export function usePlayer(
       }
     }
 
+    const refreshVideoQualities = (hls: Hls | null) => {
+      const nextOptions = hls ? buildVideoQualityOptions(hls.levels) : []
+      setVideoQualityOptions(nextOptions)
+
+      const selectedQuality = useStore.getState().currentVideoQuality
+      const normalizedSelectedQuality =
+        nextOptions.length === 0
+          ? null
+          : selectedQuality && nextOptions.some((option) => option.id === selectedQuality)
+            ? selectedQuality
+            : AUTO_VIDEO_QUALITY_ID
+
+      if (selectedQuality !== normalizedSelectedQuality) {
+        setCurrentVideoQuality(normalizedSelectedQuality)
+      }
+
+      const activeQuality = hls ? getActiveVideoQualityId(hls.currentLevel) : null
+      if (useStore.getState().activeVideoQuality !== activeQuality) {
+        setActiveVideoQuality(activeQuality)
+      }
+    }
+
     const syncCurrentHlsSubtitleSelection = () => {
       const selectedTrack = useStore.getState().currentSubtitleTrack
       if (!selectedTrack || !selectedTrack.startsWith(HLS_TRACK_PREFIX)) return
@@ -428,6 +457,10 @@ export function usePlayer(
     video.addEventListener('loadeddata', handleMediaTracksMaybeReady)
     video.addEventListener('canplay', handleMediaTracksMaybeReady)
 
+    setVideoQualityOptions([])
+    setCurrentVideoQuality(null)
+    setActiveVideoQuality(null)
+
     if (isHLS || isTS) {
       if (Hls.isSupported()) {
         const hls = new Hls({
@@ -449,10 +482,19 @@ export function usePlayer(
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           video.play().catch(() => {})
+          refreshVideoQualities(hls)
           refreshAudioTracks(hls)
           refreshSubtitleTracks(hls)
           attachCueListeners(video)
           syncCurrentHlsSubtitleSelection()
+        })
+
+        hls.on(Hls.Events.LEVELS_UPDATED, () => {
+          refreshVideoQualities(hls)
+        })
+
+        hls.on(Hls.Events.LEVEL_SWITCHED, () => {
+          refreshVideoQualities(hls)
         })
 
         hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
@@ -510,6 +552,9 @@ export function usePlayer(
         video.addEventListener(
           'loadedmetadata',
           () => {
+            setVideoQualityOptions([])
+            setCurrentVideoQuality(null)
+            setActiveVideoQuality(null)
             refreshAudioTracks(null)
             refreshSubtitleTracks(null)
             attachCueListeners(video)
@@ -520,6 +565,9 @@ export function usePlayer(
     } else {
       const startDirectPlayback = () => {
         // Direct playback (mp4, mkv, etc)
+        setVideoQualityOptions([])
+        setCurrentVideoQuality(null)
+        setActiveVideoQuality(null)
         video.src = url
         video.play().catch(() => {})
 
@@ -591,6 +639,9 @@ export function usePlayer(
     setPlayerError,
     setSubtitleCues,
     setSubtitleTracks,
+    setVideoQualityOptions,
+    setCurrentVideoQuality,
+    setActiveVideoQuality,
     disabled
   ])
 
@@ -649,6 +700,27 @@ export function usePlayer(
       else setNativeAudioTrack(video, legacyTrackId)
     }
   }, [currentAudioTrack, videoRef, disabled])
+
+  // Video quality switching via HLS.js
+  useEffect(() => {
+    if (disabled) return
+    const hls = hlsRef.current
+    if (!hls || !currentVideoQuality) return
+
+    if (currentVideoQuality === AUTO_VIDEO_QUALITY_ID) {
+      if (!hls.autoLevelEnabled || hls.nextLevel !== -1) {
+        hls.nextLevel = -1
+      }
+      return
+    }
+
+    const levelIndex = getVideoQualityLevelIndex(currentVideoQuality)
+    if (levelIndex === null || !hls.levels[levelIndex]) return
+
+    if (hls.autoLevelEnabled || hls.nextLevel !== levelIndex) {
+      hls.nextLevel = levelIndex
+    }
+  }, [currentVideoQuality, disabled])
 
   // Subtitle track switching via HLS.js/native tracks
   useEffect(() => {

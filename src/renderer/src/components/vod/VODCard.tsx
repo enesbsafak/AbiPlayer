@@ -1,7 +1,8 @@
 import { memo } from 'react'
 import { Play, Star } from 'lucide-react'
 import { LazyImage } from '@/components/ui/LazyImage'
-import { ClampText } from '@/components/ui'
+import { ClampText, QualityBadge } from '@/components/ui'
+import { inferContentQualityLabel } from '@/services/quality'
 import type { Channel } from '@/types/playlist'
 
 interface VODCardProps {
@@ -16,6 +17,7 @@ export const VODCard = memo(function VODCard({
   eagerImage = false
 }: VODCardProps) {
   const artwork = item.coverUrl || item.logo
+  const qualityLabel = inferContentQualityLabel(item)
 
   return (
     <div
@@ -28,6 +30,11 @@ export const VODCard = memo(function VODCard({
         <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-all group-hover:bg-black/35">
           <Play size={36} className="opacity-0 transition-opacity group-hover:opacity-100" fill="white" color="white" />
         </div>
+        {qualityLabel && (
+          <div className="absolute left-2 top-2">
+            <QualityBadge label={qualityLabel} />
+          </div>
+        )}
         {item.rating && (
           <div className="absolute right-2 top-2 flex items-center gap-1 rounded-full border border-amber-300/45 bg-black/65 px-2 py-0.5">
             <Star size={10} className="fill-amber-300 text-amber-300" />

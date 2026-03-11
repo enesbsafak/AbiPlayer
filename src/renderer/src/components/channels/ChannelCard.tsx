@@ -1,7 +1,8 @@
 import { memo } from 'react'
 import { Star, Play, Radio } from 'lucide-react'
 import { LazyImage } from '@/components/ui/LazyImage'
-import { ClampText } from '@/components/ui'
+import { ClampText, QualityBadge } from '@/components/ui'
+import { inferContentQualityLabel } from '@/services/quality'
 import { useStore } from '@/store'
 import type { Channel } from '@/types/playlist'
 
@@ -20,6 +21,7 @@ export const ChannelCard = memo(function ChannelCard({
   const toggleFavorite = useStore((s) => s.toggleFavorite)
   const fav = isFavorite(channel.id)
   const artwork = channel.logo || channel.coverUrl
+  const qualityLabel = inferContentQualityLabel(channel)
 
   return (
     <div
@@ -52,6 +54,11 @@ export const ChannelCard = memo(function ChannelCard({
           <div className="absolute left-2 top-2 flex items-center gap-1 rounded-md border border-red-300/30 bg-red-600/80 px-2 py-0.5 text-[10px] font-semibold text-white">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
             Canli
+          </div>
+        )}
+        {qualityLabel && (
+          <div className="absolute right-2 top-2">
+            <QualityBadge label={qualityLabel} />
           </div>
         )}
       </div>

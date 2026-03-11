@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand'
-import type { AudioTrack, SubtitleTrack, SubtitleCue } from '@/types/player'
+import type { AudioTrack, SubtitleTrack, SubtitleCue, VideoQualityOption } from '@/types/player'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 
@@ -20,6 +20,9 @@ export interface PlayerSlice {
   currentAudioTrack: string | null
   subtitleTracks: SubtitleTrack[]
   currentSubtitleTrack: string | null
+  videoQualityOptions: VideoQualityOption[]
+  currentVideoQuality: string | null
+  activeVideoQuality: string | null
   subtitleCues: SubtitleCue[]
   activeSubtitleCues: SubtitleCue[]
   showControls: boolean
@@ -41,6 +44,9 @@ export interface PlayerSlice {
   setCurrentAudioTrack: (id: string | null) => void
   setSubtitleTracks: (tracks: SubtitleTrack[]) => void
   setCurrentSubtitleTrack: (id: string | null) => void
+  setVideoQualityOptions: (options: VideoQualityOption[]) => void
+  setCurrentVideoQuality: (id: string | null) => void
+  setActiveVideoQuality: (id: string | null) => void
   setSubtitleCues: (cues: SubtitleCue[]) => void
   setActiveSubtitleCues: (cues: SubtitleCue[]) => void
   setShowControls: (show: boolean) => void
@@ -64,6 +70,9 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
   currentAudioTrack: null,
   subtitleTracks: [],
   currentSubtitleTrack: null,
+  videoQualityOptions: [],
+  currentVideoQuality: null,
+  activeVideoQuality: null,
   subtitleCues: [],
   activeSubtitleCues: [],
   showControls: true,
@@ -96,6 +105,9 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
         currentAudioTrack: null,
         subtitleTracks: [],
         currentSubtitleTrack: null,
+        videoQualityOptions: [],
+        currentVideoQuality: null,
+        activeVideoQuality: null,
         subtitleCues: [],
         activeSubtitleCues: []
       }
@@ -114,6 +126,9 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
       currentAudioTrack: null,
       subtitleTracks: [],
       currentSubtitleTrack: null,
+      videoQualityOptions: [],
+      currentVideoQuality: null,
+      activeVideoQuality: null,
       subtitleCues: [],
       activeSubtitleCues: []
     }),
@@ -132,6 +147,9 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
   setCurrentAudioTrack: (id) => set({ currentAudioTrack: id }),
   setSubtitleTracks: (tracks) => set({ subtitleTracks: tracks }),
   setCurrentSubtitleTrack: (id) => set({ currentSubtitleTrack: id }),
+  setVideoQualityOptions: (options) => set({ videoQualityOptions: options }),
+  setCurrentVideoQuality: (id) => set({ currentVideoQuality: id }),
+  setActiveVideoQuality: (id) => set({ activeVideoQuality: id }),
   setSubtitleCues: (cues) => set({ subtitleCues: cues }),
   setActiveSubtitleCues: (cues) => set({ activeSubtitleCues: cues }),
   setShowControls: (show) => set({ showControls: show }),

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useStore } from '@/store'
 import { AudioTrackSelector } from './AudioTrackSelector'
+import { QualitySelector } from './QualitySelector'
 import { SubtitleSelector } from './SubtitleSelector'
 import { isPlayableChannel } from '@/services/playback'
 import { navigateToPlayerReturnTarget } from '@/services/player-navigation'
@@ -264,6 +265,7 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
           <button onClick={() => void exitPlayer()} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title="Durdur ve cik">
             <X size={18} />
           </button>
+          <QualitySelector />
           <AudioTrackSelector />
           <SubtitleSelector />
           {playbackEngine !== 'mpv' && (

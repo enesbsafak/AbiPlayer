@@ -93,6 +93,9 @@ export function useMpvPlayer(enabled: boolean) {
     setCurrentAudioTrack,
     setSubtitleTracks,
     setCurrentSubtitleTrack,
+    setVideoQualityOptions,
+    setCurrentVideoQuality,
+    setActiveVideoQuality,
     setSubtitleCues,
     setActiveSubtitleCues,
     setVolume,
@@ -144,6 +147,9 @@ export function useMpvPlayer(enabled: boolean) {
         setSubtitleTracks([])
         setCurrentAudioTrack(null)
         setCurrentSubtitleTrack(null)
+        setVideoQualityOptions([])
+        setCurrentVideoQuality(null)
+        setActiveVideoQuality(null)
         setSubtitleCues([])
         setActiveSubtitleCues([])
         setPlaying(false)
@@ -196,6 +202,9 @@ export function useMpvPlayer(enabled: boolean) {
     setBuffering,
     setCurrentAudioTrack,
     setCurrentSubtitleTrack,
+    setVideoQualityOptions,
+    setCurrentVideoQuality,
+    setActiveVideoQuality,
     setCurrentTime,
     setDuration,
     setMuted,

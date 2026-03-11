@@ -21,6 +21,15 @@ export interface SubtitleCue {
   style?: SubtitleStyle
 }
 
+export interface VideoQualityOption {
+  id: string
+  label: string
+  shortLabel: string
+  bitrate?: number
+  height?: number
+  auto?: boolean
+}
+
 export interface SubtitleStyle {
   color?: string
   fontSize?: string
@@ -48,5 +57,8 @@ export interface PlayerState {
   currentAudioTrack: string | null
   subtitleTracks: SubtitleTrack[]
   currentSubtitleTrack: string | null
+  videoQualityOptions: VideoQualityOption[]
+  currentVideoQuality: string | null
+  activeVideoQuality: string | null
   subtitleCues: SubtitleCue[]
 }

@@ -9,7 +9,9 @@ import {
 } from '@/services/tmdb-api'
 import { LazyImage } from '@/components/ui/LazyImage'
 import { Button } from '@/components/ui/Button'
+import { QualityBadge } from '@/components/ui/QualityBadge'
 import { Spinner } from '@/components/ui/Spinner'
+import { inferContentQualityLabel } from '@/services/quality'
 import type { Channel } from '@/types/playlist'
 
 interface VODDetailProps {
@@ -128,6 +130,7 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
   if (loading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>
 
   const detail = info!
+  const qualityLabel = inferContentQualityLabel(item)
 
   return (
     <div className="flex flex-col gap-6">
@@ -143,6 +146,7 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
           <h1 className="text-2xl font-bold">{detail.name}</h1>
 
           <div className="flex flex-wrap gap-3 text-xs text-surface-400">
+            {qualityLabel && <QualityBadge label={qualityLabel} className="border-surface-600/60 bg-surface-900/75" />}
             {detail.rating && (
               <span className="flex items-center gap-1">
                 <Star size={12} className="fill-yellow-400 text-yellow-400" />

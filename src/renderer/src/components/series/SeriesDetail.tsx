@@ -10,7 +10,9 @@ import {
 } from '@/services/tmdb-api'
 import { LazyImage } from '@/components/ui/LazyImage'
 import { Button } from '@/components/ui/Button'
+import { QualityBadge } from '@/components/ui/QualityBadge'
 import { Spinner } from '@/components/ui/Spinner'
+import { inferContentQualityLabel } from '@/services/quality'
 import type { SeriesDetail as SeriesDetailType } from '@/types/playlist'
 
 interface SeriesDetailProps {
@@ -280,28 +282,39 @@ export function SeriesDetail({
 
       <div className="flex flex-col gap-2">
         {episodes.map((ep) => (
-          <div
-            key={ep.id}
-            className="flex items-center gap-4 rounded-lg border border-surface-800 bg-surface-900 p-3 hover:border-surface-600 transition-colors cursor-pointer"
-            onClick={() =>
-              onPlayEpisode(
-                ep.streamUrl,
-                `${detail.name} - S${ep.season}E${ep.episodeNum} - ${ep.title}`,
-                ep.season
-              )
-            }
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-800">
-              <Play size={16} className="text-accent" fill="currentColor" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium">
-                E{ep.episodeNum}. {ep.title}
-              </p>
-              {ep.plot && <p className="text-xs text-surface-500 truncate">{ep.plot}</p>}
-            </div>
-            {ep.duration && <span className="text-xs text-surface-500 shrink-0">{ep.duration}</span>}
-          </div>
+          (() => {
+            const qualityLabel = inferContentQualityLabel(ep)
+
+            return (
+              <div
+                key={ep.id}
+                className="flex items-center gap-4 rounded-lg border border-surface-800 bg-surface-900 p-3 hover:border-surface-600 transition-colors cursor-pointer"
+                onClick={() =>
+                  onPlayEpisode(
+                    ep.streamUrl,
+                    `${detail.name} - S${ep.season}E${ep.episodeNum} - ${ep.title}`,
+                    ep.season
+                  )
+                }
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-800">
+                  <Play size={16} className="text-accent" fill="currentColor" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="min-w-0 text-sm font-medium truncate">
+                      E{ep.episodeNum}. {ep.title}
+                    </p>
+                    {qualityLabel && (
+                      <QualityBadge label={qualityLabel} className="shrink-0 border-surface-600/60 bg-surface-800/80" />
+                    )}
+                  </div>
+                  {ep.plot && <p className="text-xs text-surface-500 truncate">{ep.plot}</p>}
+                </div>
+                {ep.duration && <span className="text-xs text-surface-500 shrink-0">{ep.duration}</span>}
+              </div>
+            )
+          })()
         ))}
       </div>
     </div>
