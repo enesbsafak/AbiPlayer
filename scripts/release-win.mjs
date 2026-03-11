@@ -6,10 +6,25 @@ import { readFile, stat } from 'fs/promises'
 import { basename, join, resolve } from 'path'
 
 const LEGAL_NOTE = [
-  'Legal Note',
-  'Abi Player is only a player. It does not provide, sell, distribute, or host content.',
-  'Users are responsible for the legal compliance of the sources they use.'
+  'Yasal Not',
+  'Abi Player yalnızca bir oynatıcıdır; içerik sağlamaz, satmaz, dağıtmaz veya barındırmaz.',
+  'Kullanılan kaynakların yasal uygunluğundan kullanıcı sorumludur.'
 ].join('\n')
+
+const COMMIT_TRANSLATIONS = [
+  [/player/gi, 'oynatıcı'],
+  [/catalog/gi, 'katalog'],
+  [/loading/gi, 'yükleme'],
+  [/\bux\b/gi, 'kullanıcı deneyimi'],
+  [/\bui\b/gi, 'arayüz'],
+  [/image(s)?/gi, (_, plural) => (plural ? 'görseller' : 'görsel')],
+  [/category/gi, 'kategori'],
+  [/categories/gi, 'kategoriler'],
+  [/\bmpv\b/gi, 'MPV'],
+  [/spinner/gi, 'yükleniyor göstergesi'],
+  [/release notes?/gi, 'release notları'],
+  [/update(s)?/gi, (_, plural) => (plural ? 'güncellemeler' : 'güncelleme')]
+]
 
 function parseArgs(argv) {
   const options = {
@@ -241,29 +256,105 @@ function collectRecentCommitSubjects(currentTag) {
     .filter((line) => !line.toLowerCase().startsWith('release:'))
 }
 
+function normalizeReleaseText(text) {
+  return text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').normalize('NFC').trim()
+}
+
+function splitConventionalCommit(subject) {
+  const match = subject.match(/^(?<type>[a-z]+)(?:\([^)]+\))?!?:\s*(?<rest>.+)$/i)
+  if (!match?.groups) {
+    return { type: 'other', rest: subject.trim() }
+  }
+
+  return {
+    type: match.groups.type.toLowerCase(),
+    rest: match.groups.rest.trim()
+  }
+}
+
+function replaceCommitTerms(text) {
+  return COMMIT_TRANSLATIONS.reduce((current, [pattern, replacement]) => {
+    return current.replace(pattern, replacement)
+  }, text)
+}
+
+function capitalizeSentence(text) {
+  if (!text) return text
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+function humanizeCommitSubject(subject) {
+  const { type, rest } = splitConventionalCommit(subject)
+  const translated = replaceCommitTerms(
+    rest
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  )
+
+  if (!translated) return null
+
+  if (/^improve\s+/i.test(rest)) {
+    return capitalizeSentence(translated.replace(/^improve\s+/i, '').trim()) + ' iyileştirildi'
+  }
+
+  if (/^add\s+/i.test(rest)) {
+    return capitalizeSentence(translated.replace(/^add\s+/i, '').trim()) + ' eklendi'
+  }
+
+  if (/^fix\s+/i.test(rest)) {
+    return capitalizeSentence(translated.replace(/^fix\s+/i, '').trim()) + ' düzeltildi'
+  }
+
+  if (/^update\s+/i.test(rest)) {
+    return capitalizeSentence(translated.replace(/^update\s+/i, '').trim()) + ' güncellendi'
+  }
+
+  if (/^support\s+/i.test(rest)) {
+    return capitalizeSentence(translated.replace(/^support\s+/i, '').trim()) + ' desteği eklendi'
+  }
+
+  if (type === 'feat') {
+    return capitalizeSentence(translated)
+  }
+
+  if (type === 'fix') {
+    return capitalizeSentence(translated) + ' düzeltildi'
+  }
+
+  if (type === 'perf' || type === 'refactor') {
+    return capitalizeSentence(translated) + ' iyileştirildi'
+  }
+
+  return capitalizeSentence(translated)
+}
+
 function ensureLegalNote(notes) {
   if (/legal note/i.test(notes) || /yasal not/i.test(notes)) {
     return notes
   }
 
-  return `${notes.trim()}\n\n${LEGAL_NOTE}\n`
+  return `${normalizeReleaseText(notes)}\n\n${LEGAL_NOTE}\n`
 }
 
 function buildDefaultNotes(version, currentTag) {
   const subjects = collectRecentCommitSubjects(currentTag)
   const bulletLines =
     subjects.length > 0
-      ? subjects.map((subject) => `- ${subject}`)
-      : ['- Packaging and update metadata refreshed for this Windows release']
+      ? subjects
+          .map((subject) => humanizeCommitSubject(subject))
+          .filter(Boolean)
+          .map((subject) => `- ${subject}`)
+      : ['- Bu Windows sürümü için kurulum paketi ve güncelleme meta verileri yenilendi']
 
   const sections = [
-    `Abi Player ${version} release.`,
+    `Abi Player ${version} sürümü hazır.`,
     '',
-    'Highlights',
+    'Öne Çıkanlar',
     ...bulletLines,
     '',
-    'Notes',
-    '- This release includes the Windows installer, blockmap, and latest.yml update feed metadata'
+    'Notlar',
+    '- Bu release, Windows kurulum dosyasını, blockmap dosyasını ve latest.yml güncelleme bilgisini içerir.'
   ]
 
   return ensureLegalNote(sections.join('\n'))
@@ -276,11 +367,12 @@ async function loadReleaseNotes(version, tag, notesFile) {
 
   const notesPath = resolve(process.cwd(), notesFile)
   const content = await readFile(notesPath, 'utf8')
-  if (!content.trim()) {
+  const normalizedContent = normalizeReleaseText(content)
+  if (!normalizedContent) {
     throw new Error(`Release notes file is empty: ${notesPath}`)
   }
 
-  return ensureLegalNote(content)
+  return ensureLegalNote(normalizedContent)
 }
 
 async function githubRequest(url, token, options = {}) {

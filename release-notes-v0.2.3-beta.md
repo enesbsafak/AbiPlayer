@@ -1,29 +1,29 @@
 Abi Player v0.2.3-beta (Public Beta)
 
-Bu surum oynatici acilis deneyimi, liste gecisleri ve gorsel okunabilirligi tarafinda iyilestirmeler icerir.
+Bu sürüm, oynatıcı açılışı, liste geçişleri ve görsel okunabilirliği tarafında önemli iyileştirmeler içerir.
 
-One Cikanlar
-- MPV acilisinda gorunen bos ekran yerine loading spinner
-- Live, VOD ve Series sayfalarinda kategori degisirken listenin tamamen bosalmamasi
-- Ilk satirdaki afis ve logo gorsellerinde daha hizli yukleme davranisi
-- Gecici gorsel hatalarinda daha toleransli retry/caching akisi
-- Uzun kategori ve icerik adlarinda iki satir gosterim ve tam ad icin tooltip
+Öne Çıkanlar
+- MPV açılışında görünen boş ekran yerine yükleniyor göstergesi
+- Live, VOD ve Series sayfalarında kategori değişirken listenin tamamen boşalmaması
+- İlk satırdaki afiş ve logo görsellerinde daha hızlı yükleme davranışı
+- Geçici görsel hatalarında daha toleranslı retry ve cache akışı
+- Uzun kategori ve içerik adlarında iki satır gösterim ve tam ad için tooltip
 
-Arayuz ve Deneyim
-- Xtream preview gorunumlerinde arka planda tam liste senkronizasyonu
-- Preview modunun aktif oldugu durumlarda daha acik bilgi bannerlari
-- Kanal, film ve dizi kartlarinda okunabilirlik iyilestirmeleri
-- Player acilisinda daha temiz ve daha kontrollu gecis deneyimi
+Arayüz ve Deneyim
+- Xtream preview görünümlerinde arka planda tam liste senkronizasyonu
+- Preview modunun aktif olduğu durumlarda daha açık bilgi bannerları
+- Kanal, film ve dizi kartlarında okunabilirlik iyileştirmeleri
+- Oynatıcı açılışında daha temiz ve daha kontrollü geçiş deneyimi
 
 Teknik ve Stabilite
-- MPV startup overlay davranisi testlerle guvence altina alindi
-- Liste retention akislari ile sayfa gecislerinde ani bos ekran hissi azaltildi
-- Gorsel yukleme mantiginda oturum ici kalici hata kilitlenmeleri yumusatildi
+- MPV startup overlay davranışı testlerle güvence altına alındı
+- Liste retention akışları ile sayfa geçişlerinde ani boş ekran hissi azaltıldı
+- Görsel yükleme mantığında oturum içi kalıcı hata kilitlenmeleri yumuşatıldı
 
-Bilinen Kisitlar
-- Bazi saglayicilarda ilk tam liste senkronizasyonu hala zaman alabilir
-- Saglayici API ve CDN kalitesine bagli olarak poster/logo gecikmeleri devam edebilir
-- Public beta oldugu icin edge-case oynatma ve metadata hatalari gorulebilir
+Bilinen Kısıtlar
+- Bazı sağlayıcılarda ilk tam liste senkronizasyonu hâlâ zaman alabilir
+- Sağlayıcı API ve CDN kalitesine bağlı olarak poster ve logo gecikmeleri devam edebilir
+- Public beta olduğu için edge-case oynatma ve metadata hataları görülebilir
 
 Yasal Not
-Abi Player yalnizca bir oynaticidir; icerik saglamaz, satmaz, dagitmaz veya barindirmez. Kullanilan kaynaklarin yasal uygunlugundan kullanici sorumludur.
+Abi Player yalnızca bir oynatıcıdır; içerik sağlamaz, satmaz, dağıtmaz veya barındırmaz. Kullanılan kaynakların yasal uygunluğundan kullanıcı sorumludur.
