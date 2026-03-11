@@ -3,6 +3,7 @@ import type { VideoQualityOption } from '@/types/player'
 
 export const AUTO_VIDEO_QUALITY_ID = 'auto'
 export const HLS_VIDEO_QUALITY_PREFIX = 'hls-v:'
+export const MPV_VIDEO_QUALITY_PREFIX = 'mpv-v:'
 
 interface QualityMetadataSource {
   name?: string
@@ -89,10 +90,21 @@ export function getVideoQualityId(levelIndex: number): string {
   return `${HLS_VIDEO_QUALITY_PREFIX}${levelIndex}`
 }
 
+export function getMpvVideoQualityId(trackId: number): string {
+  return `${MPV_VIDEO_QUALITY_PREFIX}${trackId}`
+}
+
 export function getVideoQualityLevelIndex(qualityId: string | null | undefined): number | null {
   if (!qualityId?.startsWith(HLS_VIDEO_QUALITY_PREFIX)) return null
 
   const parsed = Number.parseInt(qualityId.replace(HLS_VIDEO_QUALITY_PREFIX, ''), 10)
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+export function getMpvVideoTrackId(qualityId: string | null | undefined): number | null {
+  if (!qualityId?.startsWith(MPV_VIDEO_QUALITY_PREFIX)) return null
+
+  const parsed = Number.parseInt(qualityId.replace(MPV_VIDEO_QUALITY_PREFIX, ''), 10)
   return Number.isNaN(parsed) ? null : parsed
 }
 
@@ -127,7 +139,39 @@ export function buildVideoQualityOptions(levels: VideoLevelLike[]): VideoQuality
   ]
 }
 
+export function buildMpvVideoQualityOptions(
+  tracks: Array<VideoLevelLike & { id: number }>
+): VideoQualityOption[] {
+  if (tracks.length === 0) return []
+
+  return [
+    {
+      id: AUTO_VIDEO_QUALITY_ID,
+      label: 'Otomatik',
+      shortLabel: 'Oto',
+      auto: true
+    },
+    ...tracks.map((track) => {
+      const shortLabel = formatVideoQualityLabel(track)
+      const bitrateLabel = formatBitrate(track.bitrate)
+
+      return {
+        id: getMpvVideoQualityId(track.id),
+        label: bitrateLabel ? `${shortLabel} · ${bitrateLabel}` : shortLabel,
+        shortLabel,
+        bitrate: track.bitrate,
+        height: track.height
+      }
+    })
+  ]
+}
+
 export function getActiveVideoQualityId(levelIndex: number | null | undefined): string | null {
   if (typeof levelIndex !== 'number' || levelIndex < 0) return null
   return getVideoQualityId(levelIndex)
+}
+
+export function getActiveMpvVideoQualityId(trackId: number | null | undefined): string | null {
+  if (typeof trackId !== 'number' || trackId < 0) return null
+  return getMpvVideoQualityId(trackId)
 }

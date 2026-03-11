@@ -9,11 +9,18 @@ import {
   mpvSetMute,
   mpvSetSubtitleStyle,
   mpvSetSubtitleTrack,
+  mpvSetVideoTrack,
   mpvSetVolume,
   mpvStop,
   windowIsFullscreen,
   type MpvTrackInfo
 } from '@/services/platform'
+import {
+  AUTO_VIDEO_QUALITY_ID,
+  buildMpvVideoQualityOptions,
+  getActiveMpvVideoQualityId,
+  getMpvVideoTrackId
+} from '@/services/quality'
 import {
   pickPreferredAudioTrackId,
   pickPreferredSubtitleTrackId
@@ -66,6 +73,11 @@ function mapSubtitleTracks(tracks: MpvTrackInfo[]): SubtitleTrack[] {
     }))
 }
 
+function getSelectedVideoTrackId(snapshot: MpvStateSnapshot): number | null {
+  const selectedTrack = snapshot.tracks.find((track) => track.type === 'video' && track.selected)
+  return selectedTrack?.id ?? snapshot.vid
+}
+
 export function useMpvPlayer(enabled: boolean) {
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioPreferenceAppliedRef = useRef(false)
@@ -78,6 +90,7 @@ export function useMpvPlayer(enabled: boolean) {
     currentChannel,
     currentAudioTrack,
     currentSubtitleTrack,
+    currentVideoQuality,
     settings,
     volume,
     isMuted,
@@ -290,6 +303,30 @@ export function useMpvPlayer(enabled: boolean) {
       } else if (selectedSubtitleTrack && currentStoreSubtitleTrack === null) {
         setCurrentSubtitleTrack(selectedSubtitleTrack)
       }
+
+      const videoTracks = snapshot.tracks.filter((track) => track.type === 'video')
+      const nextVideoQualityOptions = buildMpvVideoQualityOptions(videoTracks)
+      setVideoQualityOptions(nextVideoQualityOptions)
+
+      const activeVideoQuality = getActiveMpvVideoQualityId(getSelectedVideoTrackId(snapshot))
+      if (useStore.getState().activeVideoQuality !== activeVideoQuality) {
+        setActiveVideoQuality(activeVideoQuality)
+      }
+
+      const currentStoreVideoQuality = useStore.getState().currentVideoQuality
+      if (nextVideoQualityOptions.length === 0) {
+        if (currentStoreVideoQuality !== null) {
+          setCurrentVideoQuality(null)
+        }
+      } else if (
+        currentStoreVideoQuality === null ||
+        (
+          currentStoreVideoQuality !== AUTO_VIDEO_QUALITY_ID &&
+          !nextVideoQualityOptions.some((option) => option.id === currentStoreVideoQuality)
+        )
+      ) {
+        setCurrentVideoQuality(AUTO_VIDEO_QUALITY_ID)
+      }
     }
 
     void poll()
@@ -309,13 +346,16 @@ export function useMpvPlayer(enabled: boolean) {
     setBuffering,
     setCurrentAudioTrack,
     setCurrentSubtitleTrack,
+    setCurrentVideoQuality,
     setCurrentTime,
     setDuration,
     setFullscreen,
     setPaused,
     setPlayerError,
     setPlaying,
-    setSubtitleTracks
+    setSubtitleTracks,
+    setVideoQualityOptions,
+    setActiveVideoQuality
   ])
 
   useEffect(() => {
@@ -343,6 +383,19 @@ export function useMpvPlayer(enabled: boolean) {
     if (Number.isNaN(rawId)) return
     void mpvSetAudioTrack(rawId).catch(() => undefined)
   }, [enabled, currentAudioTrack])
+
+  useEffect(() => {
+    if (!enabled || currentVideoQuality === null) return
+
+    if (currentVideoQuality === AUTO_VIDEO_QUALITY_ID) {
+      void mpvSetVideoTrack(null).catch(() => undefined)
+      return
+    }
+
+    const rawId = getMpvVideoTrackId(currentVideoQuality)
+    if (rawId === null) return
+    void mpvSetVideoTrack(rawId).catch(() => undefined)
+  }, [enabled, currentVideoQuality])
 
   useEffect(() => {
     if (!enabled) return

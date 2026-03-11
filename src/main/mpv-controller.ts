@@ -32,10 +32,13 @@ export interface MpvSubtitleStyle {
 
 export interface MpvTrackInfo {
   id: number
-  type: 'audio' | 'sub'
+  type: 'audio' | 'sub' | 'video'
   title?: string
   lang?: string
   codec?: string
+  bitrate?: number
+  width?: number
+  height?: number
   selected: boolean
   external: boolean
 }
@@ -49,6 +52,7 @@ export interface MpvStateSnapshot {
   duration: number
   volume: number
   muted: boolean
+  vid: number | null
   aid: number | null
   sid: number | null
   fullscreen: boolean
@@ -89,9 +93,14 @@ function toBoolean(value: unknown, fallback = false): boolean {
   return fallback
 }
 
-function normalizeTrackType(value: unknown): 'audio' | 'sub' | null {
-  if (value === 'audio' || value === 'sub') return value
+function normalizeTrackType(value: unknown): 'audio' | 'sub' | 'video' | null {
+  if (value === 'audio' || value === 'sub' || value === 'video') return value
   return null
+}
+
+function toPositiveNumber(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined
+  return value
 }
 
 export class MpvController {
@@ -121,6 +130,7 @@ export class MpvController {
     duration: 0,
     volume: 80,
     muted: false,
+    vid: null,
     aid: null,
     sid: null,
     fullscreen: false,
@@ -194,6 +204,7 @@ export class MpvController {
     this.state.duration = 0
     this.state.buffering = false
     this.state.tracks = []
+    this.state.vid = null
     this.state.aid = null
     this.state.sid = null
   }
@@ -243,6 +254,13 @@ export class MpvController {
     const aid = trackId === null ? 'auto' : trackId
     await this.command(['set_property', 'aid', aid])
     this.state.aid = trackId
+  }
+
+  async setVideoTrack(trackId: number | null): Promise<void> {
+    if (!this.process) return
+    const vid = trackId === null ? 'auto' : trackId
+    await this.command(['set_property', 'vid', vid])
+    this.state.vid = trackId
   }
 
   async setSubtitleTrack(trackId: number | null): Promise<void> {
@@ -314,6 +332,7 @@ export class MpvController {
   private async refreshTrackState(): Promise<void> {
     const results = await Promise.allSettled([
       this.command(['get_property', 'track-list']),
+      this.command(['get_property', 'vid']),
       this.command(['get_property', 'aid']),
       this.command(['get_property', 'sid']),
       this.command(['get_property', 'volume']),
@@ -322,13 +341,15 @@ export class MpvController {
     ])
 
     const trackList = results[0].status === 'fulfilled' ? results[0].value : undefined
-    const aid = results[1].status === 'fulfilled' ? results[1].value : undefined
-    const sid = results[2].status === 'fulfilled' ? results[2].value : undefined
-    const volume = results[3].status === 'fulfilled' ? results[3].value : undefined
-    const muted = results[4].status === 'fulfilled' ? results[4].value : undefined
-    const path = results[5].status === 'fulfilled' ? results[5].value : undefined
+    const vid = results[1].status === 'fulfilled' ? results[1].value : undefined
+    const aid = results[2].status === 'fulfilled' ? results[2].value : undefined
+    const sid = results[3].status === 'fulfilled' ? results[3].value : undefined
+    const volume = results[4].status === 'fulfilled' ? results[4].value : undefined
+    const muted = results[5].status === 'fulfilled' ? results[5].value : undefined
+    const path = results[6].status === 'fulfilled' ? results[6].value : undefined
 
     this.state.tracks = this.normalizeTracks(trackList)
+    this.state.vid = typeof vid === 'number' && Number.isInteger(vid) ? vid : null
     this.state.aid = typeof aid === 'number' && Number.isInteger(aid) ? aid : null
     this.state.sid = typeof sid === 'number' && Number.isInteger(sid) ? sid : null
     this.state.volume = Math.max(0, Math.min(100, toNumber(volume, this.state.volume)))
@@ -349,6 +370,9 @@ export class MpvController {
 
       const id = Number(track.id)
       if (!Number.isInteger(id) || id <= 0) continue
+      if (type === 'video' && (toBoolean(track.image, false) || toBoolean(track.albumart, false))) {
+        continue
+      }
 
       tracks.push({
         id,
@@ -356,6 +380,9 @@ export class MpvController {
         title: typeof track.title === 'string' ? track.title : undefined,
         lang: typeof track.lang === 'string' ? track.lang : undefined,
         codec: typeof track.codec === 'string' ? track.codec : undefined,
+        bitrate: toPositiveNumber(track['hls-bitrate']) ?? toPositiveNumber(track.bitrate),
+        width: toPositiveNumber(track['demux-w']) ?? toPositiveNumber(track.w),
+        height: toPositiveNumber(track['demux-h']) ?? toPositiveNumber(track.h),
         selected: toBoolean(track.selected, false),
         external: toBoolean(track.external, false)
       })
@@ -452,14 +479,15 @@ export class MpvController {
       this.command(['observe_property', 1001, 'pause']),
       this.command(['observe_property', 1002, 'time-pos']),
       this.command(['observe_property', 1003, 'duration']),
-      this.command(['observe_property', 1004, 'aid']),
-      this.command(['observe_property', 1005, 'sid']),
-      this.command(['observe_property', 1006, 'track-list']),
-      this.command(['observe_property', 1007, 'demuxer-cache-state']),
-      this.command(['observe_property', 1008, 'volume']),
-      this.command(['observe_property', 1009, 'mute']),
-      this.command(['observe_property', 1010, 'path']),
-      this.command(['observe_property', 1011, 'fullscreen'])
+      this.command(['observe_property', 1004, 'vid']),
+      this.command(['observe_property', 1005, 'aid']),
+      this.command(['observe_property', 1006, 'sid']),
+      this.command(['observe_property', 1007, 'track-list']),
+      this.command(['observe_property', 1008, 'demuxer-cache-state']),
+      this.command(['observe_property', 1009, 'volume']),
+      this.command(['observe_property', 1010, 'mute']),
+      this.command(['observe_property', 1011, 'path']),
+      this.command(['observe_property', 1012, 'fullscreen'])
     ])
 
     await this.applySubtitleStyle().catch(() => undefined)
@@ -610,6 +638,10 @@ export class MpvController {
         break
       case 'duration':
         this.state.duration = toNumber(message.data, this.state.duration)
+        break
+      case 'vid':
+        this.state.vid =
+          typeof message.data === 'number' && Number.isInteger(message.data) ? message.data : null
         break
       case 'aid':
         this.state.aid =

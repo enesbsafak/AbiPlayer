@@ -16,10 +16,13 @@ export interface EmbeddedSubtitleExtractionResult {
 
 export interface MpvTrackInfo {
   id: number
-  type: 'audio' | 'sub'
+  type: 'audio' | 'sub' | 'video'
   title?: string
   lang?: string
   codec?: string
+  bitrate?: number
+  width?: number
+  height?: number
   selected: boolean
   external: boolean
 }
@@ -33,6 +36,7 @@ export interface MpvStateSnapshot {
   duration: number
   volume: number
   muted: boolean
+  vid: number | null
   aid: number | null
   sid: number | null
   fullscreen: boolean
@@ -125,6 +129,11 @@ export async function mpvSetVolume(normalizedVolume: number): Promise<void> {
 export async function mpvSetMute(muted: boolean): Promise<void> {
   if (!isElectron() || !window.electron?.mpvSetMute) return
   await window.electron.mpvSetMute(muted)
+}
+
+export async function mpvSetVideoTrack(trackId: number | null): Promise<void> {
+  if (!isElectron() || !window.electron?.mpvSetVideoTrack) return
+  await window.electron.mpvSetVideoTrack(trackId)
 }
 
 export async function mpvSetAudioTrack(trackId: number | null): Promise<void> {

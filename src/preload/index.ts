@@ -15,10 +15,13 @@ type EmbeddedSubtitleExtractionResult = {
 }
 type MpvTrackInfo = {
   id: number
-  type: 'audio' | 'sub'
+  type: 'audio' | 'sub' | 'video'
   title?: string
   lang?: string
   codec?: string
+  bitrate?: number
+  width?: number
+  height?: number
   selected: boolean
   external: boolean
 }
@@ -31,6 +34,7 @@ type MpvStateSnapshot = {
   duration: number
   volume: number
   muted: boolean
+  vid: number | null
   aid: number | null
   sid: number | null
   fullscreen: boolean
@@ -82,6 +86,8 @@ const api = {
   mpvSetVolume: (normalizedVolume: number) =>
     ipcRenderer.invoke('mpv-set-volume', normalizedVolume) as Promise<void>,
   mpvSetMute: (muted: boolean) => ipcRenderer.invoke('mpv-set-mute', muted) as Promise<void>,
+  mpvSetVideoTrack: (trackId: number | null) =>
+    ipcRenderer.invoke('mpv-set-video-track', trackId) as Promise<void>,
   mpvSetAudioTrack: (trackId: number | null) =>
     ipcRenderer.invoke('mpv-set-audio-track', trackId) as Promise<void>,
   mpvSetSubtitleTrack: (trackId: number | null) =>

@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   AUTO_VIDEO_QUALITY_ID,
+  buildMpvVideoQualityOptions,
   buildVideoQualityOptions,
+  getActiveMpvVideoQualityId,
   getActiveVideoQualityId,
+  getMpvVideoQualityId,
+  getMpvVideoTrackId,
   getVideoQualityId,
   getVideoQualityLevelIndex,
   inferContentQualityLabel
@@ -57,10 +61,40 @@ describe('quality', () => {
     ])
   })
 
-  it('converts between active level ids and hls level indices', () => {
+  it('builds mpv quality options from video track metadata', () => {
+    const options = buildMpvVideoQualityOptions([
+      { id: 4, height: 2160, width: 3840, bitrate: 15_000_000, name: 'UHD' },
+      { id: 2, height: 1080, bitrate: 5_000_000 }
+    ])
+
+    expect(options).toEqual([
+      { id: AUTO_VIDEO_QUALITY_ID, label: 'Otomatik', shortLabel: 'Oto', auto: true },
+      {
+        id: getMpvVideoQualityId(4),
+        label: '4K · 15 Mbps',
+        shortLabel: '4K',
+        bitrate: 15_000_000,
+        height: 2160
+      },
+      {
+        id: getMpvVideoQualityId(2),
+        label: '1080p · 5.0 Mbps',
+        shortLabel: '1080p',
+        bitrate: 5_000_000,
+        height: 1080
+      }
+    ])
+  })
+
+  it('converts between active quality ids and hls/mpv identifiers', () => {
     expect(getActiveVideoQualityId(2)).toBe(getVideoQualityId(2))
     expect(getActiveVideoQualityId(-1)).toBeNull()
     expect(getVideoQualityLevelIndex(getVideoQualityId(4))).toBe(4)
     expect(getVideoQualityLevelIndex('auto')).toBeNull()
+
+    expect(getActiveMpvVideoQualityId(6)).toBe(getMpvVideoQualityId(6))
+    expect(getActiveMpvVideoQualityId(null)).toBeNull()
+    expect(getMpvVideoTrackId(getMpvVideoQualityId(3))).toBe(3)
+    expect(getMpvVideoTrackId('auto')).toBeNull()
   })
 })

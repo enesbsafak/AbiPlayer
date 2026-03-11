@@ -12,6 +12,7 @@ function createSnapshot(overrides: Partial<MpvStateSnapshot> = {}): MpvStateSnap
     duration: 0,
     volume: 80,
     muted: false,
+    vid: null,
     aid: null,
     sid: null,
     fullscreen: false,

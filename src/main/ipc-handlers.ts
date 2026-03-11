@@ -583,6 +583,11 @@ export function registerIpcHandlers(): void {
     await mpvController.setAudioTrack(trackId)
   })
 
+  ipcMain.handle('mpv-set-video-track', async (_, trackId: unknown): Promise<void> => {
+    if (!isValidMpvTrackId(trackId)) throw new Error('Gecersiz goruntu kalite kimligi')
+    await mpvController.setVideoTrack(trackId)
+  })
+
   ipcMain.handle('mpv-set-subtitle-track', async (_, trackId: unknown): Promise<void> => {
     if (!isValidMpvTrackId(trackId)) throw new Error('Gecersiz altyazi kanal kimligi')
     await mpvController.setSubtitleTrack(trackId)

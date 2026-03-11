@@ -26,6 +26,7 @@ declare global {
       mpvSeekTo: (seconds: number) => Promise<void>
       mpvSetVolume: (normalizedVolume: number) => Promise<void>
       mpvSetMute: (muted: boolean) => Promise<void>
+      mpvSetVideoTrack: (trackId: number | null) => Promise<void>
       mpvSetAudioTrack: (trackId: number | null) => Promise<void>
       mpvSetSubtitleTrack: (trackId: number | null) => Promise<void>
       mpvAddSubtitleFile: (filePath: string) => Promise<number | null>
@@ -44,15 +45,19 @@ declare global {
         duration: number
         volume: number
         muted: boolean
+        vid: number | null
         aid: number | null
         sid: number | null
         fullscreen: boolean
         tracks: Array<{
           id: number
-          type: 'audio' | 'sub'
+          type: 'audio' | 'sub' | 'video'
           title?: string
           lang?: string
           codec?: string
+          bitrate?: number
+          width?: number
+          height?: number
           selected: boolean
           external: boolean
         }>
