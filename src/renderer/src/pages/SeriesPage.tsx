@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
+import { buildCatalogRetainResetKey } from '@/services/catalog-view'
 
 const loadedSeriesCategoryCache = new Set<string>()
 const loadedSeriesPreviewSourceCache = new Set<string>()
@@ -85,6 +86,10 @@ export default function SeriesPage() {
       ? selectedCategoryId.replace(seriesPrefix, '')
       : null
   }, [activeSourceId, selectedCategoryId])
+  const retainResetKey = useMemo(
+    () => buildCatalogRetainResetKey(activeSourceId, selectedCategoryId),
+    [activeSourceId, selectedCategoryId]
+  )
 
   useEffect(() => {
     const state = location.state as SeriesRouteState | null
@@ -179,9 +184,10 @@ export default function SeriesPage() {
     if (!creds) return
 
     let cancelled = false
+    const controller = new AbortController()
     const load = async () => {
       try {
-        const cats = await xtreamApi.getSeriesCategories(creds)
+        const cats = await xtreamApi.getSeriesCategories(creds, { signal: controller.signal })
         if (cancelled) return
         addCategories(xtreamApi.categoriesToApp(cats, activeSourceId, 'series'))
       } catch (err) {
@@ -193,6 +199,7 @@ export default function SeriesPage() {
     void load()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [activeSourceId, source, categories, getXtreamCredentials, addCategories])
 
@@ -219,13 +226,16 @@ export default function SeriesPage() {
     }
 
     let cancelled = false
+    const controller = new AbortController()
     const load = async () => {
       setLoadError(null)
       setForegroundLoadingMessage('Secili kategori yukleniyor...')
       setIsForegroundLoading(true)
 
       try {
-        const series = await xtreamApi.getSeries(creds, rawCategoryId)
+        const series = await xtreamApi.getSeries(creds, rawCategoryId, {
+          signal: controller.signal
+        })
         if (cancelled) return
         addChannels(xtreamApi.seriesToChannels(series, activeSourceId))
         loadedCatsRef.current.add(cacheKey)
@@ -244,6 +254,7 @@ export default function SeriesPage() {
     void load()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [
     activeSourceId,
@@ -256,13 +267,14 @@ export default function SeriesPage() {
   ])
 
   useEffect(() => {
-    if (!activeSourceId || rawCategoryId) return
+    if (!activeSourceId || rawCategoryId || selectedSeries) return
     if (!source || source.type !== 'xtream') return
 
     const creds = getXtreamCredentials(activeSourceId)
     if (!creds) return
 
     let cancelled = false
+    const controller = new AbortController()
 
     const syncSource = async () => {
       if (hydratedSourceIds[activeSourceId]) {
@@ -281,7 +293,9 @@ export default function SeriesPage() {
         setIsForegroundLoading(true)
 
         try {
-          const previewSeries = await xtreamApi.getSeriesPreviewStreams(creds, 500)
+          const previewSeries = await xtreamApi.getSeriesPreviewStreams(creds, 500, {
+            signal: controller.signal
+          })
           if (cancelled) return
           addChannels(xtreamApi.seriesToChannels(previewSeries, activeSourceId))
           loadedSeriesPreviewSourceCache.add(activeSourceId)
@@ -308,7 +322,9 @@ export default function SeriesPage() {
       if (!cancelled) setIsBackgroundSyncing(true)
 
       try {
-        const allSeries = await xtreamApi.getSeries(creds)
+        const allSeries = await xtreamApi.getSeries(creds, undefined, {
+          signal: controller.signal
+        })
         if (cancelled) return
         addChannels(xtreamApi.seriesToChannels(allSeries, activeSourceId))
         loadedSeriesFullSourceCache.add(activeSourceId)
@@ -329,10 +345,12 @@ export default function SeriesPage() {
     void syncSource()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [
     activeSourceId,
     rawCategoryId,
+    selectedSeries,
     source,
     channels,
     hydratedSourceIds,
@@ -357,7 +375,7 @@ export default function SeriesPage() {
 
     return list
   }, [channels, activeSourceId, channelFilter, selectedCategoryId, searchQuery])
-  const displayedItems = useRetainedListWhileLoading(filtered, isForegroundLoading, activeSourceId)
+  const displayedItems = useRetainedListWhileLoading(filtered, isForegroundLoading, retainResetKey)
   const isPreviewMode =
     !rawCategoryId &&
     source?.type === 'xtream' &&

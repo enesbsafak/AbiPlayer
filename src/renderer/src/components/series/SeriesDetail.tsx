@@ -42,6 +42,7 @@ export function SeriesDetail({
 
   useEffect(() => {
     let cancelled = false
+    const controller = new AbortController()
     hydratedSeasonsRef.current.clear()
     const load = async () => {
       setLoading(true)
@@ -54,7 +55,7 @@ export function SeriesDetail({
       }
 
       try {
-        const info = await xtreamApi.getSeriesInfo(creds, seriesId)
+        const info = await xtreamApi.getSeriesInfo(creds, seriesId, { signal: controller.signal })
         if (cancelled) return
         const seasons = info.seasons?.map((s) => ({
           seasonNumber: s.season_number,
@@ -153,6 +154,7 @@ export function SeriesDetail({
     void load()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [getXtreamCredentials, initialSeasonNumber, seriesId, settings.language, settings.tmdbApiKey, sourceId])
 

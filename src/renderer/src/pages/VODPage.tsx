@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
+import { buildCatalogRetainResetKey } from '@/services/catalog-view'
 
 const loadedVodCategoryCache = new Set<string>()
 const loadedVodPreviewSourceCache = new Set<string>()
@@ -79,6 +80,10 @@ export default function VODPage() {
       ? selectedCategoryId.replace(vodPrefix, '')
       : null
   }, [activeSourceId, selectedCategoryId])
+  const retainResetKey = useMemo(
+    () => buildCatalogRetainResetKey(activeSourceId, selectedCategoryId),
+    [activeSourceId, selectedCategoryId]
+  )
 
   useEffect(() => {
     const state = location.state as VODRouteState | null
@@ -173,9 +178,10 @@ export default function VODPage() {
     if (!creds) return
 
     let cancelled = false
+    const controller = new AbortController()
     const load = async () => {
       try {
-        const cats = await xtreamApi.getVodCategories(creds)
+        const cats = await xtreamApi.getVodCategories(creds, { signal: controller.signal })
         if (cancelled) return
         addCategories(xtreamApi.categoriesToApp(cats, activeSourceId, 'vod'))
       } catch (err) {
@@ -187,6 +193,7 @@ export default function VODPage() {
     void load()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [activeSourceId, source, categories, getXtreamCredentials, addCategories])
 
@@ -213,13 +220,16 @@ export default function VODPage() {
     }
 
     let cancelled = false
+    const controller = new AbortController()
     const load = async () => {
       setLoadError(null)
       setForegroundLoadingMessage('Secili kategori yukleniyor...')
       setIsForegroundLoading(true)
 
       try {
-        const streams = await xtreamApi.getVodStreams(creds, rawCategoryId)
+        const streams = await xtreamApi.getVodStreams(creds, rawCategoryId, {
+          signal: controller.signal
+        })
         if (cancelled) return
         addChannels(xtreamApi.vodStreamsToChannels(streams, creds, activeSourceId))
         loadedCatsRef.current.add(cacheKey)
@@ -238,6 +248,7 @@ export default function VODPage() {
     void load()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [
     activeSourceId,
@@ -257,6 +268,7 @@ export default function VODPage() {
     if (!creds) return
 
     let cancelled = false
+    const controller = new AbortController()
 
     const syncSource = async () => {
       if (hydratedSourceIds[activeSourceId]) {
@@ -275,7 +287,9 @@ export default function VODPage() {
         setIsForegroundLoading(true)
 
         try {
-          const previewStreams = await xtreamApi.getVodPreviewStreams(creds, 500)
+          const previewStreams = await xtreamApi.getVodPreviewStreams(creds, 500, {
+            signal: controller.signal
+          })
           if (cancelled) return
           addChannels(xtreamApi.vodStreamsToChannels(previewStreams, creds, activeSourceId))
           loadedVodPreviewSourceCache.add(activeSourceId)
@@ -302,7 +316,9 @@ export default function VODPage() {
       if (!cancelled) setIsBackgroundSyncing(true)
 
       try {
-        const allStreams = await xtreamApi.getVodStreams(creds)
+        const allStreams = await xtreamApi.getVodStreams(creds, undefined, {
+          signal: controller.signal
+        })
         if (cancelled) return
         addChannels(xtreamApi.vodStreamsToChannels(allStreams, creds, activeSourceId))
         loadedVodFullSourceCache.add(activeSourceId)
@@ -323,6 +339,7 @@ export default function VODPage() {
     void syncSource()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [
     activeSourceId,
@@ -351,7 +368,7 @@ export default function VODPage() {
 
     return list
   }, [channels, activeSourceId, channelFilter, selectedCategoryId, searchQuery])
-  const displayedItems = useRetainedListWhileLoading(filtered, isForegroundLoading, activeSourceId)
+  const displayedItems = useRetainedListWhileLoading(filtered, isForegroundLoading, retainResetKey)
   const isPreviewMode =
     !rawCategoryId &&
     source?.type === 'xtream' &&

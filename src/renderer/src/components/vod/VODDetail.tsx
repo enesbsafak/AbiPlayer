@@ -41,6 +41,7 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
 
   useEffect(() => {
     let cancelled = false
+    const controller = new AbortController()
     const load = async () => {
       setLoading(true)
       setInfo(null)
@@ -61,7 +62,7 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
 
       try {
         if (creds && item.streamId) {
-          const vodInfo = await xtreamApi.getVodInfo(creds, item.streamId)
+          const vodInfo = await xtreamApi.getVodInfo(creds, item.streamId, { signal: controller.signal })
           if (cancelled) return
           tmdbId = vodInfo.info?.tmdb_id
           baseInfo = {
@@ -124,6 +125,7 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
     void load()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [item, getXtreamCredentials, settings.tmdbApiKey, settings.language])
 

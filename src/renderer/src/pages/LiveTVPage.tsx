@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
+import { buildCatalogRetainResetKey } from '@/services/catalog-view'
 
 const loadedLiveCategoryCache = new Set<string>()
 const loadedLivePreviewSourceCache = new Set<string>()
@@ -75,6 +76,10 @@ export default function LiveTVPage() {
       ? selectedCategoryId.replace(livePrefix, '')
       : null
   }, [activeSourceId, selectedCategoryId])
+  const retainResetKey = useMemo(
+    () => buildCatalogRetainResetKey(activeSourceId, selectedCategoryId),
+    [activeSourceId, selectedCategoryId]
+  )
 
   useEffect(() => {
     const state = location.state as LiveTVRouteState | null
@@ -150,9 +155,10 @@ export default function LiveTVPage() {
     if (!creds) return
 
     let cancelled = false
+    const controller = new AbortController()
     const load = async () => {
       try {
-        const cats = await xtreamApi.getLiveCategories(creds)
+        const cats = await xtreamApi.getLiveCategories(creds, { signal: controller.signal })
         if (cancelled) return
         addCategories(xtreamApi.categoriesToApp(cats, activeSourceId, 'live'))
       } catch (err) {
@@ -164,6 +170,7 @@ export default function LiveTVPage() {
     void load()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [activeSourceId, source, categories, getXtreamCredentials, addCategories])
 
@@ -190,13 +197,16 @@ export default function LiveTVPage() {
     }
 
     let cancelled = false
+    const controller = new AbortController()
     const load = async () => {
       setLoadError(null)
       setForegroundLoadingMessage('Secili kategori yukleniyor...')
       setIsForegroundLoading(true)
 
       try {
-        const streams = await xtreamApi.getLiveStreams(creds, rawCategoryId)
+        const streams = await xtreamApi.getLiveStreams(creds, rawCategoryId, {
+          signal: controller.signal
+        })
         if (cancelled) return
         addChannels(xtreamApi.liveStreamsToChannels(streams, creds, activeSourceId))
         loadedCatsRef.current.add(cacheKey)
@@ -215,6 +225,7 @@ export default function LiveTVPage() {
     void load()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [
     activeSourceId,
@@ -234,6 +245,7 @@ export default function LiveTVPage() {
     if (!creds) return
 
     let cancelled = false
+    const controller = new AbortController()
 
     const syncSource = async () => {
       if (hydratedSourceIds[activeSourceId]) {
@@ -252,7 +264,9 @@ export default function LiveTVPage() {
         setIsForegroundLoading(true)
 
         try {
-          const previewStreams = await xtreamApi.getLivePreviewStreams(creds, 500)
+          const previewStreams = await xtreamApi.getLivePreviewStreams(creds, 500, {
+            signal: controller.signal
+          })
           if (cancelled) return
           addChannels(xtreamApi.liveStreamsToChannels(previewStreams, creds, activeSourceId))
           loadedLivePreviewSourceCache.add(activeSourceId)
@@ -279,7 +293,9 @@ export default function LiveTVPage() {
       if (!cancelled) setIsBackgroundSyncing(true)
 
       try {
-        const allStreams = await xtreamApi.getLiveStreams(creds)
+        const allStreams = await xtreamApi.getLiveStreams(creds, undefined, {
+          signal: controller.signal
+        })
         if (cancelled) return
         addChannels(xtreamApi.liveStreamsToChannels(allStreams, creds, activeSourceId))
         loadedLiveFullSourceCache.add(activeSourceId)
@@ -300,6 +316,7 @@ export default function LiveTVPage() {
     void syncSource()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [
     activeSourceId,
@@ -328,7 +345,7 @@ export default function LiveTVPage() {
 
     return list
   }, [channels, activeSourceId, channelFilter, selectedCategoryId, searchQuery])
-  const displayedChannels = useRetainedListWhileLoading(filtered, isForegroundLoading, activeSourceId)
+  const displayedChannels = useRetainedListWhileLoading(filtered, isForegroundLoading, retainResetKey)
   const isPreviewMode =
     !rawCategoryId &&
     source?.type === 'xtream' &&

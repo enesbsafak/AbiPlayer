@@ -62,6 +62,10 @@ export default function HomePage() {
 
     bootstrapAttemptedRef.current.add(activeSourceId)
     let cancelled = false
+    const controller = new AbortController()
+    const isCancelledRequest = (error: unknown) =>
+      cancelled || (error instanceof Error && error.message === 'Istek iptal edildi')
+
     const bootstrap = async () => {
       setBootstrapError(null)
       setIsBootstrappingSource(true)
@@ -69,9 +73,9 @@ export default function HomePage() {
       setPlaylistLoading(true)
       try {
         const [liveCats, vodCats, seriesCats] = await Promise.all([
-          xtreamApi.getLiveCategories(creds).catch(() => []),
-          xtreamApi.getVodCategories(creds).catch(() => []),
-          xtreamApi.getSeriesCategories(creds).catch(() => [])
+          xtreamApi.getLiveCategories(creds, { signal: controller.signal }).catch(() => []),
+          xtreamApi.getVodCategories(creds, { signal: controller.signal }).catch(() => []),
+          xtreamApi.getSeriesCategories(creds, { signal: controller.signal }).catch(() => [])
         ])
         if (cancelled) return
         addCategories([
@@ -84,14 +88,26 @@ export default function HomePage() {
 
         // Full catalog scan once per source; keep results in-memory until app closes.
         const livePromise = xtreamApi
-          .getLiveStreams(creds)
-          .catch(() => xtreamApi.getLivePreviewStreams(creds, 2000))
+          .getLiveStreams(creds, undefined, { signal: controller.signal })
+          .catch((error) =>
+            isCancelledRequest(error)
+              ? Promise.reject(error)
+              : xtreamApi.getLivePreviewStreams(creds, 2000, { signal: controller.signal })
+          )
         const vodPromise = xtreamApi
-          .getVodStreams(creds)
-          .catch(() => xtreamApi.getVodPreviewStreams(creds, 1500))
+          .getVodStreams(creds, undefined, { signal: controller.signal })
+          .catch((error) =>
+            isCancelledRequest(error)
+              ? Promise.reject(error)
+              : xtreamApi.getVodPreviewStreams(creds, 1500, { signal: controller.signal })
+          )
         const seriesPromise = xtreamApi
-          .getSeries(creds)
-          .catch(() => xtreamApi.getSeriesPreviewStreams(creds, 1500))
+          .getSeries(creds, undefined, { signal: controller.signal })
+          .catch((error) =>
+            isCancelledRequest(error)
+              ? Promise.reject(error)
+              : xtreamApi.getSeriesPreviewStreams(creds, 1500, { signal: controller.signal })
+          )
         const [live, vod, series] = await Promise.all([livePromise, vodPromise, seriesPromise])
         if (cancelled) return
 
@@ -116,6 +132,7 @@ export default function HomePage() {
     void bootstrap()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [
     activeSourceId,
