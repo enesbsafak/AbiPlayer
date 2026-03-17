@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { createHashRouter, RouterProvider } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
+import { ErrorBoundary } from '@/components/layout/ErrorBoundary'
 import { Spinner } from '@/components/ui/Spinner'
 
 const HomePage = lazy(() => import('@/pages/HomePage'))
@@ -40,5 +41,9 @@ const router = createHashRouter([
 ])
 
 export function AppRouter() {
-  return <RouterProvider router={router} />
+  return (
+    <ErrorBoundary>
+      <RouterProvider router={router} />
+    </ErrorBoundary>
+  )
 }

@@ -8,6 +8,31 @@ const XTREAM_REQUEST_CANCELLED_MESSAGE = 'Istek iptal edildi'
 
 const requestCache = new Map<string, { expiresAt: number; data: unknown }>()
 const inflightRequests = new Map<string, Promise<unknown>>()
+const CACHE_MAX_SIZE = 500
+const CACHE_CLEANUP_INTERVAL_MS = 60_000
+
+let cacheCleanupTimer: ReturnType<typeof setInterval> | null = null
+
+function ensureCacheCleanup(): void {
+  if (cacheCleanupTimer) return
+  cacheCleanupTimer = setInterval(() => {
+    const now = Date.now()
+    for (const [key, entry] of requestCache) {
+      if (entry.expiresAt <= now) requestCache.delete(key)
+    }
+    if (requestCache.size === 0) {
+      clearInterval(cacheCleanupTimer!)
+      cacheCleanupTimer = null
+    }
+  }, CACHE_CLEANUP_INTERVAL_MS)
+}
+
+function evictCacheIfNeeded(): void {
+  if (requestCache.size <= CACHE_MAX_SIZE) return
+  const entries = [...requestCache.entries()].sort((a, b) => a[1].expiresAt - b[1].expiresAt)
+  const toRemove = entries.slice(0, requestCache.size - CACHE_MAX_SIZE)
+  for (const [key] of toRemove) requestCache.delete(key)
+}
 
 interface XtreamRequestOptions {
   bypassCache?: boolean
@@ -143,6 +168,8 @@ async function fetchJSON<T>(
         const data = JSON.parse(body) as T
         if (!bypassCache && cacheTtlMs > 0) {
           requestCache.set(url, { data, expiresAt: Date.now() + cacheTtlMs })
+          evictCacheIfNeeded()
+          ensureCacheCleanup()
         }
         return data
       } catch {

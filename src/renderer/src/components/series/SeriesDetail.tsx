@@ -37,6 +37,7 @@ export function SeriesDetail({
   const [tmdbTvId, setTmdbTvId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const hydratedSeasonsRef = useRef(new Set<number>())
+  const appliedInitialSeasonRef = useRef<number | undefined>(undefined)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const settings = useStore((s) => s.settings)
 
@@ -44,6 +45,7 @@ export function SeriesDetail({
     let cancelled = false
     const controller = new AbortController()
     hydratedSeasonsRef.current.clear()
+    appliedInitialSeasonRef.current = undefined
     const load = async () => {
       setLoading(true)
       setDetail(null)
@@ -162,9 +164,10 @@ export function SeriesDetail({
     if (!detail) return
     if (typeof initialSeasonNumber !== 'number') return
     if (!detail.seasons.some((season) => season.seasonNumber === initialSeasonNumber)) return
-    if (selectedSeason === initialSeasonNumber) return
+    if (appliedInitialSeasonRef.current === initialSeasonNumber) return
+    appliedInitialSeasonRef.current = initialSeasonNumber
     setSelectedSeason(initialSeasonNumber)
-  }, [detail, initialSeasonNumber, selectedSeason])
+  }, [detail, initialSeasonNumber])
 
   useEffect(() => {
     if (!detail) return

@@ -723,11 +723,22 @@ export class MpvController {
     }
 
     if (this.process) {
-      this.process.removeAllListeners()
-      if (!this.process.killed) {
-        this.process.kill('SIGKILL')
-      }
+      const proc = this.process
       this.process = null
+      proc.removeAllListeners()
+      if (!proc.killed) {
+        proc.kill('SIGTERM')
+        await new Promise<void>((resolve) => {
+          const forceTimer = setTimeout(() => {
+            if (!proc.killed) proc.kill('SIGKILL')
+            resolve()
+          }, 2000)
+          proc.on('close', () => {
+            clearTimeout(forceTimer)
+            resolve()
+          })
+        })
+      }
     }
 
     if (this.socketPath && process.platform !== 'win32') {
