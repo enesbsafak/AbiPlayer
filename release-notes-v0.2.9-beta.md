@@ -1,7 +1,8 @@
-Abi Player v0.2.8-beta sürümü hazır.
+Abi Player v0.2.9-beta sürümü hazır.
 
 Öne Çıkanlar
 - Dizi sezon geçişi düzeltildi: sezonlar arası geçişte seçimin geri alınma hatası giderildi
+- Dizi detay ekranında UI donma sorunu giderildi: sonsuz render döngüsü düzeltildi, sidebar ve menü artık sorunsuz çalışıyor
 - Uygulama geneline Error Boundary eklendi: beklenmeyen hatalarda beyaz ekran yerine bilgilendirici ekran gösterilir
 - MPV oynatıcı kapanış süreci iyileştirildi: önce nazik kapanış, sonra zorunlu sonlandırma
 - Xtream API istek önbelleği artık otomatik temizlenir: uzun kullanımda bellek taşması riski giderildi
