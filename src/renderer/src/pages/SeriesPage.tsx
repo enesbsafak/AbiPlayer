@@ -384,6 +384,14 @@ export default function SeriesPage() {
   const showBlockingLoader = isForegroundLoading && displayedItems.length === 0
   const showInlineLoader = isForegroundLoading && displayedItems.length > 0
 
+  const handleSeasonChange = useCallback((seasonNumber: number) => {
+    setSelectedSeries((current) => {
+      if (!current) return current
+      if (current.seasonNumber === seasonNumber) return current
+      return { ...current, seasonNumber }
+    })
+  }, [])
+
   const handleSeriesClick = useCallback((item: Channel) => {
     if (item.seriesId) {
       setSelectedSeries({ seriesId: item.seriesId, sourceId: item.sourceId })
@@ -432,11 +440,7 @@ export default function SeriesPage() {
             sourceId={selectedSeries.sourceId}
             initialSeasonNumber={selectedSeries.seasonNumber}
             onBack={() => setSelectedSeries(null)}
-            onSeasonChange={(seasonNumber) =>
-              setSelectedSeries((current) =>
-                current ? { ...current, seasonNumber } : current
-              )
-            }
+            onSeasonChange={handleSeasonChange}
             onPlayEpisode={handlePlayEpisode}
           />
         </div>

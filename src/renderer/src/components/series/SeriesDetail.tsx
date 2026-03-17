@@ -169,8 +169,11 @@ export function SeriesDetail({
     setSelectedSeason(initialSeasonNumber)
   }, [detail, initialSeasonNumber])
 
+  const seasonChangeRef = useRef(selectedSeason)
   useEffect(() => {
     if (!detail) return
+    if (seasonChangeRef.current === selectedSeason) return
+    seasonChangeRef.current = selectedSeason
     onSeasonChange?.(selectedSeason)
   }, [detail, onSeasonChange, selectedSeason])
 
