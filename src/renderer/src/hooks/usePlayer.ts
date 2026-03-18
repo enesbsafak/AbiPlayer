@@ -654,20 +654,19 @@ export function usePlayer(
     video.muted = isMuted
   }, [volume, isMuted, videoRef, disabled])
 
-  // Apply configured default volume when a new channel starts
+  // Re-apply persisted volume when a new channel starts
   useEffect(() => {
     if (disabled) return
     if (!currentChannel) return
-    const nextVolume = Math.min(1, Math.max(0, settings.defaultVolume))
-    setVolume(nextVolume)
-    setMuted(false)
+    const { volume: storeVolume, isMuted: storeMuted } = useStore.getState()
+    const v = Math.min(1, Math.max(0, storeVolume))
 
     const video = videoRef.current
     if (video) {
-      video.volume = nextVolume
-      video.muted = false
+      video.volume = v
+      video.muted = storeMuted
     }
-  }, [currentChannel, settings.defaultVolume, setMuted, setVolume, videoRef, disabled])
+  }, [currentChannel, videoRef, disabled])
 
   // Audio track switching
   useEffect(() => {

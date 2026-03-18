@@ -98,7 +98,8 @@ export function SettingsContent() {
     setCurrentAudioTrack,
     setCurrentSubtitleTrack,
     setSubtitleCues,
-    setActiveSubtitleCues
+    setActiveSubtitleCues,
+    setVolume
   } = useStore()
 
   const subtitleOpacity = parseSubtitleBackgroundOpacity(settings.subtitleBackground)
@@ -293,7 +294,11 @@ export function SettingsContent() {
               type="range"
               min={0} max={1} step={0.05}
               value={settings.defaultVolume}
-              onChange={(e) => updateSettings({ defaultVolume: parseFloat(e.target.value) })}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value)
+                updateSettings({ defaultVolume: v })
+                setVolume(v)
+              }}
               className="w-full"
             />
             <span className="text-xs text-surface-500">{Math.round(settings.defaultVolume * 100)}%</span>

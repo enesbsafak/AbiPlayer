@@ -13,7 +13,7 @@ https://cdn.example.com/media/movie.mp4`
 
     expect(categories).toEqual([
       { id: 'source_1_m3u_0', name: 'Ulusal', sourceId: 'source_1', type: 'live' },
-      { id: 'source_1_m3u_1', name: 'Filmler', sourceId: 'source_1', type: 'live' }
+      { id: 'source_1_m3u_1', name: 'Filmler', sourceId: 'source_1', type: 'vod' }
     ])
 
     expect(channels).toEqual([

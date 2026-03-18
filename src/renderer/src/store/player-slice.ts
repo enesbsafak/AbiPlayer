@@ -98,6 +98,7 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
         currentChannel: channel,
         isPlaying: true,
         isPaused: false,
+        isBuffering: false,
         playerError: null,
         currentTime: 0,
         duration: 0,

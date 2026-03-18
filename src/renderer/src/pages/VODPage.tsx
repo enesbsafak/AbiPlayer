@@ -37,6 +37,7 @@ interface VODRouteState {
   restoreSearchQuery?: string
   restoreSelectedCategoryId?: string | null
   restoreSelectedVODId?: string
+  restoreScrollTop?: number
 }
 
 export default function VODPage() {
@@ -52,6 +53,7 @@ export default function VODPage() {
   const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false)
   const loadedCatsRef = useRef(loadedVodCategoryCache)
   const previousSourceIdRef = useRef<string | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
@@ -105,6 +107,16 @@ export default function VODPage() {
       setSelectedCategory(
         typeof state.restoreSelectedCategoryId === 'string' ? state.restoreSelectedCategoryId : null
       )
+      shouldClearLocationState = true
+    }
+
+    if (typeof state.restoreScrollTop === 'number') {
+      const scrollTop = state.restoreScrollTop
+      requestAnimationFrame(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollTop
+        }
+      })
       shouldClearLocationState = true
     }
 
@@ -392,6 +404,7 @@ export default function VODPage() {
         returnState: {
           restoreSearchQuery: searchQuery,
           restoreSelectedCategoryId: selectedCategoryId,
+          restoreScrollTop: scrollContainerRef.current?.scrollTop ?? 0,
           ...(selectedVOD ? { restoreSelectedVODId: selectedVOD.id } : {})
         },
         setPlayerReturnTarget
@@ -415,7 +428,7 @@ export default function VODPage() {
       <div className="panel-glass w-64 shrink-0 overflow-y-auto rounded-2xl p-3">
         <CategoryList />
       </div>
-      <div className="panel-glass flex-1 overflow-y-auto rounded-2xl p-5">
+      <div ref={scrollContainerRef} className="panel-glass flex-1 overflow-y-auto rounded-2xl p-5">
         <div className="mb-5">
           <ChannelSearch value={searchQuery} onSearch={setSearchQuery} />
         </div>

@@ -11,6 +11,7 @@ interface M3UEntry {
 
 const M3U_FETCH_TIMEOUT_MS = 30_000
 const MAX_M3U_SIZE_BYTES = 20 * 1024 * 1024
+const VOD_EXTENSIONS = new Set(['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv'])
 
 function parseExtInf(line: string): Omit<M3UEntry, 'url'> {
   const result = { name: '', logo: '', group: '', tvgId: '', tvgName: '' }
@@ -33,6 +34,33 @@ function parseExtInf(line: string): Omit<M3UEntry, 'url'> {
   }
 
   return result
+}
+
+function detectCategoryType(groupName: string, entries: M3UEntry[]): 'live' | 'vod' | 'series' {
+  const lower = groupName.toLowerCase()
+
+  if (/\b(series?|dizi|diziler|sezon|season)\b/.test(lower)) return 'series'
+  if (/\b(vod|movies?|films?|filmler|sinema|cinema)\b/.test(lower)) return 'vod'
+
+  if (entries.some((e) => /\/series\//i.test(e.url))) return 'series'
+  if (entries.some((e) => /\/movie\//i.test(e.url))) return 'vod'
+
+  const vodCount = entries.filter((e) => {
+    const ext = e.url.split('.').pop()?.toLowerCase().split('?')[0] || ''
+    return VOD_EXTENSIONS.has(ext)
+  }).length
+  if (vodCount > entries.length * 0.5) return 'vod'
+
+  return 'live'
+}
+
+function detectChannelType(url: string): 'live' | 'vod' | 'series' {
+  const lower = url.toLowerCase()
+  if (/\/series\//.test(lower)) return 'series'
+  if (/\/movie\//.test(lower)) return 'vod'
+  const ext = url.split('.').pop()?.toLowerCase().split('?')[0] || ''
+  if (VOD_EXTENSIONS.has(ext)) return 'vod'
+  return 'live'
 }
 
 export function parseM3U(content: string, sourceId: string): { channels: Channel[]; categories: Category[] } {
@@ -61,29 +89,36 @@ export function parseM3U(content: string, sourceId: string): { channels: Channel
     }
   }
 
-  // Collect unique groups
-  const groupSet = new Set<string>()
-  entries.forEach((e) => {
-    if (e.group) groupSet.add(e.group)
-  })
+  // Group entries by group name for type detection
+  const groupedEntries = new Map<string, M3UEntry[]>()
+  for (const entry of entries) {
+    if (!entry.group) continue
+    let list = groupedEntries.get(entry.group)
+    if (!list) {
+      list = []
+      groupedEntries.set(entry.group, list)
+    }
+    list.push(entry)
+  }
 
-  const categories: Category[] = Array.from(groupSet).map((g, i) => ({
+  // Detect type for each group
+  const groupTypeMap = new Map<string, 'live' | 'vod' | 'series'>()
+  for (const [groupName, groupEntries] of groupedEntries) {
+    groupTypeMap.set(groupName, detectCategoryType(groupName, groupEntries))
+  }
+
+  // Create categories with correct types
+  const categories: Category[] = Array.from(groupedEntries.keys()).map((g, i) => ({
     id: `${sourceId}_m3u_${i}`,
     name: g,
     sourceId,
-    type: 'live' as const
+    type: groupTypeMap.get(g) || 'live'
   }))
 
   const groupToCategoryId = new Map<string, string>()
   categories.forEach((c) => groupToCategoryId.set(c.name, c.id))
 
-  // Detect stream type from URL
-  function detectType(url: string): 'live' | 'vod' {
-    const ext = url.split('.').pop()?.toLowerCase().split('?')[0]
-    if (ext && ['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv'].includes(ext)) return 'vod'
-    return 'live'
-  }
-
+  // Create channels with type matching their category
   const channels: Channel[] = entries.map((e, i) => ({
     id: `${sourceId}_m3u_ch_${i}`,
     name: e.name || e.tvgName || 'Bilinmeyen',
@@ -94,7 +129,7 @@ export function parseM3U(content: string, sourceId: string): { channels: Channel
     categoryName: e.group || undefined,
     epgChannelId: e.tvgId || undefined,
     group: e.group || undefined,
-    type: detectType(e.url)
+    type: e.group ? (groupTypeMap.get(e.group) || 'live') : detectChannelType(e.url)
   }))
 
   return { channels, categories }

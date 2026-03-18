@@ -137,9 +137,15 @@ export function useAutoConnect() {
           })
         )
 
-        const rejected = results.find((r) => r.status === 'rejected')
-        if (rejected && rejected.status === 'rejected') {
-          setAuthError(rejected.reason instanceof Error ? rejected.reason.message : 'Bazi kaynaklara baglanilamadi')
+        const rejectedMessages = results
+          .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+          .map((r) => (r.reason instanceof Error ? r.reason.message : 'Bilinmeyen hata'))
+        if (rejectedMessages.length > 0) {
+          setAuthError(
+            rejectedMessages.length === 1
+              ? rejectedMessages[0]
+              : `${rejectedMessages.length} kaynak baglanilamadi: ${rejectedMessages.join('; ')}`
+          )
         }
 
         // Ensure activeSourceId is set if we have sources

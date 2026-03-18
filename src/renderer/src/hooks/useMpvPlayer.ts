@@ -174,16 +174,15 @@ export function useMpvPlayer(enabled: boolean) {
       }
 
       try {
-        const defaultVolume = clampVolume(settings.defaultVolume)
+        const { volume: currentVolume, isMuted: currentMuted } = useStore.getState()
+        const safeVolume = clampVolume(currentVolume)
         startupUrlRef.current = currentChannel.streamUrl
         startupStartedAtRef.current = Date.now()
         updateStartupVisibility(true)
-        setVolume(defaultVolume)
-        setMuted(false)
         await mpvOpen(currentChannel.streamUrl)
         if (cancelled) return
 
-        await Promise.allSettled([mpvSetVolume(defaultVolume), mpvSetMute(false)])
+        await Promise.allSettled([mpvSetVolume(safeVolume), mpvSetMute(currentMuted)])
       } catch (error) {
         if (cancelled) return
         startupUrlRef.current = null
