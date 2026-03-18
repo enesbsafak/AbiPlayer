@@ -93,7 +93,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
       onDoubleClick={handleContainerDoubleClick}
     >
       {mpvEnabled ? (
-        <div className="absolute inset-0 pointer-events-none" />
+        <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.004)' }} />
       ) : (
         <video
           ref={videoRef}

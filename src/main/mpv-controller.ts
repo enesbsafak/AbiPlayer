@@ -433,6 +433,9 @@ export class MpvController {
       '--input-terminal=no',
       '--terminal=no',
       '--osd-level=0',
+      '--no-osc',
+      '--no-input-default-bindings',
+      '--input-vo-keyboard=no',
       '--msg-level=all=warn',
       '--pause=yes',
       `--input-ipc-server=${socketPath}`

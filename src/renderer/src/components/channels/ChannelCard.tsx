@@ -67,7 +67,7 @@ export const ChannelCard = memo(function ChannelCard({
           <ClampText as="p" lines={2} className="text-[13px] font-semibold leading-5 text-white">
             {channel.name}
           </ClampText>
-          <ClampText as="p" lines={2} className="mt-0.5 text-[11px] leading-4 text-surface-500">
+          <ClampText as="p" lines={1} className="mt-0.5 text-[11px] leading-4 text-surface-500">
             {channel.group || channel.categoryName || (channel.type === 'live' ? 'Yayin' : 'Medya')}
           </ClampText>
         </div>

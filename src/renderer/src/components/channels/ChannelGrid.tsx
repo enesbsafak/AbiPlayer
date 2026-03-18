@@ -84,7 +84,7 @@ export function ChannelGrid({ channels, onPlay }: ChannelGridProps) {
     const totalGap = GRID_GAP * (cols - 1)
     const cardWidth = Math.max(120, (width - totalGap) / cols)
     const cardHeight = cardWidth * (9 / 16)
-    return Math.round(cardHeight + 76 + ROW_GAP)
+    return Math.round(cardHeight + 90 + ROW_GAP)
   }, [containerWidth, cols])
 
   const virtualizer = useVirtualizer({
@@ -126,9 +126,10 @@ export function ChannelGrid({ channels, onPlay }: ChannelGridProps) {
         {virtualizer.getVirtualItems().map((virtualRow) => (
           <div
             key={virtualRow.key}
+            data-index={virtualRow.index}
+            ref={virtualizer.measureElement}
             className="absolute left-0 top-0 w-full"
             style={{
-              height: `${virtualRow.size}px`,
               transform: `translateY(${virtualRow.start}px)`
             }}
           >
