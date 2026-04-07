@@ -50,12 +50,15 @@ describe('shouldKeepStartupOverlay', () => {
     ).toBe(false)
   })
 
-  it('hides the overlay when buffering starts', () => {
+  it('hides the overlay when mpv starts buffering the stream', () => {
     const snapshot = createSnapshot({
       path: 'https://example.com/live.m3u8',
+      running: true,
+      paused: false,
       buffering: true
     })
 
+    // Once mpv is running and actively loading, startup overlay should clear
     expect(
       shouldKeepStartupOverlay(snapshot, 'https://example.com/live.m3u8', 1_000, 2_000)
     ).toBe(false)
@@ -76,6 +79,28 @@ describe('shouldKeepStartupOverlay', () => {
 
     expect(
       shouldKeepStartupOverlay(snapshot, 'https://example.com/live.m3u8', 1_000, 17_000)
+    ).toBe(false)
+  })
+
+  it('hides the overlay when mpv loaded a different path than expected', () => {
+    const snapshot = createSnapshot({
+      path: 'https://example.com/other-stream.m3u8'
+    })
+
+    expect(
+      shouldKeepStartupOverlay(snapshot, 'https://example.com/live.m3u8', 1_000, 2_000)
+    ).toBe(false)
+  })
+
+  it('hides the overlay when mpv is actively playing (not paused, not buffering)', () => {
+    const snapshot = createSnapshot({
+      running: true,
+      paused: false,
+      buffering: false
+    })
+
+    expect(
+      shouldKeepStartupOverlay(snapshot, 'https://example.com/live.m3u8', 1_000, 2_000)
     ).toBe(false)
   })
 })

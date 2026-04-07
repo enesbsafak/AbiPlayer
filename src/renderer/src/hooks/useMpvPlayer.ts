@@ -40,10 +40,13 @@ export function shouldKeepStartupOverlay(
   if (!expectedUrl || startedAt === null) return false
   if (snapshot.error) return false
   if (now - startedAt >= MPV_STARTUP_OVERLAY_TIMEOUT_MS) return false
-  if (snapshot.buffering) return false
+  // Stream is already playing — no overlay needed
   if (snapshot.timePos > 0) return false
-  if (snapshot.duration > 0) return false
   if (snapshot.tracks.length > 0) return false
+  // MPV loaded a different path than we expected — it already moved on
+  if (snapshot.path && snapshot.path !== expectedUrl) return false
+  // MPV is running and processing the stream (buffering or playing)
+  if (snapshot.running && !snapshot.paused) return false
   return true
 }
 
