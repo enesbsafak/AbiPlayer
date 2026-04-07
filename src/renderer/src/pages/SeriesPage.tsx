@@ -13,6 +13,7 @@ import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
 import { buildCatalogRetainResetKey } from '@/services/catalog-view'
+import { ensureFullSync } from '@/services/background-sync'
 
 const loadedSeriesCategoryCache = new Set<string>()
 const loadedSeriesPreviewSourceCache = new Set<string>()
@@ -330,28 +331,9 @@ export default function SeriesPage() {
         return
       }
 
-      syncingSeriesFullSourceCache.add(activeSourceId)
       if (!cancelled) setIsBackgroundSyncing(true)
-
-      try {
-        const allSeries = await xtreamApi.getSeries(creds, undefined, {
-          signal: controller.signal
-        })
-        if (cancelled) return
-        addChannels(xtreamApi.seriesToChannels(allSeries, activeSourceId))
-        loadedSeriesFullSourceCache.add(activeSourceId)
-      } catch (err) {
-        if (cancelled) return
-        console.error('Failed to fully sync series:', err)
-        setLoadError(
-          err instanceof Error
-            ? `Tam dizi listesi arka planda tamamlanamadı: ${err.message}`
-            : 'Tam dizi listesi arka planda tamamlanamadı'
-        )
-      } finally {
-        syncingSeriesFullSourceCache.delete(activeSourceId)
-        if (!cancelled) setIsBackgroundSyncing(false)
-      }
+      ensureFullSync(activeSourceId, 'series', creds)
+      loadedSeriesFullSourceCache.add(activeSourceId)
     }
 
     void syncSource()

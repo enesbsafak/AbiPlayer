@@ -12,6 +12,7 @@ import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
 import { buildCatalogRetainResetKey } from '@/services/catalog-view'
+import { ensureFullSync, isBackgroundSyncing as isBgSyncing } from '@/services/background-sync'
 
 const loadedLiveCategoryCache = new Set<string>()
 const loadedLivePreviewSourceCache = new Set<string>()
@@ -301,28 +302,10 @@ export default function LiveTVPage() {
         return
       }
 
-      syncingLiveFullSourceCache.add(activeSourceId)
+      // Delegate full sync to module-level service (survives page navigation)
       if (!cancelled) setIsBackgroundSyncing(true)
-
-      try {
-        const allStreams = await xtreamApi.getLiveStreams(creds, undefined, {
-          signal: controller.signal
-        })
-        if (cancelled) return
-        addChannels(xtreamApi.liveStreamsToChannels(allStreams, creds, activeSourceId))
-        loadedLiveFullSourceCache.add(activeSourceId)
-      } catch (err) {
-        if (cancelled) return
-        console.error('Failed to fully sync live channels:', err)
-        setLoadError(
-          err instanceof Error
-            ? `Tam kanal listesi arka planda tamamlanamadı: ${err.message}`
-            : 'Tam kanal listesi arka planda tamamlanamadı'
-        )
-      } finally {
-        syncingLiveFullSourceCache.delete(activeSourceId)
-        if (!cancelled) setIsBackgroundSyncing(false)
-      }
+      ensureFullSync(activeSourceId, 'live', creds)
+      loadedLiveFullSourceCache.add(activeSourceId)
     }
 
     void syncSource()

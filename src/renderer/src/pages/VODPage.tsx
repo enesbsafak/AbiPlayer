@@ -13,6 +13,7 @@ import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
 import { buildCatalogRetainResetKey } from '@/services/catalog-view'
+import { ensureFullSync } from '@/services/background-sync'
 
 const loadedVodCategoryCache = new Set<string>()
 const loadedVodPreviewSourceCache = new Set<string>()
@@ -324,28 +325,9 @@ export default function VODPage() {
         return
       }
 
-      syncingVodFullSourceCache.add(activeSourceId)
       if (!cancelled) setIsBackgroundSyncing(true)
-
-      try {
-        const allStreams = await xtreamApi.getVodStreams(creds, undefined, {
-          signal: controller.signal
-        })
-        if (cancelled) return
-        addChannels(xtreamApi.vodStreamsToChannels(allStreams, creds, activeSourceId))
-        loadedVodFullSourceCache.add(activeSourceId)
-      } catch (err) {
-        if (cancelled) return
-        console.error('Failed to fully sync VOD:', err)
-        setLoadError(
-          err instanceof Error
-            ? `Tam film listesi arka planda tamamlanamadı: ${err.message}`
-            : 'Tam film listesi arka planda tamamlanamadı'
-        )
-      } finally {
-        syncingVodFullSourceCache.delete(activeSourceId)
-        if (!cancelled) setIsBackgroundSyncing(false)
-      }
+      ensureFullSync(activeSourceId, 'vod', creds)
+      loadedVodFullSourceCache.add(activeSourceId)
     }
 
     void syncSource()

@@ -3,6 +3,7 @@ import { X, Play, Radio, ChevronDown, Folder } from 'lucide-react'
 import { useStore } from '@/store'
 import { isPlayableChannel } from '@/services/playback'
 import { mpvSetVideoMargin } from '@/services/platform'
+import { ensureFullSync } from '@/services/background-sync'
 import { LazyImage } from '@/components/ui/LazyImage'
 import { ClampText } from '@/components/ui'
 import type { Channel, Category } from '@/types/playlist'
@@ -17,7 +18,9 @@ export function PlayerSidebar() {
     isPlayerSidebarOpen,
     setPlayerSidebarOpen,
     playbackEngine,
-    playChannel
+    playChannel,
+    hydratedSourceIds,
+    getXtreamCredentials
   } = useStore()
   const activeRef = useRef<HTMLButtonElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -74,6 +77,16 @@ export function PlayerSidebar() {
     }
     return list
   }, [channels, currentChannel, selectedCategoryId])
+
+  // Ensure full channel list is available when sidebar opens
+  useEffect(() => {
+    if (!isPlayerSidebarOpen || !currentChannel) return
+    const sourceId = currentChannel.sourceId
+    if (hydratedSourceIds[sourceId]) return
+    const creds = getXtreamCredentials(sourceId)
+    if (!creds) return
+    ensureFullSync(sourceId, currentChannel.type, creds)
+  }, [isPlayerSidebarOpen, currentChannel, hydratedSourceIds, getXtreamCredentials])
 
   // MPV video alignment
   useEffect(() => {
