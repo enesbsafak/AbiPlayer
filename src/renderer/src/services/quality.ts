@@ -24,7 +24,7 @@ interface VideoLevelLike {
 const QUALITY_RULES = [
   { label: 'CAM', patterns: [/\b(?:hdcam|camrip|cam|telesync|tsrip|ts)\b/i] },
   { label: '4K', patterns: [/\b(?:2160p|4k|uhd|ultra[\s._-]*hd)\b/i] },
-  { label: '1440p', patterns: [/\b(?:1440p|2k|qhd)\b/i] },
+  { label: '1440p', patterns: [/\b(?:1440p|qhd)\b/i] },
   { label: '1080p', patterns: [/\b(?:1080p|fhd|full[\s._-]*hd)\b/i] },
   { label: '900p', patterns: [/\b900p\b/i] },
   { label: '720p', patterns: [/\b720p\b/i, /(?:^|[\s._-])hd(?:$|[\s._-])/i] },
@@ -69,10 +69,10 @@ export function inferContentQualityLabel(
 ): string | null {
   if (!source) return null
 
+  // Only use name and containerExtension — group/categoryName often contain
+  // marketing labels like "2K" or "HD" that don't reflect actual resolution
   const haystack = normalizeTextParts([
     source.name,
-    source.group,
-    source.categoryName,
     source.containerExtension
   ])
 
