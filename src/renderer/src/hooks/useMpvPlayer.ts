@@ -245,9 +245,10 @@ export function useMpvPlayer(enabled: boolean) {
       if (!snapshot) return
 
       const now = Date.now()
-      updateStartupVisibility(
-        shouldKeepStartupOverlay(snapshot, startupUrlRef.current, startupStartedAtRef.current, now)
-      )
+      // Poll can only CLEAR the startup overlay, never re-enable it
+      if (startupVisibleRef.current && !shouldKeepStartupOverlay(snapshot, startupUrlRef.current, startupStartedAtRef.current, now)) {
+        updateStartupVisibility(false)
+      }
       setPlaying(snapshot.running && !snapshot.paused)
       setPaused(snapshot.paused)
       setBuffering(snapshot.buffering)
