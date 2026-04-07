@@ -135,7 +135,8 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
       currentVideoQuality: null,
       activeVideoQuality: null,
       subtitleCues: [],
-      activeSubtitleCues: []
+      activeSubtitleCues: [],
+      isPlayerSidebarOpen: false
     }),
 
   setPlaying: (playing) => set({ isPlaying: playing }),

@@ -32,11 +32,12 @@ export function PlayerSidebar() {
     )
   }, [channels, currentChannel])
 
-  // Sync MPV video margin with sidebar state
+  // Sync MPV video alignment with sidebar state
   useEffect(() => {
     if (!isMpv) return
-    void mpvSetVideoMargin(isPlayerSidebarOpen ? SIDEBAR_WIDTH : 0).catch(() => undefined)
-    return () => {
+    if (isPlayerSidebarOpen) {
+      void mpvSetVideoMargin(SIDEBAR_WIDTH).catch(() => undefined)
+    } else {
       void mpvSetVideoMargin(0).catch(() => undefined)
     }
   }, [isPlayerSidebarOpen, isMpv])

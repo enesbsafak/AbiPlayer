@@ -290,10 +290,18 @@ export class MpvController {
   async setVideoMargin(right: number): Promise<void> {
     if (!this.process) return
     const clamped = Math.max(0, Math.min(800, Math.round(right)))
-    await this.command(['set_property', 'video-margin-x', `0-${clamped}`]).catch(() =>
-      // Fallback for older mpv: use panscan geometry
-      this.command(['set_property', 'video-pan-x', clamped > 0 ? -(clamped / 3840) : 0]).catch(() => undefined)
-    )
+    // Use video-align-x + panscan to shift video left when sidebar is open
+    if (clamped > 0) {
+      await Promise.allSettled([
+        this.command(['set_property', 'video-align-x', -1]),
+        this.command(['set_property', 'panscan', 0])
+      ])
+    } else {
+      await Promise.allSettled([
+        this.command(['set_property', 'video-align-x', 0]),
+        this.command(['set_property', 'panscan', 0])
+      ])
+    }
   }
 
   async setSubtitleStyle(style: MpvSubtitleStyle): Promise<void> {
