@@ -25,7 +25,7 @@ const QUALITY_RULES = [
   { label: 'CAM', patterns: [/\b(?:hdcam|camrip|cam|telesync|tsrip|ts)\b/i] },
   { label: '4K', patterns: [/\b(?:2160p|4k|uhd|ultra[\s._-]*hd)\b/i] },
   { label: '1440p', patterns: [/\b(?:1440p|2k|qhd)\b/i] },
-  { label: '1080p', patterns: [/\b(?:1080p|1080|fhd|full[\s._-]*hd)\b/i] },
+  { label: '1080p', patterns: [/\b(?:1080p|fhd|full[\s._-]*hd)\b/i] },
   { label: '900p', patterns: [/\b900p\b/i] },
   { label: '720p', patterns: [/\b720p\b/i, /(?:^|[\s._-])hd(?:$|[\s._-])/i] },
   { label: '576p', patterns: [/\b576p\b/i] },
@@ -73,7 +73,6 @@ export function inferContentQualityLabel(
     source.name,
     source.group,
     source.categoryName,
-    source.streamUrl,
     source.containerExtension
   ])
 

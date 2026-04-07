@@ -30,9 +30,7 @@ export function PlayerSidebar() {
 
   // Sync category to current channel when sidebar opens or channel changes
   useEffect(() => {
-    if (currentChannel?.categoryId) {
-      setSelectedCategoryId(currentChannel.categoryId)
-    }
+    setSelectedCategoryId(currentChannel?.categoryId ?? null)
   }, [currentChannel?.categoryId, isPlayerSidebarOpen])
 
   // Close dropdown on outside click

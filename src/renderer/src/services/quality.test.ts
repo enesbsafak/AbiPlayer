@@ -30,10 +30,18 @@ describe('quality', () => {
 
     expect(
       inferContentQualityLabel({
-        name: 'Festival Kopyasi',
-        streamUrl: 'https://cdn.example.com/movie-cam.mp4'
+        name: 'Festival Kopyasi CAM',
+        streamUrl: 'https://cdn.example.com/movie.mp4'
       })
     ).toBe('CAM')
+
+    // streamUrl should NOT be used for quality inference (prevents false positives from stream IDs)
+    expect(
+      inferContentQualityLabel({
+        name: 'TRT 1',
+        streamUrl: 'https://cdn.example.com/live/user/pass/1440.m3u8'
+      })
+    ).toBeNull()
   })
 
   it('builds stable HLS quality options with auto mode first', () => {
