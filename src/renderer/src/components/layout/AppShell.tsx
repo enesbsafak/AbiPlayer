@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { TitleBar } from './TitleBar'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
@@ -10,8 +10,13 @@ import { useKeyboard } from '@/hooks/useKeyboard'
 import { useEPG } from '@/hooks/useEPG'
 import { useAutoConnect } from '@/hooks/useAutoConnect'
 
+const LAST_ROUTE_KEY = 'iptv:last-route'
+const RESTORABLE_ROUTES = new Set(['/live', '/vod', '/series', '/epg', '/favorites', '/search', '/settings'])
+
 export function AppShell() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const restoredRef = useRef(false)
   const currentChannel = useStore((s) => s.currentChannel)
   const isMiniPlayer = useStore((s) => s.isMiniPlayer)
   const isLoading = useStore((s) => s.isLoading)
@@ -21,11 +26,28 @@ export function AppShell() {
   const isPlayerRoute = location.pathname === '/player'
   const isAnySourceLoading = (isLoading || isLoadingPlaylist) && sources.length > 0
   const loadingLabel =
-    isLoading && !isLoadingPlaylist ? 'Kaynaklar baglaniyor...' : 'Icerikler taraniyor...'
+    isLoading && !isLoadingPlaylist ? 'Kaynaklar bağlanıyor...' : 'İçerikler taranıyor...'
 
   useAutoConnect()
   useKeyboard()
   useEPG()
+
+  // Save last visited route
+  useEffect(() => {
+    if (RESTORABLE_ROUTES.has(location.pathname)) {
+      localStorage.setItem(LAST_ROUTE_KEY, location.pathname)
+    }
+  }, [location.pathname])
+
+  // Restore last route on first mount
+  useEffect(() => {
+    if (restoredRef.current) return
+    restoredRef.current = true
+    const saved = localStorage.getItem(LAST_ROUTE_KEY)
+    if (saved && RESTORABLE_ROUTES.has(saved) && location.pathname === '/') {
+      navigate(saved, { replace: true })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const useTransparentSurface = isPlayerRoute && playbackEngine === 'mpv'

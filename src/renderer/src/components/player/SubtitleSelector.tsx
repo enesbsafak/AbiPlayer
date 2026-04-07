@@ -33,7 +33,7 @@ export function SubtitleSelector() {
 
   const handleLoadExternal = async () => {
     const result = await pickAndReadFile([
-      { name: 'Altyazi Dosyalari', extensions: ['srt', 'vtt', 'ass', 'ssa'] }
+      { name: 'Altyazı Dosyaları', extensions: ['srt', 'vtt', 'ass', 'ssa'] }
     ])
     if (!result) return
 

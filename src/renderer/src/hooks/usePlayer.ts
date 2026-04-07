@@ -527,7 +527,7 @@ export function usePlayer(
         hls.on(Hls.Events.ERROR, (_, data) => {
           if (data.fatal) {
             if (retryCount >= 3) {
-              setPlayerError(`Oynatma basarisiz: ${data.details}`)
+              setPlayerError(`Oynatma başarısız: ${data.details}`)
               return
             }
             retryCount++

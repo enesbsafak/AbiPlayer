@@ -212,7 +212,7 @@ export default function LiveTVPage() {
     const controller = new AbortController()
     const load = async () => {
       setLoadError(null)
-      setForegroundLoadingMessage('Secili kategori yukleniyor...')
+      setForegroundLoadingMessage('Seçili kategori yükleniyor...')
       setIsForegroundLoading(true)
 
       try {
@@ -225,7 +225,7 @@ export default function LiveTVPage() {
       } catch (err) {
         if (cancelled) return
         console.error('Failed to load live streams:', err)
-        setLoadError(err instanceof Error ? err.message : 'Kanallar yuklenemedi')
+        setLoadError(err instanceof Error ? err.message : 'Kanallar yüklenemedi')
       } finally {
         if (!cancelled) {
           setIsForegroundLoading(false)
@@ -272,7 +272,7 @@ export default function LiveTVPage() {
 
       if (!loadedLivePreviewSourceCache.has(activeSourceId) && !hasSourceChannels) {
         setLoadError(null)
-        setForegroundLoadingMessage('Kanallar hizli on izleme listesiyle aciliyor...')
+        setForegroundLoadingMessage('Kanallar hızlı ön izleme listesiyle açılıyor...')
         setIsForegroundLoading(true)
 
         try {
@@ -285,7 +285,7 @@ export default function LiveTVPage() {
         } catch (err) {
           if (cancelled) return
           console.error('Failed to load live preview:', err)
-          setLoadError(err instanceof Error ? err.message : 'Kanallar yuklenemedi')
+          setLoadError(err instanceof Error ? err.message : 'Kanallar yüklenemedi')
           return
         } finally {
           if (!cancelled) {
@@ -316,8 +316,8 @@ export default function LiveTVPage() {
         console.error('Failed to fully sync live channels:', err)
         setLoadError(
           err instanceof Error
-            ? `Tam kanal listesi arka planda tamamlanamadi: ${err.message}`
-            : 'Tam kanal listesi arka planda tamamlanamadi'
+            ? `Tam kanal listesi arka planda tamamlanamadı: ${err.message}`
+            : 'Tam kanal listesi arka planda tamamlanamadı'
         )
       } finally {
         syncingLiveFullSourceCache.delete(activeSourceId)
@@ -402,11 +402,11 @@ export default function LiveTVPage() {
               <div>
                 <p className="font-medium">
                   {isBackgroundSyncing
-                    ? 'On izleme listesi gosteriliyor, tam liste arka planda tamamlaniyor'
-                    : 'Bu sayfa once hizli bir on izleme listesiyle aciliyor'}
+                    ? 'Ön izleme listesi gösteriliyor, tam liste arka planda tamamlanıyor'
+                    : 'Bu sayfa önce hızlı bir ön izleme listesiyle açılıyor'}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-sky-100/80">
-                  Tam senkron bitene kadar arama ve toplam sonuc sayisi eksik olabilir.
+                  Tam senkron bitene kadar arama ve toplam sonuç sayısı eksik olabilir.
                 </p>
               </div>
             </div>
@@ -442,7 +442,7 @@ export default function LiveTVPage() {
         {showInlineLoader && (
           <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-surface-200">
             <Spinner size={16} />
-            <span>{foregroundLoadingMessage || 'Icerikler yukleniyor...'}</span>
+            <span>{foregroundLoadingMessage || 'İçerikler yükleniyor...'}</span>
           </div>
         )}
 
@@ -451,7 +451,7 @@ export default function LiveTVPage() {
             <div className="flex flex-col items-center gap-3 text-center">
               <Spinner size={32} />
               <p className="text-sm text-surface-300">
-                {foregroundLoadingMessage || 'Kanallar yukleniyor...'}
+                {foregroundLoadingMessage || 'Kanallar yükleniyor...'}
               </p>
             </div>
           </div>

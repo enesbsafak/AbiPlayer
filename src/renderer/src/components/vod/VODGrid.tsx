@@ -97,7 +97,7 @@ export function VODGrid({ items, onPlay }: VODGridProps) {
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-surface-400">
-        <p className="text-lg">Icerik bulunamadi</p>
+        <p className="text-lg">İçerik bulunamadı</p>
       </div>
     )
   }

@@ -28,7 +28,7 @@ export function PlaylistImport() {
     try {
       const parsedUrl = new URL(url.trim())
       if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-        throw new Error('Yalnizca HTTP/HTTPS oynatma listesi adresleri destekleniyor')
+        throw new Error('Yalnızca HTTP/HTTPS oynatma listesi adresleri destekleniyor')
       }
       const normalizedUrl = parsedUrl.toString()
 
@@ -49,7 +49,7 @@ export function PlaylistImport() {
       setName('')
       navigate('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ice aktarma basarisiz oldu')
+      setError(err instanceof Error ? err.message : 'İçe aktarma başarısız oldu')
     } finally {
       setLoading(false)
     }
@@ -61,7 +61,7 @@ export function PlaylistImport() {
 
     try {
       const result = await pickAndReadFile([
-        { name: 'Oynatma Listesi Dosyalari', extensions: ['m3u', 'm3u8', 'txt'] }
+        { name: 'Oynatma Listesi Dosyaları', extensions: ['m3u', 'm3u8', 'txt'] }
       ])
       if (!result) { setLoading(false); return }
       const fileName = result.path.split(/[\\/]/).pop() || 'Yerel Liste'
@@ -82,7 +82,7 @@ export function PlaylistImport() {
       setName('')
       navigate('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ice aktarma basarisiz oldu')
+      setError(err instanceof Error ? err.message : 'İçe aktarma başarısız oldu')
     } finally {
       setLoading(false)
     }
@@ -96,7 +96,7 @@ export function PlaylistImport() {
         </div>
         <div>
           <h3 className="font-semibold">M3U Oynatma Listesi</h3>
-          <p className="text-xs text-surface-400">URL veya yerel dosyadan ice aktar</p>
+          <p className="text-xs text-surface-400">URL veya yerel dosyadan içe aktar</p>
         </div>
       </div>
 
@@ -109,21 +109,21 @@ export function PlaylistImport() {
         </Button>
       </div>
 
-      <Input id="m3u-name" label="Gorunen Ad (opsiyonel)" placeholder="Benim Liste" value={name} onChange={(e) => setName(e.target.value)} />
+      <Input id="m3u-name" label="Görünen Ad (opsiyonel)" placeholder="Benim Liste" value={name} onChange={(e) => setName(e.target.value)} />
 
       {mode === 'url' ? (
         <form onSubmit={handleUrlImport} className="flex flex-col gap-4">
           <Input id="m3u-url" label="Liste URL" placeholder="https://example.com/playlist.m3u" value={url} onChange={(e) => setUrl(e.target.value)} required />
           {error && <p className="text-sm text-red-400">{error}</p>}
           <Button type="submit" disabled={loading}>
-            {loading ? <><Spinner size={16} /> Ice aktariliyor...</> : 'Listeyi Ice Aktar'}
+            {loading ? <><Spinner size={16} /> İçe aktarılıyor...</> : 'Listeyi İçe Aktar'}
           </Button>
         </form>
       ) : (
         <div className="flex flex-col gap-4">
           {error && <p className="text-sm text-red-400">{error}</p>}
           <Button onClick={handleFileImport} disabled={loading}>
-            {loading ? <><Spinner size={16} /> Okunuyor...</> : <><Upload size={16} /> Dosya Sec</>}
+            {loading ? <><Spinner size={16} /> Okunuyor...</> : <><Upload size={16} /> Dosya Seç</>}
           </Button>
         </div>
       )}

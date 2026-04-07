@@ -33,7 +33,7 @@ export function LoginForm() {
       }
       const parsedUrl = new URL(normalizedUrl)
       if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-        throw new Error('Yalnizca HTTP/HTTPS sunucu adresleri destekleniyor')
+        throw new Error('Yalnızca HTTP/HTTPS sunucu adresleri destekleniyor')
       }
       normalizedUrl = parsedUrl.toString().replace(/\/+$/, '')
 
@@ -41,7 +41,7 @@ export function LoginForm() {
       const auth = await xtreamApi.authenticate(creds)
 
       if (auth.user_info.auth !== 1) {
-        throw new Error('Kimlik dogrulama basarisiz oldu')
+        throw new Error('Kimlik doğrulama başarısız oldu')
       }
 
       const hostname = parsedUrl.host
@@ -70,7 +70,7 @@ export function LoginForm() {
       // Navigate to home to see channels
       navigate('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Baglanti basarisiz oldu')
+      setError(err instanceof Error ? err.message : 'Bağlantı başarısız oldu')
     } finally {
       setLoading(false)
     }
@@ -84,19 +84,19 @@ export function LoginForm() {
         </div>
         <div>
           <h3 className="font-semibold">Xtream Codes</h3>
-          <p className="text-xs text-surface-400">Xtream Codes sunucusuna baglan</p>
+          <p className="text-xs text-surface-400">Xtream Codes sunucusuna bağlan</p>
         </div>
       </div>
 
-      <Input id="xtream-name" label="Gorunen Ad (opsiyonel)" placeholder="Benim Kaynagim" value={name} onChange={(e) => setName(e.target.value)} />
+      <Input id="xtream-name" label="Görünen Ad (opsiyonel)" placeholder="Benim Kaynağım" value={name} onChange={(e) => setName(e.target.value)} />
       <Input id="xtream-url" label="Sunucu URL" placeholder="http://example.com:8080" value={url} onChange={(e) => setUrl(e.target.value)} required />
-      <Input id="xtream-user" label="Kullanici Adi" placeholder="kullanici_adi" value={username} onChange={(e) => setUsername(e.target.value)} required />
-      <Input id="xtream-pass" label="Sifre" type="password" placeholder="sifre" value={password} onChange={(e) => setPassword(e.target.value)} required />
+      <Input id="xtream-user" label="Kullanıcı Adı" placeholder="kullanici_adi" value={username} onChange={(e) => setUsername(e.target.value)} required />
+      <Input id="xtream-pass" label="Şifre" type="password" placeholder="şifre" value={password} onChange={(e) => setPassword(e.target.value)} required />
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       <Button type="submit" disabled={loading} className="mt-2">
-        {loading ? <><Spinner size={16} /> Baglaniliyor...</> : 'Baglan'}
+        {loading ? <><Spinner size={16} /> Bağlanılıyor...</> : 'Bağlan'}
       </Button>
     </form>
   )

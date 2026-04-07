@@ -4,10 +4,10 @@ import { APP_NAME, APP_VERSION_LABEL } from '@/constants/app-info'
 
 const navItems = [
   { to: '/', icon: Radio, label: 'Ana Sayfa' },
-  { to: '/live', icon: Tv, label: 'Canli TV' },
+  { to: '/live', icon: Tv, label: 'Canlı TV' },
   { to: '/vod', icon: Film, label: 'Filmler' },
   { to: '/series', icon: Clapperboard, label: 'Diziler' },
-  { to: '/epg', icon: Calendar, label: 'Yayin Akisi' },
+  { to: '/epg', icon: Calendar, label: 'Yayın Akışı' },
   { to: '/favorites', icon: Star, label: 'Favoriler' },
   { to: '/search', icon: Search, label: 'Ara' }
 ]

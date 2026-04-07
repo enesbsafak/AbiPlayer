@@ -16,7 +16,7 @@ export const CategoryList = memo(function CategoryList() {
       ),
     [allCategories, channelFilter, activeSourceId]
   )
-  const allLabel = channelFilter === 'vod' ? 'Tum Filmler' : channelFilter === 'series' ? 'Tum Diziler' : 'Tum Kanallar'
+  const allLabel = channelFilter === 'vod' ? 'Tüm Filmler' : channelFilter === 'series' ? 'Tüm Diziler' : 'Tüm Kanallar'
 
   return (
     <div className="flex flex-col gap-1">

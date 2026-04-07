@@ -66,7 +66,7 @@ export default function SearchPage() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Tum kanal, film ve dizilerde ara..."
+            placeholder="Tüm kanal, film ve dizilerde ara..."
             autoFocus
             className="w-full rounded-xl border border-surface-600/35 bg-surface-900/70 py-3 pl-12 pr-4 text-lg text-surface-100 placeholder:text-surface-400 transition-colors focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/45"
           />
@@ -74,7 +74,7 @@ export default function SearchPage() {
 
         {query.length >= 2 && (
           <div>
-            <p className="mb-4 text-sm text-surface-300">"{query}" icin {results.length} sonuc bulundu</p>
+            <p className="mb-4 text-sm text-surface-300">"{query}" için {results.length} sonuç bulundu</p>
             <ChannelGrid channels={results} onPlay={handlePlay} />
           </div>
         )}
@@ -82,8 +82,8 @@ export default function SearchPage() {
         {query.length < 2 && (
           <div className="py-20 text-center text-surface-400">
             <Search size={48} className="mx-auto mb-4" />
-            <p className="text-lg">Tum kaynaklarda arama yapin</p>
-            <p className="mt-1 text-sm">Baslamak icin en az 2 karakter yazin</p>
+            <p className="text-lg">Tüm kaynaklarda arama yapın</p>
+            <p className="mt-1 text-sm">Başlamak için en az 2 karakter yazın</p>
           </div>
         )}
       </div>

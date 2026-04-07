@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { type RefObject, useMemo } from 'react'
 import {
   ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize,
-  Rewind, FastForward, SkipBack, SkipForward, PictureInPicture2, X
+  Rewind, FastForward, SkipBack, SkipForward, PictureInPicture2, X, List
 } from 'lucide-react'
 import { useStore } from '@/store'
 import { AudioTrackSelector } from './AudioTrackSelector'
@@ -30,7 +30,8 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
   const {
     isPlaying, isPaused, currentTime, duration, volume, isMuted, isFullscreen,
     channels, currentChannel, playbackEngine, playerReturnTarget,
-    clearPlayerReturnTarget, setVolume, setMuted, setPiP, stopPlayback, setMiniPlayer, playChannel
+    clearPlayerReturnTarget, setVolume, setMuted, setPiP, stopPlayback, setMiniPlayer, playChannel,
+    togglePlayerSidebar, isPlayerSidebarOpen
   } = useStore()
 
   const video = videoRef.current
@@ -205,7 +206,7 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
           <button
             onClick={() => void leavePlayer()}
             className="rounded-lg p-2 hover:bg-white/10 transition-colors"
-            title="Geri don"
+            title="Geri dön"
           >
             <ArrowLeft size={18} />
           </button>
@@ -213,7 +214,7 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
             onClick={() => playAdjacent('prev')}
             disabled={!previousChannel}
             className="rounded-lg p-2 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
-            title={previousChannel ? `Onceki: ${previousChannel.name}` : 'Onceki icerik yok'}
+            title={previousChannel ? `Önceki: ${previousChannel.name}` : 'Önceki içerik yok'}
           >
             <SkipBack size={18} />
           </button>
@@ -236,7 +237,7 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
             onClick={() => playAdjacent('next')}
             disabled={!nextChannel}
             className="rounded-lg p-2 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
-            title={nextChannel ? `Sonraki: ${nextChannel.name}` : 'Sonraki icerik yok'}
+            title={nextChannel ? `Sonraki: ${nextChannel.name}` : 'Sonraki içerik yok'}
           >
             <SkipForward size={18} />
           </button>
@@ -262,17 +263,24 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
         </div>
 
         <div className="flex items-center gap-1">
-          <button onClick={() => void exitPlayer()} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title="Durdur ve cik">
+          <button onClick={() => void exitPlayer()} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title="Durdur ve çık">
             <X size={18} />
           </button>
           <QualitySelector />
           <AudioTrackSelector />
           <SubtitleSelector />
           {playbackEngine !== 'mpv' && (
-            <button onClick={togglePiP} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title="Resim Icinde Resim">
+            <button onClick={togglePiP} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title="Resim İçinde Resim">
               <PictureInPicture2 size={18} />
             </button>
           )}
+          <button
+            onClick={togglePlayerSidebar}
+            className={`rounded-lg p-2 transition-colors ${isPlayerSidebarOpen ? 'bg-white/20' : 'hover:bg-white/10'}`}
+            title="Kanal Listesi (L)"
+          >
+            <List size={18} />
+          </button>
           <button onClick={onToggleFullscreen} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title="Tam Ekran (F)">
             {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
           </button>

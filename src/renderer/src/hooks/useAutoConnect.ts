@@ -126,7 +126,7 @@ export function useAutoConnect() {
                 return
               }
 
-              throw new Error('Kimlik dogrulama basarisiz')
+              throw new Error('Kimlik doğrulama başarısız')
             }
 
             if (source.type === 'm3u_url' && source.url) {

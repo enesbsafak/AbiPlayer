@@ -97,8 +97,8 @@ export function ChannelGrid({ channels, onPlay }: ChannelGridProps) {
   if (channels.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-surface-400">
-        <p className="text-lg">Kanal bulunamadi</p>
-        <p className="text-sm mt-1">Farkli bir kategori secmeyi veya kaynak eklemeyi deneyin</p>
+        <p className="text-lg">Kanal bulunamadı</p>
+        <p className="text-sm mt-1">Farklı bir kategori seçmeyi veya kaynak eklemeyi deneyin</p>
       </div>
     )
   }

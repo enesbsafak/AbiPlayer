@@ -106,7 +106,7 @@ export function SourceManager() {
                   <p className="text-sm font-medium">{source.name}</p>
                   <p className="text-xs text-surface-500">
                     {source.type === 'xtream' ? 'Xtream Codes' : source.type === 'm3u_url' ? 'M3U URL' : 'M3U Dosya'}
-                    {source.type === 'xtream' && !connected && ' - yeniden baglaniyor...'}
+                    {source.type === 'xtream' && !connected && ' - yeniden bağlanıyor...'}
                   </p>
                 </div>
               </div>

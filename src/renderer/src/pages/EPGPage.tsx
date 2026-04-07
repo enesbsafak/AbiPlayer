@@ -23,7 +23,7 @@ export default function EPGPage() {
 
     const creds = getXtreamCredentials(source.id)
     if (!creds) {
-      setEpgError('Bu kaynak icin giris bilgileri bulunamadi')
+      setEpgError('Bu kaynak için giriş bilgileri bulunamadı')
       return
     }
 
@@ -33,7 +33,7 @@ export default function EPGPage() {
       const data = await fetchAndParseEPG(xtreamApi.buildEpgUrl(creds))
       setEpgData(data)
     } catch (err) {
-      setEpgError(err instanceof Error ? err.message : 'EPG verisi alinamadi')
+      setEpgError(err instanceof Error ? err.message : 'EPG verisi alınamadı')
     } finally {
       setEpgLoading(false)
     }
@@ -42,7 +42,7 @@ export default function EPGPage() {
   return (
     <div className="flex flex-col h-full p-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold">Yayin Akisi</h1>
+        <h1 className="text-xl font-bold">Yayın Akışı</h1>
         <Button variant="secondary" size="sm" onClick={refetchEPG} disabled={epgLoading}>
           {epgLoading ? <Spinner size={14} /> : <RefreshCw size={14} />}
           EPG Yenile

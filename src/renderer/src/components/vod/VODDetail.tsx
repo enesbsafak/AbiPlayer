@@ -178,9 +178,9 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
           )}
 
           <div className="flex flex-col gap-1 text-xs text-surface-500 mt-1">
-            {detail.director && <span>Yonetmen: {detail.director}</span>}
+            {detail.director && <span>Yönetmen: {detail.director}</span>}
             {detail.cast && <span>Oyuncular: {detail.cast}</span>}
-            {detail.releaseDate && <span>Yayin Tarihi: {detail.releaseDate}</span>}
+            {detail.releaseDate && <span>Yayın Tarihi: {detail.releaseDate}</span>}
           </div>
 
           <Button onClick={() => onPlay(item)} className="mt-4 self-start">

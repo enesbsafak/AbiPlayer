@@ -31,7 +31,7 @@ export default function HomePage() {
   const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
   const [isBootstrappingSource, setIsBootstrappingSource] = useState(false)
-  const [scanMessage, setScanMessage] = useState('Icerikler taraniyor...')
+  const [scanMessage, setScanMessage] = useState('İçerikler taranıyor...')
   const [reloadToken, setReloadToken] = useState(0)
   const bootstrapAttemptedRef = useRef(new Set<string>())
 
@@ -64,12 +64,12 @@ export default function HomePage() {
     let cancelled = false
     const controller = new AbortController()
     const isCancelledRequest = (error: unknown) =>
-      cancelled || (error instanceof Error && error.message === 'Istek iptal edildi')
+      cancelled || (error instanceof Error && error.message === 'İstek iptal edildi')
 
     const bootstrap = async () => {
       setBootstrapError(null)
       setIsBootstrappingSource(true)
-      setScanMessage('Kaynak kategorileri taraniyor...')
+      setScanMessage('Kaynak kategorileri taranıyor...')
       setPlaylistLoading(true)
       try {
         const [liveCats, vodCats, seriesCats] = await Promise.all([
@@ -84,7 +84,7 @@ export default function HomePage() {
           ...xtreamApi.categoriesToApp(seriesCats, activeSourceId, 'series')
         ])
 
-        setScanMessage('Tum canli, film ve dizi icerikleri taraniyor...')
+        setScanMessage('Tüm canlı, film ve dizi içerikleri taranıyor...')
 
         // Full catalog scan once per source; keep results in-memory until app closes.
         const livePromise = xtreamApi
@@ -119,12 +119,12 @@ export default function HomePage() {
         markSourceHydrated(activeSourceId, true)
       } catch (error) {
         if (cancelled) return
-        setBootstrapError(error instanceof Error ? error.message : 'Ana sayfa icerikleri yuklenemedi')
+        setBootstrapError(error instanceof Error ? error.message : 'Ana sayfa içerikleri yüklenemedi')
       } finally {
         if (!cancelled) {
           setPlaylistLoading(false)
           setIsBootstrappingSource(false)
-          setScanMessage('Icerikler taraniyor...')
+          setScanMessage('İçerikler taranıyor...')
         }
       }
     }
@@ -174,12 +174,12 @@ export default function HomePage() {
             <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-accent/40 bg-accent/15">
               <Tv size={40} className="text-accent" />
             </div>
-            <h1 className="text-2xl font-bold text-white">{APP_NAME}'a Hos Geldin</h1>
+            <h1 className="text-2xl font-bold text-white">{APP_NAME}'a Hoş Geldin</h1>
             <p className="rounded-md border border-white/12 bg-white/8 px-2.5 py-1 text-xs font-medium text-surface-400">
-              {APP_VERSION_LABEL} surumu test asamasindadir.
+              {APP_VERSION_LABEL} sürümü test aşamasındadır.
             </p>
             <p className="max-w-md text-surface-300">
-              Izlemeye baslamak icin Xtream Codes sunucusuna baglan veya bir M3U listesi ice aktar.
+              İzlemeye başlamak için Xtream Codes sunucusuna bağlan veya bir M3U listesi içe aktar.
             </p>
             <Button size="lg" onClick={() => navigate('/settings')}>
               <Plus size={20} /> Kaynak Ekle
@@ -197,7 +197,7 @@ export default function HomePage() {
 
   if (showInitialLoading) {
     const loadingMessage =
-      isLoading && !isLoadingPlaylist ? 'Kaynaklar baglaniyor...' : scanMessage
+      isLoading && !isLoadingPlaylist ? 'Kaynaklar bağlanıyor...' : scanMessage
 
     return (
       <div className="h-full p-3">
@@ -205,7 +205,7 @@ export default function HomePage() {
           <Activity size={20} className="animate-pulse text-accent" />
           <p className="text-sm text-surface-300">{loadingMessage}</p>
           <p className="max-w-md text-xs text-surface-400">
-            Ilk taramada biraz surebilir. Tarama tamamlaninca ayni oturum boyunca veriler cache'de tutulur.
+            İlk taramada biraz sürebilir. Tarama tamamlanınca aynı oturum boyunca veriler cache'de tutulur.
           </p>
         </div>
       </div>
@@ -240,11 +240,11 @@ export default function HomePage() {
         <div className="pointer-events-none absolute -left-8 top-8 h-32 w-32 rounded-full bg-signal/20 blur-3xl" />
         <div className="relative flex items-center justify-between gap-4">
           <div>
-            <p className="text-xs font-medium text-surface-500">Yayin Merkezi</p>
+            <p className="text-xs font-medium text-surface-500">Yayın Merkezi</p>
             <h1 className="text-xl font-semibold text-white mt-0.5">{APP_NAME}</h1>
             <p className="mt-1 text-xs text-surface-500">{APP_VERSION_LABEL}</p>
             <p className="mt-1 text-sm text-surface-300">
-              Canli yayin, film ve dizilerde toplam {channels.length} icerik hazir.
+              Canlı yayın, film ve dizilerde toplam {channels.length} içerik hazır.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -262,7 +262,7 @@ export default function HomePage() {
             <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
               <Star size={20} className="text-accent" /> Favoriler
             </h2>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/favorites')}>Tumunu Gor</Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/favorites')}>Tümünü Gör</Button>
           </div>
           <ChannelGrid channels={favChannels} onPlay={handlePlay} />
         </section>
@@ -272,9 +272,9 @@ export default function HomePage() {
         <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
-              <Tv size={20} className="text-accent" /> Canli TV
+              <Tv size={20} className="text-accent" /> Canlı TV
             </h2>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/live')}>Tumunu Gor</Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/live')}>Tümünü Gör</Button>
           </div>
           <ChannelGrid channels={recentLive} onPlay={handlePlay} />
         </section>
@@ -286,7 +286,7 @@ export default function HomePage() {
             <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
               <Film size={20} className="text-signal" /> Filmler
             </h2>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/vod')}>Tumunu Gor</Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/vod')}>Tümünü Gör</Button>
           </div>
           <ChannelGrid channels={recentVod} onPlay={handlePlay} />
         </section>
@@ -298,7 +298,7 @@ export default function HomePage() {
             <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
               <Clapperboard size={20} className="text-signal" /> Diziler
             </h2>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/series')}>Tumunu Gor</Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/series')}>Tümünü Gör</Button>
           </div>
           <ChannelGrid channels={recentSeries} onPlay={handlePlay} />
         </section>

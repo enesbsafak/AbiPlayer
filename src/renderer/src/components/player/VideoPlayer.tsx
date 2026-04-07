@@ -3,6 +3,7 @@ import { useStore } from '@/store'
 import { usePlayer } from '@/hooks/usePlayer'
 import { useMpvPlayer } from '@/hooks/useMpvPlayer'
 import { PlayerControls } from './PlayerControls'
+import { PlayerSidebar } from './PlayerSidebar'
 import { SubtitleOverlay } from './SubtitleOverlay'
 import { Spinner } from '@/components/ui/Spinner'
 import { AlertCircle } from 'lucide-react'
@@ -117,6 +118,8 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
       )}
 
       <SubtitleOverlay />
+
+      <PlayerSidebar />
 
       <div className={`absolute inset-x-0 bottom-0 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
         <PlayerControls

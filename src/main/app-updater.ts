@@ -119,13 +119,13 @@ async function promptToInstallDownloadedUpdate(): Promise<void> {
     const versionLabel = state.downloadedVersion ? ` ${state.downloadedVersion}` : ''
     const result = await dialog.showMessageBox(window ?? undefined, {
       type: 'info',
-      buttons: ['Yeniden Baslat ve Yukle', 'Daha Sonra'],
+      buttons: ['Yeniden Başlat ve Yükle', 'Daha Sonra'],
       defaultId: 0,
       cancelId: 1,
       noLink: true,
-      title: 'Guncelleme Hazir',
+      title: 'Güncelleme Hazır',
       message: `Abi Player${versionLabel} indirildi`,
-      detail: 'Guncellemeyi tamamlamak icin uygulama yeniden baslatilacak.'
+      detail: 'Güncellemeyi tamamlamak için uygulama yeniden başlatılacak.'
     })
 
     if (result.response === 0) {
@@ -238,7 +238,7 @@ export function initializeAppUpdater(): void {
   setState({
     canCheck,
     status: canCheck ? 'idle' : 'unsupported',
-    message: canCheck ? 'Guncelleme kontrolu hazir' : 'Otomatik guncelleme sadece paketli uygulamada kullanilabilir'
+    message: canCheck ? 'Güncelleme kontrolü hazır' : 'Otomatik güncelleme sadece paketli uygulamada kullanılabilir'
   })
 
   if (!canCheck) return
@@ -268,7 +268,7 @@ export async function checkForAppUpdates(): Promise<AppUpdateState> {
   if (!state.canCheck) {
     return setState({
       status: 'unsupported',
-      message: 'Otomatik guncelleme sadece paketli uygulamada kullanilabilir'
+      message: 'Otomatik güncelleme sadece paketli uygulamada kullanılabilir'
     })
   }
 

@@ -59,7 +59,7 @@ function getSecureCredentialFilePath(): string {
 
 function ensureSecureStorageAvailable(): void {
   if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error('Guvenli kimlik bilgisi saklama bu sistemde kullanilamiyor')
+    throw new Error('Güvenli kimlik bilgisi saklama bu sistemde kullanılamıyor')
   }
 }
 
@@ -279,7 +279,7 @@ async function extractEmbeddedSubtitle(
   streamIndex: number
 ): Promise<EmbeddedSubtitleExtractionResult | null> {
   if (!ffmpegPath) {
-    throw new Error('ffmpeg calistirilabilir dosyasi bulunamadi')
+    throw new Error('ffmpeg çalıştırılabilir dosyası bulunamadı')
   }
 
   const args = [
@@ -414,9 +414,9 @@ export function registerIpcHandlers(): void {
     const result = await dialog.showOpenDialog(window, {
       properties: ['openFile'],
       filters: filters || [
-        { name: 'Oynatma Listesi Dosyalari', extensions: ['m3u', 'm3u8', 'txt'] },
-        { name: 'Altyazi Dosyalari', extensions: ['srt', 'vtt', 'ass', 'ssa'] },
-        { name: 'Tum Dosyalar', extensions: ['*'] }
+        { name: 'Oynatma Listesi Dosyaları', extensions: ['m3u', 'm3u8', 'txt'] },
+        { name: 'Altyazı Dosyaları', extensions: ['srt', 'vtt', 'ass', 'ssa'] },
+        { name: 'Tüm Dosyalar', extensions: ['*'] }
       ]
     })
 

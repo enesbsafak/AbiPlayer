@@ -66,23 +66,23 @@ function formatBytes(value: number | null): string | null {
 function getUpdateStatusLabel(updateState: AppUpdateState | null): string {
   switch (updateState?.status) {
     case 'unsupported':
-      return 'Bu ortamda otomatik guncelleme desteklenmiyor'
+      return 'Bu ortamda otomatik güncelleme desteklenmiyor'
     case 'idle':
-      return 'Guncelleme sistemi hazir'
+      return 'Güncelleme sistemi hazır'
     case 'checking':
-      return 'Guncellemeler kontrol ediliyor...'
+      return 'Güncellemeler kontrol ediliyor...'
     case 'available':
-      return 'Yeni surum bulundu, indirme baslatildi'
+      return 'Yeni sürüm bulundu, indirme başlatıldı'
     case 'downloading':
-      return 'Guncelleme indiriliyor...'
+      return 'Güncelleme indiriliyor...'
     case 'downloaded':
-      return 'Guncelleme indirildi, kurulum icin yeniden baslatin'
+      return 'Güncelleme indirildi, kurulum için yeniden başlatın'
     case 'not-available':
-      return 'Uygulama guncel'
+      return 'Uygulama güncel'
     case 'error':
-      return 'Guncelleme kontrolunde hata olustu'
+      return 'Güncelleme kontrolünde hata oluştu'
     default:
-      return 'Guncelleme durumu aliniyor...'
+      return 'Güncelleme durumu alınıyor...'
   }
 }
 
@@ -383,14 +383,14 @@ export function SettingsContent() {
                   updateSettings({ defaultSubtitleEnabled: true, preferredSubtitleLanguage: id })
                 }
               }}
-              placeholder="Tercih edilen altyazi dili"
+              placeholder="Tercih edilen altyazı dili"
             />
           </div>
         </div>
 
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div>
-            <label className="text-sm text-surface-400 mb-2 block">Aktif Yayin Dublaji</label>
+            <label className="text-sm text-surface-400 mb-2 block">Aktif Yayın Dublajı</label>
             {audioTracks.length > 0 ? (
               <Dropdown
                 items={audioTracks.map((track, index) => ({
@@ -399,24 +399,24 @@ export function SettingsContent() {
                 }))}
                 value={currentAudioTrack ?? undefined}
                 onSelect={(id) => setCurrentAudioTrack(id)}
-                placeholder="Aktif dublaj sec"
+                placeholder="Aktif dublaj seç"
               />
             ) : (
               <p className="rounded-lg border border-surface-700 bg-surface-900 px-3 py-2 text-sm text-surface-500">
-                Aktif yayin icin ses kanali bulunamadi.
+                Aktif yayın için ses kanalı bulunamadı.
               </p>
             )}
           </div>
 
           <div>
-            <label className="text-sm text-surface-400 mb-2 block">Aktif Yayin Altyazisi</label>
+            <label className="text-sm text-surface-400 mb-2 block">Aktif Yayın Altyazısı</label>
             {subtitleTracks.length > 0 ? (
               <Dropdown
                 items={[
-                  { id: '__off__', label: 'Kapali' },
+                  { id: '__off__', label: 'Kapalı' },
                   ...subtitleTracks.map((track, index) => ({
                     id: String(track.id),
-                    label: track.name || track.lang || `Altyazi ${index + 1}`
+                    label: track.name || track.lang || `Altyazı ${index + 1}`
                   }))
                 ]}
                 value={currentSubtitleTrack ?? '__off__'}
@@ -429,11 +429,11 @@ export function SettingsContent() {
                   }
                   setCurrentSubtitleTrack(id)
                 }}
-                placeholder="Aktif altyazi sec"
+                placeholder="Aktif altyazı seç"
               />
             ) : (
               <p className="rounded-lg border border-surface-700 bg-surface-900 px-3 py-2 text-sm text-surface-500">
-                Aktif yayin icin altyazi bulunamadi.
+                Aktif yayın için altyazı bulunamadı.
               </p>
             )}
           </div>
@@ -454,14 +454,14 @@ export function SettingsContent() {
         <div className="mt-5">
           <Input
             id="tmdb-api-key"
-            label="TMDB API Anahtari (opsiyonel)"
+            label="TMDB API Anahtarı (opsiyonel)"
             type="password"
             value={settings.tmdbApiKey}
             onChange={(e) => updateSettings({ tmdbApiKey: e.target.value })}
-            placeholder="TMDB v3 anahtari veya v4 bearer token girin"
+            placeholder="TMDB v3 anahtarı veya v4 bearer token girin"
           />
           <p className="mt-1 text-xs text-surface-500">
-            Film/dizi detaylari ile bolum adlarini zenginlestirmek icin kullanilir.
+            Film/dizi detayları ile bölüm adlarını zenginleştirmek için kullanılır.
           </p>
         </div>
       </section>
@@ -471,7 +471,7 @@ export function SettingsContent() {
         <h2 className="text-lg font-semibold mb-4">EPG</h2>
         <Input
           id="epg-refresh"
-          label="EPG Yenileme Araligi (dakika)"
+          label="EPG Yenileme Aralığı (dakika)"
           type="number"
           min={5}
           max={1440}
@@ -486,7 +486,7 @@ export function SettingsContent() {
 
       <div className="border-t border-surface-800 pt-6">
         <Button variant="danger" onClick={resetSettings}>
-          Tum Ayarlari Sifirla
+          Tüm Ayarları Sıfırla
         </Button>
       </div>
     </div>

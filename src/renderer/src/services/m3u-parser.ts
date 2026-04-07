@@ -169,7 +169,7 @@ async function readResponseTextWithLimit(response: Response, maxSizeBytes: numbe
 export async function fetchAndParseM3U(url: string, sourceId: string): Promise<ReturnType<typeof parseM3U>> {
   const parsedUrl = new URL(url)
   if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-    throw new Error('Yalnizca HTTP/HTTPS oynatma listesi adresleri destekleniyor')
+    throw new Error('Yalnızca HTTP/HTTPS oynatma listesi adresleri destekleniyor')
   }
 
   const controller = new AbortController()

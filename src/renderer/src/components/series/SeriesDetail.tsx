@@ -249,7 +249,7 @@ export function SeriesDetail({
   }, [detail, selectedSeason, settings.language, settings.tmdbApiKey, tmdbTvId])
 
   if (loading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>
-  if (!detail) return <div className="text-center py-20 text-surface-500">Dizi detayi yuklenemedi</div>
+  if (!detail) return <div className="text-center py-20 text-surface-500">Dizi detayı yüklenemedi</div>
 
   const episodes = detail.episodes[selectedSeason] || []
 

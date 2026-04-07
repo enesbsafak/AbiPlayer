@@ -189,7 +189,7 @@ export function useMpvPlayer(enabled: boolean) {
         startupStartedAtRef.current = null
         updateStartupVisibility(false)
         setPlaybackEngine('html5')
-        setPlayerError(error instanceof Error ? error.message : 'mpv oynatim baslatilamadi')
+        setPlayerError(error instanceof Error ? error.message : 'mpv oynatım başlatılamadı')
       }
     }
 

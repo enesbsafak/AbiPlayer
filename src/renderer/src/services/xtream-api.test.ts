@@ -33,7 +33,7 @@ describe('xtream-api', () => {
 
     controller.abort()
 
-    await expect(request).rejects.toThrow('Istek iptal edildi')
+    await expect(request).rejects.toThrow('İstek iptal edildi')
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
   })

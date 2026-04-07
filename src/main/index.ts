@@ -1,9 +1,58 @@
-import { existsSync } from 'fs'
-import { app, shell, BrowserWindow } from 'electron'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { app, shell, BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { initializeAppUpdater } from './app-updater'
 import { registerIpcHandlers } from './ipc-handlers'
+
+interface WindowState {
+  x?: number
+  y?: number
+  width: number
+  height: number
+  isMaximized: boolean
+}
+
+const WINDOW_STATE_FILE = join(app.getPath('userData'), 'window-state.json')
+const DEFAULT_STATE: WindowState = { width: 1280, height: 800, isMaximized: false }
+
+function loadWindowState(): WindowState {
+  try {
+    if (existsSync(WINDOW_STATE_FILE)) {
+      const data = JSON.parse(readFileSync(WINDOW_STATE_FILE, 'utf-8'))
+      return { ...DEFAULT_STATE, ...data }
+    }
+  } catch {
+    // ignore
+  }
+  return { ...DEFAULT_STATE }
+}
+
+function saveWindowState(win: BrowserWindow): void {
+  const isMaximized = win.isMaximized()
+  const bounds = isMaximized ? (win as any)._normalBounds ?? win.getBounds() : win.getBounds()
+  const state: WindowState = {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    isMaximized
+  }
+  try {
+    writeFileSync(WINDOW_STATE_FILE, JSON.stringify(state))
+  } catch {
+    // ignore
+  }
+}
+
+function isStateInBounds(state: WindowState): boolean {
+  if (state.x === undefined || state.y === undefined) return true
+  const displays = screen.getAllDisplays()
+  return displays.some((d) => {
+    const { x, y, width, height } = d.workArea
+    return state.x! >= x - 100 && state.y! >= y - 100 && state.x! < x + width && state.y! < y + height
+  })
+}
 
 // Enable native audio track API in Chromium so multi-audio streams can be switched.
 app.commandLine.appendSwitch('enable-blink-features', 'AudioTracks')
@@ -21,9 +70,17 @@ function isAllowedExternalUrl(url: string): boolean {
 
 function createWindow(): void {
   const windowIconPath = join(app.getAppPath(), 'build', 'icon.png')
+  const savedState = loadWindowState()
+
+  const positionOpts =
+    savedState.x !== undefined && savedState.y !== undefined && isStateInBounds(savedState)
+      ? { x: savedState.x, y: savedState.y }
+      : {}
+
   const mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: savedState.width,
+    height: savedState.height,
+    ...positionOpts,
     minWidth: 900,
     minHeight: 600,
     show: false,
@@ -41,6 +98,26 @@ function createWindow(): void {
       nodeIntegration: false
     }
   })
+
+  // Track normal bounds so we can save them even when maximized
+  ;(mainWindow as any)._normalBounds = mainWindow.getBounds()
+  mainWindow.on('resize', () => {
+    if (!mainWindow.isMaximized()) {
+      ;(mainWindow as any)._normalBounds = mainWindow.getBounds()
+    }
+  })
+  mainWindow.on('move', () => {
+    if (!mainWindow.isMaximized()) {
+      ;(mainWindow as any)._normalBounds = mainWindow.getBounds()
+    }
+  })
+  mainWindow.on('close', () => {
+    saveWindowState(mainWindow)
+  })
+
+  if (savedState.isMaximized) {
+    mainWindow.maximize()
+  }
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()

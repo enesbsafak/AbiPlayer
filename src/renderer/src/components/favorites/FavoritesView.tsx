@@ -20,8 +20,8 @@ export function FavoritesView({ onPlay }: FavoritesViewProps) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-surface-400">
         <Heart size={48} className="mb-4" />
-        <p className="text-lg">Henuz favori yok</p>
-        <p className="text-sm mt-1">Favorilere eklemek icin kanallari yildizlayin</p>
+        <p className="text-lg">Henüz favori yok</p>
+        <p className="text-sm mt-1">Favorilere eklemek için kanalları yıldızlayın</p>
       </div>
     )
   }

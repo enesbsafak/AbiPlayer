@@ -399,7 +399,7 @@ export class MpvController {
 
   private async ensureStarted(parentWid?: string): Promise<void> {
     const available = await this.isAvailable()
-    if (!available) throw new Error('mpv ikili dosyasi bulunamadi')
+    if (!available) throw new Error('mpv ikili dosyası bulunamadı')
 
     if (this.process && this.socket && !this.socket.destroyed) {
       if (parentWid && this.startupParentWid && this.startupParentWid !== parentWid) {

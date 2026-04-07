@@ -36,8 +36,8 @@ export function EPGGrid() {
   if (!epgData || liveChannels.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-surface-500">
-        <p className="text-lg">EPG verisi bulunamadi</p>
-        <p className="text-sm mt-1">Xtream kaynagina baglaninca EPG verisi otomatik yuklenir</p>
+        <p className="text-lg">EPG verisi bulunamadı</p>
+        <p className="text-sm mt-1">Xtream kaynağına bağlanınca EPG verisi otomatik yüklenir</p>
       </div>
     )
   }
@@ -48,9 +48,9 @@ export function EPGGrid() {
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 mb-3">
         <Button variant="ghost" size="sm" onClick={() => setTimeOffset((t) => t - 4)}>
-          <ChevronLeft size={16} /> Onceki
+          <ChevronLeft size={16} /> Önceki
         </Button>
-        <Button variant="secondary" size="sm" onClick={() => setTimeOffset(0)}>Simdi</Button>
+        <Button variant="secondary" size="sm" onClick={() => setTimeOffset(0)}>Şimdi</Button>
         <Button variant="ghost" size="sm" onClick={() => setTimeOffset((t) => t + 4)}>
           Sonraki <ChevronRight size={16} />
         </Button>

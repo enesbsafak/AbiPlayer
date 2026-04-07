@@ -24,6 +24,7 @@ export function useKeyboard() {
   const setMuted = useStore((s) => s.setMuted)
   const playerReturnTarget = useStore((s) => s.playerReturnTarget)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
+  const togglePlayerSidebar = useStore((s) => s.togglePlayerSidebar)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -132,6 +133,15 @@ export function useKeyboard() {
           }
           break
 
+        case 'l':
+        case 'L':
+          if (e.metaKey || e.ctrlKey || e.altKey) return
+          e.preventDefault()
+          if (currentChannel && location.pathname === '/player') {
+            togglePlayerSidebar()
+          }
+          break
+
         case 'Escape':
           if (playbackEngine === 'mpv' && isFullscreen) {
             e.preventDefault()
@@ -164,6 +174,7 @@ export function useKeyboard() {
     navigate,
     location.pathname,
     playerReturnTarget,
-    setMiniPlayer
+    setMiniPlayer,
+    togglePlayerSidebar
   ])
 }

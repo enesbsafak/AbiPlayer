@@ -27,6 +27,7 @@ export interface PlayerSlice {
   activeSubtitleCues: SubtitleCue[]
   showControls: boolean
   isMiniPlayer: boolean
+  isPlayerSidebarOpen: boolean
   setPlaybackEngine: (engine: 'html5' | 'mpv') => void
   playChannel: (channel: Channel) => void
   stopPlayback: () => void
@@ -51,6 +52,8 @@ export interface PlayerSlice {
   setActiveSubtitleCues: (cues: SubtitleCue[]) => void
   setShowControls: (show: boolean) => void
   setMiniPlayer: (mini: boolean) => void
+  setPlayerSidebarOpen: (open: boolean) => void
+  togglePlayerSidebar: () => void
 }
 
 export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> = (set) => ({
@@ -77,6 +80,7 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
   activeSubtitleCues: [],
   showControls: true,
   isMiniPlayer: false,
+  isPlayerSidebarOpen: false,
   setPlaybackEngine: (engine) => set({ playbackEngine: engine }),
 
   playChannel: (channel) =>
@@ -90,7 +94,7 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
           isBuffering: false,
           currentTime: 0,
           duration: 0,
-          playerError: 'Secilen icerik dogrudan oynatilamiyor.'
+          playerError: 'Seçilen içerik doğrudan oynatılamıyor.'
         }
       }
 
@@ -154,5 +158,7 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
   setSubtitleCues: (cues) => set({ subtitleCues: cues }),
   setActiveSubtitleCues: (cues) => set({ activeSubtitleCues: cues }),
   setShowControls: (show) => set({ showControls: show }),
-  setMiniPlayer: (mini) => set({ isMiniPlayer: mini })
+  setMiniPlayer: (mini) => set({ isMiniPlayer: mini }),
+  setPlayerSidebarOpen: (open) => set({ isPlayerSidebarOpen: open }),
+  togglePlayerSidebar: () => set((state) => ({ isPlayerSidebarOpen: !state.isPlayerSidebarOpen }))
 })

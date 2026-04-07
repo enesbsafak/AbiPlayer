@@ -4,7 +4,7 @@ import type { Channel, Category } from '@/types/playlist'
 const XTREAM_REQUEST_TIMEOUT_MS = 20_000
 const PREVIEW_SCAN_CATEGORY_LIMIT = 12
 const XTREAM_DEFAULT_CACHE_TTL_MS = 45_000
-const XTREAM_REQUEST_CANCELLED_MESSAGE = 'Istek iptal edildi'
+const XTREAM_REQUEST_CANCELLED_MESSAGE = 'İstek iptal edildi'
 
 const requestCache = new Map<string, { expiresAt: number; data: unknown }>()
 const inflightRequests = new Map<string, Promise<unknown>>()

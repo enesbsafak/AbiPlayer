@@ -134,7 +134,7 @@ export function parseEPGXml(xml: string): EPGData {
 
     programs[channelId].push({
       channelId,
-      title: title || 'Baslik Yok',
+      title: title || 'Başlık Yok',
       description: desc || undefined,
       start,
       end,

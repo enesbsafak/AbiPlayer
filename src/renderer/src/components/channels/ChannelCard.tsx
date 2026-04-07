@@ -53,7 +53,7 @@ export const ChannelCard = memo(function ChannelCard({
         {channel.type === 'live' && (
           <div className="absolute left-2 top-2 flex items-center gap-1 rounded-md border border-red-300/30 bg-red-600/80 px-2 py-0.5 text-[10px] font-semibold text-white">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-            Canli
+            Canlı
           </div>
         )}
         {qualityLabel && (
@@ -68,13 +68,13 @@ export const ChannelCard = memo(function ChannelCard({
             {channel.name}
           </ClampText>
           <ClampText as="p" lines={1} className="mt-0.5 text-[11px] leading-4 text-surface-500">
-            {channel.group || channel.categoryName || (channel.type === 'live' ? 'Yayin' : 'Medya')}
+            {channel.group || channel.categoryName || (channel.type === 'live' ? 'Yayın' : 'Medya')}
           </ClampText>
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); toggleFavorite(channel.id) }}
           className="shrink-0 rounded-full border border-surface-600/45 bg-surface-800/80 p-1.5 transition-colors hover:border-accent/60 hover:bg-surface-700"
-          aria-label={fav ? 'Favorilerden cikar' : 'Favorilere ekle'}
+          aria-label={fav ? 'Favorilerden çıkar' : 'Favorilere ekle'}
         >
           <Star
             size={14}
