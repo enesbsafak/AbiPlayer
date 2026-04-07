@@ -447,11 +447,14 @@ export class MpvController {
       '--pause=yes',
       // Network resilience for live streams
       '--network-timeout=30',
-      '--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5',
+      '--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5,reconnect_on_network_error=1',
       '--demuxer-max-bytes=150MiB',
       '--demuxer-max-back-bytes=50MiB',
       '--cache=yes',
       '--cache-secs=30',
+      // Accept self-signed / expired TLS certificates (common in IPTV)
+      '--tls-verify=no',
+      '--tls-ca-file=',
       `--input-ipc-server=${socketPath}`
     ]
 

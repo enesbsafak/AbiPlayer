@@ -62,6 +62,8 @@ function isStateInBounds(state: WindowState): boolean {
 
 // Enable native audio track API in Chromium so multi-audio streams can be switched.
 app.commandLine.appendSwitch('enable-blink-features', 'AudioTracks')
+// Tolerate self-signed / expired TLS certificates common in IPTV servers
+app.commandLine.appendSwitch('ignore-certificate-errors')
 
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:'])
 

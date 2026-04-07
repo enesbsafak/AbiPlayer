@@ -276,26 +276,37 @@ export function useMpvPlayer(enabled: boolean) {
       setFullscreen(Boolean(windowFullscreen || snapshot.fullscreen))
 
       // Track good playback for reconnect logic
-      if (snapshot.running && !snapshot.error && snapshot.timePos > 0) {
+      const isLiveStream = useStore.getState().currentChannel?.type === 'live'
+      if (snapshot.running && !snapshot.error && !snapshot.buffering && snapshot.timePos > 0) {
         lastGoodPlaybackRef.current = now
         reconnectCountRef.current = 0
       }
 
-      // Auto-reconnect on error for live streams
-      if (snapshot.error && startupUrlRef.current && !reconnectTimerRef.current) {
-        const { currentChannel: ch } = useStore.getState()
-        if (ch?.type === 'live' && reconnectCountRef.current < MAX_AUTO_RECONNECT) {
+      // Detect stalled live stream (no progress for 15s, no error reported)
+      const isStalledLive =
+        isLiveStream &&
+        !snapshot.error &&
+        snapshot.running &&
+        !snapshot.paused &&
+        lastGoodPlaybackRef.current > 0 &&
+        now - lastGoodPlaybackRef.current > 15_000
+
+      // Auto-reconnect on error OR stall for live streams
+      const needsReconnect = (snapshot.error || isStalledLive) && startupUrlRef.current && !reconnectTimerRef.current
+      if (needsReconnect) {
+        if (isLiveStream && reconnectCountRef.current < MAX_AUTO_RECONNECT) {
           reconnectCountRef.current++
           const delay = RECONNECT_DELAY_MS * reconnectCountRef.current
           setPlayerError(`Bağlantı kesildi, yeniden bağlanılıyor... (${reconnectCountRef.current}/${MAX_AUTO_RECONNECT})`)
+          lastGoodPlaybackRef.current = now // reset stall timer
           reconnectTimerRef.current = setTimeout(() => {
             reconnectTimerRef.current = null
             void mpvOpen(startupUrlRef.current!).catch(() => undefined)
           }, delay)
-        } else {
+        } else if (snapshot.error) {
           setPlayerError(snapshot.error)
         }
-      } else if (!snapshot.error) {
+      } else if (!snapshot.error && !isStalledLive) {
         setPlayerError(null)
       }
 
