@@ -290,18 +290,8 @@ export class MpvController {
   async setVideoMargin(right: number): Promise<void> {
     if (!this.process) return
     const clamped = Math.max(0, Math.min(800, Math.round(right)))
-    // Use video-align-x + panscan to shift video left when sidebar is open
-    if (clamped > 0) {
-      await Promise.allSettled([
-        this.command(['set_property', 'video-align-x', -1]),
-        this.command(['set_property', 'panscan', 0])
-      ])
-    } else {
-      await Promise.allSettled([
-        this.command(['set_property', 'video-align-x', 0]),
-        this.command(['set_property', 'panscan', 0])
-      ])
-    }
+    // video-align-x: -1.0 = left-align, 0.0 = center
+    await this.command(['set_property', 'video-align-x', clamped > 0 ? -1.0 : 0.0]).catch(() => undefined)
   }
 
   async setSubtitleStyle(style: MpvSubtitleStyle): Promise<void> {
@@ -608,7 +598,7 @@ export class MpvController {
       }
     }
 
-    throw new Error('mpv IPC soketine baglanilamadi')
+    throw new Error('mpv IPC soketine bağlanılamadı')
   }
 
   private onSocketData(chunk: string): void {
@@ -701,14 +691,14 @@ export class MpvController {
     timeoutMs = MPV_REQUEST_TIMEOUT_MS
   ): Promise<unknown> {
     const socket = this.socket
-    if (!socket || socket.destroyed) throw new Error('mpv IPC soket baglantisi yok')
+    if (!socket || socket.destroyed) throw new Error('mpv IPC soket bağlantısı yok')
 
     const requestId = this.nextRequestId++
 
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingRequests.delete(requestId)
-        reject(new Error('mpv komut zaman asimina ugradi'))
+        reject(new Error('mpv komut zaman aşımına uğradı'))
       }, timeoutMs)
 
       this.pendingRequests.set(requestId, { resolve, reject, timer })
@@ -732,7 +722,7 @@ export class MpvController {
   private async cleanup(): Promise<void> {
     for (const [requestId, pending] of this.pendingRequests.entries()) {
       clearTimeout(pending.timer)
-      pending.reject(new Error('mpv IPC baglantisi kesildi'))
+      pending.reject(new Error('mpv IPC bağlantısı kesildi'))
       this.pendingRequests.delete(requestId)
     }
 

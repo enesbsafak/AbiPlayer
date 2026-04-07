@@ -118,7 +118,7 @@ function isValidSubtitleFilePath(value: unknown): value is string {
 
 function clampNormalizedVolume(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error('Gecersiz ses seviyesi')
+    throw new Error('Geçersiz ses seviyesi')
   }
 
   return Math.round(Math.max(0, Math.min(1, value)) * 100)
@@ -196,7 +196,7 @@ async function runProcess(
 
     const timeout = setTimeout(() => {
       child.kill('SIGKILL')
-      finishWithError(new Error(`Islem zaman asimina ugradi (${timeoutMs}ms)`))
+      finishWithError(new Error(`İşlem zaman aşımına uğradı (${timeoutMs}ms)`))
     }, timeoutMs)
 
     child.on('error', (error) => {
@@ -209,7 +209,7 @@ async function runProcess(
       stdoutBytes += Buffer.byteLength(chunk)
       if (stdoutBytes > maxOutputBytes) {
         child.kill('SIGKILL')
-        finishWithError(new Error('Islem stdout cikisi izin verilen boyutu asti'))
+        finishWithError(new Error('İşlem stdout çıkışı izin verilen boyutu aştı'))
         return
       }
       stdout += chunk
@@ -220,7 +220,7 @@ async function runProcess(
       stderrBytes += Buffer.byteLength(chunk)
       if (stderrBytes > maxOutputBytes) {
         child.kill('SIGKILL')
-        finishWithError(new Error('Islem stderr cikisi izin verilen boyutu asti'))
+        finishWithError(new Error('İşlem stderr çıkışı izin verilen boyutu aştı'))
         return
       }
       stderr += chunk
@@ -232,7 +232,7 @@ async function runProcess(
       settled = true
 
       if (code !== 0) {
-        reject(new Error(stderr.trim() || `Islem ${code} koduyla sonlandi`))
+        reject(new Error(stderr.trim() || `İşlem ${code} koduyla sonlandı`))
         return
       }
 
@@ -453,7 +453,7 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('window-set-fullscreen', (event, fullscreen: unknown): void => {
-    if (typeof fullscreen !== 'boolean') throw new Error('Gecersiz tam ekran degeri')
+    if (typeof fullscreen !== 'boolean') throw new Error('Geçersiz tam ekran değeri')
     const window =
       BrowserWindow.fromWebContents(event.sender) ??
       BrowserWindow.getFocusedWindow() ??
@@ -488,8 +488,8 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     'secure-credentials-set',
     async (_, sourceId: unknown, credential: unknown): Promise<void> => {
-      if (!isValidSourceId(sourceId)) throw new Error('Gecersiz kaynak kimligi')
-      if (!isValidCredential(credential)) throw new Error('Gecersiz kimlik bilgisi verisi')
+      if (!isValidSourceId(sourceId)) throw new Error('Geçersiz kaynak kimliği')
+      if (!isValidCredential(credential)) throw new Error('Geçersiz kimlik bilgisi verisi')
 
       const store = await readSecureCredentialStore()
       store[sourceId] = credential
@@ -498,7 +498,7 @@ export function registerIpcHandlers(): void {
   )
 
   ipcMain.handle('secure-credentials-delete', async (_, sourceId: unknown): Promise<void> => {
-    if (!isValidSourceId(sourceId)) throw new Error('Gecersiz kaynak kimligi')
+    if (!isValidSourceId(sourceId)) throw new Error('Geçersiz kaynak kimliği')
 
     const store = await readSecureCredentialStore()
     if (!(sourceId in store)) return
@@ -509,7 +509,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     'embedded-subtitles-probe',
     async (_, streamUrl: unknown): Promise<EmbeddedSubtitleProbeTrack[]> => {
-      if (!isValidStreamUrl(streamUrl)) throw new Error('Gecersiz yayin URL')
+      if (!isValidStreamUrl(streamUrl)) throw new Error('Geçersiz yayın URL')
 
       return probeEmbeddedSubtitles(streamUrl)
     }
@@ -518,9 +518,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     'embedded-subtitles-extract',
     async (_, streamUrl: unknown, streamIndex: unknown): Promise<EmbeddedSubtitleExtractionResult | null> => {
-      if (!isValidStreamUrl(streamUrl)) throw new Error('Gecersiz yayin URL')
+      if (!isValidStreamUrl(streamUrl)) throw new Error('Geçersiz yayın URL')
       if (typeof streamIndex !== 'number' || !Number.isInteger(streamIndex) || streamIndex < 0) {
-        throw new Error('Gecersiz altyazi akis indeksi')
+        throw new Error('Geçersiz altyazı akış indeksi')
       }
 
       return extractEmbeddedSubtitle(streamUrl, streamIndex)
@@ -532,7 +532,7 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('mpv-open', async (event, streamUrl: unknown): Promise<void> => {
-    if (!isValidStreamUrl(streamUrl)) throw new Error('Gecersiz yayin URL')
+    if (!isValidStreamUrl(streamUrl)) throw new Error('Geçersiz yayın URL')
     const window =
       BrowserWindow.fromWebContents(event.sender) ??
       BrowserWindow.getFocusedWindow() ??
@@ -550,20 +550,20 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('mpv-set-pause', async (_, paused: unknown): Promise<void> => {
-    if (typeof paused !== 'boolean') throw new Error('Gecersiz duraklatma degeri')
+    if (typeof paused !== 'boolean') throw new Error('Geçersiz duraklatma değeri')
     await mpvController.setPause(paused)
   })
 
   ipcMain.handle('mpv-seek', async (_, seconds: unknown): Promise<void> => {
     if (typeof seconds !== 'number' || !Number.isFinite(seconds)) {
-      throw new Error('Gecersiz sarma degeri')
+      throw new Error('Geçersiz sarma değeri')
     }
     await mpvController.seek(seconds)
   })
 
   ipcMain.handle('mpv-seek-to', async (_, seconds: unknown): Promise<void> => {
     if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) {
-      throw new Error('Gecersiz hedef zaman')
+      throw new Error('Geçersiz hedef zaman')
     }
     await mpvController.seekTo(seconds)
   })
@@ -574,37 +574,37 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('mpv-set-mute', async (_, muted: unknown): Promise<void> => {
-    if (typeof muted !== 'boolean') throw new Error('Gecersiz sessiz degeri')
+    if (typeof muted !== 'boolean') throw new Error('Geçersiz sessiz değeri')
     await mpvController.setMute(muted)
   })
 
   ipcMain.handle('mpv-set-audio-track', async (_, trackId: unknown): Promise<void> => {
-    if (!isValidMpvTrackId(trackId)) throw new Error('Gecersiz ses kanal kimligi')
+    if (!isValidMpvTrackId(trackId)) throw new Error('Geçersiz ses kanal kimliği')
     await mpvController.setAudioTrack(trackId)
   })
 
   ipcMain.handle('mpv-set-video-track', async (_, trackId: unknown): Promise<void> => {
-    if (!isValidMpvTrackId(trackId)) throw new Error('Gecersiz goruntu kalite kimligi')
+    if (!isValidMpvTrackId(trackId)) throw new Error('Geçersiz görüntü kalite kimliği')
     await mpvController.setVideoTrack(trackId)
   })
 
   ipcMain.handle('mpv-set-subtitle-track', async (_, trackId: unknown): Promise<void> => {
-    if (!isValidMpvTrackId(trackId)) throw new Error('Gecersiz altyazi kanal kimligi')
+    if (!isValidMpvTrackId(trackId)) throw new Error('Geçersiz altyazı kanal kimliği')
     await mpvController.setSubtitleTrack(trackId)
   })
 
   ipcMain.handle('mpv-add-subtitle-file', async (_, filePath: unknown): Promise<number | null> => {
-    if (!isValidSubtitleFilePath(filePath)) throw new Error('Gecersiz altyazi dosya yolu')
+    if (!isValidSubtitleFilePath(filePath)) throw new Error('Geçersiz altyazı dosya yolu')
     return mpvController.addSubtitleFile(filePath)
   })
 
   ipcMain.handle('mpv-set-fullscreen', async (_, fullscreen: unknown): Promise<void> => {
-    if (typeof fullscreen !== 'boolean') throw new Error('Gecersiz tam ekran degeri')
+    if (typeof fullscreen !== 'boolean') throw new Error('Geçersiz tam ekran değeri')
     await mpvController.setFullscreen(fullscreen)
   })
 
   ipcMain.handle('mpv-set-subtitle-style', async (_, style: unknown): Promise<void> => {
-    if (!isValidMpvSubtitleStyle(style)) throw new Error('Gecersiz altyazi stil verisi')
+    if (!isValidMpvSubtitleStyle(style)) throw new Error('Geçersiz altyazı stil verisi')
     await mpvController.setSubtitleStyle(style)
   })
 

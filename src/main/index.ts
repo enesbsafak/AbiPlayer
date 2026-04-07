@@ -48,9 +48,15 @@ function saveWindowState(win: BrowserWindow): void {
 function isStateInBounds(state: WindowState): boolean {
   if (state.x === undefined || state.y === undefined) return true
   const displays = screen.getAllDisplays()
+  // Ensure at least 50px of the window title area is visible on some display
   return displays.some((d) => {
     const { x, y, width, height } = d.workArea
-    return state.x! >= x - 100 && state.y! >= y - 100 && state.x! < x + width && state.y! < y + height
+    return (
+      state.x! + state.width > x + 50 &&
+      state.x! < x + width - 50 &&
+      state.y! >= y - 10 &&
+      state.y! < y + height - 50
+    )
   })
 }
 

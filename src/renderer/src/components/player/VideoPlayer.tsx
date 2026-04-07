@@ -74,7 +74,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
   const handleContainerDoubleClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null
     if (!target) return
-    if (target.closest('[data-player-controls]')) return
+    if (target.closest('[data-player-controls]') || target.closest('[data-player-sidebar]')) return
     void toggleFullscreen()
   }, [toggleFullscreen])
 
