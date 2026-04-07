@@ -46,7 +46,7 @@ export async function fetchAndParseEPG(url: string): Promise<EPGData> {
 
     // Read as text - for very large files, limit to ~50MB
     const reader = res.body?.getReader()
-    if (!reader) throw new Error('Sunucudan gecerli veri gelmedi')
+    if (!reader) throw new Error('Sunucudan geçerli veri gelmedi')
 
     const chunks: Uint8Array[] = []
     let totalSize = 0

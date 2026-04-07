@@ -12,7 +12,7 @@ import {
 } from './app-updater'
 import { MpvController, type MpvStateSnapshot, type MpvSubtitleStyle } from './mpv-controller'
 
-const MAX_LOCAL_FILE_SIZE_BYTES = 20 * 1024 * 1024
+const MAX_LOCAL_FILE_SIZE_BYTES = 500 * 1024 * 1024
 const MAX_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024
 const DEFAULT_PROCESS_TIMEOUT_MS = 90 * 1000
 const ALLOWED_STREAM_PROTOCOLS = new Set(['http:', 'https:'])
@@ -424,7 +424,7 @@ export function registerIpcHandlers(): void {
     const filePath = result.filePaths[0]
     const fileMeta = await stat(filePath)
     if (fileMeta.size > MAX_LOCAL_FILE_SIZE_BYTES) {
-      throw new Error('Secilen dosya cok buyuk (en fazla 20MB)')
+      throw new Error('Seçilen dosya çok büyük (en fazla 500MB)')
     }
 
     const content = await readFile(filePath, 'utf-8')

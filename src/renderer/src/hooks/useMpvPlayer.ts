@@ -179,9 +179,11 @@ export function useMpvPlayer(enabled: boolean) {
       try {
         const { volume: currentVolume, isMuted: currentMuted } = useStore.getState()
         const safeVolume = clampVolume(currentVolume)
+        // Only show startup overlay on first MPV launch, not on channel switches
+        const isFirstLaunch = !startupUrlRef.current
         startupUrlRef.current = currentChannel.streamUrl
         startupStartedAtRef.current = Date.now()
-        updateStartupVisibility(true)
+        if (isFirstLaunch) updateStartupVisibility(true)
         await mpvOpen(currentChannel.streamUrl)
         if (cancelled) return
 

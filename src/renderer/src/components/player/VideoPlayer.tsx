@@ -28,7 +28,8 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
 
   usePlayer(videoRef, { disabled: mpvEnabled })
   const isMpvStarting = useMpvPlayer(mpvEnabled)
-  const showLoadingOverlay = isBuffering || isMpvStarting
+  // MPV handles buffering natively — only show overlay on initial startup or HTML5 buffering
+  const showLoadingOverlay = mpvEnabled ? isMpvStarting : isBuffering
 
   useEffect(() => {
     let cancelled = false

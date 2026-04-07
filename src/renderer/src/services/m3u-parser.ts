@@ -9,7 +9,7 @@ interface M3UEntry {
   url: string
 }
 
-const M3U_FETCH_TIMEOUT_MS = 30_000
+const M3U_FETCH_TIMEOUT_MS = 120_000
 const MAX_M3U_SIZE_BYTES = 20 * 1024 * 1024
 const VOD_EXTENSIONS = new Set(['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv'])
 
