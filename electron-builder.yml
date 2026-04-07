@@ -18,6 +18,7 @@ asarUnpack:
 win:
   icon: build/icon.ico
   executableName: abi-player
+  forceCodeSigning: false
   target:
     - nsis
   extraResources:
