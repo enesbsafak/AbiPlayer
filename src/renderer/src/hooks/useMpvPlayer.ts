@@ -81,12 +81,18 @@ function getSelectedVideoTrackId(snapshot: MpvStateSnapshot): number | null {
   return selectedTrack?.id ?? snapshot.vid
 }
 
+const MAX_AUTO_RECONNECT = 5
+const RECONNECT_DELAY_MS = 3000
+
 export function useMpvPlayer(enabled: boolean) {
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioPreferenceAppliedRef = useRef(false)
   const subtitlePreferenceAppliedRef = useRef(false)
   const startupUrlRef = useRef<string | null>(null)
   const startupStartedAtRef = useRef<number | null>(null)
+  const reconnectCountRef = useRef(0)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastGoodPlaybackRef = useRef(0)
   const startupVisibleRef = useRef(false)
   const [isStarting, setIsStarting] = useState(false)
   const {
@@ -129,17 +135,28 @@ export function useMpvPlayer(enabled: boolean) {
     subtitlePreferenceAppliedRef.current = false
   }, [enabled, currentChannel?.id, currentChannel?.streamUrl])
 
-  // Full MPV teardown when disabled (leaving player)
+  // Full MPV teardown when disabled or component unmounts
   useEffect(() => {
-    if (enabled) return
-    startupUrlRef.current = null
-    startupStartedAtRef.current = null
-    updateStartupVisibility(false)
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current)
-      pollTimerRef.current = null
+    const teardown = () => {
+      startupUrlRef.current = null
+      startupStartedAtRef.current = null
+      reconnectCountRef.current = 0
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
+      updateStartupVisibility(false)
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current)
+        pollTimerRef.current = null
+      }
+      void mpvStop().catch(() => undefined)
     }
-    void mpvStop().catch(() => undefined)
+
+    if (enabled) {
+      return teardown // runs on unmount while enabled
+    }
+    teardown() // runs immediately when enabled becomes false
   }, [enabled])
 
   useEffect(() => {
@@ -257,9 +274,28 @@ export function useMpvPlayer(enabled: boolean) {
       setCurrentTime(snapshot.timePos || 0)
       setDuration(snapshot.duration || 0)
       setFullscreen(Boolean(windowFullscreen || snapshot.fullscreen))
-      if (snapshot.error) {
-        setPlayerError(snapshot.error)
-      } else {
+
+      // Track good playback for reconnect logic
+      if (snapshot.running && !snapshot.error && snapshot.timePos > 0) {
+        lastGoodPlaybackRef.current = now
+        reconnectCountRef.current = 0
+      }
+
+      // Auto-reconnect on error for live streams
+      if (snapshot.error && startupUrlRef.current && !reconnectTimerRef.current) {
+        const { currentChannel: ch } = useStore.getState()
+        if (ch?.type === 'live' && reconnectCountRef.current < MAX_AUTO_RECONNECT) {
+          reconnectCountRef.current++
+          const delay = RECONNECT_DELAY_MS * reconnectCountRef.current
+          setPlayerError(`Bağlantı kesildi, yeniden bağlanılıyor... (${reconnectCountRef.current}/${MAX_AUTO_RECONNECT})`)
+          reconnectTimerRef.current = setTimeout(() => {
+            reconnectTimerRef.current = null
+            void mpvOpen(startupUrlRef.current!).catch(() => undefined)
+          }, delay)
+        } else {
+          setPlayerError(snapshot.error)
+        }
+      } else if (!snapshot.error) {
         setPlayerError(null)
       }
 

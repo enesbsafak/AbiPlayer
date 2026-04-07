@@ -524,22 +524,24 @@ export function usePlayer(
         })
 
         let retryCount = 0
+        const MAX_HLS_RETRIES = 8
         hls.on(Hls.Events.ERROR, (_, data) => {
           if (data.fatal) {
-            if (retryCount >= 3) {
+            if (retryCount >= MAX_HLS_RETRIES) {
               setPlayerError(`Oynatma başarısız: ${data.details}`)
               return
             }
             retryCount++
+            const delay = Math.min(1000 * Math.pow(1.5, retryCount - 1), 10000)
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                hls.startLoad()
+                setTimeout(() => hls.startLoad(), delay)
                 break
               case Hls.ErrorTypes.MEDIA_ERROR:
                 hls.recoverMediaError()
                 break
               default:
-                setPlayerError(`Oynatma hatasi: ${data.details}`)
+                setPlayerError(`Oynatma hatası: ${data.details}`)
                 break
             }
           }

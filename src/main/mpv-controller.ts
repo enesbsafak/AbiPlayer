@@ -445,6 +445,13 @@ export class MpvController {
       '--input-vo-keyboard=no',
       '--msg-level=all=warn',
       '--pause=yes',
+      // Network resilience for live streams
+      '--network-timeout=30',
+      '--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5',
+      '--demuxer-max-bytes=150MiB',
+      '--demuxer-max-back-bytes=50MiB',
+      '--cache=yes',
+      '--cache-secs=30',
       `--input-ipc-server=${socketPath}`
     ]
 

@@ -6,7 +6,7 @@ import { PlayerControls } from './PlayerControls'
 import { PlayerSidebar } from './PlayerSidebar'
 import { SubtitleOverlay } from './SubtitleOverlay'
 import { Spinner } from '@/components/ui/Spinner'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, RefreshCw } from 'lucide-react'
 import { mpvIsAvailable, mpvSetFullscreen, windowSetFullscreen } from '@/services/platform'
 
 interface VideoPlayerProps {
@@ -118,6 +118,18 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 gap-3">
           <AlertCircle size={48} className="text-red-400" />
           <p className="text-sm text-red-400 text-center max-w-md">{playerError}</p>
+          {currentChannel && (
+            <button
+              onClick={() => {
+                useStore.getState().setPlayerError(null)
+                useStore.getState().playChannel(currentChannel)
+              }}
+              className="mt-2 flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20 transition-colors"
+            >
+              <RefreshCw size={14} />
+              Yeniden Bağlan
+            </button>
+          )}
         </div>
       )}
 
