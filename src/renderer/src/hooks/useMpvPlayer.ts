@@ -129,11 +129,17 @@ export function useMpvPlayer(enabled: boolean) {
     subtitlePreferenceAppliedRef.current = false
   }, [enabled, currentChannel?.id, currentChannel?.streamUrl])
 
+  // Full MPV teardown when disabled (leaving player)
   useEffect(() => {
     if (enabled) return
     startupUrlRef.current = null
     startupStartedAtRef.current = null
     updateStartupVisibility(false)
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current)
+      pollTimerRef.current = null
+    }
+    void mpvStop().catch(() => undefined)
   }, [enabled])
 
   useEffect(() => {
@@ -202,14 +208,10 @@ export function useMpvPlayer(enabled: boolean) {
 
     return () => {
       cancelled = true
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current)
-        pollTimerRef.current = null
-      }
-      startupUrlRef.current = null
-      startupStartedAtRef.current = null
-      updateStartupVisibility(false)
-      void mpvStop().catch(() => undefined)
+      // Don't stop MPV or reset refs here — this cleanup runs on every
+      // channel switch (currentChannel dep change). MPV handles channel
+      // switching natively via loadfile-replace. Full teardown only
+      // happens when the enabled flag changes (separate effect).
     }
   }, [
     enabled,
