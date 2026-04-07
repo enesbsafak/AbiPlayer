@@ -98,6 +98,12 @@
     display: none;
   }
 
+  /* Player sidebar must stay opaque and interactive above MPV native surface */
+  [data-player-sidebar] {
+    background: #0d0f14 !important;
+    -webkit-app-region: no-drag;
+  }
+
   input,
   textarea {
     user-select: text;

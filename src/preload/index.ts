@@ -98,6 +98,8 @@ const api = {
     ipcRenderer.invoke('mpv-set-fullscreen', fullscreen) as Promise<void>,
   mpvSetSubtitleStyle: (style: MpvSubtitleStyle) =>
     ipcRenderer.invoke('mpv-set-subtitle-style', style) as Promise<void>,
+  mpvSetVideoMargin: (right: number) =>
+    ipcRenderer.invoke('mpv-set-video-margin', right) as Promise<void>,
   mpvGetState: () => ipcRenderer.invoke('mpv-get-state') as Promise<MpvStateSnapshot>,
   windowMinimize: () => ipcRenderer.invoke('window-minimize'),
   windowMaximize: () => ipcRenderer.invoke('window-maximize'),

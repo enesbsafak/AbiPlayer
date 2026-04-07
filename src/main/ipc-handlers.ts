@@ -608,6 +608,11 @@ export function registerIpcHandlers(): void {
     await mpvController.setSubtitleStyle(style)
   })
 
+  ipcMain.handle('mpv-set-video-margin', async (_, right: unknown): Promise<void> => {
+    if (typeof right !== 'number' || !Number.isFinite(right)) throw new Error('Geçersiz margin değeri')
+    await mpvController.setVideoMargin(right)
+  })
+
   ipcMain.handle('mpv-get-state', async (): Promise<MpvStateSnapshot> => {
     return mpvController.refreshState()
   })

@@ -36,6 +36,7 @@ declare global {
         color: string
         background: string
       }) => Promise<void>
+      mpvSetVideoMargin: (right: number) => Promise<void>
       mpvGetState: () => Promise<{
         available: boolean
         running: boolean

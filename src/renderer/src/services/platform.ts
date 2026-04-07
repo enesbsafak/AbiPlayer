@@ -151,6 +151,11 @@ export async function mpvAddSubtitleFile(filePath: string): Promise<number | nul
   return window.electron.mpvAddSubtitleFile(filePath)
 }
 
+export async function mpvSetVideoMargin(right: number): Promise<void> {
+  if (!isElectron() || !window.electron?.mpvSetVideoMargin) return
+  await window.electron.mpvSetVideoMargin(right)
+}
+
 export async function mpvSetFullscreen(fullscreen: boolean): Promise<void> {
   if (!isElectron() || !window.electron?.mpvSetFullscreen) return
   await window.electron.mpvSetFullscreen(fullscreen)

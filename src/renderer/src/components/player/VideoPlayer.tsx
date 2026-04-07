@@ -21,7 +21,8 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
 
   const {
     currentChannel, isBuffering, playerError, showControls,
-    playbackEngine, setShowControls, isFullscreen, setFullscreen, setPlaybackEngine
+    playbackEngine, setShowControls, isFullscreen, setFullscreen, setPlaybackEngine,
+    isPlayerSidebarOpen
   } = useStore()
   const mpvEnabled = mpvAvailable && playbackEngine === 'mpv'
 
@@ -47,8 +48,10 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
   const handleMouseMove = useCallback(() => {
     setShowControls(true)
     clearTimeout(hideTimerRef.current)
-    hideTimerRef.current = setTimeout(() => setShowControls(false), 3000)
-  }, [setShowControls])
+    if (!isPlayerSidebarOpen) {
+      hideTimerRef.current = setTimeout(() => setShowControls(false), 3000)
+    }
+  }, [setShowControls, isPlayerSidebarOpen])
 
   const toggleFullscreen = useCallback(async () => {
     if (mpvEnabled) {
@@ -90,7 +93,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
       data-player-container
       className={`relative overflow-hidden ${mpvEnabled ? '' : 'bg-black'} ${className}`}
       onMouseMove={handleMouseMove}
-      onMouseLeave={() => setShowControls(false)}
+      onMouseLeave={() => { if (!isPlayerSidebarOpen) setShowControls(false) }}
       onDoubleClick={handleContainerDoubleClick}
     >
       {mpvEnabled ? (
@@ -121,7 +124,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
 
       <PlayerSidebar />
 
-      <div className={`absolute inset-x-0 bottom-0 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+      <div className={`absolute inset-x-0 bottom-0 transition-opacity duration-300 ${showControls || isPlayerSidebarOpen ? 'opacity-100' : 'opacity-0'}`}>
         <PlayerControls
           videoRef={videoRef}
           onToggleFullscreen={toggleFullscreen}

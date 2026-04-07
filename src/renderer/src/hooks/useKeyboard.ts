@@ -25,6 +25,8 @@ export function useKeyboard() {
   const playerReturnTarget = useStore((s) => s.playerReturnTarget)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
   const togglePlayerSidebar = useStore((s) => s.togglePlayerSidebar)
+  const isPlayerSidebarOpen = useStore((s) => s.isPlayerSidebarOpen)
+  const setPlayerSidebarOpen = useStore((s) => s.setPlayerSidebarOpen)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -143,6 +145,12 @@ export function useKeyboard() {
           break
 
         case 'Escape':
+          // Close sidebar first, then handle fullscreen/exit
+          if (isPlayerSidebarOpen) {
+            e.preventDefault()
+            setPlayerSidebarOpen(false)
+            break
+          }
           if (playbackEngine === 'mpv' && isFullscreen) {
             e.preventDefault()
             setFullscreen(false)
@@ -175,6 +183,8 @@ export function useKeyboard() {
     location.pathname,
     playerReturnTarget,
     setMiniPlayer,
-    togglePlayerSidebar
+    togglePlayerSidebar,
+    isPlayerSidebarOpen,
+    setPlayerSidebarOpen
   ])
 }
