@@ -362,9 +362,10 @@ async function extractEmbeddedSubtitle(
 let credentialStoreLock: Promise<void> = Promise.resolve()
 
 async function withCredentialLock<T>(fn: () => Promise<T>): Promise<T> {
+  const previousLock = credentialStoreLock
   let resolve: () => void
-  credentialStoreLock = credentialStoreLock.then(() => new Promise<void>((r) => { resolve = r }))
-  await credentialStoreLock
+  credentialStoreLock = new Promise<void>((r) => { resolve = r })
+  await previousLock
   try {
     return await fn()
   } finally {

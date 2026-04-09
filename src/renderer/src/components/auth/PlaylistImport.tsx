@@ -17,7 +17,7 @@ export function PlaylistImport() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const { addSource, setActiveSource, addChannels, addCategories } = useStore()
+  const { sources, addSource, setActiveSource, addChannels, addCategories } = useStore()
 
   const handleUrlImport = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -26,11 +26,31 @@ export function PlaylistImport() {
     setLoading(true)
 
     try {
-      const parsedUrl = new URL(url.trim())
+      // Add http:// if no protocol specified (consistent with Xtream login)
+      let normalizedUrl = url.trim()
+      if (!/^https?:\/\//i.test(normalizedUrl)) {
+        normalizedUrl = `http://${normalizedUrl}`
+      }
+
+      let parsedUrl: URL
+      try {
+        parsedUrl = new URL(normalizedUrl)
+      } catch {
+        throw new Error('Geçersiz URL adresi')
+      }
+
       if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
         throw new Error('Yalnızca HTTP/HTTPS oynatma listesi adresleri destekleniyor')
       }
-      const normalizedUrl = parsedUrl.toString()
+      normalizedUrl = parsedUrl.toString()
+
+      // Check for duplicate M3U URL source
+      const existing = sources.find(
+        (s) => s.type === 'm3u_url' && s.url === normalizedUrl
+      )
+      if (existing) {
+        throw new Error(`Bu URL zaten "${existing.name}" olarak ekli`)
+      }
 
       const source: PlaylistSource = {
         id: `m3u_${Date.now()}`,
@@ -64,6 +84,15 @@ export function PlaylistImport() {
         { name: 'Oynatma Listesi Dosyaları', extensions: ['m3u', 'm3u8', 'txt'] }
       ])
       if (!result) { setLoading(false); return }
+
+      // Check for duplicate M3U file source
+      const existingFile = sources.find(
+        (s) => s.type === 'm3u_file' && s.filePath === result.path
+      )
+      if (existingFile) {
+        throw new Error(`Bu dosya zaten "${existingFile.name}" olarak ekli`)
+      }
+
       const fileName = result.path.split(/[\\/]/).pop() || 'Yerel Liste'
 
       const source: PlaylistSource = {

@@ -3,8 +3,9 @@ import { Trash2, RefreshCw, Check, Wifi, WifiOff, Loader2 } from 'lucide-react'
 import { useStore } from '@/store'
 import { Button } from '@/components/ui/Button'
 import { xtreamApi } from '@/services/xtream-api'
-import { fetchAndParseM3U } from '@/services/m3u-parser'
+import { fetchAndParseM3U, parseM3U } from '@/services/m3u-parser'
 import { secureCredentialService } from '@/services/secure-credentials'
+import { pickAndReadFile } from '@/services/platform'
 
 export function SourceManager() {
   const {
@@ -13,6 +14,7 @@ export function SourceManager() {
     setXtreamAuth, addChannels, addCategories, getXtreamCredentials, clearEpg
   } = useStore()
   const [refreshingId, setRefreshingId] = useState<string | null>(null)
+  const [refreshError, setRefreshError] = useState<Record<string, string>>({})
 
   const handleRemove = async (id: string, type: string) => {
     if (type === 'xtream') {
@@ -27,6 +29,11 @@ export function SourceManager() {
     removeChannelsBySource(id)
     removeCategoriesBySource(id)
     clearEpg()
+    setRefreshError((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
   }
 
   const handleRefresh = async (sourceId: string) => {
@@ -34,15 +41,22 @@ export function SourceManager() {
     if (!source) return
 
     setRefreshingId(sourceId)
+    setRefreshError((prev) => {
+      const next = { ...prev }
+      delete next[sourceId]
+      return next
+    })
+
     try {
       if (source.type === 'xtream') {
         const creds = getXtreamCredentials(sourceId)
-        if (!creds) return
+        if (!creds) throw new Error('Kimlik bilgileri bulunamadı')
         // Re-authenticate
         const auth = await xtreamApi.authenticate(creds)
-        if (auth.user_info.auth === 1) {
-          setXtreamAuth(sourceId, auth)
+        if (auth.user_info.auth !== 1) {
+          throw new Error('Kimlik doğrulama başarısız oldu')
         }
+        setXtreamAuth(sourceId, auth)
         // Clear old channels and reload on next page visit
         removeChannelsBySource(sourceId)
         removeCategoriesBySource(sourceId)
@@ -53,9 +67,20 @@ export function SourceManager() {
         const { channels, categories } = await fetchAndParseM3U(source.url, sourceId)
         addChannels(channels)
         addCategories(categories)
+      } else if (source.type === 'm3u_file') {
+        const result = await pickAndReadFile([
+          { name: 'Oynatma Listesi Dosyaları', extensions: ['m3u', 'm3u8', 'txt'] }
+        ])
+        if (!result) { setRefreshingId(null); return }
+        removeChannelsBySource(sourceId)
+        removeCategoriesBySource(sourceId)
+        const { channels, categories } = parseM3U(result.content, sourceId)
+        addChannels(channels)
+        addCategories(categories)
       }
     } catch (err) {
-      console.error('Refresh failed:', err)
+      const message = err instanceof Error ? err.message : 'Yenileme başarısız oldu'
+      setRefreshError((prev) => ({ ...prev, [sourceId]: message }))
     } finally {
       setRefreshingId(null)
     }
@@ -108,6 +133,9 @@ export function SourceManager() {
                     {source.type === 'xtream' ? 'Xtream Codes' : source.type === 'm3u_url' ? 'M3U URL' : 'M3U Dosya'}
                     {source.type === 'xtream' && !connected && ' - yeniden bağlanıyor...'}
                   </p>
+                  {refreshError[source.id] && (
+                    <p className="text-xs text-red-400 mt-0.5">{refreshError[source.id]}</p>
+                  )}
                 </div>
               </div>
             </div>

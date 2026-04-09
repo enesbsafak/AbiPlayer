@@ -18,7 +18,7 @@ export function LoginForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const { addSource, setActiveSource, setXtreamAuth } = useStore()
+  const { sources, addSource, setActiveSource, setXtreamAuth } = useStore()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,11 +31,26 @@ export function LoginForm() {
       if (!/^https?:\/\//i.test(normalizedUrl)) {
         normalizedUrl = `http://${normalizedUrl}`
       }
-      const parsedUrl = new URL(normalizedUrl)
+
+      let parsedUrl: URL
+      try {
+        parsedUrl = new URL(normalizedUrl)
+      } catch {
+        throw new Error('Geçersiz sunucu adresi')
+      }
+
       if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
         throw new Error('Yalnızca HTTP/HTTPS sunucu adresleri destekleniyor')
       }
       normalizedUrl = parsedUrl.toString().replace(/\/+$/, '')
+
+      // Check for duplicate Xtream source (same URL + username)
+      const existing = sources.find(
+        (s) => s.type === 'xtream' && s.url === normalizedUrl && s.username === username
+      )
+      if (existing) {
+        throw new Error(`Bu sunucu ve kullanıcı adı zaten "${existing.name}" olarak ekli`)
+      }
 
       const creds = { url: normalizedUrl, username, password }
       const auth = await xtreamApi.authenticate(creds)
@@ -57,9 +72,10 @@ export function LoginForm() {
       }
 
       await secureCredentialService.set(source.id, creds)
+      // Set auth BEFORE addSource to prevent useAutoConnect from triggering a duplicate auth request
+      setXtreamAuth(source.id, auth)
       addSource(source)
       setActiveSource(source.id)
-      setXtreamAuth(source.id, auth)
 
       // Clear form
       setUrl('')
