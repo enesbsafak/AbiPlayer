@@ -60,6 +60,8 @@ const api = {
   getAppUpdateState: () => ipcRenderer.invoke('app-update-get-state') as Promise<AppUpdateState>,
   checkForAppUpdates: () => ipcRenderer.invoke('app-update-check') as Promise<AppUpdateState>,
   installAppUpdate: () => ipcRenderer.invoke('app-update-install') as Promise<boolean>,
+  getStoreBackup: () => ipcRenderer.invoke('store-backup-read') as Promise<string | null>,
+  deleteStoreBackup: () => ipcRenderer.invoke('store-backup-delete') as Promise<void>,
   onAppUpdateStateChange: (listener: (state: AppUpdateState) => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, state: AppUpdateState) => listener(state)
     ipcRenderer.on('app-update-state', wrapped)

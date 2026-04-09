@@ -1,5 +1,7 @@
 import { app, BrowserWindow, dialog } from 'electron'
 import { is } from '@electron-toolkit/utils'
+import { writeFileSync } from 'fs'
+import { join } from 'path'
 import {
   autoUpdater,
   type ProgressInfo,
@@ -107,16 +109,36 @@ async function promptToInstallDownloadedUpdate(): Promise<void> {
     })
 
     if (result.response === 0) {
-      installDownloadedUpdate()
+      await installDownloadedUpdate()
     }
   } finally {
     installPromptVisible = false
   }
 }
 
+function getStoreBackupPath(): string {
+  return join(app.getPath('userData'), 'store-backup.json')
+}
+
+async function backupRendererStore(): Promise<void> {
+  const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+  if (!window || window.isDestroyed()) return
+
+  try {
+    const raw = await window.webContents.executeJavaScript(
+      `localStorage.getItem('iptv-player-store')`
+    )
+    if (typeof raw === 'string' && raw.length > 0) {
+      writeFileSync(getStoreBackupPath(), raw, 'utf-8')
+    }
+  } catch {
+    // Backup failed — continue anyway
+  }
+}
+
 function registerUpdaterEventHandlers(): void {
   autoUpdater.autoDownload = true
-  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.autoInstallOnAppQuit = false
   autoUpdater.allowPrerelease = true
 
   autoUpdater.on('checking-for-update', () => {
@@ -276,8 +298,9 @@ export async function checkForAppUpdates(): Promise<AppUpdateState> {
   return checkInFlight
 }
 
-export function installDownloadedUpdate(): boolean {
+export async function installDownloadedUpdate(): Promise<boolean> {
   if (!state.updateReadyToInstall) return false
+  await backupRendererStore()
   autoUpdater.quitAndInstall(false, true)
   return true
 }

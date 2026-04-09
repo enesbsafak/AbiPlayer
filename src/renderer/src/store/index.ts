@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware'
 import { createSettingsSlice, type SettingsSlice } from './settings-slice'
 import { createAuthSlice, type AuthSlice } from './auth-slice'
 import { createPlaylistSlice, type PlaylistSlice } from './playlist-slice'
@@ -35,6 +35,35 @@ function sanitizePersistedSources(input: unknown, fallback: PlaylistSource[]): P
   return input.filter(isPersistedSource)
 }
 
+function createBackupFallbackStorage(): StateStorage {
+  return {
+    getItem(name: string): string | null | Promise<string | null> {
+      const local = localStorage.getItem(name)
+      if (local) return local
+
+      if (!window.electron?.getStoreBackup) return null
+
+      return (async () => {
+        try {
+          const backup = await window.electron!.getStoreBackup()
+          if (backup) {
+            localStorage.setItem(name, backup)
+            void window.electron!.deleteStoreBackup?.()
+            return backup
+          }
+        } catch { /* ignore */ }
+        return null
+      })()
+    },
+    setItem(name: string, value: string): void {
+      localStorage.setItem(name, value)
+    },
+    removeItem(name: string): void {
+      localStorage.removeItem(name)
+    }
+  }
+}
+
 export const useStore = create<AppStore>()(
   persist(
     (...a) => ({
@@ -48,7 +77,7 @@ export const useStore = create<AppStore>()(
     }),
     {
       name: 'iptv-player-store',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(createBackupFallbackStorage),
       partialize: (state) => ({
         settings: state.settings,
         sources: state.sources.map((source) => {

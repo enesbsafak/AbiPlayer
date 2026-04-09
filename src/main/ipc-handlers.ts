@@ -1,4 +1,5 @@
 import { app, ipcMain, dialog, BrowserWindow, safeStorage } from 'electron'
+import { existsSync, readFileSync, unlinkSync } from 'fs'
 import { readFile, stat, writeFile, mkdir } from 'fs/promises'
 import { dirname, join } from 'path'
 import { spawn } from 'child_process'
@@ -477,8 +478,23 @@ export function registerIpcHandlers(): void {
     return checkForAppUpdates()
   })
 
-  ipcMain.handle('app-update-install', (): boolean => {
+  ipcMain.handle('app-update-install', async (): Promise<boolean> => {
     return installDownloadedUpdate()
+  })
+
+  ipcMain.handle('store-backup-read', (): string | null => {
+    const backupPath = join(app.getPath('userData'), 'store-backup.json')
+    if (!existsSync(backupPath)) return null
+    try {
+      return readFileSync(backupPath, 'utf-8')
+    } catch {
+      return null
+    }
+  })
+
+  ipcMain.handle('store-backup-delete', (): void => {
+    const backupPath = join(app.getPath('userData'), 'store-backup.json')
+    try { unlinkSync(backupPath) } catch { /* ignore */ }
   })
 
   ipcMain.handle('secure-credentials-get-all', async (): Promise<SecureCredentialStore> => {

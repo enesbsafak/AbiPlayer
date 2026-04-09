@@ -47,6 +47,8 @@ declare global {
       getAppUpdateState: () => Promise<AppUpdateState>
       checkForAppUpdates: () => Promise<AppUpdateState>
       installAppUpdate: () => Promise<boolean>
+      getStoreBackup: () => Promise<string | null>
+      deleteStoreBackup: () => Promise<void>
       onAppUpdateStateChange: (listener: (state: AppUpdateState) => void) => () => void
     }
   }
