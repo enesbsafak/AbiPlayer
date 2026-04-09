@@ -13,7 +13,7 @@ import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
 import { buildCatalogRetainResetKey } from '@/services/catalog-view'
-import { ensureFullSync } from '@/services/background-sync'
+import { ensureStagedSync } from '@/services/background-sync'
 
 const loadedSeriesCategoryCache = new Set<string>()
 const loadedSeriesPreviewSourceCache = new Set<string>()
@@ -66,6 +66,7 @@ export default function SeriesPage() {
   const activeSourceId = useStore((s) => s.activeSourceId)
   const sources = useStore((s) => s.sources)
   const hydratedSourceIds = useStore((s) => s.hydratedSourceIds)
+  const isSourceTypeHydrated = useStore((s) => s.isSourceTypeHydrated)
   const selectedCategoryId = useStore((s) => s.selectedCategoryId)
   const channelFilter = useStore((s) => s.channelFilter)
   const setChannelFilter = useStore((s) => s.setChannelFilter)
@@ -182,7 +183,7 @@ export default function SeriesPage() {
 
   useEffect(() => {
     if (!activeSourceId) return
-    if (hydratedSourceIds[activeSourceId]) {
+    if (isSourceTypeHydrated(activeSourceId, 'series')) {
       loadedSeriesFullSourceCache.add(activeSourceId)
       loadedSeriesPreviewSourceCache.add(activeSourceId)
     }
@@ -290,7 +291,7 @@ export default function SeriesPage() {
     const controller = new AbortController()
 
     const syncSource = async () => {
-      if (hydratedSourceIds[activeSourceId]) {
+      if (isSourceTypeHydrated(activeSourceId, 'series')) {
         loadedSeriesFullSourceCache.add(activeSourceId)
         loadedSeriesPreviewSourceCache.add(activeSourceId)
         return
@@ -332,7 +333,7 @@ export default function SeriesPage() {
       }
 
       if (!cancelled) setIsBackgroundSyncing(true)
-      ensureFullSync(activeSourceId, 'series', creds)
+      void ensureStagedSync(activeSourceId, 'series', creds)
       loadedSeriesFullSourceCache.add(activeSourceId)
     }
 
@@ -429,7 +430,7 @@ export default function SeriesPage() {
   if (selectedSeries) {
     return (
       <div className="h-full p-3">
-        <div className="panel-glass h-full overflow-y-auto rounded-2xl p-5">
+        <div className="rounded-lg border border-surface-800 bg-surface-900 h-full overflow-y-auto p-5">
           <SeriesDetail
             seriesId={selectedSeries.seriesId}
             sourceId={selectedSeries.sourceId}
@@ -445,16 +446,16 @@ export default function SeriesPage() {
 
   return (
     <div className="flex h-full gap-3 p-3">
-      <div className="panel-glass w-64 shrink-0 overflow-y-auto rounded-2xl p-3">
+      <div className="rounded-lg border border-surface-800 bg-surface-900 w-64 shrink-0 overflow-y-auto p-3">
         <CategoryList />
       </div>
-      <div ref={scrollContainerRef} className="panel-glass flex-1 overflow-y-auto rounded-2xl p-5">
+      <div ref={scrollContainerRef} className="rounded-lg border border-surface-800 bg-surface-900 flex-1 overflow-y-auto p-5">
         <div className="mb-5">
           <ChannelSearch value={searchQuery} onSearch={setSearchQuery} />
         </div>
 
         {isPreviewMode && !loadError && (
-          <div className="mb-4 rounded-xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+          <div className="mb-4 rounded-lg border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
             <div className="flex items-start gap-3">
               {(isBackgroundSyncing || isForegroundLoading) && <Spinner size={16} className="mt-0.5 text-sky-200" />}
               <div>
@@ -472,7 +473,7 @@ export default function SeriesPage() {
         )}
 
         {loadError && (
-          <div className="mb-4 flex items-center justify-between rounded-xl border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             <span>{loadError}</span>
             <Button
               size="sm"
@@ -498,7 +499,7 @@ export default function SeriesPage() {
         )}
 
         {showInlineLoader && (
-          <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-surface-200">
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-surface-800 bg-surface-900 px-4 py-3 text-sm text-surface-200">
             <Spinner size={16} />
             <span>{foregroundLoadingMessage || 'İçerikler yükleniyor...'}</span>
           </div>

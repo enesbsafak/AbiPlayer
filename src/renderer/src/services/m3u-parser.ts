@@ -13,19 +13,27 @@ const M3U_FETCH_TIMEOUT_MS = 120_000
 const MAX_M3U_SIZE_BYTES = 20 * 1024 * 1024
 const VOD_EXTENSIONS = new Set(['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv'])
 
+function extractAttribute(line: string, attr: string): string {
+  // Try quoted first: tvg-id="value"
+  const quotedRe = new RegExp(`${attr}="([^"]*)"`)
+  const quotedMatch = line.match(quotedRe)
+  if (quotedMatch) return quotedMatch[1]
+
+  // Try unquoted: tvg-id=value (terminated by space or end of line before comma)
+  const unquotedRe = new RegExp(`${attr}=([^"\\s,]+)`)
+  const unquotedMatch = line.match(unquotedRe)
+  if (unquotedMatch) return unquotedMatch[1]
+
+  return ''
+}
+
 function parseExtInf(line: string): Omit<M3UEntry, 'url'> {
   const result = { name: '', logo: '', group: '', tvgId: '', tvgName: '' }
 
-  // Extract attributes from #EXTINF line
-  const tvgIdMatch = line.match(/tvg-id="([^"]*)"/)
-  const tvgNameMatch = line.match(/tvg-name="([^"]*)"/)
-  const tvgLogoMatch = line.match(/tvg-logo="([^"]*)"/)
-  const groupMatch = line.match(/group-title="([^"]*)"/)
-
-  if (tvgIdMatch) result.tvgId = tvgIdMatch[1]
-  if (tvgNameMatch) result.tvgName = tvgNameMatch[1]
-  if (tvgLogoMatch) result.logo = tvgLogoMatch[1]
-  if (groupMatch) result.group = groupMatch[1]
+  result.tvgId = extractAttribute(line, 'tvg-id')
+  result.tvgName = extractAttribute(line, 'tvg-name')
+  result.logo = extractAttribute(line, 'tvg-logo')
+  result.group = extractAttribute(line, 'group-title')
 
   // Extract channel name - everything after the last comma
   const commaIdx = line.lastIndexOf(',')
@@ -34,6 +42,34 @@ function parseExtInf(line: string): Omit<M3UEntry, 'url'> {
   }
 
   return result
+}
+
+function cleanUrlName(url: string): string {
+  try {
+    const pathname = new URL(url).pathname
+    const lastSegment = pathname.split('/').pop() || ''
+    // Remove extension
+    const dotIdx = lastSegment.lastIndexOf('.')
+    const name = dotIdx > 0 ? lastSegment.substring(0, dotIdx) : lastSegment
+    return name || 'Bilinmeyen'
+  } catch {
+    // Fallback for non-URL strings
+    const segment = url.split('/').pop() || 'Bilinmeyen'
+    const qIdx = segment.indexOf('?')
+    const clean = qIdx > 0 ? segment.substring(0, qIdx) : segment
+    const dotIdx = clean.lastIndexOf('.')
+    return dotIdx > 0 ? clean.substring(0, dotIdx) : clean || 'Bilinmeyen'
+  }
+}
+
+function stableGroupId(sourceId: string, groupName: string): string {
+  // Simple hash based on group name for stable IDs across playlist refreshes
+  let hash = 0
+  for (let i = 0; i < groupName.length; i++) {
+    hash = ((hash << 5) - hash + groupName.charCodeAt(i)) | 0
+  }
+  const hex = (hash >>> 0).toString(16).padStart(8, '0')
+  return `${sourceId}_m3u_${hex}`
 }
 
 function detectCategoryType(groupName: string, entries: M3UEntry[]): 'live' | 'vod' | 'series' {
@@ -67,25 +103,35 @@ export function parseM3U(content: string, sourceId: string): { channels: Channel
   const lines = content.split(/\r?\n/)
   const entries: M3UEntry[] = []
   let currentEntry: Omit<M3UEntry, 'url'> | null = null
+  let pendingGroup: string | null = null
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim()
 
     if (line.startsWith('#EXTINF:')) {
       currentEntry = parseExtInf(line)
+    } else if (line.startsWith('#EXTGRP:')) {
+      // #EXTGRP tag provides group name as alternative to group-title attribute
+      pendingGroup = line.substring(8).trim()
     } else if (line && !line.startsWith('#') && currentEntry) {
+      // Use #EXTGRP group if EXTINF didn't have group-title
+      if (!currentEntry.group && pendingGroup) {
+        currentEntry.group = pendingGroup
+      }
       entries.push({ ...currentEntry, url: line })
       currentEntry = null
+      pendingGroup = null
     } else if (line && !line.startsWith('#') && !currentEntry) {
       // URL without EXTINF - create minimal entry
       entries.push({
-        name: line.split('/').pop() || 'Bilinmeyen',
+        name: cleanUrlName(line),
         logo: '',
-        group: '',
+        group: pendingGroup || '',
         tvgId: '',
         tvgName: '',
         url: line
       })
+      pendingGroup = null
     }
   }
 
@@ -107,9 +153,9 @@ export function parseM3U(content: string, sourceId: string): { channels: Channel
     groupTypeMap.set(groupName, detectCategoryType(groupName, groupEntries))
   }
 
-  // Create categories with correct types
-  const categories: Category[] = Array.from(groupedEntries.keys()).map((g, i) => ({
-    id: `${sourceId}_m3u_${i}`,
+  // Create categories with stable hash-based IDs
+  const categories: Category[] = Array.from(groupedEntries.keys()).map((g) => ({
+    id: stableGroupId(sourceId, g),
     name: g,
     sourceId,
     type: groupTypeMap.get(g) || 'live'

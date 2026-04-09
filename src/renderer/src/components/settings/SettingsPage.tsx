@@ -175,10 +175,10 @@ export function SettingsContent() {
         <h2 className="text-lg font-semibold mb-4">Kaynaklar</h2>
         <SourceManager />
         <div className="grid gap-6 mt-6 md:grid-cols-2">
-          <div className="rounded-xl border border-surface-800 bg-surface-900 p-5">
+          <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
             <LoginForm />
           </div>
-          <div className="rounded-xl border border-surface-800 bg-surface-900 p-5">
+          <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
             <PlaylistImport />
           </div>
         </div>
@@ -211,7 +211,7 @@ export function SettingsContent() {
 
       <section>
         <h2 className="text-lg font-semibold mb-4">Guncellemeler</h2>
-        <div className="rounded-xl border border-surface-800 bg-surface-900 p-5">
+        <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1">
               <p className="text-sm font-medium text-white">
@@ -233,7 +233,7 @@ export function SettingsContent() {
               <div className="space-y-2">
                 <div className="h-2 overflow-hidden rounded-full bg-surface-800">
                   <div
-                    className="h-full rounded-full bg-[linear-gradient(90deg,#8b74f9,#35c768)] transition-all"
+                    className="h-full rounded-full bg-accent transition-all"
                     style={{ width: `${Math.round((appUpdateState.progress ?? 0) * 100)}%` }}
                   />
                 </div>
@@ -323,7 +323,7 @@ export function SettingsContent() {
               type="color"
               value={settings.subtitleColor}
               onChange={(e) => updateSettings({ subtitleColor: e.target.value })}
-              className="h-10 w-full cursor-pointer rounded-lg border border-surface-600 bg-surface-800 px-2"
+              className="h-10 w-full cursor-pointer rounded-lg border border-surface-700 bg-surface-900 px-2"
             />
           </div>
           <div>
@@ -345,7 +345,7 @@ export function SettingsContent() {
           </div>
         </div>
 
-        <div className="mt-4 rounded-xl border border-surface-700 bg-surface-900/70 p-4">
+        <div className="mt-4 rounded-lg border border-surface-800 bg-surface-900 p-4">
           <p className="text-xs font-medium text-surface-500">Altyazı Önizleme</p>
           <div className="mt-3 rounded-lg border border-surface-800 bg-black/70 p-6 text-center">
             <span
@@ -445,7 +445,7 @@ export function SettingsContent() {
               type="checkbox"
               checked={settings.autoPlay}
               onChange={(e) => updateSettings({ autoPlay: e.target.checked })}
-              className="rounded border-surface-600 bg-surface-800 text-accent focus:ring-accent"
+              className="rounded border-surface-700 bg-surface-900 text-accent focus:ring-accent"
             />
             <span className="text-sm text-surface-300">Kanal seciminde otomatik oynat</span>
           </label>

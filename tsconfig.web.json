@@ -15,5 +15,5 @@
     "rootDir": "src/renderer/src",
     "lib": ["DOM", "DOM.Iterable", "ES2023"]
   },
-  "include": ["src/renderer/src/**/*", "src/preload/*.d.ts"]
+  "include": ["src/renderer/src/**/*", "src/preload/*.d.ts", "src/shared/**/*"]
 }

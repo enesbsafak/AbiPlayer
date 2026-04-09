@@ -142,13 +142,13 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
 
       <div className="flex flex-col md:flex-row gap-6">
         <div className="shrink-0 w-48">
-          <LazyImage src={detail.cover} alt={detail.name} className="aspect-[2/3] w-full rounded-xl" eager />
+          <LazyImage src={detail.cover} alt={detail.name} className="aspect-[2/3] w-full rounded-lg" eager />
         </div>
         <div className="flex flex-col gap-3">
           <h1 className="text-2xl font-bold">{detail.name}</h1>
 
           <div className="flex flex-wrap gap-3 text-xs text-surface-400">
-            {qualityLabel && <QualityBadge label={qualityLabel} className="border-surface-600/60 bg-surface-900/75" />}
+            {qualityLabel && <QualityBadge label={qualityLabel} />}
             {detail.rating && (
               <span className="flex items-center gap-1">
                 <Star size={12} className="fill-yellow-400 text-yellow-400" />
@@ -166,7 +166,7 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
           {detail.genre && (
             <div className="flex flex-wrap gap-1.5">
               {detail.genre.split(',').map((g) => (
-                <span key={g.trim()} className="rounded-full bg-surface-800 px-2.5 py-0.5 text-xs text-surface-300">
+                <span key={g.trim()} className="rounded border border-surface-700 bg-surface-900 px-2 py-0.5 text-xs text-surface-400">
                   {g.trim()}
                 </span>
               ))}

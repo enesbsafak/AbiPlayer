@@ -24,7 +24,7 @@ export function ChannelSearch({ value, onSearch }: ChannelSearchProps) {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Kanal ara..."
-        className="w-full rounded-xl border border-surface-600/35 bg-surface-900/70 px-9 py-2.5 text-sm text-surface-100 placeholder:text-surface-400 transition-colors focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/45"
+        className="w-full rounded-lg border border-surface-700 bg-surface-900 px-9 py-2 text-sm text-surface-50 placeholder:text-surface-500 transition-colors focus:border-surface-600 focus:outline-none focus:ring-2 focus:ring-accent/20"
       />
       {query && (
         <button

@@ -5,10 +5,15 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { existsSync } from 'fs'
 import { unlink } from 'fs/promises'
+import type { MpvTrackInfo, MpvStateSnapshot } from '../shared/types/electron-ipc'
 
-const MPV_REQUEST_TIMEOUT_MS = 5000
-const MPV_CONNECT_TIMEOUT_MS = 8000
-const MPV_CONNECT_RETRY_MS = 150
+export type { MpvTrackInfo, MpvStateSnapshot }
+
+export interface MpvSubtitleStyle {
+  fontSize: number
+  color: string
+  background: string
+}
 
 interface MpvPendingRequest {
   resolve: (value: unknown) => void
@@ -24,42 +29,9 @@ interface MpvSocketResponse {
   name?: string
 }
 
-export interface MpvSubtitleStyle {
-  fontSize: number
-  color: string
-  background: string
-}
-
-export interface MpvTrackInfo {
-  id: number
-  type: 'audio' | 'sub' | 'video'
-  title?: string
-  lang?: string
-  codec?: string
-  bitrate?: number
-  width?: number
-  height?: number
-  selected: boolean
-  external: boolean
-}
-
-export interface MpvStateSnapshot {
-  available: boolean
-  running: boolean
-  paused: boolean
-  buffering: boolean
-  timePos: number
-  duration: number
-  volume: number
-  muted: boolean
-  vid: number | null
-  aid: number | null
-  sid: number | null
-  fullscreen: boolean
-  tracks: MpvTrackInfo[]
-  path: string | null
-  error: string | null
-}
+const MPV_REQUEST_TIMEOUT_MS = 5000
+const MPV_CONNECT_TIMEOUT_MS = 8000
+const MPV_CONNECT_RETRY_MS = 150
 
 function createMpvSocketPath(): string {
   if (process.platform === 'win32') {

@@ -12,7 +12,7 @@ import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
 import { buildCatalogRetainResetKey } from '@/services/catalog-view'
-import { ensureFullSync, isBackgroundSyncing as isBgSyncing } from '@/services/background-sync'
+import { ensureStagedSync, isBackgroundSyncing as isBgSyncing } from '@/services/background-sync'
 
 const loadedLiveCategoryCache = new Set<string>()
 const loadedLivePreviewSourceCache = new Set<string>()
@@ -56,6 +56,7 @@ export default function LiveTVPage() {
   const activeSourceId = useStore((s) => s.activeSourceId)
   const sources = useStore((s) => s.sources)
   const hydratedSourceIds = useStore((s) => s.hydratedSourceIds)
+  const isSourceTypeHydrated = useStore((s) => s.isSourceTypeHydrated)
   const selectedCategoryId = useStore((s) => s.selectedCategoryId)
   const channelFilter = useStore((s) => s.channelFilter)
   const setChannelFilter = useStore((s) => s.setChannelFilter)
@@ -153,11 +154,11 @@ export default function LiveTVPage() {
 
   useEffect(() => {
     if (!activeSourceId) return
-    if (hydratedSourceIds[activeSourceId]) {
+    if (isSourceTypeHydrated(activeSourceId, 'live')) {
       loadedLiveFullSourceCache.add(activeSourceId)
       loadedLivePreviewSourceCache.add(activeSourceId)
     }
-  }, [activeSourceId, hydratedSourceIds])
+  }, [activeSourceId, hydratedSourceIds, isSourceTypeHydrated])
 
   useEffect(() => {
     if (!activeSourceId) return
@@ -261,7 +262,7 @@ export default function LiveTVPage() {
     const controller = new AbortController()
 
     const syncSource = async () => {
-      if (hydratedSourceIds[activeSourceId]) {
+      if (isSourceTypeHydrated(activeSourceId, 'live')) {
         loadedLiveFullSourceCache.add(activeSourceId)
         loadedLivePreviewSourceCache.add(activeSourceId)
         return
@@ -302,9 +303,9 @@ export default function LiveTVPage() {
         return
       }
 
-      // Delegate full sync to module-level service (survives page navigation)
+      // Sync live first (priority), then vod+series sequentially in background
       if (!cancelled) setIsBackgroundSyncing(true)
-      ensureFullSync(activeSourceId, 'live', creds)
+      void ensureStagedSync(activeSourceId, 'live', creds)
       loadedLiveFullSourceCache.add(activeSourceId)
     }
 
@@ -370,16 +371,16 @@ export default function LiveTVPage() {
 
   return (
     <div className="flex h-full gap-3 p-3">
-      <div className="panel-glass w-64 shrink-0 overflow-y-auto rounded-2xl p-3">
+      <div className="rounded-lg border border-surface-800 bg-surface-900 w-64 shrink-0 overflow-y-auto p-3">
         <CategoryList />
       </div>
-        <div ref={scrollContainerRef} className="panel-glass flex-1 overflow-y-auto rounded-2xl p-5">
+        <div ref={scrollContainerRef} className="rounded-lg border border-surface-800 bg-surface-900 flex-1 overflow-y-auto p-5">
           <div className="mb-5">
             <ChannelSearch value={searchQuery} onSearch={setSearchQuery} />
           </div>
 
         {isPreviewMode && !loadError && (
-          <div className="mb-4 rounded-xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+          <div className="mb-4 rounded-lg border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
             <div className="flex items-start gap-3">
               {(isBackgroundSyncing || isForegroundLoading) && <Spinner size={16} className="mt-0.5 text-sky-200" />}
               <div>
@@ -397,7 +398,7 @@ export default function LiveTVPage() {
         )}
 
         {loadError && (
-          <div className="mb-4 flex items-center justify-between rounded-xl border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             <span>{loadError}</span>
             <Button
               size="sm"
@@ -423,7 +424,7 @@ export default function LiveTVPage() {
         )}
 
         {showInlineLoader && (
-          <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-surface-200">
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-surface-800 bg-surface-900 px-4 py-3 text-sm text-surface-200">
             <Spinner size={16} />
             <span>{foregroundLoadingMessage || 'İçerikler yükleniyor...'}</span>
           </div>

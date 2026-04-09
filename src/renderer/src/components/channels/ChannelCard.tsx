@@ -25,11 +25,14 @@ export const ChannelCard = memo(function ChannelCard({
 
   return (
     <div
-      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(172deg,rgba(28,24,54,0.72),rgba(16,14,36,0.68))] shadow-[0_12px_26px_rgba(0,0,0,0.36)] transition-all duration-300 hover:-translate-y-1 hover:border-accent/60 hover:shadow-[0_22px_34px_rgba(0,0,0,0.48)]"
+      role="button"
+      tabIndex={0}
+      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border border-surface-800 bg-surface-900 transition-colors hover:border-surface-700"
       onClick={() => onPlay(channel)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPlay(channel) } }}
+      aria-label={`${channel.name} oynat`}
     >
-      <div className="relative flex aspect-video items-center justify-center bg-surface-800/80">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(124,106,247,0.26),transparent_46%),radial-gradient(circle_at_82%_18%,rgba(45,212,191,0.16),transparent_56%)]" />
+      <div className="relative flex aspect-video items-center justify-center bg-surface-800">
         {artwork ? (
           <LazyImage
             src={artwork}
@@ -39,20 +42,19 @@ export const ChannelCard = memo(function ChannelCard({
             eager={eagerImage}
           />
         ) : (
-          <Radio size={32} className="text-surface-500" />
+          <Radio size={28} className="text-surface-600" />
         )}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-all group-hover:bg-black/45">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
           <Play
-            size={40}
-            className="opacity-0 drop-shadow-lg transition-opacity group-hover:opacity-100"
+            size={36}
+            className="opacity-0 transition-opacity group-hover:opacity-100"
             fill="white"
             color="white"
           />
         </div>
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/45 to-transparent" />
         {channel.type === 'live' && (
-          <div className="absolute left-2 top-2 flex items-center gap-1 rounded-md border border-red-300/30 bg-red-600/80 px-2 py-0.5 text-[10px] font-semibold text-white">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+          <div className="absolute left-2 top-2 flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 text-caption font-medium text-white" aria-label="Canlı yayın">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" aria-hidden="true" />
             Canlı
           </div>
         )}
@@ -62,23 +64,23 @@ export const ChannelCard = memo(function ChannelCard({
           </div>
         )}
       </div>
-      <div className="flex items-start justify-between gap-2 p-3.5">
+      <div className="flex items-start justify-between gap-2 p-3">
         <div className="min-w-0">
-          <ClampText as="p" lines={2} className="text-[13px] font-semibold leading-5 text-white">
+          <ClampText as="p" lines={2} className="text-body-sm font-medium text-surface-100">
             {channel.name}
           </ClampText>
-          <ClampText as="p" lines={1} className="mt-0.5 text-[11px] leading-4 text-surface-500">
+          <ClampText as="p" lines={1} className="mt-0.5 text-label text-surface-500">
             {channel.group || channel.categoryName || (channel.type === 'live' ? 'Yayın' : 'Medya')}
           </ClampText>
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); toggleFavorite(channel.id) }}
-          className="shrink-0 rounded-full border border-surface-600/45 bg-surface-800/80 p-1.5 transition-colors hover:border-accent/60 hover:bg-surface-700"
+          className="shrink-0 rounded-md p-1.5 text-surface-500 transition-colors hover:bg-surface-800 hover:text-surface-300"
           aria-label={fav ? 'Favorilerden çıkar' : 'Favorilere ekle'}
         >
           <Star
             size={14}
-            className={fav ? 'fill-amber-300 text-amber-300' : 'text-surface-400'}
+            className={fav ? 'fill-amber-400 text-amber-400' : ''}
           />
         </button>
       </div>

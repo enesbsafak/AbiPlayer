@@ -6,35 +6,13 @@ import {
   type UpdateDownloadedEvent,
   type UpdateInfo
 } from 'electron-updater'
+import type { AppUpdateState } from '../shared/types/electron-ipc'
+
+export type { AppUpdateState }
+export type AppUpdateStatus = AppUpdateState['status']
 
 const AUTO_CHECK_DELAY_MS = 15_000
 const PERIODIC_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
-
-export type AppUpdateStatus =
-  | 'unsupported'
-  | 'idle'
-  | 'checking'
-  | 'available'
-  | 'downloading'
-  | 'downloaded'
-  | 'not-available'
-  | 'error'
-
-export interface AppUpdateState {
-  status: AppUpdateStatus
-  currentVersion: string
-  availableVersion: string | null
-  downloadedVersion: string | null
-  progress: number | null
-  transferredBytes: number | null
-  totalBytes: number | null
-  bytesPerSecond: number | null
-  message: string | null
-  releaseDate: string | null
-  canCheck: boolean
-  updateReadyToInstall: boolean
-  lastCheckedAt: number | null
-}
 
 const APP_UPDATE_EVENT = 'app-update-state'
 

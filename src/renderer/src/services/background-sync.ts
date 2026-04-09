@@ -7,26 +7,39 @@ import type { XtreamCredentials } from '@/types/xtream'
  * Once started, a sync completes even if the page that triggered it unmounts.
  */
 
+type ContentType = 'live' | 'vod' | 'series'
+
+const TYPE_LABELS: Record<ContentType, string> = {
+  live: 'Canlı TV',
+  vod: 'Filmler',
+  series: 'Diziler'
+}
+
 const activeSyncs = new Map<string, Promise<void>>()
 
-function syncKey(sourceId: string, type: 'live' | 'vod' | 'series'): string {
+function syncKey(sourceId: string, type: ContentType): string {
   return `${sourceId}:${type}`
 }
 
-export function isBackgroundSyncing(sourceId: string, type: 'live' | 'vod' | 'series'): boolean {
+export function isBackgroundSyncing(sourceId: string, type: ContentType): boolean {
   return activeSyncs.has(syncKey(sourceId, type))
 }
 
+/**
+ * Ensures a single content type is fully synced for a source.
+ * Returns a promise that resolves when sync completes (or was already done).
+ */
 export function ensureFullSync(
   sourceId: string,
-  type: 'live' | 'vod' | 'series',
+  type: ContentType,
   creds: XtreamCredentials
-): void {
+): Promise<void> {
   const key = syncKey(sourceId, type)
-  if (activeSyncs.has(key)) return
+  const existing = activeSyncs.get(key)
+  if (existing) return existing
 
-  const { hydratedSourceIds, addChannels, markSourceHydrated } = useStore.getState()
-  if (hydratedSourceIds[sourceId]) return
+  const { isSourceTypeHydrated, addChannels, markSourceTypeHydrated, setSyncError } = useStore.getState()
+  if (isSourceTypeHydrated(sourceId, type)) return Promise.resolve()
 
   const promise = (async () => {
     try {
@@ -40,22 +53,66 @@ export function ensureFullSync(
         const streams = await xtreamApi.getSeries(creds)
         addChannels(xtreamApi.seriesToChannels(streams, sourceId))
       }
-    } catch {
-      // Silently fail — pages will retry on next mount
+      markSourceTypeHydrated(sourceId, type)
+      setSyncError(sourceId, null)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'İçerik senkronizasyonu başarısız'
+      console.warn(`[background-sync] ${type} sync failed for ${sourceId}:`, message)
+      setSyncError(sourceId, message)
     } finally {
       activeSyncs.delete(key)
     }
   })()
 
   activeSyncs.set(key, promise)
+  return promise
+}
+
+/**
+ * Staged prefetch: syncs the priority type first, then others sequentially.
+ * Reports progress to store so UI can show percentage.
+ */
+export async function ensureStagedSync(
+  sourceId: string,
+  priorityType: ContentType,
+  creds: XtreamCredentials
+): Promise<void> {
+  const { setSyncProgress } = useStore.getState()
+  const order: ContentType[] = [priorityType, ...(['live', 'vod', 'series'] as const).filter((t) => t !== priorityType)]
+  let completed = 0
+
+  for (const type of order) {
+    const alreadyDone = useStore.getState().isSourceTypeHydrated(sourceId, type)
+    if (alreadyDone) {
+      completed++
+      continue
+    }
+
+    setSyncProgress(sourceId, {
+      currentType: type,
+      completedTypes: completed,
+      active: true
+    })
+
+    await ensureFullSync(sourceId, type, creds)
+    completed++
+
+    setSyncProgress(sourceId, {
+      currentType: null,
+      completedTypes: completed,
+      active: completed < 3
+    })
+  }
+
+  setSyncProgress(sourceId, null)
 }
 
 /**
  * Ensures all content types for a source are fully synced.
- * Safe to call repeatedly — deduplicates automatically.
+ * Uses staged approach: live → vod → series (sequential, not parallel).
  */
 export function ensureSourceFullSync(sourceId: string, creds: XtreamCredentials): void {
-  ensureFullSync(sourceId, 'live', creds)
-  ensureFullSync(sourceId, 'vod', creds)
-  ensureFullSync(sourceId, 'series', creds)
+  void ensureStagedSync(sourceId, 'live', creds)
 }
+
+export { TYPE_LABELS }

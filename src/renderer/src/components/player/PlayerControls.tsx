@@ -167,7 +167,7 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
   const seekForwardLabel = '10 saniye ileri sar'
 
   const progressTrackColor = '#7c6af7'
-  const progressBackColor = '#36364e'
+  const progressBackColor = '#3f3f46'
 
   return (
     <div
@@ -193,6 +193,10 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
             }}
             className="flex-1 h-1 appearance-none bg-surface-600 rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent"
             style={{ background: `linear-gradient(to right, ${progressTrackColor} ${progress}%, ${progressBackColor} ${progress}%)` }}
+            aria-label="Oynatma ilerlemesi"
+            aria-valuemin={0}
+            aria-valuemax={Math.round(duration)}
+            aria-valuenow={Math.round(currentTime)}
           />
           <span className="text-xs text-surface-200 tabular-nums">{formatTime(duration)}</span>
           <span className="min-w-[70px] text-right text-xs text-surface-300 tabular-nums">
@@ -205,30 +209,32 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
         <div className="flex items-center gap-1">
           <button
             onClick={() => void leavePlayer()}
-            className="rounded-lg p-2 hover:bg-white/10 transition-colors"
+            className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal"
             title="Geri dön"
+            aria-label="Geri dön"
           >
             <ArrowLeft size={18} />
           </button>
           <button
             onClick={() => playAdjacent('prev')}
             disabled={!previousChannel}
-            className="rounded-lg p-2 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+            className="rounded-lg p-2 transition-colors duration-normal hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
             title={previousChannel ? `Önceki: ${previousChannel.name}` : 'Önceki içerik yok'}
+            aria-label={previousChannel ? `Önceki: ${previousChannel.name}` : 'Önceki içerik yok'}
           >
             <SkipBack size={18} />
           </button>
 
           {!isLive && (
-            <button onClick={() => seek(-10)} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title={seekBackLabel}>
+            <button onClick={() => seek(-10)} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title={seekBackLabel} aria-label={seekBackLabel}>
               <Rewind size={18} />
             </button>
           )}
-          <button onClick={togglePlay} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title="Oynat/Duraklat">
+          <button onClick={togglePlay} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Oynat/Duraklat" aria-label={isPaused || !isPlaying ? 'Oynat' : 'Duraklat'}>
             {isPaused || !isPlaying ? <Play size={22} fill="white" /> : <Pause size={22} fill="white" />}
           </button>
           {!isLive && (
-            <button onClick={() => seek(10)} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title={seekForwardLabel}>
+            <button onClick={() => seek(10)} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title={seekForwardLabel} aria-label={seekForwardLabel}>
               <FastForward size={18} />
             </button>
           )}
@@ -236,14 +242,15 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
           <button
             onClick={() => playAdjacent('next')}
             disabled={!nextChannel}
-            className="rounded-lg p-2 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+            className="rounded-lg p-2 transition-colors duration-normal hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
             title={nextChannel ? `Sonraki: ${nextChannel.name}` : 'Sonraki içerik yok'}
+            aria-label={nextChannel ? `Sonraki: ${nextChannel.name}` : 'Sonraki içerik yok'}
           >
             <SkipForward size={18} />
           </button>
 
           <div className="flex items-center gap-1 ml-2">
-            <button onClick={toggleMute} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title="Sesi Kapat">
+            <button onClick={toggleMute} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title={isMuted ? 'Sesi Aç' : 'Sesi Kapat'} aria-label={isMuted ? 'Sesi Aç' : 'Sesi Kapat'}>
               {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
             </button>
             <input
@@ -254,6 +261,10 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
               value={isMuted ? 0 : volume}
               onChange={handleVolumeChange}
               className="w-20 h-1 appearance-none bg-surface-600 rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+              aria-label="Ses seviyesi"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
             />
           </div>
 
@@ -263,25 +274,27 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
         </div>
 
         <div className="flex items-center gap-1">
-          <button onClick={() => void exitPlayer()} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title="Durdur ve çık">
+          <button onClick={() => void exitPlayer()} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Durdur ve çık" aria-label="Durdur ve çık">
             <X size={18} />
           </button>
           <QualitySelector />
           <AudioTrackSelector />
           <SubtitleSelector />
           {playbackEngine !== 'mpv' && (
-            <button onClick={togglePiP} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title="Resim İçinde Resim">
+            <button onClick={togglePiP} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Resim İçinde Resim" aria-label="Resim İçinde Resim">
               <PictureInPicture2 size={18} />
             </button>
           )}
           <button
             onClick={togglePlayerSidebar}
-            className={`rounded-lg p-2 transition-colors ${isPlayerSidebarOpen ? 'bg-white/20' : 'hover:bg-white/10'}`}
+            className={`rounded-lg p-2 transition-colors duration-normal ${isPlayerSidebarOpen ? 'bg-white/20' : 'hover:bg-white/10'}`}
             title="Kanal Listesi (L)"
+            aria-label="Kanal Listesi"
+            aria-pressed={isPlayerSidebarOpen}
           >
             <List size={18} />
           </button>
-          <button onClick={onToggleFullscreen} className="rounded-lg p-2 hover:bg-white/10 transition-colors" title="Tam Ekran (F)">
+          <button onClick={onToggleFullscreen} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Tam Ekran (F)" aria-label={isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'}>
             {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
           </button>
         </div>

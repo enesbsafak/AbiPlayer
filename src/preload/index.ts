@@ -1,67 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type {
+  AppUpdateState,
+  EmbeddedSubtitleExtractionResult,
+  EmbeddedSubtitleProbeTrack,
+  MpvStateSnapshot,
+  MpvSubtitleStyle,
+  MpvTrackInfo,
+  SecureXtreamCredentials
+} from '../shared/types/electron-ipc'
 
 type FileFilter = { name: string; extensions: string[] }
 type PickedFile = { path: string; content: string }
-type SecureXtreamCredentials = { url: string; username: string; password: string }
-type EmbeddedSubtitleProbeTrack = {
-  index: number
-  codec: string
-  language?: string
-  title?: string
-}
-type EmbeddedSubtitleExtractionResult = {
-  format: 'vtt'
-  content: string
-}
-type MpvTrackInfo = {
-  id: number
-  type: 'audio' | 'sub' | 'video'
-  title?: string
-  lang?: string
-  codec?: string
-  bitrate?: number
-  width?: number
-  height?: number
-  selected: boolean
-  external: boolean
-}
-type MpvStateSnapshot = {
-  available: boolean
-  running: boolean
-  paused: boolean
-  buffering: boolean
-  timePos: number
-  duration: number
-  volume: number
-  muted: boolean
-  vid: number | null
-  aid: number | null
-  sid: number | null
-  fullscreen: boolean
-  tracks: MpvTrackInfo[]
-  path: string | null
-  error: string | null
-}
-type MpvSubtitleStyle = {
-  fontSize: number
-  color: string
-  background: string
-}
-type AppUpdateState = {
-  status: 'unsupported' | 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
-  currentVersion: string
-  availableVersion: string | null
-  downloadedVersion: string | null
-  progress: number | null
-  transferredBytes: number | null
-  totalBytes: number | null
-  bytesPerSecond: number | null
-  message: string | null
-  releaseDate: string | null
-  canCheck: boolean
-  updateReadyToInstall: boolean
-  lastCheckedAt: number | null
-}
 
 const api = {
   pickFileContent: (filters?: FileFilter[]) =>

@@ -41,7 +41,7 @@ export async function fetchAndParseEPG(url: string): Promise<EPGData> {
   const timeout = setTimeout(() => controller.abort(), 60000)
 
   try {
-    const res = await fetch(url, { signal: controller.signal })
+    const res = await fetch(url, { signal: controller.signal, cache: 'no-store' })
     if (!res.ok) throw new Error(`EPG indirilemedi: ${res.status}`)
 
     // Read as text - for very large files, limit to ~50MB
@@ -83,7 +83,8 @@ export function parseEPGXml(xml: string): EPGData {
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
-    isArray: (name) => ['channel', 'programme', 'display-name'].includes(name)
+    isArray: (name) => ['channel', 'programme', 'display-name'].includes(name),
+    processEntities: false
   })
 
   const parsed = parser.parse(xml)
@@ -97,25 +98,27 @@ export function parseEPGXml(xml: string): EPGData {
   const windowStart = now - EPG_WINDOW_HOURS_BEFORE * 3600000
   const windowEnd = now + EPG_WINDOW_HOURS_AFTER * 3600000
 
-  // Parse channels (limited)
+  // Parse channels (limited) — store with lowercase key for case-insensitive matching
   const xmlChannels = ensureArray(tv.channel).slice(0, MAX_CHANNELS)
   for (const ch of xmlChannels) {
     const id = ch['@_id']
     if (!id) continue
     const displayNames = ensureArray(ch['display-name'])
     const displayName = typeof displayNames[0] === 'object' ? displayNames[0]['#text'] : displayNames[0]
-    channels[id] = {
+    const key = id.toLowerCase()
+    channels[key] = {
       id,
       displayName: displayName || id,
       icon: ch.icon?.['@_src']
     }
   }
 
-  // Parse programmes - only within time window
+  // Parse programmes - only within time window, lowercase channel keys
   const xmlProgs = ensureArray(tv.programme)
   for (const prog of xmlProgs) {
-    const channelId = prog['@_channel']
-    if (!channelId) continue
+    const rawChannelId = prog['@_channel']
+    if (!rawChannelId) continue
+    const channelId = rawChannelId.toLowerCase()
 
     const start = parseXMLTVDate(prog['@_start'] || '')
     const end = parseXMLTVDate(prog['@_stop'] || '')

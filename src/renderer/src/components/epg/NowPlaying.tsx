@@ -10,7 +10,7 @@ export function NowPlaying({ epgChannelId }: NowPlayingProps) {
 
   if (!epgChannelId || !epgData) return null
 
-  const programs = epgData.programs[epgChannelId]
+  const programs = epgData.programs[epgChannelId.toLowerCase()]
   const current = programs ? findCurrentProgram(programs) : null
 
   if (!current) return null

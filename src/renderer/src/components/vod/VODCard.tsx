@@ -21,14 +21,17 @@ export const VODCard = memo(function VODCard({
 
   return (
     <div
-      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(176deg,rgba(24,20,48,0.8),rgba(14,12,30,0.74))] shadow-[0_14px_28px_rgba(0,0,0,0.38)] transition-all duration-300 hover:-translate-y-1 hover:border-signal/60 hover:shadow-[0_24px_34px_rgba(0,0,0,0.5)]"
+      role="button"
+      tabIndex={0}
+      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border border-surface-800 bg-surface-900 transition-colors hover:border-surface-700"
       onClick={() => onPlay(item)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPlay(item) } }}
+      aria-label={`${item.name} oynat`}
     >
       <div className="relative aspect-[2/3] bg-surface-800">
         <LazyImage src={artwork} alt={item.name} className="h-full w-full" eager={eagerImage} />
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_34%,rgba(0,0,0,0.72)_100%)]" />
-        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-all group-hover:bg-black/35">
-          <Play size={36} className="opacity-0 transition-opacity group-hover:opacity-100" fill="white" color="white" />
+        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
+          <Play size={32} className="opacity-0 transition-opacity group-hover:opacity-100" fill="white" color="white" />
         </div>
         {qualityLabel && (
           <div className="absolute left-2 top-2">
@@ -36,18 +39,18 @@ export const VODCard = memo(function VODCard({
           </div>
         )}
         {item.rating && (
-          <div className="absolute right-2 top-2 flex items-center gap-1 rounded-full border border-amber-300/45 bg-black/65 px-2 py-0.5">
-            <Star size={10} className="fill-amber-300 text-amber-300" />
-            <span className="text-[10px] font-bold text-amber-100">{item.rating}</span>
+          <div className="absolute right-2 top-2 flex items-center gap-1 rounded bg-surface-900/90 px-1.5 py-0.5">
+            <Star size={10} className="fill-amber-400 text-amber-400" aria-hidden="true" />
+            <span className="text-caption font-bold text-surface-200">{item.rating}</span>
           </div>
         )}
       </div>
-      <div className="p-3.5">
-        <ClampText as="p" lines={2} className="text-sm font-semibold leading-5 text-white">
+      <div className="p-3">
+        <ClampText as="p" lines={2} className="text-sm font-medium text-surface-100">
           {item.name}
         </ClampText>
-        <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-surface-500">
-          <ClampText as="span" lines={2} className="min-w-0 flex-1 leading-4">
+        <div className="mt-1 flex items-center justify-between gap-2 text-label text-surface-500">
+          <ClampText as="span" lines={1} className="min-w-0 flex-1">
             {item.group || item.categoryName || 'Film'}
           </ClampText>
           {item.year && <span className="shrink-0 text-surface-400">{item.year}</span>}

@@ -79,7 +79,7 @@ export function SeriesDetail({
             rating: ep.info?.rating || 0,
             season: ep.season,
             coverUrl: ep.info?.movie_image || '',
-            streamUrl: xtreamApi.buildSeriesUrl(creds, parseInt(ep.id), ep.container_extension)
+            streamUrl: xtreamApi.buildSeriesUrl(creds, parseInt(ep.id), ep.container_extension || 'mp4')
           }))
         }
 
@@ -261,7 +261,7 @@ export function SeriesDetail({
 
       <div className="flex flex-col md:flex-row gap-6">
         <div className="shrink-0 w-48">
-          <LazyImage src={detail.cover} alt={detail.name} className="aspect-[2/3] w-full rounded-xl" eager />
+          <LazyImage src={detail.cover} alt={detail.name} className="aspect-[2/3] w-full rounded-lg" eager />
         </div>
         <div className="flex flex-col gap-2">
           <h1 className="text-2xl font-bold">{detail.name}</h1>
@@ -296,7 +296,7 @@ export function SeriesDetail({
             return (
               <div
                 key={ep.id}
-                className="flex items-center gap-4 rounded-lg border border-surface-800 bg-surface-900 p-3 hover:border-surface-600 transition-colors cursor-pointer"
+                className="flex items-center gap-4 rounded-lg border border-surface-800 bg-surface-900 p-3 hover:border-surface-700 transition-colors cursor-pointer"
                 onClick={() =>
                   onPlayEpisode(
                     ep.streamUrl,
@@ -314,7 +314,7 @@ export function SeriesDetail({
                       E{ep.episodeNum}. {ep.title}
                     </p>
                     {qualityLabel && (
-                      <QualityBadge label={qualityLabel} className="shrink-0 border-surface-600/60 bg-surface-800/80" />
+                      <QualityBadge label={qualityLabel} className="shrink-0" />
                     )}
                   </div>
                   {ep.plot && <p className="text-xs text-surface-500 truncate">{ep.plot}</p>}

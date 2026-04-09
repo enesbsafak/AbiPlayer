@@ -88,7 +88,7 @@ export function SourceManager() {
             className={`flex items-center justify-between rounded-lg border p-3 transition-colors cursor-pointer ${
               source.id === activeSourceId
                 ? 'border-accent bg-accent/5'
-                : 'border-surface-700 hover:border-surface-600 bg-surface-900'
+                : 'border-surface-800 hover:border-surface-700 bg-surface-900'
             }`}
             onClick={() => setActiveSource(source.id)}
           >

@@ -30,7 +30,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return (
       <div className="flex h-full items-center justify-center bg-surface-950 text-surface-50">
-        <div className="flex max-w-md flex-col items-center gap-4 rounded-2xl border border-red-500/25 bg-red-500/10 p-8 text-center">
+        <div className="flex max-w-md flex-col items-center gap-4 rounded-lg border border-red-500/25 bg-red-500/10 p-8 text-center">
           <AlertCircle size={48} className="text-red-400" />
           <h2 className="text-lg font-semibold">Beklenmeyen bir hata olustu</h2>
           <p className="text-sm text-surface-400">

@@ -11,6 +11,11 @@ import {
   type AppUpdateState
 } from './app-updater'
 import { MpvController, type MpvStateSnapshot, type MpvSubtitleStyle } from './mpv-controller'
+import type {
+  EmbeddedSubtitleProbeTrack,
+  EmbeddedSubtitleExtractionResult,
+  SecureXtreamCredentials
+} from '../shared/types/electron-ipc'
 
 const MAX_LOCAL_FILE_SIZE_BYTES = 500 * 1024 * 1024
 const MAX_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024
@@ -28,25 +33,7 @@ interface PickedFile {
   content: string
 }
 
-interface SecureXtreamCredentials {
-  url: string
-  username: string
-  password: string
-}
-
 type SecureCredentialStore = Record<string, SecureXtreamCredentials>
-
-interface EmbeddedSubtitleProbeTrack {
-  index: number
-  codec: string
-  language?: string
-  title?: string
-}
-
-interface EmbeddedSubtitleExtractionResult {
-  format: 'vtt'
-  content: string
-}
 
 interface RunProcessOptions {
   timeoutMs?: number
@@ -371,6 +358,19 @@ async function extractEmbeddedSubtitle(
   })
 }
 
+let credentialStoreLock: Promise<void> = Promise.resolve()
+
+async function withCredentialLock<T>(fn: () => Promise<T>): Promise<T> {
+  let resolve: () => void
+  credentialStoreLock = credentialStoreLock.then(() => new Promise<void>((r) => { resolve = r }))
+  await credentialStoreLock
+  try {
+    return await fn()
+  } finally {
+    resolve!()
+  }
+}
+
 async function readSecureCredentialStore(): Promise<SecureCredentialStore> {
   ensureSecureStorageAvailable()
 
@@ -491,19 +491,23 @@ export function registerIpcHandlers(): void {
       if (!isValidSourceId(sourceId)) throw new Error('Geçersiz kaynak kimliği')
       if (!isValidCredential(credential)) throw new Error('Geçersiz kimlik bilgisi verisi')
 
-      const store = await readSecureCredentialStore()
-      store[sourceId] = credential
-      await writeSecureCredentialStore(store)
+      await withCredentialLock(async () => {
+        const store = await readSecureCredentialStore()
+        store[sourceId] = credential
+        await writeSecureCredentialStore(store)
+      })
     }
   )
 
   ipcMain.handle('secure-credentials-delete', async (_, sourceId: unknown): Promise<void> => {
     if (!isValidSourceId(sourceId)) throw new Error('Geçersiz kaynak kimliği')
 
-    const store = await readSecureCredentialStore()
-    if (!(sourceId in store)) return
-    delete store[sourceId]
-    await writeSecureCredentialStore(store)
+    await withCredentialLock(async () => {
+      const store = await readSecureCredentialStore()
+      if (!(sourceId in store)) return
+      delete store[sourceId]
+      await writeSecureCredentialStore(store)
+    })
   })
 
   ipcMain.handle(

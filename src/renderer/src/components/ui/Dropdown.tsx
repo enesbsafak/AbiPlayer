@@ -32,18 +32,26 @@ export function Dropdown({ items, value, onSelect, placeholder = 'Seciniz...', c
     <div ref={ref} className={`relative ${className}`}>
       <button
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 text-sm text-white hover:border-surface-500 transition-colors"
+        className="flex w-full items-center justify-between rounded-lg border border-surface-700 bg-surface-900 px-3 py-2 text-sm text-surface-50 transition-colors hover:border-surface-600"
+        aria-haspopup="listbox"
+        aria-expanded={open}
       >
         <span className={selected ? '' : 'text-surface-500'}>{selected?.label || placeholder}</span>
-        <ChevronDown size={16} className={`ml-2 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown size={16} className={`ml-2 text-surface-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="absolute z-40 mt-1 w-full rounded-lg border border-surface-700 bg-surface-800 py-1 shadow-xl max-h-60 overflow-y-auto">
+        <div
+          className="absolute z-dropdown mt-1 w-full rounded-lg border border-surface-800 bg-surface-900 py-1 shadow-lg max-h-60 overflow-y-auto"
+          role="listbox"
+          aria-label={placeholder}
+        >
           {items.map((item) => (
             <button
               key={item.id}
               onClick={() => { onSelect(item.id); setOpen(false) }}
-              className={`flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-700 transition-colors ${item.id === value ? 'text-accent' : 'text-surface-200'}`}
+              className={`flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-surface-800 ${item.id === value ? 'text-accent' : 'text-surface-300'}`}
+              role="option"
+              aria-selected={item.id === value}
             >
               {item.icon}
               {item.label}

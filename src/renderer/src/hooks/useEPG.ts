@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useStore } from '@/store'
 import { fetchAndParseEPG } from '@/services/epg-service'
@@ -15,62 +15,89 @@ export function useEPG() {
   const epgLoading = useStore((s) => s.epgLoading)
   const epgLastFetched = useStore((s) => s.epgLastFetched)
   const epgRefreshInterval = useStore((s) => s.settings.epgRefreshInterval)
-  const setEpgData = useStore((s) => s.setEpgData)
-  const setEpgLoading = useStore((s) => s.setEpgLoading)
-  const setEpgError = useStore((s) => s.setEpgError)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const inFlightRef = useRef(false)
   const isEPGRoute = location.pathname.startsWith('/epg')
 
-  const fetchEPG = useCallback(async () => {
-    if (inFlightRef.current) return
-    if (!activeSourceId) return
-    const source = sources.find((s) => s.id === activeSourceId)
-    if (!source) return
-
-    inFlightRef.current = true
-    setEpgLoading(true)
-    try {
-      let epgUrl: string | null = null
-
-      if (source.type === 'xtream') {
-        const creds = getXtreamCredentials(source.id)
-        if (creds) epgUrl = xtreamApi.buildEpgUrl(creds)
-      }
-
-      if (!epgUrl) {
-        setEpgLoading(false)
-        return
-      }
-
-      const data = await fetchAndParseEPG(epgUrl)
-      setEpgData(data)
-    } catch (err) {
-      setEpgError(err instanceof Error ? err.message : 'EPG verisi alinamadi')
-    } finally {
-      setEpgLoading(false)
-      inFlightRef.current = false
-    }
-  }, [activeSourceId, sources, getXtreamCredentials, setEpgData, setEpgLoading, setEpgError])
-
   useEffect(() => {
-    if (!activeSourceId) return
     if (!isEPGRoute) return
+    if (!activeSourceId) return
+    if (inFlightRef.current) return
+
+    const source = sources.find((s) => s.id === activeSourceId)
+    if (!source || source.type !== 'xtream') return
+
+    const creds = getXtreamCredentials(source.id)
+    if (!creds) return
 
     const refreshMinutes = Math.min(
       MAX_EPG_REFRESH_MINUTES,
       Math.max(MIN_EPG_REFRESH_MINUTES, Math.floor(epgRefreshInterval || 60))
     )
-    // Fetch if no data or stale
     const staleMs = refreshMinutes * 60 * 1000
-    if (!epgData || !epgLastFetched || Date.now() - epgLastFetched > staleMs) {
-      fetchEPG()
+    const isStale = !epgData || !epgLastFetched || Date.now() - epgLastFetched > staleMs
+
+    if (!isStale) return
+
+    let cancelled = false
+    inFlightRef.current = true
+
+    const { setEpgData, setEpgLoading, setEpgError } = useStore.getState()
+    setEpgLoading(true)
+    setEpgError(null)
+
+    const epgUrl = xtreamApi.buildEpgUrl(creds)
+
+    fetchAndParseEPG(epgUrl)
+      .then((data) => {
+        if (!cancelled) setEpgData(data)
+      })
+      .catch((err) => {
+        if (!cancelled) setEpgError(err instanceof Error ? err.message : 'EPG verisi alınamadı')
+      })
+      .finally(() => {
+        if (!cancelled) setEpgLoading(false)
+        inFlightRef.current = false
+      })
+
+    return () => {
+      cancelled = true
     }
+  }, [isEPGRoute, activeSourceId, sources, epgData, epgLastFetched, epgRefreshInterval, getXtreamCredentials])
 
-    // Auto refresh
-    const interval = setInterval(fetchEPG, staleMs)
+  // Auto-refresh interval while on EPG route
+  useEffect(() => {
+    if (!isEPGRoute) return
+    if (!activeSourceId) return
+
+    const refreshMinutes = Math.min(
+      MAX_EPG_REFRESH_MINUTES,
+      Math.max(MIN_EPG_REFRESH_MINUTES, Math.floor(epgRefreshInterval || 60))
+    )
+    const staleMs = refreshMinutes * 60 * 1000
+
+    const interval = setInterval(() => {
+      if (inFlightRef.current) return
+      const source = sources.find((s) => s.id === activeSourceId)
+      if (!source || source.type !== 'xtream') return
+      const creds = getXtreamCredentials(source.id)
+      if (!creds) return
+
+      inFlightRef.current = true
+      const { setEpgData, setEpgLoading, setEpgError } = useStore.getState()
+      setEpgLoading(true)
+
+      fetchAndParseEPG(xtreamApi.buildEpgUrl(creds))
+        .then((data) => setEpgData(data))
+        .catch((err) => setEpgError(err instanceof Error ? err.message : 'EPG yenilemesi başarısız'))
+        .finally(() => {
+          setEpgLoading(false)
+          inFlightRef.current = false
+        })
+    }, staleMs)
+
     return () => clearInterval(interval)
-  }, [activeSourceId, isEPGRoute, epgData, epgLastFetched, epgRefreshInterval, fetchEPG])
+  }, [isEPGRoute, activeSourceId, sources, epgRefreshInterval, getXtreamCredentials])
 
-  return { epgData, epgLoading, refetchEPG: fetchEPG }
+  return { epgData, epgLoading }
 }

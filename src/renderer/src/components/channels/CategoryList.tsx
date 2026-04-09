@@ -22,10 +22,10 @@ export const CategoryList = memo(function CategoryList() {
     <div className="flex flex-col gap-1">
       <button
         onClick={() => setSelectedCategory(null)}
-        className={`flex items-start gap-2 rounded-xl px-3 py-2 text-sm transition-colors ${
+        className={`flex items-start gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
           !selectedCategoryId
-            ? 'border border-accent/45 bg-accent/15 text-accent'
-            : 'border border-transparent text-surface-300 hover:border-surface-600/35 hover:bg-surface-800/60'
+            ? 'bg-surface-800 text-surface-50 font-medium'
+            : 'text-surface-400 hover:bg-surface-900 hover:text-surface-200'
         }`}
       >
         <LayoutGrid size={16} className="mt-0.5 shrink-0" />
@@ -37,10 +37,10 @@ export const CategoryList = memo(function CategoryList() {
         <button
           key={cat.id}
           onClick={() => setSelectedCategory(cat.id)}
-          className={`flex items-start gap-2 rounded-xl px-3 py-2 text-sm transition-colors ${
+          className={`flex items-start gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
             cat.id === selectedCategoryId
               ? 'border border-accent/45 bg-accent/15 text-accent'
-              : 'border border-transparent text-surface-300 hover:border-surface-600/35 hover:bg-surface-800/60'
+              : 'text-surface-400 hover:bg-surface-900 hover:text-surface-200'
           }`}
         >
           <Folder size={16} className="mt-0.5 shrink-0" />

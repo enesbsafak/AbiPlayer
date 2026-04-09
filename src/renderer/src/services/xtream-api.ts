@@ -204,7 +204,11 @@ async function fetchJSON<T>(
 export const xtreamApi = {
   async authenticate(creds: XtreamCredentials, options?: XtreamRequestOptions): Promise<XtreamAuthResponse> {
     const url = buildUrl(creds, '')
-    return fetchJSON<XtreamAuthResponse>(url, { ...options, bypassCache: true })
+    const data = await fetchJSON<XtreamAuthResponse>(url, { ...options, bypassCache: true })
+    if (!data || typeof data !== 'object' || !data.user_info) {
+      throw new Error('Sunucu geçersiz kimlik doğrulama yanıtı döndürdü')
+    }
+    return data
   },
 
   // Live TV
@@ -352,7 +356,7 @@ export const xtreamApi = {
 
   buildEpgUrl(creds: XtreamCredentials): string {
     const base = creds.url.replace(/\/+$/, '')
-    return `${base}/xmltv.php?username=${creds.username}&password=${creds.password}`
+    return `${base}/xmltv.php?username=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`
   },
 
   // Convert to app types

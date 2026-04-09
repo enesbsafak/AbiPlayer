@@ -59,7 +59,7 @@ export default function SearchPage() {
 
   return (
     <div className="h-full p-3">
-      <div className="panel-glass h-full overflow-y-auto rounded-2xl p-5">
+      <div className="rounded-lg border border-surface-800 bg-surface-900 h-full overflow-y-auto p-5">
         <div className="relative mx-auto mb-8 max-w-xl">
           <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-surface-400" />
           <input
@@ -68,7 +68,7 @@ export default function SearchPage() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Tüm kanal, film ve dizilerde ara..."
             autoFocus
-            className="w-full rounded-xl border border-surface-600/35 bg-surface-900/70 py-3 pl-12 pr-4 text-lg text-surface-100 placeholder:text-surface-400 transition-colors focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/45"
+            className="w-full rounded-lg border border-surface-700 bg-surface-900 py-3 pl-12 pr-4 text-lg text-surface-50 placeholder:text-surface-500 transition-colors focus:border-surface-600 focus:outline-none focus:ring-2 focus:ring-accent/20"
           />
         </div>
 

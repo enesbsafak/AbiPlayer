@@ -133,7 +133,7 @@ export function PlayerSidebar() {
   return (
     <div
       data-player-sidebar
-      className={`absolute top-0 bottom-0 right-0 z-40 flex flex-col transition-transform duration-200 ease-out ${
+      className={`absolute top-0 bottom-0 right-0 z-sidebar flex flex-col transition-transform duration-normal ease-out ${
         isPlayerSidebarOpen ? 'translate-x-0' : 'translate-x-full'
       }`}
       style={{ width: SIDEBAR_WIDTH }}
@@ -142,12 +142,13 @@ export function PlayerSidebar() {
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/8">
-        <span className="text-[11px] font-semibold text-surface-400 uppercase tracking-wider">
+        <span className="text-label font-semibold text-surface-400 uppercase tracking-wider">
           {typeLabel}
         </span>
         <button
           onClick={() => setPlayerSidebarOpen(false)}
-          className="rounded p-1 text-surface-400 hover:text-white hover:bg-white/8 transition-colors"
+          className="rounded p-1 text-surface-400 hover:text-white hover:bg-white/8 transition-colors duration-normal"
+          aria-label="Kanal listesini kapat"
           title="Kapat (L)"
         >
           <X size={14} />
@@ -163,7 +164,7 @@ export function PlayerSidebar() {
           >
             <Folder size={12} className="text-surface-500 shrink-0" />
             <span className="flex-1 text-xs text-surface-200 truncate">{activeCategoryLabel}</span>
-            <span className="text-[10px] text-surface-600 tabular-nums mr-1">{sidebarChannels.length}</span>
+            <span className="text-caption text-surface-600 tabular-nums mr-1">{sidebarChannels.length}</span>
             <ChevronDown
               size={12}
               className={`text-surface-500 transition-transform ${isCategoryOpen ? 'rotate-180' : ''}`}
@@ -171,7 +172,7 @@ export function PlayerSidebar() {
           </button>
 
           {isCategoryOpen && (
-            <div className="absolute left-0 right-0 top-full z-50 max-h-64 overflow-y-auto border-b border-white/8" style={{ background: '#12141a' }}>
+            <div className="absolute left-0 right-0 top-full z-dropdown max-h-64 overflow-y-auto border-b border-white/8 bg-surface-950">
               <button
                 onClick={() => handleCategorySelect(null)}
                 className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
@@ -233,7 +234,7 @@ export function PlayerSidebar() {
                 <ClampText
                   as="p"
                   lines={1}
-                  className={`text-[11px] leading-4 ${isActive ? 'font-semibold text-accent' : 'font-medium text-surface-200'}`}
+                  className={`text-label ${isActive ? 'font-semibold text-accent' : 'font-medium text-surface-200'}`}
                 >
                   {ch.name}
                 </ClampText>

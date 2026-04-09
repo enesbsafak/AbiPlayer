@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
 interface ModalProps {
@@ -22,23 +23,31 @@ export function Modal({ isOpen, onClose, title, children, className = '' }: Moda
 
   if (!isOpen) return null
 
-  return (
+  return createPortal(
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-modal flex items-center justify-center bg-black/80"
       onClick={(e) => e.target === overlayRef.current && onClose()}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
     >
-      <div className={`relative w-full max-w-lg rounded-xl bg-surface-900 border border-surface-700 shadow-2xl ${className}`}>
+      <div className={`relative w-full max-w-lg rounded-lg border border-surface-800 bg-surface-900 shadow-2xl ${className}`}>
         {title && (
-          <div className="flex items-center justify-between border-b border-surface-700 px-6 py-4">
-            <h2 className="text-lg font-semibold">{title}</h2>
-            <button onClick={onClose} className="rounded-lg p-1 hover:bg-surface-700 text-surface-400 hover:text-white transition-colors">
-              <X size={20} />
+          <div className="flex items-center justify-between border-b border-surface-800 px-6 py-4">
+            <h2 className="text-base font-semibold text-surface-50">{title}</h2>
+            <button
+              onClick={onClose}
+              className="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-50"
+              aria-label="Kapat"
+            >
+              <X size={18} />
             </button>
           </div>
         )}
         <div className="p-6">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

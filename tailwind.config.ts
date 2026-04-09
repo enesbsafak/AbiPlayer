@@ -2,22 +2,21 @@ import type { Config } from 'tailwindcss'
 
 const config: Config = {
   content: ['./src/renderer/src/**/*.{js,ts,jsx,tsx}'],
-  darkMode: 'class',
   theme: {
     extend: {
       colors: {
         surface: {
-          50: '#f5f5fa',
-          100: '#eaeaf4',
-          200: '#d0d0e6',
-          300: '#adadcc',
-          400: '#8585aa',
-          500: '#636388',
-          600: '#4b4b6c',
-          700: '#363650',
-          800: '#222236',
-          900: '#131325',
-          950: '#0b0b1a'
+          50: '#fafafa',
+          100: '#f4f4f5',
+          200: '#e4e4e7',
+          300: '#d4d4d8',
+          400: '#a1a1aa',
+          500: '#71717a',
+          600: '#52525b',
+          700: '#3f3f46',
+          800: '#27272a',
+          900: '#18181b',
+          950: '#09090b'
         },
         accent: {
           DEFAULT: '#7c6af7',
@@ -34,20 +33,26 @@ const config: Config = {
         },
         signal: {
           DEFAULT: '#2dd4bf',
-          100: '#ccfdf7',
-          200: '#99f9ef',
-          300: '#5ef0e5',
           400: '#2dd4bf',
           500: '#14b8a6',
-          600: '#0d9488',
-          700: '#0f766e',
-          800: '#115e59',
-          900: '#134e4a'
+          600: '#0d9488'
         }
       },
+      fontSize: {
+        caption: ['10px', { lineHeight: '14px' }],
+        label: ['11px', { lineHeight: '16px' }],
+        'body-sm': ['13px', { lineHeight: '20px' }]
+      },
       fontFamily: {
-        sans: ['"Inter Variable"', 'Inter', 'system-ui', 'sans-serif'],
-        display: ['"Inter Variable"', 'Inter', 'system-ui', 'sans-serif']
+        sans: ['"Inter Variable"', 'Inter', 'system-ui', 'sans-serif']
+      },
+      zIndex: {
+        'loading': '20',
+        'sidebar': '30',
+        'titlebar': '40',
+        'dropdown': '45',
+        'overlay': '50',
+        'modal': '55'
       }
     }
   },

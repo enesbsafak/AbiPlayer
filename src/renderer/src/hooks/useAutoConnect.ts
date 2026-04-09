@@ -40,7 +40,6 @@ export function useAutoConnect() {
         const mergedCredentials = { ...credentialsBySource }
         const migrationTasks: Promise<void>[] = []
 
-        // Migrate legacy in-memory credentials (from older localStorage format) into secure storage.
         for (const source of sources) {
           if (source.type !== 'xtream') continue
           if (!source.url || !source.username || !source.password) continue
@@ -60,6 +59,7 @@ export function useAutoConnect() {
         }
 
         hydrateXtreamCredentials(mergedCredentials)
+        setCredentialsHydrated(true)
       } catch (err) {
         console.error('Credential hydration failed:', err)
         setCredentialsHydrated(true)

@@ -65,13 +65,16 @@ export function SubtitleSelector() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className={`rounded-lg p-2 hover:bg-white/10 transition-colors ${currentSubtitleTrack ? 'text-accent' : ''}`}
+        className={`rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal ${currentSubtitleTrack ? 'text-accent' : ''}`}
         title="Altyazi"
+        aria-label="Altyazı seç"
+        aria-haspopup="true"
+        aria-expanded={open}
       >
         <Subtitles size={18} />
       </button>
       {open && (
-        <div className="absolute bottom-full right-0 mb-2 w-64 rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-xl">
+        <div className="absolute bottom-full right-0 mb-2 w-64 rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-lg">
           <p className="px-3 py-1.5 text-xs font-medium text-surface-500">Altyazı</p>
           <button
             onClick={handleOff}
@@ -93,7 +96,7 @@ export function SubtitleSelector() {
             </button>
           ))}
           <div className="border-t border-surface-700 mt-1 px-3 py-2">
-            <p className="text-[11px] font-medium text-surface-500">
+            <p className="text-label font-medium text-surface-500">
               Altyazı Stili
             </p>
             <div className="mt-2 flex items-center justify-between text-xs text-surface-400">

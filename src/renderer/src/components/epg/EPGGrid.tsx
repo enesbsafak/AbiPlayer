@@ -4,6 +4,7 @@ import { tr } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useStore } from '@/store'
 import { Button } from '@/components/ui/Button'
+import { Spinner } from '@/components/ui/Spinner'
 
 const HOUR_WIDTH = 240
 const ROW_HEIGHT = 56
@@ -12,6 +13,8 @@ const CHANNEL_WIDTH = 180
 
 export function EPGGrid() {
   const epgData = useStore((s) => s.epgData)
+  const epgLoading = useStore((s) => s.epgLoading)
+  const epgError = useStore((s) => s.epgError)
   const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -32,6 +35,24 @@ export function EPGGrid() {
       ),
     [channels, activeSourceId]
   )
+
+  if (epgLoading && !epgData) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-surface-500">
+        <Spinner size={24} />
+        <p className="text-sm mt-3">EPG verisi yükleniyor...</p>
+      </div>
+    )
+  }
+
+  if (epgError && !epgData) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-surface-500">
+        <p className="text-sm text-red-400">{epgError}</p>
+        <p className="text-xs mt-1">Yukarıdaki "EPG Yenile" butonuyla tekrar deneyebilirsiniz</p>
+      </div>
+    )
+  }
 
   if (!epgData || liveChannels.length === 0) {
     return (
@@ -57,6 +78,7 @@ export function EPGGrid() {
         <span className="text-sm text-surface-400 ml-2">
           {format(new Date(startTime), 'd MMM, HH:mm', { locale: tr })} - {format(new Date(endTime), 'HH:mm', { locale: tr })}
         </span>
+        {epgLoading && <Spinner size={14} className="ml-2" />}
       </div>
 
       <div className="flex-1 overflow-auto rounded-lg border border-surface-800" ref={scrollRef}>
@@ -77,12 +99,12 @@ export function EPGGrid() {
 
           {/* Channel rows */}
           {liveChannels.map((channel) => {
-            const programs = epgData.programs[channel.epgChannelId!] || []
+            const programs = epgData.programs[channel.epgChannelId!.toLowerCase()] || []
             const visiblePrograms = programs.filter((p) => p.end > startTime && p.start < endTime)
 
             return (
-              <div key={channel.id} className="flex border-b border-surface-800/50" style={{ height: ROW_HEIGHT }}>
-                <div className="shrink-0 flex items-center gap-2 border-r border-surface-800 px-3 bg-surface-900/50" style={{ width: CHANNEL_WIDTH }}>
+              <div key={channel.id} className="flex border-b border-surface-800" style={{ height: ROW_HEIGHT }}>
+                <div className="shrink-0 flex items-center gap-2 border-r border-surface-800 px-3 bg-surface-900" style={{ width: CHANNEL_WIDTH }}>
                   <span className="truncate text-xs font-medium">{channel.name}</span>
                 </div>
                 <div className="relative flex-1" style={{ width: totalWidth }}>

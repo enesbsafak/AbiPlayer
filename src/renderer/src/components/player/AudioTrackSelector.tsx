@@ -21,21 +21,26 @@ export function AudioTrackSelector() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="rounded-lg p-2 hover:bg-white/10 transition-colors"
+        className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal"
         title="Ses Kanallari"
+        aria-label="Ses kanalı seç"
+        aria-haspopup="listbox"
+        aria-expanded={open}
       >
         <Languages size={18} />
       </button>
       {open && (
-        <div className="absolute bottom-full right-0 mb-2 w-48 rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-xl">
+        <div className="absolute bottom-full right-0 mb-2 w-48 rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-lg" role="listbox" aria-label="Ses Kanalı">
           <p className="px-3 py-1.5 text-xs font-medium text-surface-500">Ses Kanalı</p>
           {audioTracks.map((track, index) => (
             <button
               key={track.id}
               onClick={() => { setCurrentAudioTrack(track.id); setOpen(false) }}
-              className={`flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-800 transition-colors ${
+              className={`flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-800 transition-colors duration-normal ${
                 track.id === currentAudioTrack ? 'text-accent' : 'text-surface-200'
               }`}
+              role="option"
+              aria-selected={track.id === currentAudioTrack}
             >
               {track.name || track.lang || `Ses ${index + 1}`}
             </button>
