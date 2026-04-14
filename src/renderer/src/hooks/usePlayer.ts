@@ -905,6 +905,68 @@ export function usePlayer(
     }
   }, [videoRef, currentChannel, setPlaying, setPaused, setBuffering, setCurrentTime, setDuration, setPlayerError, disabled])
 
+  // Live stream stall detection — recovers frozen HLS/direct streams
+  useEffect(() => {
+    if (disabled) return
+    const video = videoRef.current
+    if (!video || !currentChannel || currentChannel.type !== 'live') return
+
+    let lastTimePos = -1
+    let lastProgressTime = Date.now()
+    let recoveryCount = 0
+    const MAX_RECOVERIES = 5
+    const STALL_THRESHOLD_MS = 15_000
+
+    const onStallTimeUpdate = () => {
+      const t = video.currentTime
+      if (t !== lastTimePos && t > 0) {
+        lastTimePos = t
+        lastProgressTime = Date.now()
+        if (recoveryCount > 0) {
+          recoveryCount = 0
+          setPlayerError(null)
+        }
+      }
+    }
+
+    video.addEventListener('timeupdate', onStallTimeUpdate)
+
+    const stallCheck = setInterval(() => {
+      if (video.paused || lastTimePos < 0) return
+
+      const now = Date.now()
+      if (now - lastProgressTime <= STALL_THRESHOLD_MS) return
+
+      const hls = hlsRef.current
+      if (recoveryCount < MAX_RECOVERIES) {
+        recoveryCount++
+        lastProgressTime = now
+        setPlayerError(
+          `Bağlantı kesildi, yeniden bağlanılıyor... (${recoveryCount}/${MAX_RECOVERIES})`
+        )
+
+        if (hls) {
+          hls.stopLoad()
+          hls.startLoad(-1)
+        } else {
+          const src = video.currentSrc || currentChannel.streamUrl
+          if (src) {
+            video.src = src
+            video.play().catch(() => {})
+          }
+        }
+      } else {
+        setPlayerError('Yayın bağlantısı kesildi.')
+        clearInterval(stallCheck)
+      }
+    }, 5000)
+
+    return () => {
+      video.removeEventListener('timeupdate', onStallTimeUpdate)
+      clearInterval(stallCheck)
+    }
+  }, [currentChannel, videoRef, setPlayerError, disabled])
+
   // Cue matching for parsed subtitle sources (external files + extracted embedded tracks)
   useEffect(() => {
     if (disabled) return

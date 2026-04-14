@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Search, X } from 'lucide-react'
 import { useSearch } from '@/hooks/useSearch'
 
@@ -8,13 +8,21 @@ interface ChannelSearchProps {
 }
 
 export function ChannelSearch({ value, onSearch }: ChannelSearchProps) {
-  const { query, setQuery } = useSearch(onSearch, 300)
+  const lastReportedRef = useRef(value ?? '')
+  const handleSearch = useCallback((q: string) => {
+    lastReportedRef.current = q
+    onSearch(q)
+  }, [onSearch])
+  const { query, setQuery } = useSearch(handleSearch, 300)
 
   useEffect(() => {
     if (typeof value !== 'string') return
-    if (value === query) return
+    // Only sync when value changed externally (e.g. source switch, route restore),
+    // not when it echoes back our own debounced report.
+    if (value === lastReportedRef.current) return
+    lastReportedRef.current = value
     setQuery(value)
-  }, [query, setQuery, value])
+  }, [value, setQuery])
 
   return (
     <div className="relative">

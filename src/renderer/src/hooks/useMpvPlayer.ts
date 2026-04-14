@@ -93,6 +93,7 @@ export function useMpvPlayer(enabled: boolean) {
   const reconnectCountRef = useRef(0)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastGoodPlaybackRef = useRef(0)
+  const lastTimePosRef = useRef(0)
   const startupVisibleRef = useRef(false)
   const [isStarting, setIsStarting] = useState(false)
   const {
@@ -275,9 +276,11 @@ export function useMpvPlayer(enabled: boolean) {
       setDuration(snapshot.duration || 0)
       setFullscreen(Boolean(windowFullscreen || snapshot.fullscreen))
 
-      // Track good playback for reconnect logic
+      // Track good playback for reconnect logic — only when timePos actually advances
       const isLiveStream = useStore.getState().currentChannel?.type === 'live'
-      if (snapshot.running && !snapshot.error && !snapshot.buffering && snapshot.timePos > 0) {
+      const timePosAdvancing = snapshot.timePos > 0 && snapshot.timePos !== lastTimePosRef.current
+      lastTimePosRef.current = snapshot.timePos
+      if (snapshot.running && !snapshot.error && !snapshot.buffering && timePosAdvancing) {
         lastGoodPlaybackRef.current = now
         reconnectCountRef.current = 0
       }

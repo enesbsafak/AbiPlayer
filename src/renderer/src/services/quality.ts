@@ -41,15 +41,20 @@ function normalizeTextParts(parts: Array<string | undefined>): string {
 }
 
 function inferResolutionFromDimensions(height?: number, width?: number): string | null {
-  const maxDimension = Math.max(height || 0, width || 0)
+  // Resolution labels (1080p, 720p, …) represent vertical pixel count.
+  // Use height when available; estimate from width assuming 16:9 as fallback.
+  const h = height && height > 0 ? height : 0
+  const effectiveHeight = h > 0 ? h : (width && width > 0 ? Math.round(width * 9 / 16) : 0)
 
-  if (maxDimension >= 2160 || (height || 0) >= 2000) return '4K'
-  if (maxDimension >= 1440 || (height || 0) >= 1400) return '1440p'
-  if (maxDimension >= 1080 || (height || 0) >= 1000) return '1080p'
-  if (maxDimension >= 720 || (height || 0) >= 700) return '720p'
-  if (maxDimension >= 576 || (height || 0) >= 560) return '576p'
-  if (maxDimension >= 480 || (height || 0) >= 460) return '480p'
-  if (maxDimension >= 360 || (height || 0) >= 340) return '360p'
+  if (effectiveHeight <= 0) return null
+
+  if (effectiveHeight >= 1800) return '4K'
+  if (effectiveHeight >= 1200) return '1440p'
+  if (effectiveHeight >= 900) return '1080p'
+  if (effectiveHeight >= 650) return '720p'
+  if (effectiveHeight >= 520) return '576p'
+  if (effectiveHeight >= 400) return '480p'
+  if (effectiveHeight >= 240) return '360p'
 
   return null
 }
