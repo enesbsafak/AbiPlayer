@@ -931,11 +931,25 @@ export function usePlayer(
 
     video.addEventListener('timeupdate', onStallTimeUpdate)
 
+    // Check at 2.5s cadence so we react within ~2.5s of crossing the 15s stall
+    // threshold. Any longer and the UI looks frozen; any shorter burns CPU
+    // probing `currentTime` for no benefit since timeupdate already tracks it.
+    const STALL_CHECK_INTERVAL_MS = 2_500
+    let terminalErrorShown = false
+
     const stallCheck = setInterval(() => {
       if (video.paused || lastTimePos < 0) return
 
       const now = Date.now()
-      if (now - lastProgressTime <= STALL_THRESHOLD_MS) return
+      if (now - lastProgressTime <= STALL_THRESHOLD_MS) {
+        // Stream recovered after a terminal error — let the user keep watching.
+        if (terminalErrorShown) {
+          terminalErrorShown = false
+          recoveryCount = 0
+          setPlayerError(null)
+        }
+        return
+      }
 
       const hls = hlsRef.current
       if (recoveryCount < MAX_RECOVERIES) {
@@ -955,11 +969,13 @@ export function usePlayer(
             video.play().catch(() => {})
           }
         }
-      } else {
+      } else if (!terminalErrorShown) {
+        terminalErrorShown = true
         setPlayerError('Yayın bağlantısı kesildi.')
-        clearInterval(stallCheck)
+        // Keep the interval alive — if the network recovers on its own, the
+        // progress branch above will clear the error and resume monitoring.
       }
-    }, 5000)
+    }, STALL_CHECK_INTERVAL_MS)
 
     return () => {
       video.removeEventListener('timeupdate', onStallTimeUpdate)

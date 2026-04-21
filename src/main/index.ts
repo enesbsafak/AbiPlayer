@@ -107,20 +107,30 @@ function createWindow(): void {
     }
   })
 
-  // Track normal bounds so we can save them even when maximized
+  // Track normal bounds so we can save them even when maximized.
+  // Handlers reference `mainWindow` by closure — we must detach them on
+  // `closed` so the window (and any subsequent GC) doesn't retain state.
   ;(mainWindow as any)._normalBounds = mainWindow.getBounds()
-  mainWindow.on('resize', () => {
-    if (!mainWindow.isMaximized()) {
+  const onResize = (): void => {
+    if (!mainWindow.isDestroyed() && !mainWindow.isMaximized()) {
       ;(mainWindow as any)._normalBounds = mainWindow.getBounds()
     }
-  })
-  mainWindow.on('move', () => {
-    if (!mainWindow.isMaximized()) {
+  }
+  const onMove = (): void => {
+    if (!mainWindow.isDestroyed() && !mainWindow.isMaximized()) {
       ;(mainWindow as any)._normalBounds = mainWindow.getBounds()
     }
-  })
-  mainWindow.on('close', () => {
-    saveWindowState(mainWindow)
+  }
+  const onClose = (): void => {
+    if (!mainWindow.isDestroyed()) saveWindowState(mainWindow)
+  }
+  mainWindow.on('resize', onResize)
+  mainWindow.on('move', onMove)
+  mainWindow.on('close', onClose)
+  mainWindow.once('closed', () => {
+    mainWindow.removeListener('resize', onResize)
+    mainWindow.removeListener('move', onMove)
+    mainWindow.removeListener('close', onClose)
   })
 
   if (savedState.isMaximized) {

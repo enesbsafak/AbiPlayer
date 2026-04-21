@@ -1,5 +1,5 @@
 import { useStore } from '@/store'
-import { findCurrentProgram } from '@/services/epg-service'
+import { findCurrentProgram, normalizeEpgChannelKey } from '@/services/epg-service'
 
 interface NowPlayingProps {
   epgChannelId?: string
@@ -10,7 +10,8 @@ export function NowPlaying({ epgChannelId }: NowPlayingProps) {
 
   if (!epgChannelId || !epgData) return null
 
-  const programs = epgData.programs[epgChannelId.toLowerCase()]
+  const key = normalizeEpgChannelKey(epgChannelId)
+  const programs = key ? epgData.programs[key] : undefined
   const current = programs ? findCurrentProgram(programs) : null
 
   if (!current) return null

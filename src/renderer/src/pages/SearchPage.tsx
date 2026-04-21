@@ -6,6 +6,7 @@ import { ChannelGrid } from '@/components/channels/ChannelGrid'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 import { openPlayerFromRoute } from '@/services/player-navigation'
+import { normalizeSearchText } from '@/services/text-normalize'
 
 export default function SearchPage() {
   const location = useLocation()
@@ -33,11 +34,11 @@ export default function SearchPage() {
 
   const results = useMemo(() => {
     if (!query || query.length < 2) return []
-    const q = query.toLowerCase()
+    const q = normalizeSearchText(query)
     return channels.filter((c) =>
-      c.name.toLowerCase().includes(q) ||
-      c.group?.toLowerCase().includes(q) ||
-      c.categoryName?.toLowerCase().includes(q)
+      normalizeSearchText(c.name).includes(q) ||
+      (c.group ? normalizeSearchText(c.group).includes(q) : false) ||
+      (c.categoryName ? normalizeSearchText(c.categoryName).includes(q) : false)
     ).slice(0, 100)
   }, [query, channels])
 

@@ -14,6 +14,7 @@ import { isPlayableChannel } from '@/services/playback'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
 import { buildCatalogRetainResetKey } from '@/services/catalog-view'
 import { ensureStagedSync } from '@/services/background-sync'
+import { normalizeSearchText } from '@/services/text-normalize'
 
 const loadedSeriesCategoryCache = new Set<string>()
 const loadedSeriesPreviewSourceCache = new Set<string>()
@@ -364,8 +365,8 @@ export default function SeriesPage() {
       list = list.filter((c) => c.categoryId === selectedCategoryId)
     }
     if (searchQuery) {
-      const q = searchQuery.toLowerCase()
-      list = list.filter((c) => c.name.toLowerCase().includes(q))
+      const q = normalizeSearchText(searchQuery)
+      list = list.filter((c) => normalizeSearchText(c.name).includes(q))
     }
 
     return list

@@ -35,10 +35,36 @@ function sanitizePersistedSources(input: unknown, fallback: PlaylistSource[]): P
   return input.filter(isPersistedSource)
 }
 
+function safeLocalGet(name: string): string | null {
+  try {
+    return localStorage.getItem(name)
+  } catch (err) {
+    console.warn('[store] localStorage.getItem failed:', err)
+    return null
+  }
+}
+
+function safeLocalSet(name: string, value: string): void {
+  try {
+    localStorage.setItem(name, value)
+  } catch (err) {
+    // QuotaExceededError, SecurityError, etc. — don't crash the app.
+    console.warn('[store] localStorage.setItem failed (possibly quota):', err)
+  }
+}
+
+function safeLocalRemove(name: string): void {
+  try {
+    localStorage.removeItem(name)
+  } catch (err) {
+    console.warn('[store] localStorage.removeItem failed:', err)
+  }
+}
+
 function createBackupFallbackStorage(): StateStorage {
   return {
     getItem(name: string): string | null | Promise<string | null> {
-      const local = localStorage.getItem(name)
+      const local = safeLocalGet(name)
       if (local) return local
 
       if (!window.electron?.getStoreBackup) return null
@@ -47,7 +73,7 @@ function createBackupFallbackStorage(): StateStorage {
         try {
           const backup = await window.electron!.getStoreBackup()
           if (backup) {
-            localStorage.setItem(name, backup)
+            safeLocalSet(name, backup)
             void window.electron!.deleteStoreBackup?.()
             return backup
           }
@@ -56,10 +82,10 @@ function createBackupFallbackStorage(): StateStorage {
       })()
     },
     setItem(name: string, value: string): void {
-      localStorage.setItem(name, value)
+      safeLocalSet(name, value)
     },
     removeItem(name: string): void {
-      localStorage.removeItem(name)
+      safeLocalRemove(name)
     }
   }
 }
@@ -91,19 +117,43 @@ export const useStore = create<AppStore>()(
         favoriteIds: Array.from(state.favoriteIds)
       }),
       merge: (persisted, current) => {
-        const p = persisted as Record<string, unknown>
-        const persistedSources = sanitizePersistedSources(p?.sources, current.sources)
+        // Only accept known keys from persisted state. Spreading raw `persisted` can
+        // inject arbitrary keys (volatile state, prototype fields) if the payload is
+        // tampered with. Keep this in sync with `partialize` above.
+        const p = (persisted && typeof persisted === 'object'
+          ? (persisted as Record<string, unknown>)
+          : {}) as Record<string, unknown>
+
+        const persistedSources = sanitizePersistedSources(p.sources, current.sources)
         const persistedSettings =
-          p?.settings && typeof p.settings === 'object'
+          p.settings && typeof p.settings === 'object'
             ? (p.settings as Partial<AppStore['settings']>)
             : {}
 
+        const rawFavoriteIds = Array.isArray(p.favoriteIds) ? p.favoriteIds : []
+        const favoriteIds = new Set<string>()
+        for (const item of rawFavoriteIds) {
+          if (typeof item === 'string') favoriteIds.add(item)
+        }
+
+        const volume =
+          typeof p.volume === 'number' && Number.isFinite(p.volume)
+            ? Math.max(0, Math.min(1, p.volume))
+            : current.volume
+        const isMuted = typeof p.isMuted === 'boolean' ? p.isMuted : current.isMuted
+        const activeSourceId =
+          typeof p.activeSourceId === 'string' || p.activeSourceId === null
+            ? (p.activeSourceId as string | null)
+            : current.activeSourceId
+
         return {
           ...current,
-          ...p,
           settings: { ...current.settings, ...persistedSettings },
           sources: persistedSources,
-          favoriteIds: new Set((p?.favoriteIds as string[]) || [])
+          activeSourceId,
+          volume,
+          isMuted,
+          favoriteIds
         }
       }
     }

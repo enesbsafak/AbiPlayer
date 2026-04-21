@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useStore } from '@/store'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
+import { normalizeEpgChannelKey } from '@/services/epg-service'
 
 const HOUR_WIDTH = 240
 const ROW_HEIGHT = 56
@@ -99,7 +100,8 @@ export function EPGGrid() {
 
           {/* Channel rows */}
           {liveChannels.map((channel) => {
-            const programs = epgData.programs[channel.epgChannelId!.toLowerCase()] || []
+            const key = normalizeEpgChannelKey(channel.epgChannelId)
+            const programs = (key ? epgData.programs[key] : undefined) || []
             const visiblePrograms = programs.filter((p) => p.end > startTime && p.start < endTime)
 
             return (

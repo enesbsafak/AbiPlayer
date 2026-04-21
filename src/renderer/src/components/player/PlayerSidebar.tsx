@@ -11,30 +11,51 @@ import type { Channel, Category } from '@/types/playlist'
 const SIDEBAR_WIDTH = 288
 
 export function PlayerSidebar() {
-  const {
-    currentChannel,
-    channels,
-    categories,
-    isPlayerSidebarOpen,
-    setPlayerSidebarOpen,
-    playbackEngine,
-    playChannel,
-    hydratedSourceIds,
-    getXtreamCredentials
-  } = useStore()
+  const currentChannel = useStore((s) => s.currentChannel)
+  const channels = useStore((s) => s.channels)
+  const categories = useStore((s) => s.categories)
+  const isPlayerSidebarOpen = useStore((s) => s.isPlayerSidebarOpen)
+  const setPlayerSidebarOpen = useStore((s) => s.setPlayerSidebarOpen)
+  const playbackEngine = useStore((s) => s.playbackEngine)
+  const playChannel = useStore((s) => s.playChannel)
+  const hydratedSourceIds = useStore((s) => s.hydratedSourceIds)
+  const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
+  const storeSelectedCategoryId = useStore((s) => s.selectedCategoryId)
   const activeRef = useRef<HTMLButtonElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const isMpv = playbackEngine === 'mpv'
 
-  // Category state — default to current channel's category
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  // Pick a starting category that matches the current channel's type+source.
+  // Prefer the store's active category (the one the user picked on LiveTV / VOD / Series page)
+  // over the channel's own categoryId, so opening the sidebar preserves the user's filter.
+  const resolveCategoryFor = useCallback(
+    (channel: typeof currentChannel): string | null => {
+      if (!channel) return null
+      const storeCat = storeSelectedCategoryId
+        ? categories.find((c) => c.id === storeSelectedCategoryId)
+        : null
+      if (storeCat && storeCat.type === channel.type && storeCat.sourceId === channel.sourceId) {
+        return storeSelectedCategoryId
+      }
+      return channel.categoryId ?? null
+    },
+    [categories, storeSelectedCategoryId]
+  )
+
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(() =>
+    resolveCategoryFor(currentChannel)
+  )
   const [isCategoryOpen, setIsCategoryOpen] = useState(false)
   const categoryDropdownRef = useRef<HTMLDivElement>(null)
 
-  // Sync category to current channel when sidebar opens or channel changes
+  // Only re-sync when the channel itself changes (not when the sidebar toggles).
+  // This preserves the user's explicit filter choice across open/close cycles.
+  const lastChannelIdRef = useRef<string | null>(currentChannel?.id ?? null)
   useEffect(() => {
-    setSelectedCategoryId(currentChannel?.categoryId ?? null)
-  }, [currentChannel?.categoryId, isPlayerSidebarOpen])
+    if (currentChannel?.id === lastChannelIdRef.current) return
+    lastChannelIdRef.current = currentChannel?.id ?? null
+    setSelectedCategoryId(resolveCategoryFor(currentChannel))
+  }, [currentChannel, resolveCategoryFor])
 
   // Close dropdown on outside click
   useEffect(() => {

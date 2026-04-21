@@ -79,6 +79,26 @@ export async function fetchAndParseEPG(url: string): Promise<EPGData> {
   }
 }
 
+// Keys from untrusted XML are used as property names. Without protection, a channel
+// id like "__proto__" or "constructor" can pollute Object prototype and cause subtle
+// runtime bugs or unsafe downstream lookups. We reject these unsafe keys outright.
+const UNSAFE_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
+
+export function normalizeEpgChannelKey(id: string | null | undefined): string | null {
+  if (!id) return null
+  // EPG IDs are technical identifiers (e.g. "istanbul.tr", "TRT1.tr") — compare
+  // them ASCII-case-insensitively. Turkish-locale lowercasing would map 'I' to
+  // 'ı', which desyncs ids like "Istanbul.tr" (from XML) vs "istanbul.tr"
+  // (from a channel) that callers expect to match.
+  const key = id.toLowerCase()
+  if (!key || UNSAFE_KEYS.has(key)) return null
+  return key
+}
+
+function normalizeChannelKey(id: string): string | null {
+  return normalizeEpgChannelKey(id)
+}
+
 export function parseEPGXml(xml: string): EPGData {
   const parser = new XMLParser({
     ignoreAttributes: false,
@@ -90,8 +110,9 @@ export function parseEPGXml(xml: string): EPGData {
   const parsed = parser.parse(xml)
   const tv = parsed.tv || parsed.TV || {}
 
-  const channels: Record<string, EPGChannel> = {}
-  const programs: Record<string, EPGProgram[]> = {}
+  // Use null-prototype objects so malicious channel ids cannot reach Object.prototype.
+  const channels = Object.create(null) as Record<string, EPGChannel>
+  const programs = Object.create(null) as Record<string, EPGProgram[]>
 
   // Time window for filtering
   const now = Date.now()
@@ -101,11 +122,12 @@ export function parseEPGXml(xml: string): EPGData {
   // Parse channels (limited) — store with lowercase key for case-insensitive matching
   const xmlChannels = ensureArray(tv.channel).slice(0, MAX_CHANNELS)
   for (const ch of xmlChannels) {
-    const id = ch['@_id']
+    const id = typeof ch['@_id'] === 'string' ? ch['@_id'] : ''
     if (!id) continue
+    const key = normalizeChannelKey(id)
+    if (!key) continue
     const displayNames = ensureArray(ch['display-name'])
     const displayName = typeof displayNames[0] === 'object' ? displayNames[0]['#text'] : displayNames[0]
-    const key = id.toLowerCase()
     channels[key] = {
       id,
       displayName: displayName || id,
@@ -116,9 +138,10 @@ export function parseEPGXml(xml: string): EPGData {
   // Parse programmes - only within time window, lowercase channel keys
   const xmlProgs = ensureArray(tv.programme)
   for (const prog of xmlProgs) {
-    const rawChannelId = prog['@_channel']
+    const rawChannelId = typeof prog['@_channel'] === 'string' ? prog['@_channel'] : ''
     if (!rawChannelId) continue
-    const channelId = rawChannelId.toLowerCase()
+    const channelId = normalizeChannelKey(rawChannelId)
+    if (!channelId) continue
 
     const start = parseXMLTVDate(prog['@_start'] || '')
     const end = parseXMLTVDate(prog['@_stop'] || '')

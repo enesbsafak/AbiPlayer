@@ -12,7 +12,8 @@ import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
 import { buildCatalogRetainResetKey } from '@/services/catalog-view'
-import { ensureStagedSync, isBackgroundSyncing as isBgSyncing } from '@/services/background-sync'
+import { ensureStagedSync } from '@/services/background-sync'
+import { normalizeSearchText } from '@/services/text-normalize'
 
 const loadedLiveCategoryCache = new Set<string>()
 const loadedLivePreviewSourceCache = new Set<string>()
@@ -335,8 +336,8 @@ export default function LiveTVPage() {
       list = list.filter((c) => c.categoryId === selectedCategoryId)
     }
     if (searchQuery) {
-      const q = searchQuery.toLowerCase()
-      list = list.filter((c) => c.name.toLowerCase().includes(q))
+      const q = normalizeSearchText(searchQuery)
+      list = list.filter((c) => normalizeSearchText(c.name).includes(q))
     }
 
     return list

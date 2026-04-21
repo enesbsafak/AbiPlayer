@@ -83,6 +83,7 @@ export class MpvController {
   private startupPromise: Promise<void> | null = null
   private startupParentWid: string | null = null
   private nextRequestId = 1
+  private shuttingDown = false
   private pendingRequests = new Map<number, MpvPendingRequest>()
   private availabilityChecked = false
   private availability = false
@@ -668,14 +669,27 @@ export class MpvController {
     }
   }
 
+  private allocRequestId(): number {
+    // IPC request ids must stay within JS safe integer range. MPV treats the
+    // value opaquely, so we just wrap on overflow while skipping 0 (some
+    // clients reserve it for notifications).
+    if (this.nextRequestId >= Number.MAX_SAFE_INTEGER) {
+      this.nextRequestId = 1
+    }
+    const id = this.nextRequestId
+    this.nextRequestId += 1
+    return id
+  }
+
   private async command(
     command: unknown[],
     timeoutMs = MPV_REQUEST_TIMEOUT_MS
   ): Promise<unknown> {
+    if (this.shuttingDown) throw new Error('mpv IPC kapatılıyor')
     const socket = this.socket
     if (!socket || socket.destroyed) throw new Error('mpv IPC soket bağlantısı yok')
 
-    const requestId = this.nextRequestId++
+    const requestId = this.allocRequestId()
 
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -702,43 +716,67 @@ export class MpvController {
   }
 
   private async cleanup(): Promise<void> {
-    for (const [requestId, pending] of this.pendingRequests.entries()) {
-      clearTimeout(pending.timer)
-      pending.reject(new Error('mpv IPC bağlantısı kesildi'))
-      this.pendingRequests.delete(requestId)
-    }
+    // Guard against re-entry and block new writes while we tear everything down.
+    if (this.shuttingDown) return
+    this.shuttingDown = true
 
-    if (this.socket) {
-      this.socket.removeAllListeners()
-      this.socket.destroy()
-      this.socket = null
-    }
-
-    if (this.process) {
-      const proc = this.process
-      this.process = null
-      proc.removeAllListeners()
-      if (!proc.killed) {
-        proc.kill('SIGTERM')
-        await new Promise<void>((resolve) => {
-          const forceTimer = setTimeout(() => {
-            if (!proc.killed) proc.kill('SIGKILL')
-            resolve()
-          }, 2000)
-          proc.on('close', () => {
-            clearTimeout(forceTimer)
-            resolve()
-          })
-        })
+    try {
+      // 1) Tear down socket FIRST so any late bytes from mpv are discarded and
+      //    can't re-populate pendingRequests after we've cleared it.
+      if (this.socket) {
+        this.socket.removeAllListeners()
+        this.socket.destroy()
+        this.socket = null
       }
-    }
+      this.socketBuffer = ''
 
-    if (this.socketPath && process.platform !== 'win32') {
-      await unlink(this.socketPath).catch(() => undefined)
-    }
+      // 2) Reject every outstanding request exactly once. Errors from reject
+      //    callbacks must not crash the loop (they bubble up to whoever awaited).
+      const pending = Array.from(this.pendingRequests.entries())
+      this.pendingRequests.clear()
+      for (const [, entry] of pending) {
+        clearTimeout(entry.timer)
+        try {
+          entry.reject(new Error('mpv IPC bağlantısı kesildi'))
+        } catch {
+          // swallow — caller handles promise rejection
+        }
+      }
 
-    this.socketPath = null
-    this.startupParentWid = null
-    this.socketBuffer = ''
+      if (this.process) {
+        const proc = this.process
+        this.process = null
+        proc.removeAllListeners()
+        // Drain stdio listeners too — otherwise stderr 'data' events keep
+        // scheduling work after the process is gone.
+        proc.stdout?.removeAllListeners()
+        proc.stderr?.removeAllListeners()
+        if (!proc.killed) {
+          proc.kill('SIGTERM')
+          await new Promise<void>((resolve) => {
+            const forceTimer = setTimeout(() => {
+              if (!proc.killed) proc.kill('SIGKILL')
+              resolve()
+            }, 2000)
+            proc.on('close', () => {
+              clearTimeout(forceTimer)
+              resolve()
+            })
+          })
+        }
+      }
+
+      if (this.socketPath && process.platform !== 'win32') {
+        await unlink(this.socketPath).catch(() => undefined)
+      }
+
+      this.socketPath = null
+      this.startupParentWid = null
+    } finally {
+      // Always release the guard — if an intermediate step throws, the next
+      // open() call would otherwise see shuttingDown === true forever and
+      // refuse to issue commands.
+      this.shuttingDown = false
+    }
   }
 }

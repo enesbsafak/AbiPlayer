@@ -245,7 +245,7 @@ export function initializeAppUpdater(): void {
 
   registerUpdaterEventHandlers()
 
-  setTimeout(() => {
+  const initialCheckTimer = setTimeout(() => {
     void checkForAppUpdates()
   }, AUTO_CHECK_DELAY_MS)
 
@@ -254,9 +254,14 @@ export function initializeAppUpdater(): void {
   }, PERIODIC_CHECK_INTERVAL_MS)
 
   app.once('before-quit', () => {
-    if (!periodicCheckTimer) return
-    clearInterval(periodicCheckTimer)
-    periodicCheckTimer = null
+    clearTimeout(initialCheckTimer)
+    if (periodicCheckTimer) {
+      clearInterval(periodicCheckTimer)
+      periodicCheckTimer = null
+    }
+    // Note: we intentionally do NOT await `checkInFlight` here. An in-flight
+    // check may be blocked on a slow network and would otherwise stall quit.
+    // The timers are gone, so no new checks fire; any pending one is orphaned.
   })
 }
 
@@ -298,10 +303,38 @@ export async function checkForAppUpdates(): Promise<AppUpdateState> {
   return checkInFlight
 }
 
+let installInFlight = false
+
 export async function installDownloadedUpdate(): Promise<boolean> {
   if (!state.updateReadyToInstall) return false
-  await backupRendererStore()
-  autoUpdater.quitAndInstall(false, true)
-  return true
+  // Electron-updater has no built-in guard against concurrent install requests.
+  // If the user double-triggers install (button + auto-prompt), two
+  // `quitAndInstall` calls race and can leave the app in a restart loop.
+  if (installInFlight) return true
+  installInFlight = true
+
+  try {
+    await backupRendererStore()
+    try {
+      autoUpdater.quitAndInstall(false, true)
+    } catch (error) {
+      installInFlight = false
+      setState({
+        status: 'error',
+        updateReadyToInstall: true,
+        message: summarizeError(error)
+      })
+      return false
+    }
+    return true
+  } catch (error) {
+    installInFlight = false
+    setState({
+      status: 'error',
+      updateReadyToInstall: true,
+      message: summarizeError(error)
+    })
+    return false
+  }
 }
 

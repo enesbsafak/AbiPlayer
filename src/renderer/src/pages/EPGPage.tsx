@@ -2,7 +2,8 @@ import { useCallback, useMemo, useState } from 'react'
 import { RefreshCw, Search, X } from 'lucide-react'
 import { useStore } from '@/store'
 import { fetchAndParseEPG } from '@/services/epg-service'
-import { findCurrentProgram, getUpcomingPrograms } from '@/services/epg-service'
+import { findCurrentProgram, getUpcomingPrograms, normalizeEpgChannelKey } from '@/services/epg-service'
+import { normalizeSearchText } from '@/services/text-normalize'
 import { xtreamApi } from '@/services/xtream-api'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
@@ -75,16 +76,18 @@ export default function EPGPage() {
         if (activeSourceId && c.sourceId !== activeSourceId) return false
         if (selectedCategoryId && c.categoryId !== selectedCategoryId) return false
         // Only include channels that have program data
-        const programs = epgData.programs[c.epgChannelId.toLowerCase()]
+        const key = normalizeEpgChannelKey(c.epgChannelId)
+        const programs = key ? epgData.programs[key] : undefined
         if (!programs || programs.length === 0) return false
         if (searchQuery) {
-          const q = searchQuery.toLowerCase()
-          if (!c.name.toLowerCase().includes(q)) return false
+          const q = normalizeSearchText(searchQuery)
+          if (!normalizeSearchText(c.name).includes(q)) return false
         }
         return true
       })
       .map((c) => {
-        const programs = epgData.programs[c.epgChannelId!.toLowerCase()] || []
+        const key = normalizeEpgChannelKey(c.epgChannelId)
+        const programs = (key ? epgData.programs[key] : undefined) || []
         const current = findCurrentProgram(programs, now)
         const upcoming = getUpcomingPrograms(programs, 3, now).filter((p) => p !== current)
         const progress = current

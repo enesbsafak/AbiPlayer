@@ -1,6 +1,6 @@
 import { app, ipcMain, dialog, BrowserWindow, safeStorage } from 'electron'
-import { existsSync, readFileSync, unlinkSync } from 'fs'
-import { readFile, stat, writeFile, mkdir } from 'fs/promises'
+import { existsSync, readFileSync } from 'fs'
+import { readFile, stat, writeFile, mkdir, unlink } from 'fs/promises'
 import { dirname, join } from 'path'
 import { spawn } from 'child_process'
 import ffmpegPath from 'ffmpeg-static'
@@ -292,32 +292,50 @@ async function extractEmbeddedSubtitle(
     let stdout = ''
     let stderr = ''
     let stdoutBytes = 0
+    let stderrBytes = 0
     let settled = false
     let stoppedForPartial = false
+    const STDERR_CAP = 256 * 1024
+
+    // Always ensure the child is gone when we're done with it, otherwise a
+    // stuck ffmpeg process can keep writing to pipes long after the promise
+    // resolves.
+    const killChild = () => {
+      if (!child.killed) {
+        try {
+          child.kill('SIGKILL')
+        } catch {
+          // process may already be dead
+        }
+      }
+    }
 
     const settleSuccess = () => {
       if (settled) return
       settled = true
+      clearTimeout(partialTimer)
       const content = stdout.trim().startsWith('WEBVTT') ? stdout : `WEBVTT\n\n${stdout}`
       resolve({ format: 'vtt', content })
+      killChild()
     }
 
     const settleError = (error: Error) => {
       if (settled) return
       settled = true
+      clearTimeout(partialTimer)
       reject(error)
+      killChild()
     }
 
     const stopForPartialResult = () => {
       if (stoppedForPartial || settled) return
       stoppedForPartial = true
-      child.kill('SIGKILL')
+      killChild()
     }
 
     const partialTimer = setTimeout(stopForPartialResult, 45 * 1000)
 
     child.on('error', (error) => {
-      clearTimeout(partialTimer)
       settleError(error)
     })
 
@@ -332,14 +350,21 @@ async function extractEmbeddedSubtitle(
 
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', (chunk: string) => {
+      stderrBytes += Buffer.byteLength(chunk)
       stderr += chunk
-      if (Buffer.byteLength(stderr) > MAX_PROCESS_OUTPUT_BYTES) {
-        stderr = stderr.slice(-MAX_PROCESS_OUTPUT_BYTES)
+      if (stderrBytes > STDERR_CAP) {
+        // Keep only the tail — enough context for error messages, but bounded.
+        stderr = stderr.slice(-STDERR_CAP)
+        stderrBytes = Buffer.byteLength(stderr)
+      }
+      if (stderrBytes > MAX_PROCESS_OUTPUT_BYTES) {
+        settleError(new Error('ffmpeg stderr çıktısı beklenmedik şekilde çok büyük'))
       }
     })
 
     child.on('close', (code) => {
       clearTimeout(partialTimer)
+      if (settled) return
 
       const hasAnySubtitleOutput = stdout.includes('-->')
       if (hasAnySubtitleOutput) {
@@ -348,7 +373,6 @@ async function extractEmbeddedSubtitle(
       }
 
       if (code === 0 || stoppedForPartial) {
-        if (settled) return
         settled = true
         resolve(null)
         return
@@ -359,17 +383,38 @@ async function extractEmbeddedSubtitle(
   })
 }
 
+const CREDENTIAL_LOCK_TIMEOUT_MS = 15_000
+
 let credentialStoreLock: Promise<void> = Promise.resolve()
 
 async function withCredentialLock<T>(fn: () => Promise<T>): Promise<T> {
   const previousLock = credentialStoreLock
-  let resolve: () => void
-  credentialStoreLock = new Promise<void>((r) => { resolve = r })
-  await previousLock
+  let releaseCurrent: () => void = () => undefined
+  credentialStoreLock = new Promise<void>((r) => {
+    releaseCurrent = r
+  })
+
+  // If the previous lock holder hangs (for example a safeStorage call that
+  // never resolves), we forcibly time out our wait so credential IPC never
+  // gets permanently stuck.
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error('Kimlik bilgisi kilidi zaman aşımına uğradı'))
+    }, CREDENTIAL_LOCK_TIMEOUT_MS)
+  })
+
   try {
+    try {
+      await Promise.race([previousLock, timeoutPromise])
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+    }
     return await fn()
   } finally {
-    resolve!()
+    // ALWAYS release, even if previousLock threw or the work threw, otherwise
+    // the next caller waits forever on our broken chain.
+    releaseCurrent()
   }
 }
 
@@ -493,9 +538,9 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('store-backup-delete', (): void => {
+  ipcMain.handle('store-backup-delete', async (): Promise<void> => {
     const backupPath = join(app.getPath('userData'), 'store-backup.json')
-    try { unlinkSync(backupPath) } catch { /* ignore */ }
+    await unlink(backupPath).catch(() => undefined)
   })
 
   ipcMain.handle('secure-credentials-get-all', async (): Promise<SecureCredentialStore> => {

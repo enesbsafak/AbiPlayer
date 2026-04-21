@@ -14,6 +14,7 @@ import { isPlayableChannel } from '@/services/playback'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
 import { buildCatalogRetainResetKey } from '@/services/catalog-view'
 import { ensureStagedSync } from '@/services/background-sync'
+import { normalizeSearchText } from '@/services/text-normalize'
 
 const loadedVodCategoryCache = new Set<string>()
 const loadedVodPreviewSourceCache = new Set<string>()
@@ -357,8 +358,8 @@ export default function VODPage() {
       list = list.filter((c) => c.categoryId === selectedCategoryId)
     }
     if (searchQuery) {
-      const q = searchQuery.toLowerCase()
-      list = list.filter((c) => c.name.toLowerCase().includes(q))
+      const q = normalizeSearchText(searchQuery)
+      list = list.filter((c) => normalizeSearchText(c.name).includes(q))
     }
 
     return list

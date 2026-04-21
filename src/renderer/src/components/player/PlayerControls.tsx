@@ -29,7 +29,8 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
   const navigate = useNavigate()
   const {
     isPlaying, isPaused, currentTime, duration, volume, isMuted, isFullscreen,
-    channels, currentChannel, playbackEngine, playerReturnTarget,
+    channels, categories, currentChannel, playbackEngine, playerReturnTarget,
+    selectedCategoryId,
     clearPlayerReturnTarget, setVolume, setMuted, setPiP, stopPlayback, setMiniPlayer, playChannel,
     togglePlayerSidebar, isPlayerSidebarOpen
   } = useStore()
@@ -136,12 +137,24 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
 
   const playlistCandidates = useMemo(() => {
     if (!currentChannel) return []
-    return channels.filter((channel) =>
+    const sameTypeAndSource = channels.filter((channel) =>
       channel.type === currentChannel.type &&
       channel.sourceId === currentChannel.sourceId &&
       isPlayableChannel(channel)
     )
-  }, [channels, currentChannel])
+    // Keep prev/next within the user's active category (if any) so skipping doesn't
+    // jump outside the channel list the user is browsing in the sidebar.
+    const storeCat = selectedCategoryId
+      ? categories.find((c) => c.id === selectedCategoryId)
+      : null
+    const effectiveCategoryId =
+      storeCat && storeCat.type === currentChannel.type && storeCat.sourceId === currentChannel.sourceId
+        ? selectedCategoryId
+        : currentChannel.categoryId ?? null
+    if (!effectiveCategoryId) return sameTypeAndSource
+    const withinCategory = sameTypeAndSource.filter((ch) => ch.categoryId === effectiveCategoryId)
+    return withinCategory.length > 0 ? withinCategory : sameTypeAndSource
+  }, [channels, categories, currentChannel, selectedCategoryId])
 
   const currentIndex = useMemo(() => {
     if (!currentChannel) return -1

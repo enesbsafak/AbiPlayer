@@ -6,6 +6,33 @@ const PREVIEW_SCAN_CATEGORY_LIMIT = 12
 const XTREAM_DEFAULT_CACHE_TTL_MS = 45_000
 const XTREAM_REQUEST_CANCELLED_MESSAGE = 'İstek iptal edildi'
 
+/**
+ * Strip Xtream credentials from a URL so it is safe to include in logs or
+ * user-visible error messages. Handles both the `player_api.php?username=&password=`
+ * form and the positional `/live/<user>/<pass>/<id>.m3u8` form.
+ */
+export function maskCredentialsInUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    if (parsed.searchParams.has('username')) parsed.searchParams.set('username', '***')
+    if (parsed.searchParams.has('password')) parsed.searchParams.set('password', '***')
+
+    // Positional /live|/movie|/series/<user>/<pass>/<id>.<ext>
+    const positionalMatch = parsed.pathname.match(
+      /^\/(live|movie|series)\/[^/]+\/[^/]+\/(.+)$/
+    )
+    if (positionalMatch) {
+      parsed.pathname = `/${positionalMatch[1]}/***/***/${positionalMatch[2]}`
+    }
+    return parsed.toString()
+  } catch {
+    // Fallback: best-effort regex masking for malformed URLs
+    return url
+      .replace(/(\b(?:username|password)=)[^&#\s]*/gi, '$1***')
+      .replace(/\/(live|movie|series)\/[^/]+\/[^/]+\//gi, '/$1/***/***/')
+  }
+}
+
 const requestCache = new Map<string, { expiresAt: number; data: unknown }>()
 const inflightRequests = new Map<string, Promise<unknown>>()
 const CACHE_MAX_SIZE = 500
@@ -124,11 +151,13 @@ async function fetchJSON<T>(
       return cached.data as T
     }
 
+    // Only deduplicate when NEITHER caller owns a cancellation signal. A
+    // signal-owning caller controls the lifetime of their own request: if
+    // they abort (e.g. React Strict Mode double-mount cleanup), an
+    // unrelated second caller must not be stuck on the cancelled promise.
     if (!signal) {
       const existing = inflightRequests.get(url)
-      if (existing) {
-        return existing as Promise<T>
-      }
+      if (existing) return existing as Promise<T>
     }
   }
 
@@ -160,7 +189,9 @@ async function fetchJSON<T>(
 
       const body = await res.text()
       if (!res.ok) {
-        const sample = body.slice(0, 160).replace(/\s+/g, ' ').trim()
+        // Mask credentials in any echoed URL the server might include, so
+        // 4xx/5xx errors don't print user:pass into the UI or logs.
+        const sample = maskCredentialsInUrl(body.slice(0, 160)).replace(/\s+/g, ' ').trim()
         throw new Error(`HTTP ${res.status}: ${res.statusText}${sample ? ` (${sample})` : ''}`)
       }
 
@@ -173,7 +204,7 @@ async function fetchJSON<T>(
         }
         return data
       } catch {
-        const sample = body.slice(0, 200).replace(/\s+/g, ' ').trim()
+        const sample = maskCredentialsInUrl(body.slice(0, 200)).replace(/\s+/g, ' ').trim()
         throw new Error(`Gecersiz sunucu yaniti. JSON bekleniyordu: ${sample || 'bos govde'}`)
       }
     } catch (error) {
@@ -190,14 +221,20 @@ async function fetchJSON<T>(
     }
   })()
 
-  if (!signal && !bypassCache && cacheTtlMs > 0) {
+  // Only publish the request to the shared in-flight map when no caller-owned
+  // signal is attached. Requests tied to an external AbortSignal are
+  // effectively "owned" by that caller and must not be piggy-backed on — a
+  // cancellation would otherwise propagate to unrelated consumers (see
+  // React Strict Mode double-mount races).
+  const shareable = !signal && !bypassCache && cacheTtlMs > 0
+  if (shareable) {
     inflightRequests.set(url, request as Promise<unknown>)
   }
 
   try {
     return await request
   } finally {
-    inflightRequests.delete(url)
+    if (shareable) inflightRequests.delete(url)
   }
 }
 

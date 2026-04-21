@@ -130,8 +130,43 @@ interface CachedValue<T> {
 
 type CacheKey = string
 
+// LRU-bounded cache. TMDB responses are small JSON blobs, but long sessions that
+// browse many titles/series can otherwise balloon memory. We cap the number of
+// entries and evict the oldest (insertion order) when full.
+const TMDB_CACHE_MAX_ENTRIES = 300
+
 const requestCache = new Map<CacheKey, CachedValue<unknown>>()
 const inflightRequests = new Map<CacheKey, Promise<unknown>>()
+
+function tmdbCacheSet<T>(key: CacheKey, value: CachedValue<T>): void {
+  // Refresh recency by re-inserting.
+  if (requestCache.has(key)) requestCache.delete(key)
+  requestCache.set(key, value as CachedValue<unknown>)
+
+  if (requestCache.size > TMDB_CACHE_MAX_ENTRIES) {
+    // First key is the least recently used (Map preserves insertion order).
+    const toEvict = requestCache.size - TMDB_CACHE_MAX_ENTRIES
+    let evicted = 0
+    for (const oldestKey of requestCache.keys()) {
+      if (evicted >= toEvict) break
+      requestCache.delete(oldestKey)
+      evicted += 1
+    }
+  }
+}
+
+function tmdbCacheGet<T>(key: CacheKey): CachedValue<T> | undefined {
+  const entry = requestCache.get(key) as CachedValue<T> | undefined
+  if (!entry) return undefined
+  if (entry.expiresAt <= Date.now()) {
+    requestCache.delete(key)
+    return undefined
+  }
+  // Refresh recency on hit.
+  requestCache.delete(key)
+  requestCache.set(key, entry as CachedValue<unknown>)
+  return entry
+}
 
 function toArray<T>(input: T[] | undefined | null): T[] {
   return Array.isArray(input) ? input : []
@@ -195,9 +230,9 @@ async function fetchTmdb<T>(
   }
 
   const cacheKey = `${url.toString()}|auth:${apiKey}`
-  const cached = requestCache.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.data as T
+  const cached = tmdbCacheGet<T>(cacheKey)
+  if (cached) {
+    return cached.data
   }
 
   const existing = inflightRequests.get(cacheKey)
@@ -225,7 +260,7 @@ async function fetchTmdb<T>(
       }
 
       const data = (await response.json()) as T
-      requestCache.set(cacheKey, { data, expiresAt: Date.now() + TMDB_CACHE_TTL_MS })
+      tmdbCacheSet<T>(cacheKey, { data, expiresAt: Date.now() + TMDB_CACHE_TTL_MS })
       return data
     } finally {
       window.clearTimeout(timer)
