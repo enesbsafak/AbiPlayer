@@ -14,12 +14,14 @@ const CHANNEL_WIDTH = 180
 
 export function EPGGrid() {
   const epgData = useStore((s) => s.epgData)
+  const epgSourceId = useStore((s) => s.epgSourceId)
   const epgLoading = useStore((s) => s.epgLoading)
   const epgError = useStore((s) => s.epgError)
   const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [timeOffset, setTimeOffset] = useState(0)
+  const sourceEpgData = activeSourceId && epgSourceId === activeSourceId ? epgData : null
 
   const baseTime = useMemo(() => startOfHour(new Date()), [])
   const startTime = addHours(baseTime, timeOffset).getTime()
@@ -37,7 +39,7 @@ export function EPGGrid() {
     [channels, activeSourceId]
   )
 
-  if (epgLoading && !epgData) {
+  if (epgLoading && !sourceEpgData) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-surface-500">
         <Spinner size={24} />
@@ -46,7 +48,7 @@ export function EPGGrid() {
     )
   }
 
-  if (epgError && !epgData) {
+  if (epgError && !sourceEpgData) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-surface-500">
         <p className="text-sm text-red-400">{epgError}</p>
@@ -55,7 +57,7 @@ export function EPGGrid() {
     )
   }
 
-  if (!epgData || liveChannels.length === 0) {
+  if (!sourceEpgData || liveChannels.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-surface-500">
         <p className="text-lg">EPG verisi bulunamadı</p>
@@ -101,7 +103,7 @@ export function EPGGrid() {
           {/* Channel rows */}
           {liveChannels.map((channel) => {
             const key = normalizeEpgChannelKey(channel.epgChannelId)
-            const programs = (key ? epgData.programs[key] : undefined) || []
+            const programs = (key ? sourceEpgData.programs[key] : undefined) || []
             const visiblePrograms = programs.filter((p) => p.end > startTime && p.start < endTime)
 
             return (

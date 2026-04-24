@@ -40,6 +40,12 @@ function normalizeTextParts(parts: Array<string | undefined>): string {
     .join(' ')
 }
 
+function getQualityTitle(source: QualityMetadataSource | Channel | EpisodeInfo): string | undefined {
+  if ('name' in source && typeof source.name === 'string') return source.name
+  if ('title' in source && typeof source.title === 'string') return source.title
+  return undefined
+}
+
 function inferResolutionFromDimensions(height?: number, width?: number): string | null {
   // Resolution labels (1080p, 720p, …) represent vertical pixel count.
   // Use height when available; estimate from width assuming 16:9 as fallback.
@@ -77,7 +83,7 @@ export function inferContentQualityLabel(
   // Only use name and containerExtension — group/categoryName often contain
   // marketing labels like "2K" or "HD" that don't reflect actual resolution
   const haystack = normalizeTextParts([
-    source.name,
+    getQualityTitle(source),
     source.containerExtension
   ])
 

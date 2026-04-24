@@ -7,8 +7,10 @@ interface NowPlayingProps {
 
 export function NowPlaying({ epgChannelId }: NowPlayingProps) {
   const epgData = useStore((s) => s.epgData)
+  const epgSourceId = useStore((s) => s.epgSourceId)
+  const activeSourceId = useStore((s) => s.activeSourceId)
 
-  if (!epgChannelId || !epgData) return null
+  if (!epgChannelId || !activeSourceId || !epgData || epgSourceId !== activeSourceId) return null
 
   const key = normalizeEpgChannelKey(epgChannelId)
   const programs = key ? epgData.programs[key] : undefined

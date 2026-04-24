@@ -18,6 +18,7 @@ export interface MpvStateSnapshot {
   buffering: boolean
   timePos: number
   duration: number
+  demuxerCacheDuration: number
   volume: number
   muted: boolean
   vid: number | null

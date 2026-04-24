@@ -13,6 +13,7 @@ import { navigateToPlayerReturnTarget } from '@/services/player-navigation'
 import {
   mpvSeek,
   mpvSeekTo,
+  mpvJumpToLive,
   mpvSetFullscreen,
   mpvSetMute as mpvSetMuteCommand,
   mpvSetVolume as mpvSetVolumeCommand,
@@ -28,7 +29,7 @@ interface PlayerControlsProps {
 export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsProps) {
   const navigate = useNavigate()
   const {
-    isPlaying, isPaused, currentTime, duration, volume, isMuted, isFullscreen,
+    isPlaying, isPaused, isBuffering, currentTime, duration, volume, isMuted, isFullscreen,
     channels, categories, currentChannel, playbackEngine, playerReturnTarget,
     selectedCategoryId,
     clearPlayerReturnTarget, setVolume, setMuted, setPiP, stopPlayback, setMiniPlayer, playChannel,
@@ -39,6 +40,10 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
 
   const togglePlay = () => {
     if (playbackEngine === 'mpv') {
+      if (currentChannel?.type === 'live' && isPaused) {
+        void mpvJumpToLive().catch(() => undefined)
+        return
+      }
       void mpvTogglePause().catch(() => undefined)
       return
     }
@@ -176,6 +181,27 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
   const remainingTime = !isLive && duration > 0 ? Math.max(0, duration - currentTime) : 0
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
+  // "Behind live" signals: user paused (gap grows while paused), or the engine
+  // is actively buffering (stalled — user will drift behind on recovery). We
+  // intentionally do NOT rely on demuxer cache size here because MPV's cache
+  // size in steady-state playback doesn't cleanly map to drift from live edge.
+  const isBehindLive = isPaused || isBuffering
+
+  const jumpToLive = () => {
+    if (playbackEngine === 'mpv') {
+      void mpvJumpToLive().catch(() => undefined)
+      return
+    }
+    const el = videoRef.current
+    if (!el) return
+    const buf = el.buffered
+    if (buf && buf.length > 0) {
+      const end = buf.end(buf.length - 1)
+      el.currentTime = Math.max(0, end - 0.3)
+    }
+    if (el.paused) el.play().catch(() => undefined)
+  }
+
   const seekBackLabel = '10 saniye geri sar'
   const seekForwardLabel = '10 saniye ileri sar'
 
@@ -261,6 +287,26 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
           >
             <SkipForward size={18} />
           </button>
+
+          {isLive && (
+            <button
+              onClick={jumpToLive}
+              className={`ml-1 flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold uppercase tracking-wide transition-colors duration-normal ${
+                isBehindLive
+                  ? 'border border-white/50 text-white hover:bg-white/10'
+                  : 'bg-red-600 text-white hover:bg-red-500'
+              }`}
+              title={isBehindLive ? 'Canlıya dön' : 'Canlı yayındasın'}
+              aria-label={isBehindLive ? 'Canlıya dön' : 'Canlı yayındasın'}
+            >
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${
+                  isBehindLive ? 'bg-white/70' : 'bg-white'
+                }`}
+              />
+              CANLI
+            </button>
+          )}
 
           <div className="flex items-center gap-1 ml-2">
             <button onClick={toggleMute} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title={isMuted ? 'Sesi Aç' : 'Sesi Kapat'} aria-label={isMuted ? 'Sesi Aç' : 'Sesi Kapat'}>

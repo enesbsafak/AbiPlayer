@@ -5,7 +5,6 @@ import type {
   EmbeddedSubtitleProbeTrack,
   MpvStateSnapshot,
   MpvSubtitleStyle,
-  MpvTrackInfo,
   SecureXtreamCredentials
 } from '../shared/types/electron-ipc'
 
@@ -32,6 +31,7 @@ const api = {
   mpvSetPause: (paused: boolean) => ipcRenderer.invoke('mpv-set-pause', paused) as Promise<void>,
   mpvSeek: (seconds: number) => ipcRenderer.invoke('mpv-seek', seconds) as Promise<void>,
   mpvSeekTo: (seconds: number) => ipcRenderer.invoke('mpv-seek-to', seconds) as Promise<void>,
+  mpvJumpToLive: () => ipcRenderer.invoke('mpv-jump-to-live') as Promise<void>,
   mpvSetVolume: (normalizedVolume: number) =>
     ipcRenderer.invoke('mpv-set-volume', normalizedVolume) as Promise<void>,
   mpvSetMute: (muted: boolean) => ipcRenderer.invoke('mpv-set-mute', muted) as Promise<void>,

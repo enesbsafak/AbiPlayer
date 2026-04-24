@@ -28,6 +28,7 @@ declare global {
       mpvSetPause: (paused: boolean) => Promise<void>
       mpvSeek: (seconds: number) => Promise<void>
       mpvSeekTo: (seconds: number) => Promise<void>
+      mpvJumpToLive: () => Promise<void>
       mpvSetVolume: (normalizedVolume: number) => Promise<void>
       mpvSetMute: (muted: boolean) => Promise<void>
       mpvSetVideoTrack: (trackId: number | null) => Promise<void>

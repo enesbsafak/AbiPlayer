@@ -306,8 +306,18 @@ export default function LiveTVPage() {
 
       // Sync live first (priority), then vod+series sequentially in background
       if (!cancelled) setIsBackgroundSyncing(true)
+      syncingLiveFullSourceCache.add(activeSourceId)
       void ensureStagedSync(activeSourceId, 'live', creds)
-      loadedLiveFullSourceCache.add(activeSourceId)
+        .then(() => {
+          if (useStore.getState().isSourceTypeHydrated(activeSourceId, 'live')) {
+            loadedLiveFullSourceCache.add(activeSourceId)
+          }
+        })
+        .finally(() => {
+          syncingLiveFullSourceCache.delete(activeSourceId)
+          if (!cancelled) setIsBackgroundSyncing(false)
+        })
+        .catch(() => undefined)
     }
 
     void syncSource()

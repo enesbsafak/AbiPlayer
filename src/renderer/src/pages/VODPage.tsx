@@ -328,8 +328,18 @@ export default function VODPage() {
       }
 
       if (!cancelled) setIsBackgroundSyncing(true)
+      syncingVodFullSourceCache.add(activeSourceId)
       void ensureStagedSync(activeSourceId, 'vod', creds)
-      loadedVodFullSourceCache.add(activeSourceId)
+        .then(() => {
+          if (useStore.getState().isSourceTypeHydrated(activeSourceId, 'vod')) {
+            loadedVodFullSourceCache.add(activeSourceId)
+          }
+        })
+        .finally(() => {
+          syncingVodFullSourceCache.delete(activeSourceId)
+          if (!cancelled) setIsBackgroundSyncing(false)
+        })
+        .catch(() => undefined)
     }
 
     void syncSource()

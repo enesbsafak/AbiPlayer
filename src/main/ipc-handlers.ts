@@ -266,7 +266,8 @@ async function extractEmbeddedSubtitle(
   streamUrl: string,
   streamIndex: number
 ): Promise<EmbeddedSubtitleExtractionResult | null> {
-  if (!ffmpegPath) {
+  const ffmpegExecutable = ffmpegPath
+  if (!ffmpegExecutable) {
     throw new Error('ffmpeg çalıştırılabilir dosyası bulunamadı')
   }
 
@@ -284,7 +285,7 @@ async function extractEmbeddedSubtitle(
   ]
 
   return new Promise((resolve, reject) => {
-    const child = spawn(ffmpegPath, args, {
+    const child = spawn(ffmpegExecutable, args, {
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe']
     })
@@ -632,6 +633,10 @@ export function registerIpcHandlers(): void {
       throw new Error('Geçersiz hedef zaman')
     }
     await mpvController.seekTo(seconds)
+  })
+
+  ipcMain.handle('mpv-jump-to-live', async (): Promise<void> => {
+    await mpvController.jumpToLive()
   })
 
   ipcMain.handle('mpv-set-volume', async (_, normalizedVolume: unknown): Promise<void> => {

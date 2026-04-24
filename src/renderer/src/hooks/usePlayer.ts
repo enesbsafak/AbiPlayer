@@ -64,12 +64,12 @@ export function usePlayer(
   const subtitlePreferenceAppliedRef = useRef(false)
 
   const {
-    currentChannel, volume, isMuted, currentAudioTrack, currentSubtitleTrack, currentVideoQuality, settings,
+    currentChannel, volume, isMuted, currentAudioTrack, currentSubtitleTrack, currentVideoQuality,
     setPlaying, setPaused, setBuffering, setCurrentTime, setDuration,
     setPlayerError, setAudioTracks, setCurrentAudioTrack,
     setSubtitleTracks, setCurrentSubtitleTrack, setVideoQualityOptions,
     setCurrentVideoQuality, setActiveVideoQuality, setSubtitleCues,
-    subtitleCues, setActiveSubtitleCues, setVolume, setMuted
+    subtitleCues, setActiveSubtitleCues
   } = useStore()
 
   useEffect(() => {

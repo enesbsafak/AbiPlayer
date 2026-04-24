@@ -6,7 +6,7 @@ import { mpvSetVideoMargin } from '@/services/platform'
 import { ensureFullSync } from '@/services/background-sync'
 import { LazyImage } from '@/components/ui/LazyImage'
 import { ClampText } from '@/components/ui'
-import type { Channel, Category } from '@/types/playlist'
+import type { Channel } from '@/types/playlist'
 
 const SIDEBAR_WIDTH = 288
 

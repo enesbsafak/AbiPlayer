@@ -10,6 +10,7 @@ function createSnapshot(overrides: Partial<MpvStateSnapshot> = {}): MpvStateSnap
     buffering: false,
     timePos: 0,
     duration: 0,
+    demuxerCacheDuration: 0,
     volume: 80,
     muted: false,
     vid: null,

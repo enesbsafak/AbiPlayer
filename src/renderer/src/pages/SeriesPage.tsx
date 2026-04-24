@@ -334,8 +334,18 @@ export default function SeriesPage() {
       }
 
       if (!cancelled) setIsBackgroundSyncing(true)
+      syncingSeriesFullSourceCache.add(activeSourceId)
       void ensureStagedSync(activeSourceId, 'series', creds)
-      loadedSeriesFullSourceCache.add(activeSourceId)
+        .then(() => {
+          if (useStore.getState().isSourceTypeHydrated(activeSourceId, 'series')) {
+            loadedSeriesFullSourceCache.add(activeSourceId)
+          }
+        })
+        .finally(() => {
+          syncingSeriesFullSourceCache.delete(activeSourceId)
+          if (!cancelled) setIsBackgroundSyncing(false)
+        })
+        .catch(() => undefined)
     }
 
     void syncSource()

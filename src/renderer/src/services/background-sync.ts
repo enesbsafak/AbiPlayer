@@ -21,10 +21,6 @@ function syncKey(sourceId: string, type: ContentType): string {
   return `${sourceId}:${type}`
 }
 
-export function isBackgroundSyncing(sourceId: string, type: ContentType): boolean {
-  return activeSyncs.has(syncKey(sourceId, type))
-}
-
 /**
  * Ensures a single content type is fully synced for a source.
  * Returns a promise that resolves when sync completes (or was already done).

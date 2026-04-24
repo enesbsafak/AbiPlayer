@@ -1,10 +1,11 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
+import { spawn, type ChildProcessByStdio } from 'child_process'
 import net from 'net'
 import { randomUUID } from 'crypto'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { existsSync } from 'fs'
 import { unlink } from 'fs/promises'
+import type { Readable } from 'stream'
 import type { MpvTrackInfo, MpvStateSnapshot } from '../shared/types/electron-ipc'
 
 export type { MpvTrackInfo, MpvStateSnapshot }
@@ -76,7 +77,7 @@ function toPositiveNumber(value: unknown): number | undefined {
 }
 
 export class MpvController {
-  private process: ChildProcessWithoutNullStreams | null = null
+  private process: ChildProcessByStdio<null, Readable, Readable> | null = null
   private socket: net.Socket | null = null
   private socketPath: string | null = null
   private socketBuffer = ''
@@ -101,6 +102,7 @@ export class MpvController {
     buffering: false,
     timePos: 0,
     duration: 0,
+    demuxerCacheDuration: 0,
     volume: 80,
     muted: false,
     vid: null,
@@ -175,6 +177,7 @@ export class MpvController {
     this.state.path = null
     this.state.timePos = 0
     this.state.duration = 0
+    this.state.demuxerCacheDuration = 0
     this.state.buffering = false
     this.state.tracks = []
     this.state.vid = null
@@ -208,6 +211,19 @@ export class MpvController {
   async seekTo(seconds: number): Promise<void> {
     if (!this.process) return
     await this.command(['seek', seconds, 'absolute', 'exact'])
+  }
+
+  async jumpToLive(): Promise<void> {
+    if (!this.process) return
+
+    const currentPath = await this.getCurrentPath()
+    if (!currentPath) return
+
+    // Live IPTV streams (TS-over-HTTP, Xtream Codes proxies, many HLS feeds)
+    // serve from "now" regardless of seek attempts — the origin has no
+    // seekable range. Reloading the URL is the only universally reliable way
+    // to snap back to the live edge, so skip the seek dance entirely.
+    await this.reloadAtLiveEdge(currentPath)
   }
 
   async setVolume(volume: number): Promise<void> {
@@ -303,6 +319,7 @@ export class MpvController {
     this.state.timePos = toNumber(timePos, this.state.timePos)
     this.state.duration = toNumber(duration, this.state.duration)
     this.state.buffering = this.getBufferingFromCacheState(cacheState)
+    this.state.demuxerCacheDuration = this.getCacheDurationFromState(cacheState)
     this.state.fullscreen = toBoolean(fullscreen, this.state.fullscreen)
     this.state.running = !!this.state.path
 
@@ -375,6 +392,51 @@ export class MpvController {
     if (!cacheState || typeof cacheState !== 'object') return false
     const state = cacheState as Record<string, unknown>
     return toBoolean(state.underrun, false)
+  }
+
+  private getCacheDurationFromState(cacheState: unknown): number {
+    if (!cacheState || typeof cacheState !== 'object') return 0
+    const state = cacheState as Record<string, unknown>
+    const raw = state['cache-duration']
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0) return 0
+    return raw
+  }
+
+  private async getCurrentPath(): Promise<string | null> {
+    const path = await this.command(['get_property', 'path']).catch(() => this.state.path)
+    return typeof path === 'string' && path.length > 0 ? path : this.state.path
+  }
+
+  private async tryCommand(command: unknown[]): Promise<boolean> {
+    try {
+      await this.command(command)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  private async reloadAtLiveEdge(path: string): Promise<void> {
+    await this.command([
+      'loadfile',
+      path,
+      'replace',
+      -1,
+      {
+        'demuxer-lavf-o': 'live_start_index=-1'
+      }
+    ]).catch(async () => {
+      await this.command(['loadfile', path, 'replace'])
+    })
+    await this.applySubtitleStyle().catch(() => undefined)
+    await this.tryCommand(['set_property', 'pause', false])
+    this.state.path = path
+    this.state.running = true
+    this.state.paused = false
+    this.state.error = null
+    this.state.timePos = 0
+    this.state.duration = 0
+    this.state.demuxerCacheDuration = 0
   }
 
   private async ensureStarted(parentWid?: string): Promise<void> {
@@ -649,6 +711,7 @@ export class MpvController {
         break
       case 'demuxer-cache-state':
         this.state.buffering = this.getBufferingFromCacheState(message.data)
+        this.state.demuxerCacheDuration = this.getCacheDurationFromState(message.data)
         break
       case 'volume':
         this.state.volume = Math.max(0, Math.min(100, toNumber(message.data, this.state.volume)))

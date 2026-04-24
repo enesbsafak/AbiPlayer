@@ -75,6 +75,11 @@ export async function mpvSeekTo(seconds: number): Promise<void> {
   await window.electron.mpvSeekTo(seconds)
 }
 
+export async function mpvJumpToLive(): Promise<void> {
+  if (!isElectron() || !window.electron?.mpvJumpToLive) return
+  await window.electron.mpvJumpToLive()
+}
+
 export async function mpvSetVolume(normalizedVolume: number): Promise<void> {
   if (!isElectron() || !window.electron?.mpvSetVolume) return
   await window.electron.mpvSetVolume(normalizedVolume)

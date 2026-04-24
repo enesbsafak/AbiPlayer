@@ -19,6 +19,7 @@ interface ChannelEPG {
 
 export default function EPGPage() {
   const epgData = useStore((s) => s.epgData)
+  const epgSourceId = useStore((s) => s.epgSourceId)
   const epgLoading = useStore((s) => s.epgLoading)
   const epgError = useStore((s) => s.epgError)
   const channels = useStore((s) => s.channels)
@@ -32,6 +33,7 @@ export default function EPGPage() {
 
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  const sourceEpgData = activeSourceId && epgSourceId === activeSourceId ? epgData : null
 
   const refetchEPG = useCallback(async () => {
     if (!activeSourceId) return
@@ -44,7 +46,7 @@ export default function EPGPage() {
     setEpgError(null)
     try {
       const data = await fetchAndParseEPG(xtreamApi.buildEpgUrl(creds))
-      setEpgData(data)
+      setEpgData(source.id, data)
     } catch (err) {
       setEpgError(err instanceof Error ? err.message : 'EPG verisi alınamadı')
     } finally {
@@ -67,7 +69,7 @@ export default function EPGPage() {
 
   // Build channel EPG list — only channels that have EPG data
   const channelEpgList = useMemo<ChannelEPG[]>(() => {
-    if (!epgData) return []
+    if (!sourceEpgData) return []
     const now = Date.now()
 
     return channels
@@ -77,7 +79,7 @@ export default function EPGPage() {
         if (selectedCategoryId && c.categoryId !== selectedCategoryId) return false
         // Only include channels that have program data
         const key = normalizeEpgChannelKey(c.epgChannelId)
-        const programs = key ? epgData.programs[key] : undefined
+        const programs = key ? sourceEpgData.programs[key] : undefined
         if (!programs || programs.length === 0) return false
         if (searchQuery) {
           const q = normalizeSearchText(searchQuery)
@@ -87,7 +89,7 @@ export default function EPGPage() {
       })
       .map((c) => {
         const key = normalizeEpgChannelKey(c.epgChannelId)
-        const programs = (key ? epgData.programs[key] : undefined) || []
+        const programs = (key ? sourceEpgData.programs[key] : undefined) || []
         const current = findCurrentProgram(programs, now)
         const upcoming = getUpcomingPrograms(programs, 3, now).filter((p) => p !== current)
         const progress = current
@@ -95,7 +97,7 @@ export default function EPGPage() {
           : 0
         return { channel: c, current, upcoming, progress }
       })
-  }, [channels, epgData, activeSourceId, selectedCategoryId, searchQuery])
+  }, [channels, sourceEpgData, activeSourceId, selectedCategoryId, searchQuery])
 
   const formatTime = (ts: number) => {
     const d = new Date(ts)
@@ -167,21 +169,21 @@ export default function EPGPage() {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
-          {epgLoading && !epgData && (
+          {epgLoading && !sourceEpgData && (
             <div className="flex flex-col items-center justify-center py-20 text-surface-500">
               <Spinner size={24} />
               <p className="text-sm mt-3">EPG verisi yükleniyor...</p>
             </div>
           )}
 
-          {epgError && !epgData && (
+          {epgError && !sourceEpgData && (
             <div className="flex flex-col items-center justify-center py-20">
               <p className="text-sm text-red-400">{epgError}</p>
               <p className="text-xs text-surface-500 mt-1">Yenile butonuyla tekrar deneyebilirsiniz</p>
             </div>
           )}
 
-          {epgData && channelEpgList.length === 0 && (
+          {sourceEpgData && channelEpgList.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-surface-500">
               <p className="text-sm">
                 {searchQuery ? 'Aramayla eşleşen kanal bulunamadı' : 'Bu kategoride EPG verisi olan kanal yok'}

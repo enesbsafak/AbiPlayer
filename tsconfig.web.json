@@ -2,6 +2,7 @@
   "compilerOptions": {
     "composite": true,
     "jsx": "react-jsx",
+    "target": "ES2023",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "baseUrl": ".",
@@ -12,7 +13,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "./out",
-    "rootDir": "src/renderer/src",
+    "rootDir": ".",
     "lib": ["DOM", "DOM.Iterable", "ES2023"]
   },
   "include": ["src/renderer/src/**/*", "src/preload/*.d.ts", "src/shared/**/*"]

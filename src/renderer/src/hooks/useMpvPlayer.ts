@@ -82,7 +82,8 @@ function getSelectedVideoTrackId(snapshot: MpvStateSnapshot): number | null {
 }
 
 const MAX_AUTO_RECONNECT = 5
-const RECONNECT_DELAY_MS = 3000
+const RECONNECT_DELAY_MS = 1000
+const STALL_THRESHOLD_MS = 12_000
 
 export function useMpvPlayer(enabled: boolean) {
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -93,7 +94,6 @@ export function useMpvPlayer(enabled: boolean) {
   const reconnectCountRef = useRef(0)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastGoodPlaybackRef = useRef(0)
-  const lastTimePosRef = useRef(0)
   const startupVisibleRef = useRef(false)
   const [isStarting, setIsStarting] = useState(false)
   const {
@@ -110,6 +110,7 @@ export function useMpvPlayer(enabled: boolean) {
     setBuffering,
     setCurrentTime,
     setDuration,
+    setDemuxerCacheDuration,
     setFullscreen,
     setPlayerError,
     setAudioTracks,
@@ -197,6 +198,7 @@ export function useMpvPlayer(enabled: boolean) {
         setBuffering(false)
         setCurrentTime(0)
         setDuration(0)
+        setDemuxerCacheDuration(0)
         return
       }
 
@@ -244,6 +246,7 @@ export function useMpvPlayer(enabled: boolean) {
     setActiveVideoQuality,
     setCurrentTime,
     setDuration,
+    setDemuxerCacheDuration,
     setMuted,
     setPaused,
     setPlaybackEngine,
@@ -274,25 +277,30 @@ export function useMpvPlayer(enabled: boolean) {
       setBuffering(snapshot.buffering)
       setCurrentTime(snapshot.timePos || 0)
       setDuration(snapshot.duration || 0)
+      setDemuxerCacheDuration(snapshot.demuxerCacheDuration || 0)
       setFullscreen(Boolean(windowFullscreen || snapshot.fullscreen))
 
-      // Track good playback for reconnect logic — only when timePos actually advances
+      // time-pos is unreliable as a liveness signal: many IPTV live streams
+      // (proxied TS, HLS at segment boundaries, DVR-less feeds) hold it steady
+      // or reset it while still healthily delivering frames. Trust mpv's own
+      // demuxer underrun flag instead — it flips true only when the cache is
+      // actually empty and no packets are arriving. The 12s threshold gives
+      // mpv's own reconnect (reconnect_delay_max=5s) two attempts before we
+      // forcibly reload.
       const isLiveStream = useStore.getState().currentChannel?.type === 'live'
-      const timePosAdvancing = snapshot.timePos > 0 && snapshot.timePos !== lastTimePosRef.current
-      lastTimePosRef.current = snapshot.timePos
-      if (snapshot.running && !snapshot.error && !snapshot.buffering && timePosAdvancing) {
+      if (snapshot.running && !snapshot.error && !snapshot.buffering) {
         lastGoodPlaybackRef.current = now
         reconnectCountRef.current = 0
       }
 
-      // Detect stalled live stream (no progress for 15s, no error reported)
       const isStalledLive =
         isLiveStream &&
         !snapshot.error &&
         snapshot.running &&
         !snapshot.paused &&
+        snapshot.buffering &&
         lastGoodPlaybackRef.current > 0 &&
-        now - lastGoodPlaybackRef.current > 15_000
+        now - lastGoodPlaybackRef.current > STALL_THRESHOLD_MS
 
       // Auto-reconnect on error OR stall for live streams
       const needsReconnect = (snapshot.error || isStalledLive) && startupUrlRef.current && !reconnectTimerRef.current
@@ -406,6 +414,7 @@ export function useMpvPlayer(enabled: boolean) {
     setCurrentVideoQuality,
     setCurrentTime,
     setDuration,
+    setDemuxerCacheDuration,
     setFullscreen,
     setPaused,
     setPlayerError,

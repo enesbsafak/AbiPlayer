@@ -11,6 +11,7 @@ export interface PlayerSlice {
   isBuffering: boolean
   currentTime: number
   duration: number
+  demuxerCacheDuration: number
   volume: number
   isMuted: boolean
   isFullscreen: boolean
@@ -36,6 +37,7 @@ export interface PlayerSlice {
   setBuffering: (buffering: boolean) => void
   setCurrentTime: (time: number) => void
   setDuration: (duration: number) => void
+  setDemuxerCacheDuration: (seconds: number) => void
   setVolume: (volume: number) => void
   setMuted: (muted: boolean) => void
   setFullscreen: (fullscreen: boolean) => void
@@ -64,6 +66,7 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
   isBuffering: false,
   currentTime: 0,
   duration: 0,
+  demuxerCacheDuration: 0,
   volume: 0.8,
   isMuted: false,
   isFullscreen: false,
@@ -106,6 +109,7 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
         playerError: null,
         currentTime: 0,
         duration: 0,
+        demuxerCacheDuration: 0,
         audioTracks: [],
         currentAudioTrack: null,
         subtitleTracks: [],
@@ -126,6 +130,7 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
       isBuffering: false,
       currentTime: 0,
       duration: 0,
+      demuxerCacheDuration: 0,
       playerError: null,
       audioTracks: [],
       currentAudioTrack: null,
@@ -144,6 +149,7 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
   setBuffering: (buffering) => set({ isBuffering: buffering }),
   setCurrentTime: (time) => set({ currentTime: time }),
   setDuration: (duration) => set({ duration }),
+  setDemuxerCacheDuration: (seconds) => set({ demuxerCacheDuration: seconds }),
   setVolume: (volume) => set({ volume }),
   setMuted: (muted) => set({ isMuted: muted }),
   setFullscreen: (fullscreen) => set({ isFullscreen: fullscreen }),

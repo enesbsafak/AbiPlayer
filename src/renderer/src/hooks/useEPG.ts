@@ -11,6 +11,7 @@ export function useEPG() {
   const location = useLocation()
   const activeSourceId = useStore((s) => s.activeSourceId)
   const sources = useStore((s) => s.sources)
+  const epgSourceId = useStore((s) => s.epgSourceId)
   const epgData = useStore((s) => s.epgData)
   const epgLoading = useStore((s) => s.epgLoading)
   const epgLastFetched = useStore((s) => s.epgLastFetched)
@@ -35,7 +36,8 @@ export function useEPG() {
       Math.max(MIN_EPG_REFRESH_MINUTES, Math.floor(epgRefreshInterval || 60))
     )
     const staleMs = refreshMinutes * 60 * 1000
-    const isStale = !epgData || !epgLastFetched || Date.now() - epgLastFetched > staleMs
+    const hasCurrentSourceEpg = epgSourceId === activeSourceId
+    const isStale = !hasCurrentSourceEpg || !epgData || !epgLastFetched || Date.now() - epgLastFetched > staleMs
 
     if (!isStale) return
 
@@ -50,7 +52,7 @@ export function useEPG() {
 
     fetchAndParseEPG(epgUrl)
       .then((data) => {
-        if (!cancelled) setEpgData(data)
+        if (!cancelled) setEpgData(source.id, data)
       })
       .catch((err) => {
         if (!cancelled) setEpgError(err instanceof Error ? err.message : 'EPG verisi alınamadı')
@@ -63,7 +65,7 @@ export function useEPG() {
     return () => {
       cancelled = true
     }
-  }, [isEPGRoute, activeSourceId, sources, epgData, epgLastFetched, epgRefreshInterval, getXtreamCredentials])
+  }, [isEPGRoute, activeSourceId, sources, epgSourceId, epgData, epgLastFetched, epgRefreshInterval, getXtreamCredentials])
 
   // Auto-refresh interval while on EPG route
   useEffect(() => {
@@ -88,7 +90,7 @@ export function useEPG() {
       setEpgLoading(true)
 
       fetchAndParseEPG(xtreamApi.buildEpgUrl(creds))
-        .then((data) => setEpgData(data))
+        .then((data) => setEpgData(source.id, data))
         .catch((err) => setEpgError(err instanceof Error ? err.message : 'EPG yenilemesi başarısız'))
         .finally(() => {
           setEpgLoading(false)
@@ -99,5 +101,5 @@ export function useEPG() {
     return () => clearInterval(interval)
   }, [isEPGRoute, activeSourceId, sources, epgRefreshInterval, getXtreamCredentials])
 
-  return { epgData, epgLoading }
+  return { epgData: activeSourceId && epgSourceId === activeSourceId ? epgData : null, epgLoading }
 }
