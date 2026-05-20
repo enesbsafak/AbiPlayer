@@ -44,7 +44,17 @@ export default function SearchPage() {
 
   const handlePlay = useCallback((channel: Channel) => {
     if (!isPlayableChannel(channel)) {
-      if (channel.type === 'series') navigate('/series')
+      if (channel.type === 'series' && channel.seriesId) {
+        navigate('/series', {
+          state: {
+            restoreSelectedSeries: {
+              seriesId: channel.seriesId,
+              sourceId: channel.sourceId
+            },
+            restoreSearchQuery: query
+          }
+        })
+      }
       return
     }
 

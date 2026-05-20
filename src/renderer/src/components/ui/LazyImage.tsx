@@ -211,7 +211,7 @@ export function LazyImage({
           alt={alt}
           loading={eager ? 'eager' : 'lazy'}
           decoding="async"
-          fetchPriority={eager ? 'high' : 'auto'}
+          {...({ fetchpriority: eager ? 'high' : 'auto' } as any)}
           draggable={false}
           onLoad={handleLoad}
           onError={handleError}

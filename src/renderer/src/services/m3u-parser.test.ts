@@ -20,7 +20,7 @@ https://cdn.example.com/media/movie.mp4`
 
     expect(channels).toEqual([
       {
-        id: 'source_1_m3u_ch_0',
+        id: 'source_1_m3u_ch_cc2d3055',
         name: 'Kanal TR HD',
         logo: 'https://img/logo.png',
         streamUrl: 'https://cdn.example.com/live/kanal.m3u8',
@@ -32,7 +32,7 @@ https://cdn.example.com/media/movie.mp4`
         type: 'live'
       },
       {
-        id: 'source_1_m3u_ch_1',
+        id: 'source_1_m3u_ch_7b5bf0c6',
         name: 'Aksiyon Gecesi',
         streamUrl: 'https://cdn.example.com/media/movie.mp4',
         sourceId: 'source_1',
@@ -52,7 +52,7 @@ https://cdn.example.com/media/movie.mp4`
     expect(categories).toEqual([])
     expect(channels).toEqual([
       {
-        id: 'source_2_m3u_ch_0',
+        id: 'source_2_m3u_ch_56e643b0',
         name: 'live',
         streamUrl: 'https://cdn.example.com/simple/live.m3u8',
         sourceId: 'source_2',
@@ -95,5 +95,14 @@ https://a.com/1.m3u8`
     const result1 = parseM3U(playlist, 'src')
     const result2 = parseM3U(playlist, 'src')
     expect(result1.categories[0].id).toBe(result2.categories[0].id)
+  })
+
+  it('stable channel IDs across same content', () => {
+    const playlist = `#EXTINF:-1 group-title="Spor",Kanal 1
+https://a.com/1.m3u8`
+
+    const result1 = parseM3U(playlist, 'src')
+    const result2 = parseM3U(playlist, 'src')
+    expect(result1.channels[0].id).toBe(result2.channels[0].id)
   })
 })

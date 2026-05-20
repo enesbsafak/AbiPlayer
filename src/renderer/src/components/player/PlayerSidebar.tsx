@@ -54,8 +54,8 @@ export function PlayerSidebar() {
   useEffect(() => {
     if (currentChannel?.id === lastChannelIdRef.current) return
     lastChannelIdRef.current = currentChannel?.id ?? null
-    setSelectedCategoryId(resolveCategoryFor(currentChannel))
-  }, [currentChannel, resolveCategoryFor])
+    setSelectedCategoryId(currentChannel?.categoryId ?? null)
+  }, [currentChannel])
 
   // Close dropdown on outside click
   useEffect(() => {

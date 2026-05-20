@@ -1,31 +1,40 @@
 import type { SubtitleCue, SubtitleStyle } from '@/types/player'
 
 function parseTimeSRT(str: string): number {
-  // 00:01:23,456 -> seconds
+  if (!str) return 0
   const parts = str.trim().split(':')
+  if (parts.length < 3) return 0
   const [sec, ms] = (parts[2] || '0,0').split(/[,.]/)
-  return (
-    parseInt(parts[0]) * 3600 +
-    parseInt(parts[1]) * 60 +
-    parseInt(sec) +
-    parseInt((ms || '0').padEnd(3, '0')) / 1000
-  )
+  const h = parseInt(parts[0]) || 0
+  const m = parseInt(parts[1]) || 0
+  const s = parseInt(sec) || 0
+  const msVal = parseInt((ms || '0').padEnd(3, '0')) || 0
+  return h * 3600 + m * 60 + s + msVal / 1000
 }
 
 function parseTimeVTT(str: string): number {
-  // 00:01:23.456 or 01:23.456
-  const parts = str.trim().split(':')
+  if (!str) return 0
+  const clean = str.trim()
+  const parts = clean.split(':')
+  if (parts.length === 1) {
+    const [sec, ms] = clean.split('.')
+    const s = parseInt(sec) || 0
+    const m = parseInt((ms || '0').padEnd(3, '0')) || 0
+    return s + m / 1000
+  }
   if (parts.length === 2) {
-    const [sec, ms] = parts[1].split('.')
-    return parseInt(parts[0]) * 60 + parseInt(sec) + parseInt((ms || '0').padEnd(3, '0')) / 1000
+    const [sec, ms] = (parts[1] || '0.0').split('.')
+    const h = parseInt(parts[0]) || 0
+    const s = parseInt(sec) || 0
+    const m = parseInt((ms || '0').padEnd(3, '0')) || 0
+    return h * 60 + s + m / 1000
   }
   const [sec, ms] = (parts[2] || '0.0').split('.')
-  return (
-    parseInt(parts[0]) * 3600 +
-    parseInt(parts[1]) * 60 +
-    parseInt(sec) +
-    parseInt((ms || '0').padEnd(3, '0')) / 1000
-  )
+  const h = parseInt(parts[0]) || 0
+  const m = parseInt(parts[1]) || 0
+  const s = parseInt(sec) || 0
+  const msVal = parseInt((ms || '0').padEnd(3, '0')) || 0
+  return h * 3600 + m * 60 + s + msVal / 1000
 }
 
 function stripHTMLTags(text: string): string {
@@ -103,16 +112,16 @@ export function parseVTT(content: string): SubtitleCue[] {
   return cues
 }
 
-function parseASSTime(str: string): number {
-  // 0:00:01.23 -> seconds
+function parseASSTime(str: unknown): number {
+  if (typeof str !== 'string') return 0
   const parts = str.trim().split(':')
+  if (parts.length < 3) return 0
   const [sec, cs] = (parts[2] || '0.0').split('.')
-  return (
-    parseInt(parts[0]) * 3600 +
-    parseInt(parts[1]) * 60 +
-    parseInt(sec) +
-    parseInt((cs || '0').padEnd(2, '0')) / 100
-  )
+  const h = parseInt(parts[0]) || 0
+  const m = parseInt(parts[1]) || 0
+  const s = parseInt(sec) || 0
+  const csVal = parseInt((cs || '0').padEnd(2, '0')) || 0
+  return h * 3600 + m * 60 + s + csVal / 100
 }
 
 function parseASSStyle(styleLine: string, formatLine: string): Map<string, SubtitleStyle> {

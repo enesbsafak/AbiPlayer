@@ -72,6 +72,16 @@ function stableGroupId(sourceId: string, groupName: string): string {
   return `${sourceId}_m3u_${hex}`
 }
 
+function stableChannelId(sourceId: string, url: string, index: number): string {
+  if (!url) return `${sourceId}_m3u_ch_fallback_${index}`
+  let hash = 0
+  for (let i = 0; i < url.length; i++) {
+    hash = ((hash << 5) - hash + url.charCodeAt(i)) | 0
+  }
+  const hex = (hash >>> 0).toString(16).padStart(8, '0')
+  return `${sourceId}_m3u_ch_${hex}`
+}
+
 function detectCategoryType(groupName: string, entries: M3UEntry[]): 'live' | 'vod' | 'series' {
   const lower = groupName.toLowerCase()
 
@@ -166,7 +176,7 @@ export function parseM3U(content: string, sourceId: string): { channels: Channel
 
   // Create channels with type matching their category
   const channels: Channel[] = entries.map((e, i) => ({
-    id: `${sourceId}_m3u_ch_${i}`,
+    id: stableChannelId(sourceId, e.url, i),
     name: e.name || e.tvgName || 'Bilinmeyen',
     logo: e.logo || undefined,
     streamUrl: e.url,

@@ -528,6 +528,7 @@ export class MpvController {
     this.socket.on('error', () => undefined)
     this.socket.on('close', () => {
       this.socket = null
+      void this.cleanup().catch(() => undefined)
     })
 
     await Promise.allSettled([

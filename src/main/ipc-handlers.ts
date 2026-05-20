@@ -18,7 +18,7 @@ import type {
   SecureXtreamCredentials
 } from '../shared/types/electron-ipc'
 
-const MAX_LOCAL_FILE_SIZE_BYTES = 500 * 1024 * 1024
+const MAX_LOCAL_FILE_SIZE_BYTES = 25 * 1024 * 1024
 const MAX_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024
 const DEFAULT_PROCESS_TIMEOUT_MS = 90 * 1000
 const ALLOWED_STREAM_PROTOCOLS = new Set(['http:', 'https:'])
@@ -472,19 +472,20 @@ export function registerIpcHandlers(): void {
     const filePath = result.filePaths[0]
     const fileMeta = await stat(filePath)
     if (fileMeta.size > MAX_LOCAL_FILE_SIZE_BYTES) {
-      throw new Error('Seçilen dosya çok büyük (en fazla 500MB)')
+      throw new Error('Seçilen dosya çok büyük (en fazla 25MB)')
     }
 
     const content = await readFile(filePath, 'utf-8')
     return { path: filePath, content }
   })
 
-  ipcMain.handle('window-minimize', () => {
-    BrowserWindow.getFocusedWindow()?.minimize()
+  ipcMain.handle('window-minimize', (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow()
+    window?.minimize()
   })
 
-  ipcMain.handle('window-maximize', () => {
-    const window = BrowserWindow.getFocusedWindow()
+  ipcMain.handle('window-maximize', (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow()
     if (window?.isMaximized()) {
       window.unmaximize()
     } else {
@@ -492,12 +493,14 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('window-close', () => {
-    BrowserWindow.getFocusedWindow()?.close()
+  ipcMain.handle('window-close', (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow()
+    window?.close()
   })
 
-  ipcMain.handle('window-is-maximized', () => {
-    return BrowserWindow.getFocusedWindow()?.isMaximized() ?? false
+  ipcMain.handle('window-is-maximized', (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow()
+    return window?.isMaximized() ?? false
   })
 
   ipcMain.handle('window-set-fullscreen', (event, fullscreen: unknown): void => {
@@ -545,7 +548,9 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('secure-credentials-get-all', async (): Promise<SecureCredentialStore> => {
-    return readSecureCredentialStore()
+    return withCredentialLock(async () => {
+      return readSecureCredentialStore()
+    })
   })
 
   ipcMain.handle(
