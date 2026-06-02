@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Tv, Film, Clapperboard, Star, Plus, Activity, RefreshCw } from 'lucide-react'
 import { useStore } from '@/store'
@@ -34,8 +34,10 @@ export default function HomePage() {
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
   const [isBootstrappingSource, setIsBootstrappingSource] = useState(false)
   const [scanMessage, setScanMessage] = useState('İçerikler taranıyor...')
-  const [reloadToken, setReloadToken] = useState(0)
-  const bootstrapAttemptedRef = useRef(new Set<string>())
+  const [reloadToken, bumpReloadToken] = useReducer((value: number) => value + 1, 0)
+  const bootstrapAttemptedRef = useRef<Set<string> | null>(null)
+  if (bootstrapAttemptedRef.current === null) bootstrapAttemptedRef.current = new Set<string>()
+  const bootstrapAttempted = bootstrapAttemptedRef.current
 
   const handlePlay = useCallback((channel: Channel) => {
     if (!isPlayableChannel(channel)) {
@@ -54,15 +56,15 @@ export default function HomePage() {
     if (!source || source.type !== 'xtream') return
 
     const hasChannelsForSource = channels.some((channel) => channel.sourceId === activeSourceId)
-    if (!hasChannelsForSource) bootstrapAttemptedRef.current.delete(activeSourceId)
+    if (!hasChannelsForSource) bootstrapAttempted.delete(activeSourceId)
     if (hydratedSourceIds[activeSourceId]) return
     if (!xtreamAuth[activeSourceId]) return
-    if (bootstrapAttemptedRef.current.has(activeSourceId)) return
+    if (bootstrapAttempted.has(activeSourceId)) return
 
     const creds = getXtreamCredentials(activeSourceId)
     if (!creds) return
 
-    bootstrapAttemptedRef.current.add(activeSourceId)
+    bootstrapAttempted.add(activeSourceId)
     let cancelled = false
     const controller = new AbortController()
 
@@ -122,6 +124,7 @@ export default function HomePage() {
     }
   }, [
     activeSourceId,
+    bootstrapAttempted,
     sources,
     channels,
     hydratedSourceIds,
@@ -156,7 +159,7 @@ export default function HomePage() {
       <div className="h-full p-3">
         <div className="rounded-lg border border-surface-800 bg-surface-900 flex h-full flex-col items-center justify-center gap-6 px-6">
           <div className="flex flex-col items-center gap-4 text-center">
-            <div className="flex h-20 w-20 items-center justify-center border border-accent/40 bg-accent/15">
+            <div className="flex size-20 items-center justify-center border border-accent/40 bg-accent/15">
               <Tv size={40} className="text-accent" />
             </div>
             <h1 className="text-2xl font-bold text-white">{APP_NAME}'a Hoş Geldin</h1>
@@ -203,12 +206,12 @@ export default function HomePage() {
       <div className="h-full p-3">
         <div className="rounded-lg border border-surface-800 bg-surface-900 flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
           <p className="max-w-xl text-sm text-red-300">{bootstrapError}</p>
-          <Button
-            onClick={() => {
-              if (activeSourceId) bootstrapAttemptedRef.current.delete(activeSourceId)
+            <Button
+              onClick={() => {
+              if (activeSourceId) bootstrapAttempted.delete(activeSourceId)
               if (activeSourceId) markSourceHydrated(activeSourceId, false)
               setBootstrapError(null)
-              setReloadToken((v) => v + 1)
+              bumpReloadToken()
             }}
           >
             <RefreshCw size={16} />
@@ -222,8 +225,8 @@ export default function HomePage() {
   return (
     <div className="flex flex-col gap-8 p-4">
       <section className="rounded-lg border border-surface-800 bg-surface-900 relative overflow-hidden p-6">
-        <div className="pointer-events-none absolute -right-14 -top-16 h-44 w-44 rounded-full bg-accent/25 blur-3xl" />
-        <div className="pointer-events-none absolute -left-8 top-8 h-32 w-32 rounded-full bg-signal/20 blur-3xl" />
+        <div className="pointer-events-none absolute -right-14 -top-16 size-44 rounded-full bg-accent/25 blur-3xl" />
+        <div className="pointer-events-none absolute -left-8 top-8 size-32 rounded-full bg-signal/20 blur-3xl" />
         <div className="relative flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-medium text-surface-500">Yayın Merkezi</p>

@@ -199,19 +199,23 @@ async function readResponseTextWithLimit(response: Response, maxSizeBytes: numbe
     return text
   }
 
+  const streamReader = reader
   const chunks: Uint8Array[] = []
-  let totalSize = 0
+  async function readNext(totalSize: number): Promise<void> {
+    const { done, value } = await streamReader.read()
+    if (done) return
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
     chunks.push(value)
-    totalSize += value.length
-    if (totalSize > maxSizeBytes) {
-      await reader.cancel()
+    const nextSize = totalSize + value.length
+    if (nextSize > maxSizeBytes) {
+      await streamReader.cancel()
       throw new Error('Liste boyutu cok buyuk (en fazla 20MB)')
     }
+
+    await readNext(nextSize)
   }
+
+  await readNext(0)
 
   const decoder = new TextDecoder()
   let text = ''

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useReducer } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FileText, Link, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -9,21 +9,56 @@ import { fetchAndParseM3U, parseM3U } from '@/services/m3u-parser'
 import { pickAndReadFile } from '@/services/platform'
 import type { PlaylistSource } from '@/types/playlist'
 
+interface FormState {
+  mode: 'url' | 'file'
+  url: string
+  name: string
+  loading: boolean
+  error: string
+}
+
+type FormAction =
+  | { type: 'setMode'; mode: 'url' | 'file' }
+  | { type: 'setUrl'; value: string }
+  | { type: 'setName'; value: string }
+  | { type: 'importStart' }
+  | { type: 'importError'; message: string }
+  | { type: 'importDone' }
+  | { type: 'clearForm' }
+
+const initialFormState: FormState = { mode: 'url', url: '', name: '', loading: false, error: '' }
+
+function formReducer(state: FormState, action: FormAction): FormState {
+  switch (action.type) {
+    case 'setMode':
+      return { ...state, mode: action.mode }
+    case 'setUrl':
+      return { ...state, url: action.value }
+    case 'setName':
+      return { ...state, name: action.value }
+    case 'importStart':
+      return { ...state, loading: true, error: '' }
+    case 'importError':
+      return { ...state, error: action.message }
+    case 'importDone':
+      return { ...state, loading: false }
+    case 'clearForm':
+      return { ...state, url: '', name: '' }
+    default:
+      return state
+  }
+}
+
 export function PlaylistImport() {
   const navigate = useNavigate()
-  const [mode, setMode] = useState<'url' | 'file'>('url')
-  const [url, setUrl] = useState('')
-  const [name, setName] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [{ mode, url, name, loading, error }, dispatch] = useReducer(formReducer, initialFormState)
 
   const { sources, addSource, setActiveSource, addChannels, addCategories } = useStore()
 
   const handleUrlImport = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!url.trim()) return
-    setError('')
-    setLoading(true)
+    dispatch({ type: 'importStart' })
 
     try {
       // Add http:// if no protocol specified (consistent with Xtream login)
@@ -65,25 +100,23 @@ export function PlaylistImport() {
       addChannels(channels)
       addCategories(categories)
       setActiveSource(source.id)
-      setUrl('')
-      setName('')
+      dispatch({ type: 'clearForm' })
       navigate('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'İçe aktarma başarısız oldu')
+      dispatch({ type: 'importError', message: err instanceof Error ? err.message : 'İçe aktarma başarısız oldu' })
     } finally {
-      setLoading(false)
+      dispatch({ type: 'importDone' })
     }
   }
 
   const handleFileImport = async () => {
-    setError('')
-    setLoading(true)
+    dispatch({ type: 'importStart' })
 
     try {
       const result = await pickAndReadFile([
         { name: 'Oynatma Listesi Dosyaları', extensions: ['m3u', 'm3u8', 'txt'] }
       ])
-      if (!result) { setLoading(false); return }
+      if (!result) { dispatch({ type: 'importDone' }); return }
 
       // Check for duplicate M3U file source
       const existingFile = sources.find(
@@ -108,19 +141,19 @@ export function PlaylistImport() {
       addChannels(channels)
       addCategories(categories)
       setActiveSource(source.id)
-      setName('')
+      dispatch({ type: 'clearForm' })
       navigate('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'İçe aktarma başarısız oldu')
+      dispatch({ type: 'importError', message: err instanceof Error ? err.message : 'İçe aktarma başarısız oldu' })
     } finally {
-      setLoading(false)
+      dispatch({ type: 'importDone' })
     }
   }
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3 mb-2">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+        <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-500/10">
           <FileText className="text-emerald-400" size={20} />
         </div>
         <div>
@@ -130,29 +163,29 @@ export function PlaylistImport() {
       </div>
 
       <div className="flex gap-2">
-        <Button variant={mode === 'url' ? 'primary' : 'secondary'} size="sm" onClick={() => setMode('url')}>
+        <Button variant={mode === 'url' ? 'primary' : 'secondary'} size="sm" onClick={() => dispatch({ type: 'setMode', mode: 'url' })}>
           <Link size={14} /> URL
         </Button>
-        <Button variant={mode === 'file' ? 'primary' : 'secondary'} size="sm" onClick={() => setMode('file')}>
+        <Button variant={mode === 'file' ? 'primary' : 'secondary'} size="sm" onClick={() => dispatch({ type: 'setMode', mode: 'file' })}>
           <Upload size={14} /> Dosya
         </Button>
       </div>
 
-      <Input id="m3u-name" label="Görünen Ad (opsiyonel)" placeholder="Benim Liste" value={name} onChange={(e) => setName(e.target.value)} />
+      <Input id="m3u-name" label="Görünen Ad (opsiyonel)" placeholder="Benim Liste" value={name} onChange={(e) => dispatch({ type: 'setName', value: e.target.value })} />
 
       {mode === 'url' ? (
         <form onSubmit={handleUrlImport} className="flex flex-col gap-4">
-          <Input id="m3u-url" label="Liste URL" placeholder="https://example.com/playlist.m3u" value={url} onChange={(e) => setUrl(e.target.value)} required />
+          <Input id="m3u-url" label="Liste URL" placeholder="https://example.com/playlist.m3u" value={url} onChange={(e) => dispatch({ type: 'setUrl', value: e.target.value })} required />
           {error && <p className="text-sm text-red-400">{error}</p>}
           <Button type="submit" disabled={loading}>
-            {loading ? <><Spinner size={16} /> İçe aktarılıyor...</> : 'Listeyi İçe Aktar'}
+            {loading ? <><Spinner size={16} /> İçe aktarılıyor…</> : 'Listeyi İçe Aktar'}
           </Button>
         </form>
       ) : (
         <div className="flex flex-col gap-4">
           {error && <p className="text-sm text-red-400">{error}</p>}
           <Button onClick={handleFileImport} disabled={loading}>
-            {loading ? <><Spinner size={16} /> Okunuyor...</> : <><Upload size={16} /> Dosya Seç</>}
+            {loading ? <><Spinner size={16} /> Okunuyor…</> : <><Upload size={16} /> Dosya Seç</>}
           </Button>
         </div>
       )}

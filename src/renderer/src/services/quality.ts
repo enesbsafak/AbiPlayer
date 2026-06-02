@@ -35,8 +35,10 @@ const QUALITY_RULES = [
 
 function normalizeTextParts(parts: Array<string | undefined>): string {
   return parts
-    .map((part) => part?.trim())
-    .filter(Boolean)
+    .flatMap((part) => {
+      const text = part?.trim()
+      return text ? [text] : []
+    })
     .join(' ')
 }
 

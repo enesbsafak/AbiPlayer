@@ -25,14 +25,11 @@ export function ClampText({
   titleText,
   ...props
 }: ClampTextProps) {
-  const resolvedTitle =
-    titleText ?? title ?? (typeof children === 'string' ? children : undefined)
-
   return createElement(
     as,
     {
       ...props,
-      title: resolvedTitle,
+      title: titleText ?? title,
       style: {
         ...getClampStyle(lines),
         ...style

@@ -56,7 +56,7 @@ function ensureCacheCleanup(): void {
 
 function evictCacheIfNeeded(): void {
   if (requestCache.size <= CACHE_MAX_SIZE) return
-  const entries = [...requestCache.entries()].sort((a, b) => a[1].expiresAt - b[1].expiresAt)
+  const entries = Array.from(requestCache.entries()).toSorted((a, b) => a[1].expiresAt - b[1].expiresAt)
   const toRemove = entries.slice(0, requestCache.size - CACHE_MAX_SIZE)
   for (const [key] of toRemove) requestCache.delete(key)
 }
@@ -65,6 +65,29 @@ interface XtreamRequestOptions {
   bypassCache?: boolean
   cacheTtlMs?: number
   signal?: AbortSignal
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  maxConcurrency: number,
+  task: (item: T, index: number) => Promise<void>,
+  shouldContinue: () => boolean = () => true
+): Promise<void> {
+  let cursor = 0
+  const workerCount = Math.max(1, Math.min(maxConcurrency, items.length || 1))
+
+  const runWorker = async (): Promise<void> => {
+    if (!shouldContinue()) return
+
+    const index = cursor
+    cursor += 1
+    if (index >= items.length) return
+
+    await task(items[index], index)
+    await runWorker()
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()))
 }
 
 async function collectPreviewFromCategories<T, K extends string | number>({
@@ -87,24 +110,18 @@ async function collectPreviewFromCategories<T, K extends string | number>({
   const result: T[] = []
   const seen = new Set<K>()
   const queue = categoryIds.slice(0, maxCategories)
-  const workerCount = Math.max(1, Math.min(maxConcurrency, queue.length || 1))
-  let cursor = 0
   let done = false
 
-  const workers = Array.from({ length: workerCount }, async () => {
-    while (!done) {
-      if (signal?.aborted) return
-
-      const index = cursor
-      cursor += 1
-      if (index >= queue.length) return
-
-      const categoryId = queue[index]
+  await runWithConcurrency(
+    queue,
+    maxConcurrency,
+    async (categoryId) => {
+      if (signal?.aborted || done) return
       let items: T[] = []
       try {
         items = await fetchByCategory(categoryId)
       } catch {
-        continue
+        return
       }
 
       for (const item of items) {
@@ -118,10 +135,10 @@ async function collectPreviewFromCategories<T, K extends string | number>({
           return
         }
       }
-    }
-  })
+    },
+    () => !done && !signal?.aborted
+  )
 
-  await Promise.all(workers)
   return result
 }
 
@@ -268,7 +285,7 @@ export const xtreamApi = {
     options?: XtreamRequestOptions
   ): Promise<XtreamLiveStream[]> {
     const categories = await xtreamApi.getLiveCategories(creds, options).catch(() => [])
-    const categoryIds = categories.map((cat) => cat.category_id).filter(Boolean)
+    const categoryIds = categories.flatMap((cat) => (cat.category_id ? [cat.category_id] : []))
 
     const byCategories = await collectPreviewFromCategories<XtreamLiveStream, number>({
       categoryIds,
@@ -303,7 +320,7 @@ export const xtreamApi = {
     options?: XtreamRequestOptions
   ): Promise<XtreamVODStream[]> {
     const categories = await xtreamApi.getVodCategories(creds, options).catch(() => [])
-    const categoryIds = categories.map((cat) => cat.category_id).filter(Boolean)
+    const categoryIds = categories.flatMap((cat) => (cat.category_id ? [cat.category_id] : []))
 
     const byCategories = await collectPreviewFromCategories<XtreamVODStream, number>({
       categoryIds,
@@ -349,7 +366,7 @@ export const xtreamApi = {
     options?: XtreamRequestOptions
   ): Promise<XtreamSeriesStream[]> {
     const categories = await xtreamApi.getSeriesCategories(creds, options).catch(() => [])
-    const categoryIds = categories.map((cat) => cat.category_id).filter(Boolean)
+    const categoryIds = categories.flatMap((cat) => (cat.category_id ? [cat.category_id] : []))
 
     const byCategories = await collectPreviewFromCategories<XtreamSeriesStream, number>({
       categoryIds,

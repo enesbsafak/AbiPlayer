@@ -26,6 +26,97 @@ interface PlayerControlsProps {
   onToggleFullscreen: () => void
 }
 
+interface ProgressScrubberProps {
+  currentTime: number
+  duration: number
+  remainingTime: number
+  progress: number
+  playbackEngine: string
+  video: HTMLVideoElement | null
+}
+
+interface VolumeControlProps {
+  isMuted: boolean
+  volume: number
+  onToggleMute: () => void
+  onVolumeChange: (event: React.ChangeEvent<HTMLInputElement>) => void
+}
+
+function formatTime(s: number) {
+  if (!isFinite(s)) return '--:--'
+  const totalSeconds = Math.max(0, Math.floor(s))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours > 0) return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+const PROGRESS_TRACK_COLOR = '#7c6af7'
+const PROGRESS_BACK_COLOR = '#3f3f46'
+
+function ProgressScrubber({
+  currentTime,
+  duration,
+  remainingTime,
+  progress,
+  playbackEngine,
+  video
+}: ProgressScrubberProps) {
+  return (
+    <div className="mb-3 flex items-center gap-3">
+      <span className="text-xs text-surface-200 tabular-nums">{formatTime(currentTime)}</span>
+      <input
+        type="range"
+        min={0}
+        max={duration}
+        value={currentTime}
+        onChange={(e) => {
+          const t = parseFloat(e.target.value)
+          if (playbackEngine === 'mpv') {
+            void mpvSeekTo(t).catch(() => undefined)
+          } else if (video) {
+            video.currentTime = t
+          }
+        }}
+        className="flex-1 h-1 appearance-none bg-surface-600 rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent"
+        style={{ background: `linear-gradient(to right, ${PROGRESS_TRACK_COLOR} ${progress}%, ${PROGRESS_BACK_COLOR} ${progress}%)` }}
+        aria-label="Oynatma ilerlemesi"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(duration)}
+        aria-valuenow={Math.round(currentTime)}
+      />
+      <span className="text-xs text-surface-200 tabular-nums">{formatTime(duration)}</span>
+      <span className="min-w-[70px] text-right text-xs text-surface-300 tabular-nums">
+        -{formatTime(remainingTime)}
+      </span>
+    </div>
+  )
+}
+
+function VolumeControl({ isMuted, volume, onToggleMute, onVolumeChange }: VolumeControlProps) {
+  return (
+    <div className="flex items-center gap-1 ml-2">
+      <button type="button" onClick={onToggleMute} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title={isMuted ? 'Sesi Aç' : 'Sesi Kapat'} aria-label={isMuted ? 'Sesi Aç' : 'Sesi Kapat'}>
+        {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.05}
+        value={isMuted ? 0 : volume}
+        onChange={onVolumeChange}
+        className="w-20 h-1 appearance-none bg-surface-600 rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+        aria-label="Ses seviyesi"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
+      />
+    </div>
+  )
+}
+
 export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsProps) {
   const navigate = useNavigate()
   const {
@@ -130,16 +221,6 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
     navigateBackToOrigin()
   }
 
-  const formatTime = (s: number) => {
-    if (!isFinite(s)) return '--:--'
-    const totalSeconds = Math.max(0, Math.floor(s))
-    const hours = Math.floor(totalSeconds / 3600)
-    const minutes = Math.floor((totalSeconds % 3600) / 60)
-    const seconds = totalSeconds % 60
-    if (hours > 0) return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`
-  }
-
   const playlistCandidates = useMemo(() => {
     if (!currentChannel) return []
     const sameTypeAndSource = channels.filter((channel) =>
@@ -205,9 +286,6 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
   const seekBackLabel = '10 saniye geri sar'
   const seekForwardLabel = '10 saniye ileri sar'
 
-  const progressTrackColor = '#7c6af7'
-  const progressBackColor = '#3f3f46'
-
   return (
     <div
       data-player-controls
@@ -215,38 +293,20 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
       onDoubleClick={(event) => event.stopPropagation()}
     >
       {!isLive && duration > 0 && (
-        <div className="mb-3 flex items-center gap-3">
-          <span className="text-xs text-surface-200 tabular-nums">{formatTime(currentTime)}</span>
-          <input
-            type="range"
-            min={0}
-            max={duration}
-            value={currentTime}
-            onChange={(e) => {
-              const t = parseFloat(e.target.value)
-              if (playbackEngine === 'mpv') {
-                void mpvSeekTo(t).catch(() => undefined)
-              } else if (video) {
-                video.currentTime = t
-              }
-            }}
-            className="flex-1 h-1 appearance-none bg-surface-600 rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent"
-            style={{ background: `linear-gradient(to right, ${progressTrackColor} ${progress}%, ${progressBackColor} ${progress}%)` }}
-            aria-label="Oynatma ilerlemesi"
-            aria-valuemin={0}
-            aria-valuemax={Math.round(duration)}
-            aria-valuenow={Math.round(currentTime)}
-          />
-          <span className="text-xs text-surface-200 tabular-nums">{formatTime(duration)}</span>
-          <span className="min-w-[70px] text-right text-xs text-surface-300 tabular-nums">
-            -{formatTime(remainingTime)}
-          </span>
-        </div>
+        <ProgressScrubber
+          currentTime={currentTime}
+          duration={duration}
+          remainingTime={remainingTime}
+          progress={progress}
+          playbackEngine={playbackEngine}
+          video={video}
+        />
       )}
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1">
           <button
+            type="button"
             onClick={() => void leavePlayer()}
             className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal"
             title="Geri dön"
@@ -255,6 +315,7 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
             <ArrowLeft size={18} />
           </button>
           <button
+            type="button"
             onClick={() => playAdjacent('prev')}
             disabled={!previousChannel}
             className="rounded-lg p-2 transition-colors duration-normal hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
@@ -265,20 +326,21 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
           </button>
 
           {!isLive && (
-            <button onClick={() => seek(-10)} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title={seekBackLabel} aria-label={seekBackLabel}>
+            <button type="button" onClick={() => seek(-10)} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title={seekBackLabel} aria-label={seekBackLabel}>
               <Rewind size={18} />
             </button>
           )}
-          <button onClick={togglePlay} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Oynat/Duraklat" aria-label={isPaused || !isPlaying ? 'Oynat' : 'Duraklat'}>
+          <button type="button" onClick={togglePlay} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Oynat/Duraklat" aria-label={isPaused || !isPlaying ? 'Oynat' : 'Duraklat'}>
             {isPaused || !isPlaying ? <Play size={22} fill="white" /> : <Pause size={22} fill="white" />}
           </button>
           {!isLive && (
-            <button onClick={() => seek(10)} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title={seekForwardLabel} aria-label={seekForwardLabel}>
+            <button type="button" onClick={() => seek(10)} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title={seekForwardLabel} aria-label={seekForwardLabel}>
               <FastForward size={18} />
             </button>
           )}
 
           <button
+            type="button"
             onClick={() => playAdjacent('next')}
             disabled={!nextChannel}
             className="rounded-lg p-2 transition-colors duration-normal hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
@@ -290,6 +352,7 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
 
           {isLive && (
             <button
+              type="button"
               onClick={jumpToLive}
               className={`ml-1 flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold uppercase tracking-wide transition-colors duration-normal ${
                 isBehindLive
@@ -308,24 +371,12 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
             </button>
           )}
 
-          <div className="flex items-center gap-1 ml-2">
-            <button onClick={toggleMute} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title={isMuted ? 'Sesi Aç' : 'Sesi Kapat'} aria-label={isMuted ? 'Sesi Aç' : 'Sesi Kapat'}>
-              {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
-            </button>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={isMuted ? 0 : volume}
-              onChange={handleVolumeChange}
-              className="w-20 h-1 appearance-none bg-surface-600 rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
-              aria-label="Ses seviyesi"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
-            />
-          </div>
+          <VolumeControl
+            isMuted={isMuted}
+            volume={volume}
+            onToggleMute={toggleMute}
+            onVolumeChange={handleVolumeChange}
+          />
 
           {currentChannel && (
             <span className="ml-4 text-sm font-medium truncate max-w-[240px]" title={currentChannel.name}>{currentChannel.name}</span>
@@ -333,18 +384,19 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
         </div>
 
         <div className="flex items-center gap-1">
-          <button onClick={() => void exitPlayer()} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Durdur ve çık" aria-label="Durdur ve çık">
+          <button type="button" onClick={() => void exitPlayer()} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Durdur ve çık" aria-label="Durdur ve çık">
             <X size={18} />
           </button>
           <QualitySelector />
           <AudioTrackSelector />
           <SubtitleSelector />
           {playbackEngine !== 'mpv' && (
-            <button onClick={togglePiP} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Resim İçinde Resim" aria-label="Resim İçinde Resim">
+            <button type="button" onClick={togglePiP} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Resim İçinde Resim" aria-label="Resim İçinde Resim">
               <PictureInPicture2 size={18} />
             </button>
           )}
           <button
+            type="button"
             onClick={togglePlayerSidebar}
             className={`rounded-lg p-2 transition-colors duration-normal ${isPlayerSidebarOpen ? 'bg-white/20' : 'hover:bg-white/10'}`}
             title="Kanal Listesi (L)"
@@ -353,7 +405,7 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
           >
             <List size={18} />
           </button>
-          <button onClick={onToggleFullscreen} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Tam Ekran (F)" aria-label={isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'}>
+          <button type="button" onClick={onToggleFullscreen} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Tam Ekran (F)" aria-label={isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'}>
             {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
           </button>
         </div>

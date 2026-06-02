@@ -3,24 +3,30 @@ import { Folder, LayoutGrid } from 'lucide-react'
 import { useStore } from '@/store'
 import { ClampText } from '@/components/ui'
 
-export const CategoryList = memo(function CategoryList() {
+type CategoryFilter = 'live' | 'vod' | 'series'
+
+interface CategoryListProps {
+  filter: CategoryFilter
+}
+
+export const CategoryList = memo(function CategoryList({ filter }: CategoryListProps) {
   const selectedCategoryId = useStore((s) => s.selectedCategoryId)
   const setSelectedCategory = useStore((s) => s.setSelectedCategory)
-  const channelFilter = useStore((s) => s.channelFilter)
   const activeSourceId = useStore((s) => s.activeSourceId)
   const allCategories = useStore((s) => s.categories)
   const categories = useMemo(
     () =>
       allCategories.filter(
-        (category) => category.type === channelFilter && (!activeSourceId || category.sourceId === activeSourceId)
+        (category) => category.type === filter && (!activeSourceId || category.sourceId === activeSourceId)
       ),
-    [allCategories, channelFilter, activeSourceId]
+    [allCategories, filter, activeSourceId]
   )
-  const allLabel = channelFilter === 'vod' ? 'Tüm Filmler' : channelFilter === 'series' ? 'Tüm Diziler' : 'Tüm Kanallar'
+  const allLabel = filter === 'vod' ? 'Tüm Filmler' : filter === 'series' ? 'Tüm Diziler' : 'Tüm Kanallar'
 
   return (
     <div className="flex flex-col gap-1">
       <button
+        type="button"
         onClick={() => setSelectedCategory(null)}
         className={`flex items-start gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
           !selectedCategoryId
@@ -29,13 +35,14 @@ export const CategoryList = memo(function CategoryList() {
         }`}
       >
         <LayoutGrid size={16} className="mt-0.5 shrink-0" />
-        <ClampText as="span" lines={2} className="min-w-0 flex-1 text-left leading-5">
+        <ClampText as="span" lines={2} titleText={allLabel} className="min-w-0 flex-1 text-left leading-5">
           {allLabel}
         </ClampText>
       </button>
       {categories.map((cat) => (
         <button
           key={cat.id}
+          type="button"
           onClick={() => setSelectedCategory(cat.id)}
           className={`flex items-start gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
             cat.id === selectedCategoryId
@@ -44,7 +51,7 @@ export const CategoryList = memo(function CategoryList() {
           }`}
         >
           <Folder size={16} className="mt-0.5 shrink-0" />
-          <ClampText as="span" lines={2} className="min-w-0 flex-1 text-left leading-5">
+          <ClampText as="span" lines={2} titleText={cat.name} className="min-w-0 flex-1 text-left leading-5">
             {cat.name}
           </ClampText>
         </button>

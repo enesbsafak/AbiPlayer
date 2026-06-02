@@ -1,34 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useStore } from '@/store'
 
-export function SubtitleOverlay() {
+interface PlayerSize {
+  width: number
+  height: number
+}
+
+interface SubtitleOverlayProps {
+  playerSize: PlayerSize
+}
+
+export function SubtitleOverlay({ playerSize }: SubtitleOverlayProps) {
   const { activeSubtitleCues, currentSubtitleTrack, settings } = useStore()
-  const [playerSize, setPlayerSize] = useState({ width: 1280, height: 720 })
-
-  useEffect(() => {
-    const container = document.querySelector('[data-player-container]') as HTMLElement | null
-    if (!container) return
-
-    const updatePlayerSize = () => {
-      const rect = container.getBoundingClientRect()
-      const width = Math.max(1, Math.round(rect.width))
-      const height = Math.max(1, Math.round(rect.height))
-      setPlayerSize((prev) => {
-        if (prev.width === width && prev.height === height) return prev
-        return { width, height }
-      })
-    }
-
-    const resizeObserver = new ResizeObserver(updatePlayerSize)
-    resizeObserver.observe(container)
-    window.addEventListener('resize', updatePlayerSize)
-    updatePlayerSize()
-
-    return () => {
-      resizeObserver.disconnect()
-      window.removeEventListener('resize', updatePlayerSize)
-    }
-  }, [])
 
   const subtitleScale = useMemo(() => {
     const scaleByHeight = playerSize.height / 720
@@ -49,9 +32,9 @@ export function SubtitleOverlay() {
       className="absolute inset-x-0 flex flex-col items-center gap-1 pointer-events-none"
       style={{ bottom: `${subtitleBottomOffset}px`, paddingInline: `${subtitleHorizontalPadding}px` }}
     >
-      {activeSubtitleCues.map((cue, i) => (
+      {activeSubtitleCues.map((cue) => (
         <div
-          key={i}
+          key={`${cue.startTime}-${cue.endTime}`}
           className="rounded px-3 py-1 text-center leading-relaxed max-w-[80%]"
           style={{
             fontSize: `${subtitleFontSize}px`,

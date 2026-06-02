@@ -34,6 +34,31 @@ const EPG_WINDOW_HOURS_BEFORE = 2
 const EPG_WINDOW_HOURS_AFTER = 24
 const MAX_CHANNELS = 2000
 const MAX_PROGRAMS_PER_CHANNEL = 100
+const MAX_EPG_SIZE_BYTES = 50 * 1024 * 1024
+
+async function readChunksWithLimit(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  maxSizeBytes: number
+): Promise<Uint8Array[]> {
+  const chunks: Uint8Array[] = []
+
+  async function readNext(totalSize: number): Promise<void> {
+    const { done, value } = await reader.read()
+    if (done) return
+
+    chunks.push(value)
+    const nextSize = totalSize + value.length
+    if (nextSize > maxSizeBytes) {
+      await reader.cancel()
+      return
+    }
+
+    await readNext(nextSize)
+  }
+
+  await readNext(0)
+  return chunks
+}
 
 export async function fetchAndParseEPG(url: string): Promise<EPGData> {
   const controller = new AbortController()
@@ -48,20 +73,7 @@ export async function fetchAndParseEPG(url: string): Promise<EPGData> {
     const reader = res.body?.getReader()
     if (!reader) throw new Error('Sunucudan geçerli veri gelmedi')
 
-    const chunks: Uint8Array[] = []
-    let totalSize = 0
-    const MAX_SIZE = 50 * 1024 * 1024 // 50MB limit
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      chunks.push(value)
-      totalSize += value.length
-      if (totalSize > MAX_SIZE) {
-        reader.cancel()
-        break
-      }
-    }
+    const chunks = await readChunksWithLimit(reader, MAX_EPG_SIZE_BYTES)
 
     const decoder = new TextDecoder()
     let xml = ''

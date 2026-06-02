@@ -17,6 +17,11 @@ interface ChannelEPG {
   progress: number
 }
 
+function formatTime(ts: number) {
+  const d = new Date(ts)
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+}
+
 export default function EPGPage() {
   const epgData = useStore((s) => s.epgData)
   const epgSourceId = useStore((s) => s.epgSourceId)
@@ -71,38 +76,30 @@ export default function EPGPage() {
   const channelEpgList = useMemo<ChannelEPG[]>(() => {
     if (!sourceEpgData) return []
     const now = Date.now()
+    const normalizedQuery = searchQuery ? normalizeSearchText(searchQuery) : ''
+    const list: ChannelEPG[] = []
 
-    return channels
-      .filter((c) => {
-        if (c.type !== 'live' || !c.epgChannelId) return false
-        if (activeSourceId && c.sourceId !== activeSourceId) return false
-        if (selectedCategoryId && c.categoryId !== selectedCategoryId) return false
-        // Only include channels that have program data
-        const key = normalizeEpgChannelKey(c.epgChannelId)
-        const programs = key ? sourceEpgData.programs[key] : undefined
-        if (!programs || programs.length === 0) return false
-        if (searchQuery) {
-          const q = normalizeSearchText(searchQuery)
-          if (!normalizeSearchText(c.name).includes(q)) return false
-        }
-        return true
-      })
-      .map((c) => {
-        const key = normalizeEpgChannelKey(c.epgChannelId)
-        const programs = (key ? sourceEpgData.programs[key] : undefined) || []
-        const current = findCurrentProgram(programs, now)
-        const upcoming = getUpcomingPrograms(programs, 3, now).filter((p) => p !== current)
-        const progress = current
-          ? Math.min(100, ((now - current.start) / (current.end - current.start)) * 100)
-          : 0
-        return { channel: c, current, upcoming, progress }
-      })
+    for (const channel of channels) {
+      if (channel.type !== 'live' || !channel.epgChannelId) continue
+      if (activeSourceId && channel.sourceId !== activeSourceId) continue
+      if (selectedCategoryId && channel.categoryId !== selectedCategoryId) continue
+      const text = normalizeSearchText(channel.name)
+      if (normalizedQuery && !text.includes(normalizedQuery)) continue
+
+      const key = normalizeEpgChannelKey(channel.epgChannelId)
+      const programs = key ? sourceEpgData.programs[key] : undefined
+      if (!programs || programs.length === 0) continue
+
+      const current = findCurrentProgram(programs, now)
+      const upcoming = getUpcomingPrograms(programs, 3, now).filter((program) => program !== current)
+      const progress = current
+        ? Math.min(100, ((now - current.start) / (current.end - current.start)) * 100)
+        : 0
+      list.push({ channel, current, upcoming, progress })
+    }
+
+    return list
   }, [channels, sourceEpgData, activeSourceId, selectedCategoryId, searchQuery])
-
-  const formatTime = (ts: number) => {
-    const d = new Date(ts)
-    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
-  }
 
   return (
     <div className="flex h-full gap-3 p-3">
@@ -113,6 +110,7 @@ export default function EPGPage() {
         </div>
         <div className="flex-1 overflow-y-auto px-2 pb-2 flex flex-col gap-0.5">
           <button
+            type="button"
             onClick={() => setSelectedCategoryId(null)}
             className={`shrink-0 rounded-lg px-3 py-1.5 text-left text-sm transition-colors ${
               !selectedCategoryId ? 'bg-surface-800 text-surface-50 font-medium' : 'text-surface-400 hover:bg-surface-800/50'
@@ -123,6 +121,7 @@ export default function EPGPage() {
           {liveCategories.map((cat) => (
             <button
               key={cat.id}
+              type="button"
               onClick={() => setSelectedCategoryId(cat.id)}
               className={`shrink-0 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors truncate ${
                 selectedCategoryId === cat.id ? 'bg-surface-800 text-surface-50 font-medium' : 'text-surface-400 hover:bg-surface-800/50'
@@ -149,11 +148,17 @@ export default function EPGPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="EPG kanallarında ara"
               placeholder="Kanal ara..."
               className="w-full rounded-lg border border-surface-700 bg-surface-800 py-1.5 pl-8 pr-8 text-sm text-surface-50 placeholder:text-surface-500 focus:border-surface-600 focus:outline-none"
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300">
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                aria-label="EPG aramasını temizle"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300"
+              >
                 <X size={14} />
               </button>
             )}
@@ -172,7 +177,7 @@ export default function EPGPage() {
           {epgLoading && !sourceEpgData && (
             <div className="flex flex-col items-center justify-center py-20 text-surface-500">
               <Spinner size={24} />
-              <p className="text-sm mt-3">EPG verisi yükleniyor...</p>
+              <p className="text-sm mt-3">EPG verisi yükleniyor…</p>
             </div>
           )}
 
@@ -196,9 +201,9 @@ export default function EPGPage() {
               {/* Channel info */}
               <div className="w-48 shrink-0 flex items-center gap-3 px-4 py-3 border-r border-surface-800">
                 {channel.logo ? (
-                  <img src={channel.logo} alt="" className="h-8 w-8 shrink-0 rounded object-contain bg-surface-800" />
+                  <img src={channel.logo} alt="" className="size-8 shrink-0 rounded object-contain bg-surface-800" />
                 ) : (
-                  <div className="h-8 w-8 shrink-0 rounded bg-surface-800" />
+                  <div className="size-8 shrink-0 rounded bg-surface-800" />
                 )}
                 <span className="text-sm font-medium truncate">{channel.name}</span>
               </div>
@@ -226,10 +231,10 @@ export default function EPGPage() {
                 )}
 
                 {/* Upcoming */}
-                <div className="w-72 shrink-0 px-3 py-3 flex flex-col justify-center gap-1">
+                <div className="w-72 shrink-0 p-3 flex flex-col justify-center gap-1">
                   {upcoming.length > 0 ? (
-                    upcoming.slice(0, 2).map((prog, i) => (
-                      <div key={i} className="flex items-center gap-2 min-w-0">
+                    upcoming.slice(0, 2).map((prog) => (
+                      <div key={prog.start} className="flex items-center gap-2 min-w-0">
                         <span className="shrink-0 text-caption text-surface-500 w-10">{formatTime(prog.start)}</span>
                         <p className="text-xs text-surface-400 truncate">{prog.title}</p>
                       </div>

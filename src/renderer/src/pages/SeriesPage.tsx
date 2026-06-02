@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import { useState, useReducer, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { CategoryList } from '@/components/channels/CategoryList'
@@ -48,20 +48,101 @@ interface SeriesRouteState {
   restoreScrollTop?: number
 }
 
-export default function SeriesPage() {
-  const location = useLocation()
+interface LoadStatus {
+  error: string | null
+  foregroundMessage: string | null
+  isForegroundLoading: boolean
+  isBackgroundSyncing: boolean
+}
+
+type LoadStatusAction =
+  | { type: 'foregroundStart'; message: string }
+  | { type: 'foregroundEnd' }
+  | { type: 'failed'; message: string }
+  | { type: 'backgroundSyncing'; value: boolean }
+  | { type: 'stopLoading' }
+  | { type: 'reset' }
+
+const initialLoadStatus: LoadStatus = {
+  error: null,
+  foregroundMessage: null,
+  isForegroundLoading: false,
+  isBackgroundSyncing: false
+}
+
+function loadStatusReducer(state: LoadStatus, action: LoadStatusAction): LoadStatus {
+  switch (action.type) {
+    case 'foregroundStart':
+      return { ...state, error: null, foregroundMessage: action.message, isForegroundLoading: true }
+    case 'foregroundEnd':
+      return { ...state, foregroundMessage: null, isForegroundLoading: false }
+    case 'failed':
+      return { ...state, error: action.message }
+    case 'backgroundSyncing':
+      return { ...state, isBackgroundSyncing: action.value }
+    case 'stopLoading':
+      return { ...state, foregroundMessage: null, isForegroundLoading: false, isBackgroundSyncing: false }
+    case 'reset':
+      return initialLoadStatus
+    default:
+      return state
+  }
+}
+
+interface SeriesPageState {
+  searchQuery: string
+  selectedSeries: SeriesSelectionState | null
+}
+
+type SeriesPageAction =
+  | { type: 'setSearchQuery'; value: string }
+  | { type: 'selectSeries'; value: SeriesSelectionState | null }
+  | { type: 'setSeasonNumber'; value: number }
+  | { type: 'restoreRoute'; searchQuery?: string; selectedSeries?: SeriesSelectionState }
+  | { type: 'resetSource' }
+
+const initialSeriesPageState: SeriesPageState = {
+  searchQuery: '',
+  selectedSeries: null
+}
+
+function seriesPageReducer(state: SeriesPageState, action: SeriesPageAction): SeriesPageState {
+  switch (action.type) {
+    case 'setSearchQuery':
+      return state.searchQuery === action.value ? state : { ...state, searchQuery: action.value }
+    case 'selectSeries':
+      return state.selectedSeries === action.value ? state : { ...state, selectedSeries: action.value }
+    case 'setSeasonNumber':
+      if (!state.selectedSeries || state.selectedSeries.seasonNumber === action.value) return state
+      return { ...state, selectedSeries: { ...state.selectedSeries, seasonNumber: action.value } }
+    case 'restoreRoute':
+      return {
+        searchQuery: action.searchQuery ?? state.searchQuery,
+        selectedSeries: action.selectedSeries ?? state.selectedSeries
+      }
+    case 'resetSource':
+      return initialSeriesPageState
+    default:
+      return state
+  }
+}
+
+function useSeriesPageContent() {
+  const routeLocation = useLocation()
   const navigate = useNavigate()
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedSeries, setSelectedSeries] = useState<SeriesSelectionState | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [reloadToken, setReloadToken] = useState(0)
-  const [pendingRestoreSeries, setPendingRestoreSeries] = useState<SeriesSelectionState | null>(null)
-  const [foregroundLoadingMessage, setForegroundLoadingMessage] = useState<string | null>(null)
-  const [isForegroundLoading, setIsForegroundLoading] = useState(false)
-  const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false)
+  const [pageState, dispatchPage] = useReducer(seriesPageReducer, initialSeriesPageState)
+  const [reloadToken, bumpReloadToken] = useReducer((value: number) => value + 1, 0)
+  const [
+    { error: loadError, foregroundMessage: foregroundLoadingMessage, isForegroundLoading, isBackgroundSyncing },
+    dispatchLoad
+  ] = useReducer(loadStatusReducer, initialLoadStatus)
   const loadedCatsRef = useRef(loadedSeriesCategoryCache)
   const previousSourceIdRef = useRef<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const { searchQuery, selectedSeries } = pageState
+  const setSearchQuery = useCallback((value: string) => {
+    dispatchPage({ type: 'setSearchQuery', value })
+  }, [])
 
   const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
@@ -69,8 +150,6 @@ export default function SeriesPage() {
   const hydratedSourceIds = useStore((s) => s.hydratedSourceIds)
   const isSourceTypeHydrated = useStore((s) => s.isSourceTypeHydrated)
   const selectedCategoryId = useStore((s) => s.selectedCategoryId)
-  const channelFilter = useStore((s) => s.channelFilter)
-  const setChannelFilter = useStore((s) => s.setChannelFilter)
   const playChannel = useStore((s) => s.playChannel)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
   const addChannels = useStore((s) => s.addChannels)
@@ -97,25 +176,31 @@ export default function SeriesPage() {
   )
 
   useEffect(() => {
-    const state = location.state as SeriesRouteState | null
+    const state = routeLocation.state as SeriesRouteState | null
     if (!state) return
 
     let shouldClearLocationState = false
 
     const restore = state?.restoreSelectedSeries
+    let restoredSeries: SeriesSelectionState | undefined
     if (
       restore &&
       typeof restore.seriesId === 'number' &&
       Number.isFinite(restore.seriesId) &&
       typeof restore.sourceId === 'string'
     ) {
-      setPendingRestoreSeries(restore)
+      restoredSeries = restore
       shouldClearLocationState = true
     }
 
+    let restoredSearchQuery: string | undefined
     if (typeof state.restoreSearchQuery === 'string') {
-      setSearchQuery(state.restoreSearchQuery)
+      restoredSearchQuery = state.restoreSearchQuery
       shouldClearLocationState = true
+    }
+
+    if (restoredSeries || restoredSearchQuery !== undefined) {
+      dispatchPage({ type: 'restoreRoute', selectedSeries: restoredSeries, searchQuery: restoredSearchQuery })
     }
 
     if ('restoreSelectedCategoryId' in state) {
@@ -139,23 +224,13 @@ export default function SeriesPage() {
 
     navigate(
       {
-        pathname: location.pathname,
-        search: location.search,
-        hash: location.hash
+        pathname: routeLocation.pathname,
+        search: routeLocation.search,
+        hash: routeLocation.hash
       },
       { replace: true, state: null }
     )
-  }, [location.hash, location.pathname, location.search, location.state, navigate, setSelectedCategory])
-
-  useEffect(() => {
-    if (!pendingRestoreSeries) return
-    setSelectedSeries(pendingRestoreSeries)
-    setPendingRestoreSeries(null)
-  }, [pendingRestoreSeries])
-
-  useEffect(() => {
-    setChannelFilter('series')
-  }, [setChannelFilter])
+  }, [routeLocation.hash, routeLocation.pathname, routeLocation.search, routeLocation.state, navigate, setSelectedCategory])
 
   useEffect(() => {
     const previousSourceId = previousSourceIdRef.current
@@ -164,14 +239,9 @@ export default function SeriesPage() {
     if (previousSourceId === null) return
     if (previousSourceId === activeSourceId) return
 
-    setSearchQuery('')
+    dispatchPage({ type: 'resetSource' })
     setSelectedCategory(null)
-    setSelectedSeries(null)
-    setPendingRestoreSeries(null)
-    setLoadError(null)
-    setForegroundLoadingMessage(null)
-    setIsForegroundLoading(false)
-    setIsBackgroundSyncing(false)
+    dispatchLoad({ type: 'reset' })
   }, [activeSourceId, setSelectedCategory])
 
   useEffect(() => {
@@ -188,7 +258,7 @@ export default function SeriesPage() {
       loadedSeriesFullSourceCache.add(activeSourceId)
       loadedSeriesPreviewSourceCache.add(activeSourceId)
     }
-  }, [activeSourceId, hydratedSourceIds])
+  }, [activeSourceId, hydratedSourceIds, isSourceTypeHydrated])
 
   useEffect(() => {
     if (!activeSourceId) return
@@ -243,9 +313,7 @@ export default function SeriesPage() {
     let cancelled = false
     const controller = new AbortController()
     const load = async () => {
-      setLoadError(null)
-      setForegroundLoadingMessage('Seçili kategori yükleniyor...')
-      setIsForegroundLoading(true)
+      dispatchLoad({ type: 'foregroundStart', message: 'Seçili kategori yükleniyor...' })
 
       try {
         const series = await xtreamApi.getSeries(creds, rawCategoryId, {
@@ -257,11 +325,10 @@ export default function SeriesPage() {
       } catch (err) {
         if (cancelled) return
         console.error('Failed to load series:', err)
-        setLoadError(err instanceof Error ? err.message : 'Diziler yüklenemedi')
+        dispatchLoad({ type: 'failed', message: err instanceof Error ? err.message : 'Diziler yüklenemedi' })
       } finally {
         if (!cancelled) {
-          setIsForegroundLoading(false)
-          setForegroundLoadingMessage(null)
+          dispatchLoad({ type: 'foregroundEnd' })
         }
       }
     }
@@ -278,6 +345,7 @@ export default function SeriesPage() {
     channels,
     getXtreamCredentials,
     addChannels,
+    isSourceTypeHydrated,
     reloadToken
   ])
 
@@ -303,9 +371,7 @@ export default function SeriesPage() {
       )
 
       if (!loadedSeriesPreviewSourceCache.has(activeSourceId) && !hasSourceItems) {
-        setLoadError(null)
-        setForegroundLoadingMessage('Diziler hızlı ön izleme listesiyle açılıyor...')
-        setIsForegroundLoading(true)
+        dispatchLoad({ type: 'foregroundStart', message: 'Diziler hızlı ön izleme listesiyle açılıyor...' })
 
         try {
           const previewSeries = await xtreamApi.getSeriesPreviewStreams(creds, 500, {
@@ -317,12 +383,11 @@ export default function SeriesPage() {
         } catch (err) {
           if (cancelled) return
           console.error('Failed to load series preview:', err)
-          setLoadError(err instanceof Error ? err.message : 'Diziler yüklenemedi')
+          dispatchLoad({ type: 'failed', message: err instanceof Error ? err.message : 'Diziler yüklenemedi' })
           return
         } finally {
           if (!cancelled) {
-            setIsForegroundLoading(false)
-            setForegroundLoadingMessage(null)
+            dispatchLoad({ type: 'foregroundEnd' })
           }
         }
       } else if (hasSourceItems) {
@@ -333,7 +398,7 @@ export default function SeriesPage() {
         return
       }
 
-      if (!cancelled) setIsBackgroundSyncing(true)
+      if (!cancelled) dispatchLoad({ type: 'backgroundSyncing', value: true })
       syncingSeriesFullSourceCache.add(activeSourceId)
       void ensureStagedSync(activeSourceId, 'series', creds)
         .then(() => {
@@ -343,7 +408,7 @@ export default function SeriesPage() {
         })
         .finally(() => {
           syncingSeriesFullSourceCache.delete(activeSourceId)
-          if (!cancelled) setIsBackgroundSyncing(false)
+          if (!cancelled) dispatchLoad({ type: 'backgroundSyncing', value: false })
         })
         .catch(() => undefined)
     }
@@ -362,11 +427,12 @@ export default function SeriesPage() {
     hydratedSourceIds,
     getXtreamCredentials,
     addChannels,
+    isSourceTypeHydrated,
     reloadToken
   ])
 
   const filtered = useMemo(() => {
-    let list = channels.filter((c) => c.type === channelFilter)
+    let list = channels.filter((c) => c.type === 'series')
 
     if (activeSourceId) {
       list = list.filter((c) => c.sourceId === activeSourceId)
@@ -380,7 +446,7 @@ export default function SeriesPage() {
     }
 
     return list
-  }, [channels, activeSourceId, channelFilter, selectedCategoryId, searchQuery])
+  }, [channels, activeSourceId, selectedCategoryId, searchQuery])
   const displayedItems = useRetainedListWhileLoading(filtered, isForegroundLoading, retainResetKey)
   const isPreviewMode =
     !rawCategoryId &&
@@ -391,16 +457,12 @@ export default function SeriesPage() {
   const showInlineLoader = isForegroundLoading && displayedItems.length > 0
 
   const handleSeasonChange = useCallback((seasonNumber: number) => {
-    setSelectedSeries((current) => {
-      if (!current) return current
-      if (current.seasonNumber === seasonNumber) return current
-      return { ...current, seasonNumber }
-    })
+    dispatchPage({ type: 'setSeasonNumber', value: seasonNumber })
   }, [])
 
   const handleSeriesClick = useCallback((item: Channel) => {
     if (item.seriesId) {
-      setSelectedSeries({ seriesId: item.seriesId, sourceId: item.sourceId })
+      dispatchPage({ type: 'selectSeries', value: { seriesId: item.seriesId, sourceId: item.sourceId } })
     }
   }, [])
 
@@ -417,7 +479,7 @@ export default function SeriesPage() {
       playChannel(episodeChannel)
       setMiniPlayer(false)
       openPlayerFromRoute({
-        location,
+        location: routeLocation,
         navigate,
         returnState: {
           restoreSearchQuery: searchQuery,
@@ -435,7 +497,7 @@ export default function SeriesPage() {
         setPlayerReturnTarget
       })
     },
-    [location, navigate, playChannel, searchQuery, selectedCategoryId, selectedSeries, setMiniPlayer, setPlayerReturnTarget]
+    [routeLocation, navigate, playChannel, searchQuery, selectedCategoryId, selectedSeries, setMiniPlayer, setPlayerReturnTarget]
   )
 
   if (selectedSeries) {
@@ -446,7 +508,7 @@ export default function SeriesPage() {
             seriesId={selectedSeries.seriesId}
             sourceId={selectedSeries.sourceId}
             initialSeasonNumber={selectedSeries.seasonNumber}
-            onBack={() => setSelectedSeries(null)}
+            onBack={() => dispatchPage({ type: 'selectSeries', value: null })}
             onSeasonChange={handleSeasonChange}
             onPlayEpisode={handlePlayEpisode}
           />
@@ -458,7 +520,7 @@ export default function SeriesPage() {
   return (
     <div className="flex h-full gap-3 p-3">
       <div className="rounded-lg border border-surface-800 bg-surface-900 w-64 shrink-0 overflow-y-auto p-3">
-        <CategoryList />
+        <CategoryList filter="series" />
       </div>
       <div ref={scrollContainerRef} className="rounded-lg border border-surface-800 bg-surface-900 flex-1 overflow-y-auto p-5">
         <div className="mb-5">
@@ -498,10 +560,8 @@ export default function SeriesPage() {
                   loadedSeriesFullSourceCache.clear()
                   syncingSeriesFullSourceCache.clear()
                 }
-                setIsForegroundLoading(false)
-                setForegroundLoadingMessage(null)
-                setIsBackgroundSyncing(false)
-                setReloadToken((v) => v + 1)
+                dispatchLoad({ type: 'stopLoading' })
+                bumpReloadToken()
               }}
             >
               Tekrar Dene
@@ -533,4 +593,8 @@ export default function SeriesPage() {
       </div>
     </div>
   )
+}
+
+export default function SeriesPage() {
+  return useSeriesPageContent()
 }

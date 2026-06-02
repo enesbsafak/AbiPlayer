@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 
 export function useRetainedListWhileLoading<T>(
   items: T[],
@@ -8,21 +8,17 @@ export function useRetainedListWhileLoading<T>(
   const retainedRef = useRef<T[]>(items)
   const previousResetKeyRef = useRef(resetKey)
 
-  useEffect(() => {
-    if (previousResetKeyRef.current === resetKey) return
+  if (previousResetKeyRef.current !== resetKey) {
     previousResetKeyRef.current = resetKey
     retainedRef.current = []
-  }, [resetKey])
+  }
 
-  useEffect(() => {
-    if (!loading || items.length > 0) {
-      retainedRef.current = items
-    }
-  }, [items, loading])
+  const shouldUseRetained = loading && items.length === 0 && retainedRef.current.length > 0
 
-  if (loading && items.length === 0 && retainedRef.current.length > 0) {
+  if (shouldUseRetained) {
     return retainedRef.current
   }
 
+  retainedRef.current = items
   return items
 }

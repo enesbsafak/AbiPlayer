@@ -1,6 +1,6 @@
 {
   "name": "abi-player",
-  "version": "0.4.6-beta",
+  "version": "0.4.7-beta",
   "description": "Abi Player - beta IPTV player with Xtream Codes API + M3U support",
   "main": "./out/main/index.js",
   "scripts": {
@@ -34,7 +34,6 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
-    "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
     "@types/react": "^18.3.14",
     "@types/react-dom": "^18.3.3",

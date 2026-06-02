@@ -1,4 +1,4 @@
-import { useRef, useMemo, useEffect, useState } from 'react'
+import { useRef, useMemo, useEffect, useState, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { VODCard } from './VODCard'
 import type { Channel } from '@/types/playlist'
@@ -19,7 +19,7 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
   while (current) {
     const style = window.getComputedStyle(current)
     const overflowY = style.overflowY || style.overflow
-    if (overflowY.includes('auto') || overflowY.includes('scroll')) return current
+    if (/\b(auto|scroll)\b/.test(overflowY)) return current
     current = current.parentElement
   }
   return null
@@ -31,12 +31,25 @@ function getColumns(containerWidth: number): number {
 }
 
 export function VODGrid({ items, onPlay }: VODGridProps) {
-  const parentRef = useRef<HTMLDivElement>(null)
+  const parentRef = useRef<HTMLDivElement | null>(null)
   const [containerWidth, setContainerWidth] = useState(() =>
     typeof window === 'undefined' ? 1280 : Math.max(360, window.innerWidth)
   )
   const [cols, setCols] = useState(() => getColumns(containerWidth))
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null)
+  const syncLayoutFromElement = useCallback((element: HTMLDivElement) => {
+    const width = Math.max(320, Math.round(element.getBoundingClientRect().width))
+    setContainerWidth((prev) => (prev === width ? prev : width))
+    setCols((prev) => {
+      const next = getColumns(width)
+      return prev === next ? prev : next
+    })
+    setScrollElement(findScrollParent(element))
+  }, [])
+  const setParentNode = useCallback((node: HTMLDivElement | null) => {
+    parentRef.current = node
+    if (node) syncLayoutFromElement(node)
+  }, [syncLayoutFromElement])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -48,28 +61,19 @@ export function VODGrid({ items, onPlay }: VODGridProps) {
 
     const syncLayout = () => {
       cancelAnimationFrame(rafId)
-      rafId = requestAnimationFrame(() => {
-        const width = Math.max(320, Math.round(element.getBoundingClientRect().width))
-        setContainerWidth((prev) => (prev === width ? prev : width))
-        setCols((prev) => {
-          const next = getColumns(width)
-          return prev === next ? prev : next
-        })
-        setScrollElement(findScrollParent(element))
-      })
+      rafId = requestAnimationFrame(() => syncLayoutFromElement(element))
     }
 
     const observer = new ResizeObserver(syncLayout)
     observer.observe(element)
     window.addEventListener('resize', syncLayout)
-    syncLayout()
 
     return () => {
       cancelAnimationFrame(rafId)
       observer.disconnect()
       window.removeEventListener('resize', syncLayout)
     }
-  }, [])
+  }, [syncLayoutFromElement])
 
   const rows = useMemo(() => {
     const result: Channel[][] = []
@@ -104,7 +108,7 @@ export function VODGrid({ items, onPlay }: VODGridProps) {
 
   if (items.length <= NON_VIRTUAL_ITEM_THRESHOLD) {
     return (
-      <div ref={parentRef}>
+      <div ref={setParentNode}>
         <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
           {items.map((item, index) => (
             <VODCard
@@ -120,7 +124,7 @@ export function VODGrid({ items, onPlay }: VODGridProps) {
   }
 
   return (
-    <div ref={parentRef}>
+    <div ref={setParentNode}>
       <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
         {virtualizer.getVirtualItems().map((virtualRow) => (
           <div

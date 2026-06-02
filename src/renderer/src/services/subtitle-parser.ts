@@ -178,6 +178,7 @@ export function parseASS(content: string): SubtitleCue[] {
   const lines = content.split(/\r?\n/)
 
   let eventFormatFields: string[] = []
+  let eventFormatIndex = new Map<string, number>()
   let styles = new Map<string, SubtitleStyle>()
   let styleFormatLine = ''
   let styleLines = ''
@@ -215,13 +216,15 @@ export function parseASS(content: string): SubtitleCue[] {
           .replace('Format:', '')
           .split(',')
           .map((f) => f.trim())
+        eventFormatIndex = new Map(eventFormatFields.map((field, index) => [field, index]))
         continue
       }
       if (line.startsWith('Dialogue:')) {
         const rest = line.replace('Dialogue:', '').trim()
         // Split only up to the number of format fields - 1, last field is Text
         const values = rest.split(',')
-        const textIdx = eventFormatFields.indexOf('Text')
+        const textIdx = eventFormatIndex.get('Text') ?? -1
+        if (textIdx === -1) continue
         const text = values.slice(textIdx).join(',').trim()
 
         // Remove ASS override tags like {\pos(x,y)} {\an8} etc
@@ -233,9 +236,9 @@ export function parseASS(content: string): SubtitleCue[] {
             .trim()
         )
 
-        const startIdx = eventFormatFields.indexOf('Start')
-        const endIdx = eventFormatFields.indexOf('End')
-        const styleIdx = eventFormatFields.indexOf('Style')
+        const startIdx = eventFormatIndex.get('Start') ?? -1
+        const endIdx = eventFormatIndex.get('End') ?? -1
+        const styleIdx = eventFormatIndex.get('Style') ?? -1
 
         if (startIdx === -1 || endIdx === -1) continue
 

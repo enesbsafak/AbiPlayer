@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import { useState, useReducer, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { CategoryList } from '@/components/channels/CategoryList'
@@ -42,20 +42,105 @@ interface VODRouteState {
   restoreScrollTop?: number
 }
 
-export default function VODPage() {
-  const location = useLocation()
+interface LoadStatus {
+  error: string | null
+  foregroundMessage: string | null
+  isForegroundLoading: boolean
+  isBackgroundSyncing: boolean
+}
+
+type LoadStatusAction =
+  | { type: 'foregroundStart'; message: string }
+  | { type: 'foregroundEnd' }
+  | { type: 'failed'; message: string }
+  | { type: 'backgroundSyncing'; value: boolean }
+  | { type: 'stopLoading' }
+  | { type: 'reset' }
+
+const initialLoadStatus: LoadStatus = {
+  error: null,
+  foregroundMessage: null,
+  isForegroundLoading: false,
+  isBackgroundSyncing: false
+}
+
+function loadStatusReducer(state: LoadStatus, action: LoadStatusAction): LoadStatus {
+  switch (action.type) {
+    case 'foregroundStart':
+      return { ...state, error: null, foregroundMessage: action.message, isForegroundLoading: true }
+    case 'foregroundEnd':
+      return { ...state, foregroundMessage: null, isForegroundLoading: false }
+    case 'failed':
+      return { ...state, error: action.message }
+    case 'backgroundSyncing':
+      return { ...state, isBackgroundSyncing: action.value }
+    case 'stopLoading':
+      return { ...state, foregroundMessage: null, isForegroundLoading: false, isBackgroundSyncing: false }
+    case 'reset':
+      return initialLoadStatus
+    default:
+      return state
+  }
+}
+
+interface VODPageState {
+  searchQuery: string
+  selectedVOD: Channel | null
+  pendingRestoreVodId: string | null
+}
+
+type VODPageAction =
+  | { type: 'setSearchQuery'; value: string }
+  | { type: 'selectVOD'; value: Channel | null }
+  | { type: 'clearSelectedVOD' }
+  | { type: 'restoreRoute'; searchQuery?: string; pendingRestoreVodId?: string }
+  | { type: 'resetSource' }
+
+const initialVodPageState: VODPageState = {
+  searchQuery: '',
+  selectedVOD: null,
+  pendingRestoreVodId: null
+}
+
+function vodPageReducer(state: VODPageState, action: VODPageAction): VODPageState {
+  switch (action.type) {
+    case 'setSearchQuery':
+      return state.searchQuery === action.value ? state : { ...state, searchQuery: action.value }
+    case 'selectVOD':
+      return state.selectedVOD === action.value ? state : { ...state, selectedVOD: action.value }
+    case 'clearSelectedVOD':
+      return state.selectedVOD === null && state.pendingRestoreVodId === null
+        ? state
+        : { ...state, selectedVOD: null, pendingRestoreVodId: null }
+    case 'restoreRoute':
+      return {
+        ...state,
+        searchQuery: action.searchQuery ?? state.searchQuery,
+        pendingRestoreVodId: action.pendingRestoreVodId ?? state.pendingRestoreVodId
+      }
+    case 'resetSource':
+      return initialVodPageState
+    default:
+      return state
+  }
+}
+
+function useVODPageContent() {
+  const routeLocation = useLocation()
   const navigate = useNavigate()
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedVOD, setSelectedVOD] = useState<Channel | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [reloadToken, setReloadToken] = useState(0)
-  const [pendingRestoreVodId, setPendingRestoreVodId] = useState<string | null>(null)
-  const [foregroundLoadingMessage, setForegroundLoadingMessage] = useState<string | null>(null)
-  const [isForegroundLoading, setIsForegroundLoading] = useState(false)
-  const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false)
+  const [pageState, dispatchPage] = useReducer(vodPageReducer, initialVodPageState)
+  const [reloadToken, bumpReloadToken] = useReducer((value: number) => value + 1, 0)
+  const [
+    { error: loadError, foregroundMessage: foregroundLoadingMessage, isForegroundLoading, isBackgroundSyncing },
+    dispatchLoad
+  ] = useReducer(loadStatusReducer, initialLoadStatus)
   const loadedCatsRef = useRef(loadedVodCategoryCache)
   const previousSourceIdRef = useRef<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const { searchQuery, selectedVOD, pendingRestoreVodId } = pageState
+  const setSearchQuery = useCallback((value: string) => {
+    dispatchPage({ type: 'setSearchQuery', value })
+  }, [])
 
   const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
@@ -63,8 +148,6 @@ export default function VODPage() {
   const hydratedSourceIds = useStore((s) => s.hydratedSourceIds)
   const isSourceTypeHydrated = useStore((s) => s.isSourceTypeHydrated)
   const selectedCategoryId = useStore((s) => s.selectedCategoryId)
-  const channelFilter = useStore((s) => s.channelFilter)
-  const setChannelFilter = useStore((s) => s.setChannelFilter)
   const playChannel = useStore((s) => s.playChannel)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
   const addChannels = useStore((s) => s.addChannels)
@@ -89,21 +172,39 @@ export default function VODPage() {
     () => buildCatalogRetainResetKey(activeSourceId, selectedCategoryId),
     [activeSourceId, selectedCategoryId]
   )
+  const restoredVOD = useMemo(
+    () =>
+      pendingRestoreVodId
+        ? channels.find((channel) => channel.id === pendingRestoreVodId && channel.type === 'vod') || null
+        : null,
+    [channels, pendingRestoreVodId]
+  )
+  const activeVOD = selectedVOD ?? restoredVOD
 
   useEffect(() => {
-    const state = location.state as VODRouteState | null
+    const state = routeLocation.state as VODRouteState | null
     if (!state) return
 
     let shouldClearLocationState = false
 
+    let restoredVodId: string | undefined
     if (typeof state.restoreSelectedVODId === 'string') {
-      setPendingRestoreVodId(state.restoreSelectedVODId)
+      restoredVodId = state.restoreSelectedVODId
       shouldClearLocationState = true
     }
 
+    let restoredSearchQuery: string | undefined
     if (typeof state.restoreSearchQuery === 'string') {
-      setSearchQuery(state.restoreSearchQuery)
+      restoredSearchQuery = state.restoreSearchQuery
       shouldClearLocationState = true
+    }
+
+    if (restoredVodId !== undefined || restoredSearchQuery !== undefined) {
+      dispatchPage({
+        type: 'restoreRoute',
+        pendingRestoreVodId: restoredVodId,
+        searchQuery: restoredSearchQuery
+      })
     }
 
     if ('restoreSelectedCategoryId' in state) {
@@ -127,29 +228,13 @@ export default function VODPage() {
 
     navigate(
       {
-        pathname: location.pathname,
-        search: location.search,
-        hash: location.hash
+        pathname: routeLocation.pathname,
+        search: routeLocation.search,
+        hash: routeLocation.hash
       },
       { replace: true, state: null }
     )
-  }, [location.hash, location.pathname, location.search, location.state, navigate, setSelectedCategory])
-
-  useEffect(() => {
-    if (!pendingRestoreVodId) return
-
-    const restoredVOD =
-      channels.find((channel) => channel.id === pendingRestoreVodId && channel.type === 'vod') || null
-
-    if (!restoredVOD) return
-
-    setSelectedVOD(restoredVOD)
-    setPendingRestoreVodId(null)
-  }, [channels, pendingRestoreVodId])
-
-  useEffect(() => {
-    setChannelFilter('vod')
-  }, [setChannelFilter])
+  }, [routeLocation.hash, routeLocation.pathname, routeLocation.search, routeLocation.state, navigate, setSelectedCategory])
 
   useEffect(() => {
     const previousSourceId = previousSourceIdRef.current
@@ -158,14 +243,9 @@ export default function VODPage() {
     if (previousSourceId === null) return
     if (previousSourceId === activeSourceId) return
 
-    setSearchQuery('')
+    dispatchPage({ type: 'resetSource' })
     setSelectedCategory(null)
-    setSelectedVOD(null)
-    setPendingRestoreVodId(null)
-    setLoadError(null)
-    setForegroundLoadingMessage(null)
-    setIsForegroundLoading(false)
-    setIsBackgroundSyncing(false)
+    dispatchLoad({ type: 'reset' })
   }, [activeSourceId, setSelectedCategory])
 
   useEffect(() => {
@@ -182,7 +262,7 @@ export default function VODPage() {
       loadedVodFullSourceCache.add(activeSourceId)
       loadedVodPreviewSourceCache.add(activeSourceId)
     }
-  }, [activeSourceId, hydratedSourceIds])
+  }, [activeSourceId, hydratedSourceIds, isSourceTypeHydrated])
 
   useEffect(() => {
     if (!activeSourceId) return
@@ -237,9 +317,7 @@ export default function VODPage() {
     let cancelled = false
     const controller = new AbortController()
     const load = async () => {
-      setLoadError(null)
-      setForegroundLoadingMessage('Seçili kategori yükleniyor...')
-      setIsForegroundLoading(true)
+      dispatchLoad({ type: 'foregroundStart', message: 'Seçili kategori yükleniyor...' })
 
       try {
         const streams = await xtreamApi.getVodStreams(creds, rawCategoryId, {
@@ -251,11 +329,10 @@ export default function VODPage() {
       } catch (err) {
         if (cancelled) return
         console.error('Failed to load VOD:', err)
-        setLoadError(err instanceof Error ? err.message : 'Film içerikleri yüklenemedi')
+        dispatchLoad({ type: 'failed', message: err instanceof Error ? err.message : 'Film içerikleri yüklenemedi' })
       } finally {
         if (!cancelled) {
-          setIsForegroundLoading(false)
-          setForegroundLoadingMessage(null)
+          dispatchLoad({ type: 'foregroundEnd' })
         }
       }
     }
@@ -272,6 +349,7 @@ export default function VODPage() {
     channels,
     getXtreamCredentials,
     addChannels,
+    isSourceTypeHydrated,
     reloadToken
   ])
 
@@ -297,9 +375,7 @@ export default function VODPage() {
       )
 
       if (!loadedVodPreviewSourceCache.has(activeSourceId) && !hasSourceItems) {
-        setLoadError(null)
-        setForegroundLoadingMessage('Filmler hızlı ön izleme listesiyle açılıyor...')
-        setIsForegroundLoading(true)
+        dispatchLoad({ type: 'foregroundStart', message: 'Filmler hızlı ön izleme listesiyle açılıyor...' })
 
         try {
           const previewStreams = await xtreamApi.getVodPreviewStreams(creds, 500, {
@@ -311,12 +387,11 @@ export default function VODPage() {
         } catch (err) {
           if (cancelled) return
           console.error('Failed to load VOD preview:', err)
-          setLoadError(err instanceof Error ? err.message : 'Film içerikleri yüklenemedi')
+          dispatchLoad({ type: 'failed', message: err instanceof Error ? err.message : 'Film içerikleri yüklenemedi' })
           return
         } finally {
           if (!cancelled) {
-            setIsForegroundLoading(false)
-            setForegroundLoadingMessage(null)
+            dispatchLoad({ type: 'foregroundEnd' })
           }
         }
       } else if (hasSourceItems) {
@@ -327,7 +402,7 @@ export default function VODPage() {
         return
       }
 
-      if (!cancelled) setIsBackgroundSyncing(true)
+      if (!cancelled) dispatchLoad({ type: 'backgroundSyncing', value: true })
       syncingVodFullSourceCache.add(activeSourceId)
       void ensureStagedSync(activeSourceId, 'vod', creds)
         .then(() => {
@@ -337,7 +412,7 @@ export default function VODPage() {
         })
         .finally(() => {
           syncingVodFullSourceCache.delete(activeSourceId)
-          if (!cancelled) setIsBackgroundSyncing(false)
+          if (!cancelled) dispatchLoad({ type: 'backgroundSyncing', value: false })
         })
         .catch(() => undefined)
     }
@@ -355,11 +430,12 @@ export default function VODPage() {
     hydratedSourceIds,
     getXtreamCredentials,
     addChannels,
+    isSourceTypeHydrated,
     reloadToken
   ])
 
   const filtered = useMemo(() => {
-    let list = channels.filter((c) => c.type === channelFilter)
+    let list = channels.filter((c) => c.type === 'vod')
 
     if (activeSourceId) {
       list = list.filter((c) => c.sourceId === activeSourceId)
@@ -373,7 +449,7 @@ export default function VODPage() {
     }
 
     return list
-  }, [channels, activeSourceId, channelFilter, selectedCategoryId, searchQuery])
+  }, [channels, activeSourceId, selectedCategoryId, searchQuery])
   const displayedItems = useRetainedListWhileLoading(filtered, isForegroundLoading, retainResetKey)
   const isPreviewMode =
     !rawCategoryId &&
@@ -384,7 +460,7 @@ export default function VODPage() {
   const showInlineLoader = isForegroundLoading && displayedItems.length > 0
 
   const handleVODClick = useCallback((item: Channel) => {
-    setSelectedVOD(item)
+    dispatchPage({ type: 'selectVOD', value: item })
   }, [])
 
   const handlePlay = useCallback(
@@ -393,25 +469,31 @@ export default function VODPage() {
       playChannel(item)
       setMiniPlayer(false)
       openPlayerFromRoute({
-        location,
+        location: routeLocation,
         navigate,
         returnState: {
           restoreSearchQuery: searchQuery,
           restoreSelectedCategoryId: selectedCategoryId,
           restoreScrollTop: scrollContainerRef.current?.scrollTop ?? 0,
-          ...(selectedVOD ? { restoreSelectedVODId: selectedVOD.id } : {})
+          ...(activeVOD ? { restoreSelectedVODId: activeVOD.id } : {})
         },
         setPlayerReturnTarget
       })
     },
-    [location, navigate, playChannel, searchQuery, selectedCategoryId, selectedVOD, setMiniPlayer, setPlayerReturnTarget]
+    [activeVOD, routeLocation, navigate, playChannel, searchQuery, selectedCategoryId, setMiniPlayer, setPlayerReturnTarget]
   )
 
-  if (selectedVOD) {
+  if (activeVOD) {
     return (
       <div className="h-full p-3">
         <div className="rounded-lg border border-surface-800 bg-surface-900 h-full overflow-y-auto p-5">
-        <VODDetail item={selectedVOD} onBack={() => setSelectedVOD(null)} onPlay={handlePlay} />
+        <VODDetail
+          item={activeVOD}
+          onBack={() => {
+            dispatchPage({ type: 'clearSelectedVOD' })
+          }}
+          onPlay={handlePlay}
+        />
         </div>
       </div>
     )
@@ -420,7 +502,7 @@ export default function VODPage() {
   return (
     <div className="flex h-full gap-3 p-3">
       <div className="rounded-lg border border-surface-800 bg-surface-900 w-64 shrink-0 overflow-y-auto p-3">
-        <CategoryList />
+        <CategoryList filter="vod" />
       </div>
       <div ref={scrollContainerRef} className="rounded-lg border border-surface-800 bg-surface-900 flex-1 overflow-y-auto p-5">
         <div className="mb-5">
@@ -460,10 +542,8 @@ export default function VODPage() {
                   loadedVodFullSourceCache.clear()
                   syncingVodFullSourceCache.clear()
                 }
-                setIsForegroundLoading(false)
-                setForegroundLoadingMessage(null)
-                setIsBackgroundSyncing(false)
-                setReloadToken((v) => v + 1)
+                dispatchLoad({ type: 'stopLoading' })
+                bumpReloadToken()
               }}
             >
               Tekrar Dene
@@ -495,4 +575,8 @@ export default function VODPage() {
       </div>
     </div>
   )
+}
+
+export default function VODPage() {
+  return useVODPageContent()
 }

@@ -110,14 +110,17 @@ export function SourceManager() {
         return (
           <div
             key={source.id}
-            className={`flex items-center justify-between rounded-lg border p-3 transition-colors cursor-pointer ${
+            className={`flex items-center justify-between rounded-lg border p-3 transition-colors ${
               source.id === activeSourceId
                 ? 'border-accent bg-accent/5'
                 : 'border-surface-800 hover:border-surface-700 bg-surface-900'
             }`}
-            onClick={() => setActiveSource(source.id)}
           >
-            <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              onClick={() => setActiveSource(source.id)}
+            >
               {source.id === activeSourceId && (
                 <Check size={16} className="text-accent shrink-0" />
               )}
@@ -138,13 +141,13 @@ export function SourceManager() {
                   )}
                 </div>
               </div>
-            </div>
+            </button>
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="sm"
                 disabled={isRefreshing}
-                onClick={(e) => { e.stopPropagation(); handleRefresh(source.id) }}
+                onClick={() => { handleRefresh(source.id) }}
               >
                 {isRefreshing ? (
                   <Loader2 size={14} className="animate-spin" />
@@ -155,8 +158,7 @@ export function SourceManager() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={(e) => {
-                  e.stopPropagation()
+                onClick={() => {
                   void handleRemove(source.id, source.type)
                 }}
               >

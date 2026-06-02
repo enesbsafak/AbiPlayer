@@ -76,6 +76,7 @@ export async function ensureStagedSync(
   const { setSyncProgress } = useStore.getState()
   const order: ContentType[] = [priorityType, ...(['live', 'vod', 'series'] as const).filter((t) => t !== priorityType)]
   let completed = 0
+  const pendingTypes: ContentType[] = []
 
   for (const type of order) {
     const alreadyDone = useStore.getState().isSourceTypeHydrated(sourceId, type)
@@ -84,21 +85,39 @@ export async function ensureStagedSync(
       continue
     }
 
+    pendingTypes.push(type)
+  }
+
+  const [firstType, ...remainingTypes] = pendingTypes
+
+  if (firstType) {
     setSyncProgress(sourceId, {
-      currentType: type,
+      currentType: firstType,
       completedTypes: completed,
       active: true
     })
 
-    await ensureFullSync(sourceId, type, creds)
+    await ensureFullSync(sourceId, firstType, creds)
     completed++
 
     setSyncProgress(sourceId, {
       currentType: null,
       completedTypes: completed,
-      active: completed < 3
+      active: completed < 3 && remainingTypes.length > 0
     })
   }
+
+  await Promise.all(
+    remainingTypes.map(async (type) => {
+      await ensureFullSync(sourceId, type, creds)
+      completed++
+      setSyncProgress(sourceId, {
+        currentType: null,
+        completedTypes: completed,
+        active: completed < 3
+      })
+    })
+  )
 
   setSyncProgress(sourceId, null)
 }

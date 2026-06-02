@@ -159,10 +159,11 @@ export class MpvController {
   }
 
   async open(url: string, parentWid?: string): Promise<void> {
-    await this.ensureStarted(parentWid)
-    await this.command(['loadfile', url, 'replace'])
-    await this.applySubtitleStyle().catch(() => undefined)
-    await this.command(['set_property', 'pause', false]).catch(() => undefined)
+    await this.ensureStarted(parentWid).then(() => this.command(['loadfile', url, 'replace']))
+    await Promise.allSettled([
+      this.applySubtitleStyle(),
+      this.command(['set_property', 'pause', false])
+    ])
     this.state.path = url
     this.state.running = true
     this.state.paused = false
@@ -428,8 +429,10 @@ export class MpvController {
     ]).catch(async () => {
       await this.command(['loadfile', path, 'replace'])
     })
-    await this.applySubtitleStyle().catch(() => undefined)
-    await this.tryCommand(['set_property', 'pause', false])
+    await Promise.allSettled([
+      this.applySubtitleStyle(),
+      this.tryCommand(['set_property', 'pause', false])
+    ])
     this.state.path = path
     this.state.running = true
     this.state.paused = false
@@ -546,9 +549,10 @@ export class MpvController {
       this.command(['observe_property', 1012, 'fullscreen'])
     ])
 
-    await this.applySubtitleStyle().catch(() => undefined)
-
-    await this.refreshState()
+    await Promise.allSettled([
+      this.applySubtitleStyle(),
+      this.refreshState()
+    ])
   }
 
   private async applySubtitleStyle(): Promise<void> {
@@ -621,40 +625,45 @@ export class MpvController {
   private async connectSocket(socketPath: string): Promise<net.Socket> {
     const startedAt = Date.now()
 
-    while (Date.now() - startedAt < MPV_CONNECT_TIMEOUT_MS) {
-      try {
-        const socket = await new Promise<net.Socket>((resolve, reject) => {
-          const client = net.createConnection(socketPath)
-          const onError = (error: Error) => {
-            client.removeAllListeners()
-            client.destroy()
-            reject(error)
-          }
+    const tryConnect = async (): Promise<net.Socket> =>
+      new Promise<net.Socket>((resolve, reject) => {
+        const client = net.createConnection(socketPath)
+        const onError = (error: Error) => {
+          client.removeAllListeners()
+          client.destroy()
+          reject(error)
+        }
 
-          client.once('error', onError)
-          client.once('connect', () => {
-            client.removeListener('error', onError)
-            resolve(client)
-          })
+        client.once('error', onError)
+        client.once('connect', () => {
+          client.removeListener('error', onError)
+          resolve(client)
         })
+      })
 
-        return socket
+    const retryConnect = async (): Promise<net.Socket> => {
+      if (Date.now() - startedAt >= MPV_CONNECT_TIMEOUT_MS) {
+        throw new Error('mpv IPC soketine bağlanılamadı')
+      }
+
+      try {
+        return await tryConnect()
       } catch {
         await new Promise((resolve) => setTimeout(resolve, MPV_CONNECT_RETRY_MS))
+        return retryConnect()
       }
     }
 
-    throw new Error('mpv IPC soketine bağlanılamadı')
+    return retryConnect()
   }
 
   private onSocketData(chunk: string): void {
     this.socketBuffer += chunk
-    let newlineIndex = this.socketBuffer.indexOf('\n')
+    const lines = this.socketBuffer.split('\n')
+    this.socketBuffer = lines.pop() ?? ''
 
-    while (newlineIndex !== -1) {
-      const line = this.socketBuffer.slice(0, newlineIndex).trim()
-      this.socketBuffer = this.socketBuffer.slice(newlineIndex + 1)
-      newlineIndex = this.socketBuffer.indexOf('\n')
+    for (const rawLine of lines) {
+      const line = rawLine.trim()
       if (!line) continue
 
       try {

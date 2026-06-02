@@ -44,21 +44,19 @@ export function useEPG() {
     let cancelled = false
     inFlightRef.current = true
 
-    const { setEpgData, setEpgLoading, setEpgError } = useStore.getState()
-    setEpgLoading(true)
-    setEpgError(null)
+    const { beginEpgLoad, completeEpgLoad, failEpgLoad } = useStore.getState()
+    beginEpgLoad()
 
     const epgUrl = xtreamApi.buildEpgUrl(creds)
 
     fetchAndParseEPG(epgUrl)
       .then((data) => {
-        if (!cancelled) setEpgData(source.id, data)
+        if (!cancelled) completeEpgLoad(source.id, data)
       })
       .catch((err) => {
-        if (!cancelled) setEpgError(err instanceof Error ? err.message : 'EPG verisi alınamadı')
+        if (!cancelled) failEpgLoad(err instanceof Error ? err.message : 'EPG verisi alınamadı')
       })
       .finally(() => {
-        if (!cancelled) setEpgLoading(false)
         inFlightRef.current = false
       })
 
@@ -86,14 +84,13 @@ export function useEPG() {
       if (!creds) return
 
       inFlightRef.current = true
-      const { setEpgData, setEpgLoading, setEpgError } = useStore.getState()
-      setEpgLoading(true)
+      const { beginEpgLoad, completeEpgLoad, failEpgLoad } = useStore.getState()
+      beginEpgLoad()
 
       fetchAndParseEPG(xtreamApi.buildEpgUrl(creds))
-        .then((data) => setEpgData(source.id, data))
-        .catch((err) => setEpgError(err instanceof Error ? err.message : 'EPG yenilemesi başarısız'))
+        .then((data) => completeEpgLoad(source.id, data))
+        .catch((err) => failEpgLoad(err instanceof Error ? err.message : 'EPG yenilemesi başarısız'))
         .finally(() => {
-          setEpgLoading(false)
           inFlightRef.current = false
         })
     }, staleMs)

@@ -1,15 +1,20 @@
-import { useRef, type ReactNode } from 'react'
+import { useRef, type ComponentType } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+
+interface VirtualListItemProps<T> {
+  item: T
+  index: number
+}
 
 interface VirtualListProps<T> {
   items: T[]
   estimateSize: number
-  renderItem: (item: T, index: number) => ReactNode
+  itemComponent: ComponentType<VirtualListItemProps<T>>
   className?: string
   overscan?: number
 }
 
-export function VirtualList<T>({ items, estimateSize, renderItem, className = '', overscan = 5 }: VirtualListProps<T>) {
+export function VirtualList<T>({ items, estimateSize, itemComponent: ItemComponent, className = '', overscan = 5 }: VirtualListProps<T>) {
   const parentRef = useRef<HTMLDivElement>(null)
 
   const virtualizer = useVirtualizer({
@@ -31,7 +36,7 @@ export function VirtualList<T>({ items, estimateSize, renderItem, className = ''
               transform: `translateY(${virtualItem.start}px)`
             }}
           >
-            {renderItem(items[virtualItem.index], virtualItem.index)}
+            <ItemComponent item={items[virtualItem.index]} index={virtualItem.index} />
           </div>
         ))}
       </div>

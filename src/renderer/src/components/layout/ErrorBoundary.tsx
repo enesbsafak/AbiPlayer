@@ -37,6 +37,7 @@ export class ErrorBoundary extends Component<Props, State> {
             {this.state.error?.message || 'Bilinmeyen hata'}
           </p>
           <button
+            type="button"
             onClick={this.handleReload}
             className="mt-2 flex items-center gap-2 rounded-lg bg-accent/20 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/30 transition-colors"
           >

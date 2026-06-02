@@ -15,7 +15,7 @@ export function Header() {
         </span>
         {activeSource && (
           <div className="flex min-w-0 items-center gap-2 rounded-md border border-signal-600/30 bg-signal/5 px-2.5 py-1 text-xs font-medium text-surface-300">
-            <div className="h-1.5 w-1.5 rounded-full bg-signal" />
+            <div className="size-1.5 rounded-full bg-signal" />
             <span className="max-w-[260px] truncate">{activeSource.name}</span>
           </div>
         )}
@@ -23,6 +23,7 @@ export function Header() {
 
       <div className="flex items-center gap-2">
         <button
+          type="button"
           onClick={() => navigate('/search')}
           className="flex items-center gap-2 rounded-lg border border-surface-700 bg-surface-900 px-3 py-1.5 text-sm text-surface-400 transition-colors hover:border-surface-600 hover:text-surface-200"
         >
@@ -32,6 +33,7 @@ export function Header() {
         </button>
 
         <button
+          type="button"
           onClick={() => navigate('/settings')}
           className="flex items-center gap-2 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-600"
         >

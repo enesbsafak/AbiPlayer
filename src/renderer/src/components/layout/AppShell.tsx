@@ -13,12 +13,12 @@ const LAST_ROUTE_KEY = 'iptv:last-route'
 const RESTORABLE_ROUTES = new Set(['/live', '/vod', '/series', '/epg', '/favorites', '/search', '/settings'])
 
 export function AppShell() {
-  const location = useLocation()
+  const routeLocation = useLocation()
   const restoredRef = useRef(false)
   const currentChannel = useStore((s) => s.currentChannel)
   const isMiniPlayer = useStore((s) => s.isMiniPlayer)
   const playbackEngine = useStore((s) => s.playbackEngine)
-  const isPlayerRoute = location.pathname === '/player'
+  const isPlayerRoute = routeLocation.pathname === '/player'
 
   useAutoConnect()
   useKeyboard()
@@ -26,10 +26,10 @@ export function AppShell() {
 
   // Save last visited route
   useEffect(() => {
-    if (RESTORABLE_ROUTES.has(location.pathname)) {
-      localStorage.setItem(LAST_ROUTE_KEY, location.pathname)
+    if (RESTORABLE_ROUTES.has(routeLocation.pathname)) {
+      localStorage.setItem(LAST_ROUTE_KEY, routeLocation.pathname)
     }
-  }, [location.pathname])
+  }, [routeLocation.pathname])
 
   // Always start from home page — bootstrap loads categories + preview first
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useId, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
@@ -11,32 +11,39 @@ interface ModalProps {
 }
 
 export function Modal({ isOpen, onClose, title, children, className = '' }: ModalProps) {
-  const overlayRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const titleId = useId()
 
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current
+    if (!isOpen || !dialog) return
+
+    if (!dialog.open) dialog.showModal()
+
+    return () => {
+      if (dialog.open) dialog.close()
     }
-    if (isOpen) document.addEventListener('keydown', handleEsc)
-    return () => document.removeEventListener('keydown', handleEsc)
-  }, [isOpen, onClose])
+  }, [isOpen])
 
   if (!isOpen) return null
 
   return createPortal(
-    <div
-      ref={overlayRef}
-      className="fixed inset-0 z-modal flex items-center justify-center bg-black/80"
-      onClick={(e) => e.target === overlayRef.current && onClose()}
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
+    <dialog
+      ref={dialogRef}
+      className="fixed inset-0 z-modal m-0 flex h-dvh w-screen max-w-none items-center justify-center border-0 bg-black/80 p-4 text-surface-50 backdrop:bg-black/80"
+      aria-label={title ? undefined : 'Pencere'}
+      aria-labelledby={title ? titleId : undefined}
+      onCancel={(event) => {
+        event.preventDefault()
+        onClose()
+      }}
     >
       <div className={`relative w-full max-w-lg rounded-lg border border-surface-800 bg-surface-900 shadow-2xl ${className}`}>
         {title && (
           <div className="flex items-center justify-between border-b border-surface-800 px-6 py-4">
-            <h2 className="text-base font-semibold text-surface-50">{title}</h2>
+            <h2 id={titleId} className="text-base font-semibold text-surface-50">{title}</h2>
             <button
+              type="button"
               onClick={onClose}
               className="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-50"
               aria-label="Kapat"
@@ -47,7 +54,7 @@ export function Modal({ isOpen, onClose, title, children, className = '' }: Moda
         )}
         <div className="p-6">{children}</div>
       </div>
-    </div>,
+    </dialog>,
     document.body
   )
 }

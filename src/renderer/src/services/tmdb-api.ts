@@ -279,13 +279,10 @@ function mapMovieDetails(input: TmdbMovieResponse): TmdbMovieDetails {
   const cast = toArray(input.credits?.cast)
     .sort((a, b) => (a.order ?? 999) - (b.order ?? 999))
     .slice(0, 10)
-    .map((member) => member.name)
-    .filter(Boolean)
+    .flatMap((member) => (member.name ? [member.name] : []))
 
   const directors = toArray(input.credits?.crew)
-    .filter((member) => member.job === 'Director')
-    .map((member) => member.name)
-    .filter(Boolean)
+    .flatMap((member) => (member.job === 'Director' && member.name ? [member.name] : []))
 
   return {
     id: input.id,
@@ -294,7 +291,7 @@ function mapMovieDetails(input: TmdbMovieResponse): TmdbMovieDetails {
     releaseDate: input.release_date || undefined,
     runtime: typeof input.runtime === 'number' ? input.runtime : undefined,
     rating: typeof input.vote_average === 'number' ? input.vote_average : undefined,
-    genres: toArray(input.genres).map((genre) => genre.name).filter(Boolean),
+    genres: toArray(input.genres).flatMap((genre) => (genre.name ? [genre.name] : [])),
     cast,
     directors,
     posterPath: buildImageUrl(input.poster_path, 'w500'),
@@ -306,13 +303,14 @@ function mapTvDetails(input: TmdbTvResponse): TmdbTvDetails {
   const cast = toArray(input.credits?.cast)
     .sort((a, b) => (a.order ?? 999) - (b.order ?? 999))
     .slice(0, 12)
-    .map((member) => member.name)
-    .filter(Boolean)
+    .flatMap((member) => (member.name ? [member.name] : []))
 
   const creators = toArray(input.credits?.crew)
-    .filter((member) => member.job === 'Creator' || member.job === 'Screenplay' || member.department === 'Writing')
-    .map((member) => member.name)
-    .filter(Boolean)
+    .flatMap((member) =>
+      (member.job === 'Creator' || member.job === 'Screenplay' || member.department === 'Writing') && member.name
+        ? [member.name]
+        : []
+    )
 
   return {
     id: input.id,
@@ -320,7 +318,7 @@ function mapTvDetails(input: TmdbTvResponse): TmdbTvDetails {
     overview: input.overview || '',
     firstAirDate: input.first_air_date || undefined,
     rating: typeof input.vote_average === 'number' ? input.vote_average : undefined,
-    genres: toArray(input.genres).map((genre) => genre.name).filter(Boolean),
+    genres: toArray(input.genres).flatMap((genre) => (genre.name ? [genre.name] : [])),
     cast,
     creators,
     posterPath: buildImageUrl(input.poster_path, 'w500'),

@@ -16,7 +16,7 @@ export function Sidebar() {
   return (
     <aside className="flex w-[56px] flex-col border-r border-surface-800 bg-surface-950 py-3 lg:w-60">
       <div className="mb-3 hidden items-center gap-2.5 px-4 lg:flex">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-white">
+        <div className="flex size-8 items-center justify-center rounded-lg bg-accent text-white">
           <Zap size={14} />
         </div>
         <div>

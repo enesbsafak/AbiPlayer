@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useSyncExternalStore } from 'react'
 import { format, addHours, startOfHour } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
@@ -11,6 +11,39 @@ const HOUR_WIDTH = 240
 const ROW_HEIGHT = 56
 const HEADER_HEIGHT = 40
 const CHANNEL_WIDTH = 180
+let currentTimeSnapshot = 0
+const currentTimeSubscribers = new Set<() => void>()
+let currentTimeTimer: ReturnType<typeof setInterval> | null = null
+
+function publishCurrentTime() {
+  currentTimeSnapshot = Date.now()
+  for (const subscriber of currentTimeSubscribers) subscriber()
+}
+
+function subscribeCurrentTime(subscriber: () => void) {
+  currentTimeSubscribers.add(subscriber)
+  if (currentTimeSubscribers.size === 1) {
+    publishCurrentTime()
+    currentTimeTimer = setInterval(publishCurrentTime, 60_000)
+  }
+
+  return () => {
+    currentTimeSubscribers.delete(subscriber)
+    if (currentTimeSubscribers.size === 0 && currentTimeTimer) {
+      clearInterval(currentTimeTimer)
+      currentTimeTimer = null
+      currentTimeSnapshot = 0
+    }
+  }
+}
+
+function getCurrentTimeSnapshot() {
+  return currentTimeSnapshot
+}
+
+function getServerTimeSnapshot() {
+  return 0
+}
 
 export function EPGGrid() {
   const epgData = useStore((s) => s.epgData)
@@ -21,6 +54,7 @@ export function EPGGrid() {
   const activeSourceId = useStore((s) => s.activeSourceId)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [timeOffset, setTimeOffset] = useState(0)
+  const currentTime = useSyncExternalStore(subscribeCurrentTime, getCurrentTimeSnapshot, getServerTimeSnapshot)
   const sourceEpgData = activeSourceId && epgSourceId === activeSourceId ? epgData : null
 
   const baseTime = useMemo(() => startOfHour(new Date()), [])
@@ -43,7 +77,7 @@ export function EPGGrid() {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-surface-500">
         <Spinner size={24} />
-        <p className="text-sm mt-3">EPG verisi yükleniyor...</p>
+        <p className="text-sm mt-3">EPG verisi yükleniyor…</p>
       </div>
     )
   }
@@ -89,9 +123,9 @@ export function EPGGrid() {
           {/* Time header */}
           <div className="sticky top-0 z-10 flex bg-surface-900 border-b border-surface-800">
             <div className="shrink-0 border-r border-surface-800" style={{ width: CHANNEL_WIDTH, height: HEADER_HEIGHT }} />
-            {hours.map((h, i) => (
+            {hours.map((h) => (
               <div
-                key={i}
+                key={h.getTime()}
                 className="shrink-0 border-r border-surface-800 px-3 flex items-center text-xs text-surface-400"
                 style={{ width: HOUR_WIDTH, height: HEADER_HEIGHT }}
               >
@@ -112,16 +146,16 @@ export function EPGGrid() {
                   <span className="truncate text-xs font-medium">{channel.name}</span>
                 </div>
                 <div className="relative flex-1" style={{ width: totalWidth }}>
-                  {visiblePrograms.map((prog, i) => {
+                  {visiblePrograms.map((prog) => {
                     const progStart = Math.max(prog.start, startTime)
                     const progEnd = Math.min(prog.end, endTime)
                     const left = ((progStart - startTime) / (endTime - startTime)) * totalWidth
                     const width = ((progEnd - progStart) / (endTime - startTime)) * totalWidth
-                    const isNow = Date.now() >= prog.start && Date.now() < prog.end
+                    const isNow = currentTime >= prog.start && currentTime < prog.end
 
                     return (
                       <div
-                        key={i}
+                        key={prog.start}
                         className={`absolute top-1 bottom-1 rounded px-2 flex items-center overflow-hidden text-xs border transition-colors cursor-pointer hover:brightness-110 ${
                           isNow
                             ? 'bg-accent/20 border-accent/30 text-white'

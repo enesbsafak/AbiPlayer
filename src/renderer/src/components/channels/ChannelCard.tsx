@@ -25,56 +25,65 @@ export const ChannelCard = memo(function ChannelCard({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border border-surface-800 bg-surface-900 transition-colors hover:border-surface-700"
-      onClick={() => onPlay(channel)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPlay(channel) } }}
-      aria-label={`${channel.name} oynat`}
+      className="group relative flex flex-col overflow-hidden rounded-lg border border-surface-800 bg-surface-900 transition-colors hover:border-surface-700 focus-within:border-surface-700"
     >
-      <div className="relative flex aspect-video items-center justify-center bg-surface-800">
-        {artwork ? (
-          <LazyImage
-            src={artwork}
-            alt={channel.name}
-            className={channel.type === 'live' ? 'h-full w-full p-4' : 'h-full w-full'}
-            fit={channel.type === 'live' ? 'contain' : 'cover'}
-            eager={eagerImage}
-          />
-        ) : (
-          <Radio size={28} className="text-surface-600" />
-        )}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
-          <Play
-            size={36}
-            className="opacity-0 transition-opacity group-hover:opacity-100"
-            fill="white"
-            color="white"
-          />
+      <button
+        type="button"
+        className="flex w-full flex-1 flex-col text-left"
+        onClick={() => onPlay(channel)}
+        aria-label={`${channel.name} oynat`}
+      >
+        <div className="relative flex aspect-video items-center justify-center bg-surface-800">
+          {artwork ? (
+            <LazyImage
+              src={artwork}
+              alt={channel.name}
+              className={channel.type === 'live' ? 'h-full w-full p-4' : 'h-full w-full'}
+              fit={channel.type === 'live' ? 'contain' : 'cover'}
+              eager={eagerImage}
+            />
+          ) : (
+            <Radio size={28} className="text-surface-600" aria-hidden="true" />
+          )}
+          <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40 group-focus-within:bg-black/40">
+            <Play
+              size={36}
+              className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              fill="white"
+              color="white"
+              aria-hidden="true"
+            />
+          </div>
+          {channel.type === 'live' && (
+            <div className="absolute left-2 top-2 flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 text-caption font-medium text-white" aria-label="Canlı yayın">
+              <span className="size-1.5 animate-pulse rounded-full bg-white" aria-hidden="true" />
+              Canlı
+            </div>
+          )}
+          {qualityLabel && (
+            <div className="absolute right-2 top-2">
+              <QualityBadge label={qualityLabel} />
+            </div>
+          )}
         </div>
-        {channel.type === 'live' && (
-          <div className="absolute left-2 top-2 flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 text-caption font-medium text-white" aria-label="Canlı yayın">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" aria-hidden="true" />
-            Canlı
-          </div>
-        )}
-        {qualityLabel && (
-          <div className="absolute right-2 top-2">
-            <QualityBadge label={qualityLabel} />
-          </div>
-        )}
-      </div>
-      <div className="flex items-start justify-between gap-2 p-3">
-        <div className="min-w-0">
-          <ClampText as="p" lines={2} className="text-body-sm font-medium text-surface-100">
+        <div className="p-3 pr-12">
+          <ClampText as="p" lines={2} titleText={channel.name} className="text-body-sm font-medium text-surface-100">
             {channel.name}
           </ClampText>
-          <ClampText as="p" lines={1} className="mt-0.5 text-label text-surface-500">
+          <ClampText
+            as="p"
+            lines={1}
+            titleText={channel.group || channel.categoryName || (channel.type === 'live' ? 'Yayın' : 'Medya')}
+            className="mt-0.5 text-label text-surface-500"
+          >
             {channel.group || channel.categoryName || (channel.type === 'live' ? 'Yayın' : 'Medya')}
           </ClampText>
         </div>
+      </button>
+      <div className="absolute bottom-3 right-3">
         <button
-          onClick={(e) => { e.stopPropagation(); toggleFavorite(channel.id) }}
+          type="button"
+          onClick={() => { toggleFavorite(channel.id) }}
           className="shrink-0 rounded-md p-1.5 text-surface-500 transition-colors hover:bg-surface-800 hover:text-surface-300"
           aria-label={fav ? 'Favorilerden çıkar' : 'Favorilere ekle'}
         >

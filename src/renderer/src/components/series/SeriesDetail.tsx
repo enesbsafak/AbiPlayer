@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useReducer, useEffect, useRef } from 'react'
 import { Play, ArrowLeft } from 'lucide-react'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
@@ -83,22 +83,47 @@ function parseEpisodeId(id: unknown): number | null {
   return null
 }
 
-export function SeriesDetail({
+interface LoadStatus {
+  loading: boolean
+  error: string | null
+}
+
+type LoadStatusAction =
+  | { type: 'loadStart' }
+  | { type: 'loadFailed'; message: string }
+  | { type: 'loadEnd' }
+  | { type: 'loadAborted'; message: string }
+
+const initialLoadStatus: LoadStatus = { loading: true, error: null }
+
+function loadStatusReducer(state: LoadStatus, action: LoadStatusAction): LoadStatus {
+  switch (action.type) {
+    case 'loadStart':
+      return { loading: true, error: null }
+    case 'loadFailed':
+      return { ...state, error: action.message }
+    case 'loadEnd':
+      return { ...state, loading: false }
+    case 'loadAborted':
+      return { loading: false, error: action.message }
+    default:
+      return state
+  }
+}
+
+function useSeriesDetailData({
   seriesId,
   sourceId,
-  initialSeasonNumber,
-  onBack,
-  onSeasonChange,
-  onPlayEpisode
-}: SeriesDetailProps) {
+  initialSeasonNumber
+}: Pick<SeriesDetailProps, 'seriesId' | 'sourceId' | 'initialSeasonNumber'>) {
   const [detail, setDetail] = useState<SeriesDetailType | null>(null)
   const [selectedSeason, setSelectedSeason] = useState<number>(1)
-  const [tmdbTvId, setTmdbTvId] = useState<number | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [reloadToken, setReloadToken] = useState(0)
-  const hydratedSeasonsRef = useRef(new Set<number>())
-  const appliedInitialSeasonRef = useRef<number | undefined>(undefined)
+  const tmdbTvIdRef = useRef<number | null>(null)
+  const [reloadToken, bumpReloadToken] = useReducer((value: number) => value + 1, 0)
+  const [{ loading, error: loadError }, dispatchLoad] = useReducer(loadStatusReducer, initialLoadStatus)
+  const hydratedSeasonsRef = useRef<Set<number> | null>(null)
+  if (hydratedSeasonsRef.current === null) hydratedSeasonsRef.current = new Set<number>()
+  const hydratedSeasons = hydratedSeasonsRef.current
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const credentialsHydrated = useStore((s) => s.credentialsHydrated)
   const settings = useStore((s) => s.settings)
@@ -106,24 +131,22 @@ export function SeriesDetail({
   useEffect(() => {
     let cancelled = false
     const controller = new AbortController()
-    hydratedSeasonsRef.current.clear()
-    appliedInitialSeasonRef.current = undefined
+    hydratedSeasons.clear()
     const load = async () => {
-      setLoading(true)
+      dispatchLoad({ type: 'loadStart' })
       setDetail(null)
-      setTmdbTvId(null)
-      setLoadError(null)
+      tmdbTvIdRef.current = null
       const creds = getXtreamCredentials(sourceId)
       if (!creds) {
-        setLoading(false)
         // Distinguish "credentials not yet hydrated" (transient, auto-retries
         // once useAutoConnect finishes) from "source isn't xtream / missing
         // credentials" (permanent for this source).
-        setLoadError(
-          credentialsHydrated
+        dispatchLoad({
+          type: 'loadAborted',
+          message: credentialsHydrated
             ? 'Bu kaynak için Xtream kimlik bilgileri bulunamadı'
             : 'Kimlik bilgileri hazırlanıyor, lütfen bekleyin...'
-        )
+        })
         return
       }
 
@@ -135,14 +158,15 @@ export function SeriesDetail({
         const rawSeasons = normalizeSeasons((info as { seasons?: unknown }).seasons)
         const rawEpisodes = normalizeEpisodeMap((info as { episodes?: unknown }).episodes)
 
-        const seasons = rawSeasons
-          .filter((s) => typeof s.season_number === 'number')
-          .map((s) => ({
-            seasonNumber: s.season_number as number,
-            name: s.name || '',
-            episodeCount: s.episode_count || 0,
-            cover: s.cover || ''
-          }))
+        const seasons = rawSeasons.flatMap((season) => {
+          if (typeof season.season_number !== 'number') return []
+          return [{
+            seasonNumber: season.season_number,
+            name: season.name || '',
+            episodeCount: season.episode_count || 0,
+            cover: season.cover || ''
+          }]
+        })
 
         const episodes: Record<number, SeriesDetailType['episodes'][number]> = {}
         for (const [seasonNum, eps] of Object.entries(rawEpisodes)) {
@@ -174,10 +198,17 @@ export function SeriesDetail({
         const seasonsFromEpisodes =
           seasons.length === 0
             ? Object.keys(episodes)
-                .map((k) => parseInt(k, 10))
-                .filter(Number.isFinite)
+                .flatMap((key) => {
+                  const seasonNumber = parseInt(key, 10)
+                  return Number.isFinite(seasonNumber) ? [seasonNumber] : []
+                })
                 .sort((a, b) => a - b)
-                .map((n) => ({ seasonNumber: n, name: `Sezon ${n}`, episodeCount: episodes[n]?.length ?? 0, cover: '' }))
+                .map((seasonNumber) => ({
+                  seasonNumber,
+                  name: `Sezon ${seasonNumber}`,
+                  episodeCount: episodes[seasonNumber]?.length ?? 0,
+                  cover: ''
+                }))
             : seasons
 
         const rawName = typeof rawInfo.name === 'string' ? rawInfo.name : ''
@@ -243,7 +274,7 @@ export function SeriesDetail({
                     ? [tmdbDetails.backdropPath, ...nextDetail.backdropPath].filter(Boolean)
                     : nextDetail.backdropPath
               }
-              setTmdbTvId(tmdbDetails.id)
+              tmdbTvIdRef.current = tmdbDetails.id
             }
           } catch (error) {
             if (!cancelled) console.warn('TMDB enrichment failed for series detail', error)
@@ -266,9 +297,9 @@ export function SeriesDetail({
       } catch (err) {
         if (cancelled) return
         console.error('Failed to load series info:', err)
-        setLoadError(err instanceof Error ? err.message : 'Dizi detayı yüklenemedi')
+        dispatchLoad({ type: 'loadFailed', message: err instanceof Error ? err.message : 'Dizi detayı yüklenemedi' })
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) dispatchLoad({ type: 'loadEnd' })
       }
     }
     void load()
@@ -279,6 +310,7 @@ export function SeriesDetail({
   }, [
     credentialsHydrated,
     getXtreamCredentials,
+    hydratedSeasons,
     initialSeasonNumber,
     reloadToken,
     seriesId,
@@ -288,28 +320,12 @@ export function SeriesDetail({
   ])
 
   useEffect(() => {
-    if (!detail) return
-    if (typeof initialSeasonNumber !== 'number') return
-    if (!detail.seasons.some((season) => season.seasonNumber === initialSeasonNumber)) return
-    if (appliedInitialSeasonRef.current === initialSeasonNumber) return
-    appliedInitialSeasonRef.current = initialSeasonNumber
-    setSelectedSeason(initialSeasonNumber)
-  }, [detail, initialSeasonNumber])
-
-  const seasonChangeRef = useRef(selectedSeason)
-  useEffect(() => {
-    if (!detail) return
-    if (seasonChangeRef.current === selectedSeason) return
-    seasonChangeRef.current = selectedSeason
-    onSeasonChange?.(selectedSeason)
-  }, [detail, onSeasonChange, selectedSeason])
-
-  useEffect(() => {
     let cancelled = false
     const tmdbApiKey = resolveTmdbApiKey(settings.tmdbApiKey)
+    const tmdbTvId = tmdbTvIdRef.current
     if (!detail || !tmdbTvId || !tmdbApiKey) return
     if (!detail.episodes[selectedSeason]?.length) return
-    if (hydratedSeasonsRef.current.has(selectedSeason)) return
+    if (hydratedSeasons.has(selectedSeason)) return
 
     const hydrateSeason = async () => {
       try {
@@ -363,7 +379,7 @@ export function SeriesDetail({
           }
         })
 
-        hydratedSeasonsRef.current.add(selectedSeason)
+        hydratedSeasons.add(selectedSeason)
       } catch (error) {
         if (!cancelled) console.warn('TMDB season enrichment failed', error)
       }
@@ -373,7 +389,39 @@ export function SeriesDetail({
     return () => {
       cancelled = true
     }
-  }, [detail, selectedSeason, settings.language, settings.tmdbApiKey, tmdbTvId])
+  }, [detail, hydratedSeasons, selectedSeason, settings.language, settings.tmdbApiKey])
+
+  const retry = () => {
+    bumpReloadToken()
+    dispatchLoad({ type: 'loadStart' })
+  }
+
+  return {
+    detail,
+    loading,
+    loadError,
+    retry,
+    selectedSeason,
+    setSelectedSeason
+  }
+}
+
+export function SeriesDetail({
+  seriesId,
+  sourceId,
+  initialSeasonNumber,
+  onBack,
+  onSeasonChange,
+  onPlayEpisode
+}: SeriesDetailProps) {
+  const {
+    detail,
+    loading,
+    loadError,
+    retry,
+    selectedSeason,
+    setSelectedSeason
+  } = useSeriesDetailData({ seriesId, sourceId, initialSeasonNumber })
 
   if (loading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>
   if (!detail) {
@@ -387,7 +435,7 @@ export function SeriesDetail({
             {loadError || 'Dizi detayı yüklenemedi'}
           </p>
           <div className="mt-3 flex items-center justify-center gap-2">
-            <Button size="sm" variant="secondary" onClick={() => setReloadToken((v) => v + 1)}>
+            <Button size="sm" variant="secondary" onClick={retry}>
               Tekrar Dene
             </Button>
             <Button size="sm" variant="ghost" onClick={onBack}>
@@ -429,7 +477,10 @@ export function SeriesDetail({
             key={s.seasonNumber}
             variant={s.seasonNumber === selectedSeason ? 'primary' : 'secondary'}
             size="sm"
-            onClick={() => setSelectedSeason(s.seasonNumber)}
+            onClick={() => {
+              setSelectedSeason(s.seasonNumber)
+              onSeasonChange?.(s.seasonNumber)
+            }}
           >
             {s.name || `Sezon ${s.seasonNumber}`}
           </Button>
@@ -442,9 +493,10 @@ export function SeriesDetail({
             const qualityLabel = inferContentQualityLabel(ep)
 
             return (
-              <div
+              <button
                 key={ep.id}
-                className="flex items-center gap-4 rounded-lg border border-surface-800 bg-surface-900 p-3 hover:border-surface-700 transition-colors cursor-pointer"
+                type="button"
+                className="flex w-full items-center gap-4 rounded-lg border border-surface-800 bg-surface-900 p-3 text-left hover:border-surface-700 transition-colors"
                 onClick={() =>
                   onPlayEpisode(
                     ep.streamUrl,
@@ -453,7 +505,7 @@ export function SeriesDetail({
                   )
                 }
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-800">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-800">
                   <Play size={16} className="text-accent" fill="currentColor" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -468,7 +520,7 @@ export function SeriesDetail({
                   {ep.plot && <p className="text-xs text-surface-500 truncate">{ep.plot}</p>}
                 </div>
                 {ep.duration && <span className="text-xs text-surface-500 shrink-0">{ep.duration}</span>}
-              </div>
+              </button>
             )
           })()
         ))}

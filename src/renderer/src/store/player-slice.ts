@@ -3,6 +3,27 @@ import type { AudioTrack, SubtitleTrack, SubtitleCue, VideoQualityOption } from 
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 
+type PlayerPatch = Partial<{
+  playbackEngine: 'html5' | 'mpv'
+  isPlaying: boolean
+  isPaused: boolean
+  isBuffering: boolean
+  currentTime: number
+  duration: number
+  demuxerCacheDuration: number
+  isFullscreen: boolean
+  playerError: string | null
+  audioTracks: AudioTrack[]
+  currentAudioTrack: string | null
+  subtitleTracks: SubtitleTrack[]
+  currentSubtitleTrack: string | null
+  videoQualityOptions: VideoQualityOption[]
+  currentVideoQuality: string | null
+  activeVideoQuality: string | null
+  subtitleCues: SubtitleCue[]
+  activeSubtitleCues: SubtitleCue[]
+}>
+
 export interface PlayerSlice {
   playbackEngine: 'html5' | 'mpv'
   currentChannel: Channel | null
@@ -56,6 +77,7 @@ export interface PlayerSlice {
   setMiniPlayer: (mini: boolean) => void
   setPlayerSidebarOpen: (open: boolean) => void
   togglePlayerSidebar: () => void
+  applyPlayerPatch: (patch: PlayerPatch) => void
 }
 
 export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> = (set) => ({
@@ -167,5 +189,6 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
   setShowControls: (show) => set({ showControls: show }),
   setMiniPlayer: (mini) => set({ isMiniPlayer: mini }),
   setPlayerSidebarOpen: (open) => set({ isPlayerSidebarOpen: open }),
-  togglePlayerSidebar: () => set((state) => ({ isPlayerSidebarOpen: !state.isPlayerSidebarOpen }))
+  togglePlayerSidebar: () => set((state) => ({ isPlayerSidebarOpen: !state.isPlayerSidebarOpen })),
+  applyPlayerPatch: (patch) => set(patch)
 })

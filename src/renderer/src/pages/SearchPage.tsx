@@ -9,7 +9,7 @@ import { openPlayerFromRoute } from '@/services/player-navigation'
 import { normalizeSearchText } from '@/services/text-normalize'
 
 export default function SearchPage() {
-  const location = useLocation()
+  const routeLocation = useLocation()
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const channels = useStore((s) => s.channels)
@@ -18,19 +18,19 @@ export default function SearchPage() {
   const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
 
   useEffect(() => {
-    const state = location.state as { restoreSearchQuery?: string } | null
+    const state = routeLocation.state as { restoreSearchQuery?: string } | null
     if (typeof state?.restoreSearchQuery !== 'string') return
 
     setQuery(state.restoreSearchQuery)
     navigate(
       {
-        pathname: location.pathname,
-        search: location.search,
-        hash: location.hash
+        pathname: routeLocation.pathname,
+        search: routeLocation.search,
+        hash: routeLocation.hash
       },
       { replace: true, state: null }
     )
-  }, [location.hash, location.pathname, location.search, location.state, navigate])
+  }, [routeLocation.hash, routeLocation.pathname, routeLocation.search, routeLocation.state, navigate])
 
   const results = useMemo(() => {
     if (!query || query.length < 2) return []
@@ -61,12 +61,12 @@ export default function SearchPage() {
     playChannel(channel)
     setMiniPlayer(false)
     openPlayerFromRoute({
-      location,
+      location: routeLocation,
       navigate,
       returnState: query.length >= 2 ? { restoreSearchQuery: query } : undefined,
       setPlayerReturnTarget
     })
-  }, [location, playChannel, query, setMiniPlayer, navigate, setPlayerReturnTarget])
+  }, [routeLocation, playChannel, query, setMiniPlayer, navigate, setPlayerReturnTarget])
 
   return (
     <div className="h-full p-3">
@@ -77,8 +77,8 @@ export default function SearchPage() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            aria-label="Tüm içeriklerde ara"
             placeholder="Tüm kanal, film ve dizilerde ara..."
-            autoFocus
             className="w-full rounded-lg border border-surface-700 bg-surface-900 py-3 pl-12 pr-4 text-lg text-surface-50 placeholder:text-surface-500 transition-colors focus:border-surface-600 focus:outline-none focus:ring-2 focus:ring-accent/20"
           />
         </div>

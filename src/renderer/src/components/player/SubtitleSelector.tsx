@@ -64,6 +64,7 @@ export function SubtitleSelector() {
   return (
     <div ref={ref} className="relative">
       <button
+        type="button"
         onClick={() => setOpen(!open)}
         className={`rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal ${currentSubtitleTrack ? 'text-accent' : ''}`}
         title="Altyazi"
@@ -77,6 +78,7 @@ export function SubtitleSelector() {
         <div className="absolute bottom-full right-0 mb-2 w-64 rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-lg">
           <p className="px-3 py-1.5 text-xs font-medium text-surface-500">Altyazı</p>
           <button
+            type="button"
             onClick={handleOff}
             className={`flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-800 transition-colors ${
               !currentSubtitleTrack ? 'text-accent' : 'text-surface-200'
@@ -87,6 +89,7 @@ export function SubtitleSelector() {
           {subtitleTracks.map((track) => (
             <button
               key={track.id}
+              type="button"
               onClick={() => { setCurrentSubtitleTrack(String(track.id)); setOpen(false) }}
               className={`flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-800 transition-colors ${
                 String(track.id) === currentSubtitleTrack ? 'text-accent' : 'text-surface-200'
@@ -109,6 +112,7 @@ export function SubtitleSelector() {
               max={48}
               step={2}
               value={settings.subtitleFontSize}
+              aria-label="Altyazı yazı boyutu"
               onChange={(e) =>
                 updateSettings({ subtitleFontSize: Number.parseInt(e.target.value, 10) || 24 })
               }
@@ -122,6 +126,7 @@ export function SubtitleSelector() {
               <input
                 type="color"
                 value={settings.subtitleColor}
+                aria-label="Altyazı rengi"
                 onChange={(e) => updateSettings({ subtitleColor: e.target.value })}
                 className="h-7 w-10 cursor-pointer rounded border border-surface-600 bg-surface-800 p-0.5"
               />
@@ -137,6 +142,7 @@ export function SubtitleSelector() {
               max={100}
               step={5}
               value={subtitleOpacity}
+              aria-label="Altyazı arka plan opaklığı"
               onChange={(e) => {
                 const opacity = Number.parseInt(e.target.value, 10)
                 const alpha = Math.max(0, Math.min(100, opacity)) / 100
@@ -161,6 +167,7 @@ export function SubtitleSelector() {
 
           <div className="border-t border-surface-700 px-3 py-1">
             <button
+              type="button"
               onClick={handleLoadExternal}
               className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-300 hover:bg-surface-800 transition-colors"
             >

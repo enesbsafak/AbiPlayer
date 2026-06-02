@@ -36,7 +36,7 @@ function getCachedImageStatus(src?: string): Exclude<ImageStatus, 'idle' | 'load
   return cached.status
 }
 
-function setCachedImageStatus(
+function writeCachedImageStatus(
   src: string,
   status: Exclude<ImageStatus, 'idle' | 'loading'>
 ): void {
@@ -51,7 +51,7 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
   while (current) {
     const style = window.getComputedStyle(current)
     const overflowY = style.overflowY || style.overflow
-    if (overflowY.includes('auto') || overflowY.includes('scroll')) return current
+    if (/\b(auto|scroll)\b/.test(overflowY)) return current
     current = current.parentElement
   }
   return null
@@ -76,16 +76,24 @@ function normalizeImageSrc(src?: string): string | undefined {
   }
 }
 
-export function LazyImage({
-  src,
+export function LazyImage(props: LazyImageProps) {
+  const normalizedSrc = useMemo(() => normalizeImageSrc(props.src), [props.src])
+
+  // Remount the view when the source changes so all load state resets to its
+  // initial value for the new src — instead of mirroring the prop into state
+  // inside an effect (which briefly shows the previous image's status).
+  return <LazyImageView key={normalizedSrc ?? ''} {...props} normalizedSrc={normalizedSrc} />
+}
+
+function LazyImageView({
   alt,
   className = '',
   fallbackClassName = '',
   fit = 'cover',
-  eager = false
-}: LazyImageProps) {
+  eager = false,
+  normalizedSrc
+}: LazyImageProps & { normalizedSrc: string | undefined }) {
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const normalizedSrc = useMemo(() => normalizeImageSrc(src), [src])
   const cachedStatus = getCachedImageStatus(normalizedSrc)
   const [isVisible, setIsVisible] = useState(() => eager || Boolean(cachedStatus))
   const [retryAttempt, setRetryAttempt] = useState(0)
@@ -95,31 +103,8 @@ export function LazyImage({
     if (cachedStatus === 'error') return 'error'
     return 'idle'
   })
-
-  useEffect(() => {
-    const cached = getCachedImageStatus(normalizedSrc)
-    if (!normalizedSrc) {
-      setStatus('error')
-      setIsVisible(false)
-      return
-    }
-
-    if (cached === 'loaded') {
-      setStatus('loaded')
-      setIsVisible(true)
-      return
-    }
-
-    if (cached === 'error') {
-      setStatus('error')
-      setIsVisible(true)
-      return
-    }
-
-    setStatus('idle')
-    setRetryAttempt(0)
-    setIsVisible(eager)
-  }, [normalizedSrc, eager])
+  const displayStatus: ImageStatus =
+    normalizedSrc && isVisible && status === 'idle' ? 'loading' : status
 
   useEffect(() => {
     if (!normalizedSrc || eager || isVisible || typeof IntersectionObserver === 'undefined') {
@@ -149,24 +134,19 @@ export function LazyImage({
   }, [normalizedSrc, eager, isVisible])
 
   useEffect(() => {
-    if (!normalizedSrc || !isVisible || status !== 'idle') return
-    setStatus('loading')
-  }, [normalizedSrc, isVisible, status])
-
-  useEffect(() => {
-    if (!normalizedSrc || status !== 'loading') return
+    if (!normalizedSrc || displayStatus !== 'loading') return
     const timer = window.setTimeout(() => {
       if (retryAttempt < MAX_RETRY_COUNT) {
         setRetryAttempt((current) => current + 1)
         return
       }
 
-      setCachedImageStatus(normalizedSrc, 'error')
+      writeCachedImageStatus(normalizedSrc, 'error')
       setStatus('error')
     }, IMAGE_LOAD_TIMEOUT_MS)
 
     return () => window.clearTimeout(timer)
-  }, [normalizedSrc, status, retryAttempt])
+  }, [normalizedSrc, displayStatus, retryAttempt])
 
   const imageSrc = useMemo(() => {
     if (!normalizedSrc) return ''
@@ -176,7 +156,7 @@ export function LazyImage({
 
   const handleLoad = () => {
     if (!normalizedSrc) return
-    setCachedImageStatus(normalizedSrc, 'loaded')
+    writeCachedImageStatus(normalizedSrc, 'loaded')
     setStatus('loaded')
   }
 
@@ -187,11 +167,11 @@ export function LazyImage({
       return
     }
 
-    setCachedImageStatus(normalizedSrc, 'error')
+    writeCachedImageStatus(normalizedSrc, 'error')
     setStatus('error')
   }
 
-  if (!normalizedSrc || status === 'error') {
+  if (!normalizedSrc || displayStatus === 'error') {
     return (
       <div className={`flex items-center justify-center bg-surface-800 ${fallbackClassName || className}`}>
         <ImageOff size={24} className="text-surface-500" />
@@ -201,7 +181,7 @@ export function LazyImage({
 
   return (
     <div ref={wrapperRef} className={`relative overflow-hidden ${className}`}>
-      {status !== 'loaded' && (
+      {displayStatus !== 'loaded' && (
         <div className="poster-shimmer absolute inset-0 bg-surface-800" />
       )}
       {isVisible && (
@@ -217,7 +197,7 @@ export function LazyImage({
           onError={handleError}
           className={`h-full w-full transition-all duration-500 ${
             fit === 'contain' ? 'object-contain' : 'object-cover'
-          } ${status === 'loaded' ? 'scale-100 opacity-100' : 'scale-[1.02] opacity-0'}`}
+          } ${displayStatus === 'loaded' ? 'scale-100 opacity-100' : 'scale-[1.02] opacity-0'}`}
         />
       )}
     </div>

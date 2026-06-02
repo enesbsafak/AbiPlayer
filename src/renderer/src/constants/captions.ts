@@ -1,0 +1,2 @@
+export const GENERATED_CAPTIONS_TRACK_LABEL = 'ABIPlayer captions'
+export const GENERATED_CAPTIONS_TRACK_LANGUAGE = 'tr'

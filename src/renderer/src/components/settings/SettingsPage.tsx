@@ -15,8 +15,17 @@ import {
   type AppUpdateState
 } from '@/services/platform'
 import { collectTrackLanguages } from '@/services/track-preferences'
+import type { AudioTrack, SubtitleCue, SubtitleTrack } from '@/types/player'
+import type { UserSettings } from '@/types/settings'
 
 const COMMON_LANGUAGE_CODES = ['tr', 'en', 'de', 'fr', 'es', 'it', 'pt', 'ru', 'ar']
+let turkishLanguageDisplayNames: Intl.DisplayNames | null = null
+
+try {
+  turkishLanguageDisplayNames = new Intl.DisplayNames(['tr'], { type: 'language' })
+} catch {
+  turkishLanguageDisplayNames = null
+}
 
 function parseSubtitleBackgroundOpacity(background: string): number {
   const match = background.match(
@@ -34,8 +43,7 @@ function formatLanguageLabel(code: string): string {
 
   try {
     const languagePart = normalized.split('-')[0]
-    const displayNames = new Intl.DisplayNames(['tr'], { type: 'language' })
-    const display = displayNames.of(languagePart)
+    const display = turkishLanguageDisplayNames?.of(languagePart)
     return display ? `${display} (${normalized.toUpperCase()})` : normalized.toUpperCase()
   } catch {
     return normalized.toUpperCase()
@@ -86,6 +94,360 @@ function getUpdateStatusLabel(updateState: AppUpdateState | null): string {
   }
 }
 
+interface SettingsDropdownItem {
+  id: string
+  label: string
+}
+
+interface PlayerSettingsSectionProps {
+  settings: UserSettings
+  subtitleOpacity: number
+  audioLanguageItems: SettingsDropdownItem[]
+  subtitleLanguageItems: SettingsDropdownItem[]
+  subtitlePreferenceValue: string
+  audioTracks: AudioTrack[]
+  subtitleTracks: SubtitleTrack[]
+  currentAudioTrack: string | null
+  currentSubtitleTrack: string | null
+  updateSettings: (settings: Partial<UserSettings>) => void
+  setCurrentAudioTrack: (trackId: string) => void
+  setCurrentSubtitleTrack: (trackId: string | null) => void
+  setSubtitleCues: (cues: SubtitleCue[]) => void
+  setActiveSubtitleCues: (cues: SubtitleCue[]) => void
+  setVolume: (volume: number) => void
+}
+
+function UpdateSettingsSection() {
+  const [appUpdateState, setAppUpdateState] = useState<AppUpdateState | null>(null)
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
+  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
+
+  useEffect(() => {
+    if (!isElectron()) return
+
+    let mounted = true
+    void getAppUpdateState().then((nextState) => {
+      if (!mounted || !nextState) return
+      setAppUpdateState(nextState)
+    })
+
+    const unsubscribe = onAppUpdateStateChange((nextState) => {
+      if (!mounted) return
+      setAppUpdateState(nextState)
+      if (nextState.status !== 'checking') {
+        setIsCheckingUpdates(false)
+      }
+    })
+
+    return () => {
+      mounted = false
+      unsubscribe?.()
+    }
+  }, [])
+
+  const updateProgressLabel = useMemo(() => {
+    if (!appUpdateState || appUpdateState.status !== 'downloading') return null
+    const transferred = formatBytes(appUpdateState.transferredBytes)
+    const total = formatBytes(appUpdateState.totalBytes)
+    const speed = formatBytes(appUpdateState.bytesPerSecond)
+
+    const parts = [`%${Math.round((appUpdateState.progress ?? 0) * 100)}`]
+    if (transferred && total) parts.push(`${transferred} / ${total}`)
+    if (speed) parts.push(`${speed}/sn`)
+    return parts.join(' | ')
+  }, [appUpdateState])
+
+  return (
+    <section>
+      <h2 className="text-lg font-semibold mb-4">Guncellemeler</h2>
+      <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-medium text-white">
+              Surum {appUpdateState?.currentVersion ?? '...'}
+              {appUpdateState?.availableVersion && appUpdateState.availableVersion !== appUpdateState.currentVersion
+                ? ` -> ${appUpdateState.availableVersion}`
+                : ''}
+            </p>
+            <p className="text-sm text-surface-300">{getUpdateStatusLabel(appUpdateState)}</p>
+            {appUpdateState?.message && (
+              <p className="text-xs text-surface-500">{appUpdateState.message}</p>
+            )}
+            <p className="text-xs text-surface-500">
+              Son kontrol: {formatUpdateTimestamp(appUpdateState?.lastCheckedAt ?? null)}
+            </p>
+          </div>
+
+          {appUpdateState?.status === 'downloading' && (
+            <div className="space-y-2">
+              <div className="h-2 overflow-hidden rounded-full bg-surface-800">
+                <div
+                  className="h-full rounded-full bg-accent transition-all"
+                  style={{ width: `${Math.round((appUpdateState.progress ?? 0) * 100)}%` }}
+                />
+              </div>
+              {updateProgressLabel && (
+                <p className="text-xs text-surface-500">{updateProgressLabel}</p>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                setIsCheckingUpdates(true)
+                const nextState = await checkForAppUpdates()
+                if (nextState) setAppUpdateState(nextState)
+                if (!nextState || nextState.status !== 'checking') {
+                  setIsCheckingUpdates(false)
+                }
+              }}
+              disabled={!appUpdateState?.canCheck || isCheckingUpdates || appUpdateState?.status === 'downloading'}
+            >
+              {isCheckingUpdates || appUpdateState?.status === 'checking'
+                ? 'Kontrol ediliyor...'
+                : 'Guncellemeleri Kontrol Et'}
+            </Button>
+
+            {appUpdateState?.updateReadyToInstall && (
+              <Button
+                onClick={async () => {
+                  setIsInstallingUpdate(true)
+                  const started = await installAppUpdate()
+                  if (!started) setIsInstallingUpdate(false)
+                }}
+                disabled={isInstallingUpdate}
+              >
+                {isInstallingUpdate ? 'Yeniden baslatiliyor...' : 'Yeniden Baslat ve Yukle'}
+              </Button>
+            )}
+          </div>
+
+          {appUpdateState?.releaseDate && (
+            <p className="text-xs text-surface-500">
+              Yeni surum tarihi: {new Date(appUpdateState.releaseDate).toLocaleString('tr-TR')}
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function PlayerSettingsSection({
+  settings,
+  subtitleOpacity,
+  audioLanguageItems,
+  subtitleLanguageItems,
+  subtitlePreferenceValue,
+  audioTracks,
+  subtitleTracks,
+  currentAudioTrack,
+  currentSubtitleTrack,
+  updateSettings,
+  setCurrentAudioTrack,
+  setCurrentSubtitleTrack,
+  setSubtitleCues,
+  setActiveSubtitleCues,
+  setVolume
+}: PlayerSettingsSectionProps) {
+  return (
+    <section>
+      <h2 className="text-lg font-semibold mb-4">Oynatici</h2>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <label htmlFor="default-volume" className="text-sm text-surface-400 mb-1 block">Varsayilan Ses Seviyesi</label>
+          <input
+            id="default-volume"
+            type="range"
+            min={0} max={1} step={0.05}
+            value={settings.defaultVolume}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value)
+              updateSettings({ defaultVolume: v })
+              setVolume(v)
+            }}
+            className="w-full"
+          />
+          <span className="text-xs text-surface-500">{Math.round(settings.defaultVolume * 100)}%</span>
+        </div>
+        <div>
+          <label htmlFor="subtitle-font-size" className="text-sm text-surface-400 mb-1 block">Altyazi Yazi Boyutu</label>
+          <input
+            id="subtitle-font-size"
+            type="range"
+            min={16} max={48} step={2}
+            value={settings.subtitleFontSize}
+            onChange={(e) => updateSettings({ subtitleFontSize: parseInt(e.target.value) })}
+            className="w-full"
+          />
+          <span className="text-xs text-surface-500">{settings.subtitleFontSize}px</span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div>
+          <label htmlFor="subtitle-color" className="text-sm text-surface-400 mb-1 block">Altyazi Rengi</label>
+          <input
+            id="subtitle-color"
+            type="color"
+            value={settings.subtitleColor}
+            onChange={(e) => updateSettings({ subtitleColor: e.target.value })}
+            className="h-10 w-full cursor-pointer rounded-lg border border-surface-700 bg-surface-900 px-2"
+          />
+        </div>
+        <div>
+          <label htmlFor="subtitle-background-opacity" className="text-sm text-surface-400 mb-1 block">Altyazi Arka Plan Opakligi</label>
+          <input
+            id="subtitle-background-opacity"
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={subtitleOpacity}
+            onChange={(e) => {
+              const opacity = Number.parseInt(e.target.value, 10)
+              const alpha = Math.max(0, Math.min(100, opacity)) / 100
+              updateSettings({ subtitleBackground: `rgba(0,0,0,${alpha.toFixed(2)})` })
+            }}
+            className="w-full"
+          />
+          <span className="text-xs text-surface-500">{subtitleOpacity}%</span>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-surface-800 bg-surface-900 p-4">
+        <p className="text-xs font-medium text-surface-500">Altyazı Önizleme</p>
+        <div className="mt-3 rounded-lg border border-surface-800 bg-black/70 p-6 text-center">
+          <span
+            className="inline-block rounded px-3 py-1 leading-relaxed"
+            style={{
+              fontSize: `${settings.subtitleFontSize}px`,
+              color: settings.subtitleColor,
+              backgroundColor: settings.subtitleBackground
+            }}
+          >
+            Bu bir altyazi onizlemesidir.
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div>
+          <p id="preferred-audio-language-label" className="text-sm text-surface-400 mb-2">Tercih Edilen Dublaj Dili</p>
+          <Dropdown
+            id="preferred-audio-language"
+            labelledBy="preferred-audio-language-label"
+            items={audioLanguageItems}
+            value={settings.preferredAudioLanguage}
+            onSelect={(id) => updateSettings({ preferredAudioLanguage: id })}
+            placeholder="Tercih edilen dublaj dili"
+          />
+        </div>
+        <div>
+          <p id="preferred-subtitle-language-label" className="text-sm text-surface-400 mb-2">Tercih Edilen Altyazi Dili</p>
+          <Dropdown
+            id="preferred-subtitle-language"
+            labelledBy="preferred-subtitle-language-label"
+            items={subtitleLanguageItems}
+            value={subtitlePreferenceValue}
+            onSelect={(id) => {
+              if (id === 'off') {
+                updateSettings({ defaultSubtitleEnabled: false, preferredSubtitleLanguage: 'auto' })
+              } else {
+                updateSettings({ defaultSubtitleEnabled: true, preferredSubtitleLanguage: id })
+              }
+            }}
+            placeholder="Tercih edilen altyazı dili"
+          />
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div>
+          <p id="active-audio-track-label" className="text-sm text-surface-400 mb-2">Aktif Yayın Dublajı</p>
+          {audioTracks.length > 0 ? (
+            <Dropdown
+              id="active-audio-track"
+              labelledBy="active-audio-track-label"
+              items={audioTracks.map((track, index) => ({
+                id: track.id,
+                label: track.name || track.lang || `Ses ${index + 1}`
+              }))}
+              value={currentAudioTrack ?? undefined}
+              onSelect={(id) => setCurrentAudioTrack(id)}
+              placeholder="Aktif dublaj seç"
+            />
+          ) : (
+            <p className="rounded-lg border border-surface-700 bg-surface-900 px-3 py-2 text-sm text-surface-500">
+              Aktif yayın için ses kanalı bulunamadı.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <p id="active-subtitle-track-label" className="text-sm text-surface-400 mb-2">Aktif Yayın Altyazısı</p>
+          {subtitleTracks.length > 0 ? (
+            <Dropdown
+              id="active-subtitle-track"
+              labelledBy="active-subtitle-track-label"
+              items={[
+                { id: '__off__', label: 'Kapalı' },
+                ...subtitleTracks.map((track, index) => ({
+                  id: String(track.id),
+                  label: track.name || track.lang || `Altyazı ${index + 1}`
+                }))
+              ]}
+              value={currentSubtitleTrack ?? '__off__'}
+              onSelect={(id) => {
+                if (id === '__off__') {
+                  setCurrentSubtitleTrack(null)
+                  setSubtitleCues([])
+                  setActiveSubtitleCues([])
+                  return
+                }
+                setCurrentSubtitleTrack(id)
+              }}
+              placeholder="Aktif altyazı seç"
+            />
+          ) : (
+            <p className="rounded-lg border border-surface-700 bg-surface-900 px-3 py-2 text-sm text-surface-500">
+              Aktif yayın için altyazı bulunamadı.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-center gap-3">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={settings.autoPlay}
+            onChange={(e) => updateSettings({ autoPlay: e.target.checked })}
+            className="rounded border-surface-700 bg-surface-900 text-accent focus:ring-accent"
+          />
+          <span className="text-sm text-surface-300">Kanal seciminde otomatik oynat</span>
+        </label>
+      </div>
+
+      <div className="mt-5">
+        <Input
+          id="tmdb-api-key"
+          label="TMDB API Anahtarı (opsiyonel)"
+          type="password"
+          value={settings.tmdbApiKey}
+          onChange={(e) => updateSettings({ tmdbApiKey: e.target.value })}
+          placeholder="TMDB v3 anahtarı veya v4 bearer token girin"
+        />
+        <p className="mt-1 text-xs text-surface-500">
+          Film/dizi detayları ile bölüm adlarını zenginleştirmek için kullanılır.
+        </p>
+      </div>
+    </section>
+  )
+}
+
 export function SettingsContent() {
   const {
     settings,
@@ -129,44 +491,6 @@ export function SettingsContent() {
   const subtitlePreferenceValue = settings.defaultSubtitleEnabled
     ? settings.preferredSubtitleLanguage
     : 'off'
-  const [appUpdateState, setAppUpdateState] = useState<AppUpdateState | null>(null)
-  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
-  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
-
-  useEffect(() => {
-    if (!isElectron()) return
-
-    let mounted = true
-    void getAppUpdateState().then((nextState) => {
-      if (!mounted || !nextState) return
-      setAppUpdateState(nextState)
-    })
-
-    const unsubscribe = onAppUpdateStateChange((nextState) => {
-      if (!mounted) return
-      setAppUpdateState(nextState)
-      if (nextState.status !== 'checking') {
-        setIsCheckingUpdates(false)
-      }
-    })
-
-    return () => {
-      mounted = false
-      unsubscribe?.()
-    }
-  }, [])
-
-  const updateProgressLabel = useMemo(() => {
-    if (!appUpdateState || appUpdateState.status !== 'downloading') return null
-    const transferred = formatBytes(appUpdateState.transferredBytes)
-    const total = formatBytes(appUpdateState.totalBytes)
-    const speed = formatBytes(appUpdateState.bytesPerSecond)
-
-    const parts = [`%${Math.round((appUpdateState.progress ?? 0) * 100)}`]
-    if (transferred && total) parts.push(`${transferred} / ${total}`)
-    if (speed) parts.push(`${speed}/sn`)
-    return parts.join(' | ')
-  }, [appUpdateState])
 
   return (
     <div className="flex flex-col gap-8 max-w-3xl">
@@ -209,262 +533,25 @@ export function SettingsContent() {
         </div>
       </section>
 
-      <section>
-        <h2 className="text-lg font-semibold mb-4">Guncellemeler</h2>
-        <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium text-white">
-                Surum {appUpdateState?.currentVersion ?? '...'}
-                {appUpdateState?.availableVersion && appUpdateState.availableVersion !== appUpdateState.currentVersion
-                  ? ` -> ${appUpdateState.availableVersion}`
-                  : ''}
-              </p>
-              <p className="text-sm text-surface-300">{getUpdateStatusLabel(appUpdateState)}</p>
-              {appUpdateState?.message && (
-                <p className="text-xs text-surface-500">{appUpdateState.message}</p>
-              )}
-              <p className="text-xs text-surface-500">
-                Son kontrol: {formatUpdateTimestamp(appUpdateState?.lastCheckedAt ?? null)}
-              </p>
-            </div>
+      <UpdateSettingsSection />
 
-            {appUpdateState?.status === 'downloading' && (
-              <div className="space-y-2">
-                <div className="h-2 overflow-hidden rounded-full bg-surface-800">
-                  <div
-                    className="h-full rounded-full bg-accent transition-all"
-                    style={{ width: `${Math.round((appUpdateState.progress ?? 0) * 100)}%` }}
-                  />
-                </div>
-                {updateProgressLabel && (
-                  <p className="text-xs text-surface-500">{updateProgressLabel}</p>
-                )}
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                variant="secondary"
-                onClick={async () => {
-                  setIsCheckingUpdates(true)
-                  const nextState = await checkForAppUpdates()
-                  if (nextState) setAppUpdateState(nextState)
-                  if (!nextState || nextState.status !== 'checking') {
-                    setIsCheckingUpdates(false)
-                  }
-                }}
-                disabled={!appUpdateState?.canCheck || isCheckingUpdates || appUpdateState?.status === 'downloading'}
-              >
-                {isCheckingUpdates || appUpdateState?.status === 'checking'
-                  ? 'Kontrol ediliyor...'
-                  : 'Guncellemeleri Kontrol Et'}
-              </Button>
-
-              {appUpdateState?.updateReadyToInstall && (
-                <Button
-                  onClick={async () => {
-                    setIsInstallingUpdate(true)
-                    const started = await installAppUpdate()
-                    if (!started) setIsInstallingUpdate(false)
-                  }}
-                  disabled={isInstallingUpdate}
-                >
-                  {isInstallingUpdate ? 'Yeniden baslatiliyor...' : 'Yeniden Baslat ve Yukle'}
-                </Button>
-              )}
-            </div>
-
-            {appUpdateState?.releaseDate && (
-              <p className="text-xs text-surface-500">
-                Yeni surum tarihi: {new Date(appUpdateState.releaseDate).toLocaleString('tr-TR')}
-              </p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Player Settings */}
-      <section>
-        <h2 className="text-lg font-semibold mb-4">Oynatici</h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="text-sm text-surface-400 mb-1 block">Varsayilan Ses Seviyesi</label>
-            <input
-              type="range"
-              min={0} max={1} step={0.05}
-              value={settings.defaultVolume}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value)
-                updateSettings({ defaultVolume: v })
-                setVolume(v)
-              }}
-              className="w-full"
-            />
-            <span className="text-xs text-surface-500">{Math.round(settings.defaultVolume * 100)}%</span>
-          </div>
-          <div>
-            <label className="text-sm text-surface-400 mb-1 block">Altyazi Yazi Boyutu</label>
-            <input
-              type="range"
-              min={16} max={48} step={2}
-              value={settings.subtitleFontSize}
-              onChange={(e) => updateSettings({ subtitleFontSize: parseInt(e.target.value) })}
-              className="w-full"
-            />
-            <span className="text-xs text-surface-500">{settings.subtitleFontSize}px</span>
-          </div>
-        </div>
-
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="text-sm text-surface-400 mb-1 block">Altyazi Rengi</label>
-            <input
-              type="color"
-              value={settings.subtitleColor}
-              onChange={(e) => updateSettings({ subtitleColor: e.target.value })}
-              className="h-10 w-full cursor-pointer rounded-lg border border-surface-700 bg-surface-900 px-2"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-surface-400 mb-1 block">Altyazi Arka Plan Opakligi</label>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={subtitleOpacity}
-              onChange={(e) => {
-                const opacity = Number.parseInt(e.target.value, 10)
-                const alpha = Math.max(0, Math.min(100, opacity)) / 100
-                updateSettings({ subtitleBackground: `rgba(0,0,0,${alpha.toFixed(2)})` })
-              }}
-              className="w-full"
-            />
-            <span className="text-xs text-surface-500">{subtitleOpacity}%</span>
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-lg border border-surface-800 bg-surface-900 p-4">
-          <p className="text-xs font-medium text-surface-500">Altyazı Önizleme</p>
-          <div className="mt-3 rounded-lg border border-surface-800 bg-black/70 p-6 text-center">
-            <span
-              className="inline-block rounded px-3 py-1 leading-relaxed"
-              style={{
-                fontSize: `${settings.subtitleFontSize}px`,
-                color: settings.subtitleColor,
-                backgroundColor: settings.subtitleBackground
-              }}
-            >
-              Bu bir altyazi onizlemesidir.
-            </span>
-          </div>
-        </div>
-
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="text-sm text-surface-400 mb-2 block">Tercih Edilen Dublaj Dili</label>
-            <Dropdown
-              items={audioLanguageItems}
-              value={settings.preferredAudioLanguage}
-              onSelect={(id) => updateSettings({ preferredAudioLanguage: id })}
-              placeholder="Tercih edilen dublaj dili"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-surface-400 mb-2 block">Tercih Edilen Altyazi Dili</label>
-            <Dropdown
-              items={subtitleLanguageItems}
-              value={subtitlePreferenceValue}
-              onSelect={(id) => {
-                if (id === 'off') {
-                  updateSettings({ defaultSubtitleEnabled: false, preferredSubtitleLanguage: 'auto' })
-                } else {
-                  updateSettings({ defaultSubtitleEnabled: true, preferredSubtitleLanguage: id })
-                }
-              }}
-              placeholder="Tercih edilen altyazı dili"
-            />
-          </div>
-        </div>
-
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="text-sm text-surface-400 mb-2 block">Aktif Yayın Dublajı</label>
-            {audioTracks.length > 0 ? (
-              <Dropdown
-                items={audioTracks.map((track, index) => ({
-                  id: track.id,
-                  label: track.name || track.lang || `Ses ${index + 1}`
-                }))}
-                value={currentAudioTrack ?? undefined}
-                onSelect={(id) => setCurrentAudioTrack(id)}
-                placeholder="Aktif dublaj seç"
-              />
-            ) : (
-              <p className="rounded-lg border border-surface-700 bg-surface-900 px-3 py-2 text-sm text-surface-500">
-                Aktif yayın için ses kanalı bulunamadı.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="text-sm text-surface-400 mb-2 block">Aktif Yayın Altyazısı</label>
-            {subtitleTracks.length > 0 ? (
-              <Dropdown
-                items={[
-                  { id: '__off__', label: 'Kapalı' },
-                  ...subtitleTracks.map((track, index) => ({
-                    id: String(track.id),
-                    label: track.name || track.lang || `Altyazı ${index + 1}`
-                  }))
-                ]}
-                value={currentSubtitleTrack ?? '__off__'}
-                onSelect={(id) => {
-                  if (id === '__off__') {
-                    setCurrentSubtitleTrack(null)
-                    setSubtitleCues([])
-                    setActiveSubtitleCues([])
-                    return
-                  }
-                  setCurrentSubtitleTrack(id)
-                }}
-                placeholder="Aktif altyazı seç"
-              />
-            ) : (
-              <p className="rounded-lg border border-surface-700 bg-surface-900 px-3 py-2 text-sm text-surface-500">
-                Aktif yayın için altyazı bulunamadı.
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-4 flex items-center gap-3">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={settings.autoPlay}
-              onChange={(e) => updateSettings({ autoPlay: e.target.checked })}
-              className="rounded border-surface-700 bg-surface-900 text-accent focus:ring-accent"
-            />
-            <span className="text-sm text-surface-300">Kanal seciminde otomatik oynat</span>
-          </label>
-        </div>
-
-        <div className="mt-5">
-          <Input
-            id="tmdb-api-key"
-            label="TMDB API Anahtarı (opsiyonel)"
-            type="password"
-            value={settings.tmdbApiKey}
-            onChange={(e) => updateSettings({ tmdbApiKey: e.target.value })}
-            placeholder="TMDB v3 anahtarı veya v4 bearer token girin"
-          />
-          <p className="mt-1 text-xs text-surface-500">
-            Film/dizi detayları ile bölüm adlarını zenginleştirmek için kullanılır.
-          </p>
-        </div>
-      </section>
+      <PlayerSettingsSection
+        settings={settings}
+        subtitleOpacity={subtitleOpacity}
+        audioLanguageItems={audioLanguageItems}
+        subtitleLanguageItems={subtitleLanguageItems}
+        subtitlePreferenceValue={subtitlePreferenceValue}
+        audioTracks={audioTracks}
+        subtitleTracks={subtitleTracks}
+        currentAudioTrack={currentAudioTrack}
+        currentSubtitleTrack={currentSubtitleTrack}
+        updateSettings={updateSettings}
+        setCurrentAudioTrack={setCurrentAudioTrack}
+        setCurrentSubtitleTrack={setCurrentSubtitleTrack}
+        setSubtitleCues={setSubtitleCues}
+        setActiveSubtitleCues={setActiveSubtitleCues}
+        setVolume={setVolume}
+      />
 
       {/* EPG Settings */}
       <section>

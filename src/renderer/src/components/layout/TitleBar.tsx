@@ -16,6 +16,7 @@ export function TitleBar() {
 
       <div className="no-drag flex items-center">
         <button
+          type="button"
           onClick={windowMinimize}
           title="Asagi Al"
           aria-label="Pencereyi asagi al"
@@ -24,6 +25,7 @@ export function TitleBar() {
           <Minus size={14} />
         </button>
         <button
+          type="button"
           onClick={windowMaximize}
           title="Boyut Degistir"
           aria-label="Pencere boyutunu degistir"
@@ -32,6 +34,7 @@ export function TitleBar() {
           <Maximize2 size={12} />
         </button>
         <button
+          type="button"
           onClick={windowClose}
           title="Kapat"
           aria-label="Pencereyi kapat"

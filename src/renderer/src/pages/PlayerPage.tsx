@@ -8,11 +8,6 @@ export default function PlayerPage() {
   const navigate = useNavigate()
   const currentChannel = useStore((s) => s.currentChannel)
   const playerReturnTarget = useStore((s) => s.playerReturnTarget)
-  const setMiniPlayer = useStore((s) => s.setMiniPlayer)
-
-  useEffect(() => {
-    setMiniPlayer(false)
-  }, [setMiniPlayer])
 
   useEffect(() => {
     if (!currentChannel) {

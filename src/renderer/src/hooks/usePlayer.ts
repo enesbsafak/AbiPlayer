@@ -14,6 +14,7 @@ import {
   pickPreferredAudioTrackId,
   pickPreferredSubtitleTrackId
 } from '@/services/track-preferences'
+import { GENERATED_CAPTIONS_TRACK_LABEL } from '@/constants/captions'
 
 const HLS_TRACK_PREFIX = 'hls:'
 const NATIVE_TRACK_PREFIX = 'native:'
@@ -35,7 +36,7 @@ type NativeAudioTrackListLike = {
 }
 
 function isSubtitleTextTrack(track: TextTrack): boolean {
-  return track.kind === 'subtitles' || track.kind === 'captions'
+  return track.label !== GENERATED_CAPTIONS_TRACK_LABEL && (track.kind === 'subtitles' || track.kind === 'captions')
 }
 
 function urlIsHlsOrTs(url: string): boolean {
@@ -53,11 +54,223 @@ function getNativeAudioTracks(video: HTMLVideoElement): NativeAudioTrackListLike
   return maybeTracks
 }
 
+function collectNativeSubtitleTracks(video: HTMLVideoElement): SubtitleTrack[] {
+  const tracks = video.textTracks
+  if (!tracks || tracks.length === 0) return []
+
+  const nativeTracks: SubtitleTrack[] = []
+  for (let i = 0; i < tracks.length; i++) {
+    const track = tracks[i]
+    if (!isSubtitleTextTrack(track)) continue
+
+    nativeTracks.push({
+      id: `${NATIVE_TRACK_PREFIX}${i}`,
+      name: track.label || track.language || `Subtitle ${i + 1}`,
+      lang: track.language || undefined,
+      type: 'embedded'
+    })
+  }
+
+  return nativeTracks
+}
+
+function collectHlsSubtitleTracks(hls: Hls): SubtitleTrack[] {
+  const tracks = hls.subtitleTracks || []
+  return tracks.map((track, index) => ({
+    id: `${HLS_TRACK_PREFIX}${index}`,
+    name: track.name || track.lang || `Subtitle ${index + 1}`,
+    lang: track.lang,
+    type: 'embedded'
+  }))
+}
+
+function collectProbedSubtitleTracks(
+  tracks: Array<{ index: number; codec: string; language?: string; title?: string }>
+): SubtitleTrack[] {
+  return tracks.map((track, index) => {
+    const lang = track.language?.trim()
+    const title = track.title?.trim()
+    const codec = track.codec?.trim()
+    const nameParts = [lang ? lang.toUpperCase() : '', title || '', codec ? `(${codec})` : ''].filter(Boolean)
+    return {
+      id: `${PROBED_TRACK_PREFIX}${track.index}`,
+      name: nameParts.join(' ') || `Subtitle ${index + 1}`,
+      lang: lang || undefined,
+      type: 'embedded'
+    }
+  })
+}
+
+function collectNativeAudioTracks(video: HTMLVideoElement): AudioTrack[] {
+  const tracks = getNativeAudioTracks(video)
+  if (!tracks || tracks.length === 0) return []
+
+  const nativeTracks: AudioTrack[] = []
+  for (let i = 0; i < tracks.length; i++) {
+    const track = tracks[i]
+    nativeTracks.push({
+      id: `${NATIVE_AUDIO_TRACK_PREFIX}${i}`,
+      name: track.label || track.language || `Audio ${i + 1}`,
+      lang: track.language || undefined,
+      default: !!track.enabled
+    })
+  }
+
+  return nativeTracks
+}
+
+function collectHlsAudioTracks(hls: Hls): AudioTrack[] {
+  const tracks = hls.audioTracks || []
+  return tracks.map((track, index) => ({
+    id: `${HLS_AUDIO_TRACK_PREFIX}${index}`,
+    name: track.name || track.lang || `Audio ${index + 1}`,
+    lang: track.lang,
+    default: !!track.default
+  }))
+}
+
+function mergeSubtitleTracks(...trackGroups: SubtitleTrack[][]): SubtitleTrack[] {
+  return trackGroups.flat()
+}
+
+function syncActiveSubtitleCues(
+  video: HTMLVideoElement,
+  setActiveSubtitleCues: (cues: SubtitleCue[]) => void
+) {
+  const nextCues: SubtitleCue[] = []
+  const tracks = video.textTracks
+
+  for (let i = 0; i < tracks.length; i++) {
+    const track = tracks[i]
+    if (!isSubtitleTextTrack(track)) continue
+    if (track.mode !== 'hidden' && track.mode !== 'showing') continue
+    if (!track.activeCues) continue
+
+    for (let j = 0; j < track.activeCues.length; j++) {
+      const cue = track.activeCues[j] as unknown as { startTime?: number; endTime?: number; text?: string }
+      if (typeof cue.startTime !== 'number' || typeof cue.endTime !== 'number') continue
+      nextCues.push({
+        startTime: cue.startTime,
+        endTime: cue.endTime,
+        text: cue.text || ''
+      })
+    }
+  }
+
+  setActiveSubtitleCues(nextCues)
+}
+
+function attachCueListeners(
+  video: HTMLVideoElement,
+  setActiveSubtitleCues: (cues: SubtitleCue[]) => void
+) {
+  const tracks = video.textTracks
+  for (let i = 0; i < tracks.length; i++) {
+    const track = tracks[i]
+    if (!isSubtitleTextTrack(track)) continue
+    track.oncuechange = () => syncActiveSubtitleCues(video, setActiveSubtitleCues)
+  }
+}
+
+function disableAllNativeSubtitleTracks(video: HTMLVideoElement) {
+  const tracks = video.textTracks
+  for (let i = 0; i < tracks.length; i++) {
+    const track = tracks[i]
+    if (!isSubtitleTextTrack(track)) continue
+    track.mode = 'disabled'
+  }
+}
+
+function applyNativeSubtitleTrack(video: HTMLVideoElement, nativeTrackIndex: number) {
+  const tracks = video.textTracks
+  for (let i = 0; i < tracks.length; i++) {
+    const track = tracks[i]
+    if (!isSubtitleTextTrack(track)) continue
+    // Keep selected track hidden and render all subtitles via custom overlay.
+    track.mode = i === nativeTrackIndex ? 'hidden' : 'disabled'
+  }
+}
+
+function applyNativeAudioTrack(video: HTMLVideoElement, nativeTrackIndex: number) {
+  const tracks = getNativeAudioTracks(video)
+  if (!tracks) return
+
+  for (let i = 0; i < tracks.length; i++) {
+    tracks[i].enabled = i === nativeTrackIndex
+  }
+}
+
+function findNativeSubtitleTrackIndexForHls(
+  video: HTMLVideoElement,
+  hls: Hls,
+  hlsTrackId: number
+): number {
+  const hlsTrack = hls.subtitleTracks?.[hlsTrackId]
+  const targetLang = normalizeTrackMeta(hlsTrack?.lang)
+  const targetName = normalizeTrackMeta(hlsTrack?.name)
+  const subtitleTrackIndices: number[] = []
+
+  for (let i = 0; i < video.textTracks.length; i++) {
+    const nativeTrack = video.textTracks[i]
+    if (!isSubtitleTextTrack(nativeTrack)) continue
+
+    subtitleTrackIndices.push(i)
+
+    const nativeLang = normalizeTrackMeta(nativeTrack.language)
+    const nativeLabel = normalizeTrackMeta(nativeTrack.label)
+    if (targetLang && targetName && nativeLang === targetLang && nativeLabel === targetName) {
+      return i
+    }
+  }
+
+  if (targetLang) {
+    for (const index of subtitleTrackIndices) {
+      const nativeTrack = video.textTracks[index]
+      if (normalizeTrackMeta(nativeTrack.language) === targetLang) return index
+    }
+  }
+
+  if (targetName) {
+    for (const index of subtitleTrackIndices) {
+      const nativeTrack = video.textTracks[index]
+      if (normalizeTrackMeta(nativeTrack.label) === targetName) return index
+    }
+  }
+
+  if (hlsTrackId >= 0 && hlsTrackId < subtitleTrackIndices.length) {
+    return subtitleTrackIndices[hlsTrackId]
+  }
+
+  return subtitleTrackIndices[0] ?? -1
+}
+
+function applyHlsSubtitleTrack(
+  video: HTMLVideoElement,
+  hls: Hls,
+  trackId: number,
+  setActiveSubtitleCues: (cues: SubtitleCue[]) => void
+): boolean {
+  hls.subtitleTrack = trackId
+  hls.subtitleDisplay = true
+
+  const nativeTrackId = findNativeSubtitleTrackIndexForHls(video, hls, trackId)
+  if (nativeTrackId >= 0) {
+    applyNativeSubtitleTrack(video, nativeTrackId)
+    syncActiveSubtitleCues(video, setActiveSubtitleCues)
+    return true
+  }
+
+  disableAllNativeSubtitleTracks(video)
+  setActiveSubtitleCues([])
+  return false
+}
+
 export function usePlayer(
   videoRef: RefObject<HTMLVideoElement | null>,
   options?: { disabled?: boolean }
 ) {
   const disabled = options?.disabled ?? false
+  const currentChannelId = useStore((s) => s.currentChannel?.id)
   const hlsRef = useRef<Hls | null>(null)
   const directReadErrorRetryCountRef = useRef(0)
   const audioPreferenceAppliedRef = useRef(false)
@@ -69,213 +282,13 @@ export function usePlayer(
     setPlayerError, setAudioTracks, setCurrentAudioTrack,
     setSubtitleTracks, setCurrentSubtitleTrack, setVideoQualityOptions,
     setCurrentVideoQuality, setActiveVideoQuality, setSubtitleCues,
-    subtitleCues, setActiveSubtitleCues
+    subtitleCues, setActiveSubtitleCues, applyPlayerPatch
   } = useStore()
 
   useEffect(() => {
     audioPreferenceAppliedRef.current = false
     subtitlePreferenceAppliedRef.current = false
   }, [currentChannel?.id, currentChannel?.streamUrl])
-
-  function collectNativeSubtitleTracks(video: HTMLVideoElement): SubtitleTrack[] {
-    const tracks = video.textTracks
-    if (!tracks || tracks.length === 0) return []
-
-    const nativeTracks: SubtitleTrack[] = []
-    for (let i = 0; i < tracks.length; i++) {
-      const track = tracks[i]
-      if (!isSubtitleTextTrack(track)) continue
-
-      nativeTracks.push({
-        id: `${NATIVE_TRACK_PREFIX}${i}`,
-        name: track.label || track.language || `Subtitle ${i + 1}`,
-        lang: track.language || undefined,
-        type: 'embedded'
-      })
-    }
-
-    return nativeTracks
-  }
-
-  function collectHlsSubtitleTracks(hls: Hls): SubtitleTrack[] {
-    const tracks = hls.subtitleTracks || []
-    return tracks.map((track, index) => ({
-      id: `${HLS_TRACK_PREFIX}${index}`,
-      name: track.name || track.lang || `Subtitle ${index + 1}`,
-      lang: track.lang,
-      type: 'embedded'
-    }))
-  }
-
-  function collectProbedSubtitleTracks(
-    tracks: Array<{ index: number; codec: string; language?: string; title?: string }>
-  ): SubtitleTrack[] {
-    return tracks.map((track, index) => {
-      const lang = track.language?.trim()
-      const title = track.title?.trim()
-      const codec = track.codec?.trim()
-      const nameParts = [lang ? lang.toUpperCase() : '', title || '', codec ? `(${codec})` : ''].filter(Boolean)
-      return {
-        id: `${PROBED_TRACK_PREFIX}${track.index}`,
-        name: nameParts.join(' ') || `Subtitle ${index + 1}`,
-        lang: lang || undefined,
-        type: 'embedded'
-      }
-    })
-  }
-
-  function collectNativeAudioTracks(video: HTMLVideoElement): AudioTrack[] {
-    const tracks = getNativeAudioTracks(video)
-    if (!tracks || tracks.length === 0) return []
-
-    const nativeTracks: AudioTrack[] = []
-    for (let i = 0; i < tracks.length; i++) {
-      const track = tracks[i]
-      nativeTracks.push({
-        id: `${NATIVE_AUDIO_TRACK_PREFIX}${i}`,
-        name: track.label || track.language || `Audio ${i + 1}`,
-        lang: track.language || undefined,
-        default: !!track.enabled
-      })
-    }
-
-    return nativeTracks
-  }
-
-  function collectHlsAudioTracks(hls: Hls): AudioTrack[] {
-    const tracks = hls.audioTracks || []
-    return tracks.map((track, index) => ({
-      id: `${HLS_AUDIO_TRACK_PREFIX}${index}`,
-      name: track.name || track.lang || `Audio ${index + 1}`,
-      lang: track.lang,
-      default: !!track.default
-    }))
-  }
-
-  function mergeSubtitleTracks(...trackGroups: SubtitleTrack[][]): SubtitleTrack[] {
-    return trackGroups.flat()
-  }
-
-  function syncActiveSubtitleCues(video: HTMLVideoElement) {
-    const nextCues: SubtitleCue[] = []
-    const tracks = video.textTracks
-
-    for (let i = 0; i < tracks.length; i++) {
-      const track = tracks[i]
-      if (!isSubtitleTextTrack(track)) continue
-      if (track.mode !== 'hidden' && track.mode !== 'showing') continue
-      if (!track.activeCues) continue
-
-      for (let j = 0; j < track.activeCues.length; j++) {
-        const cue = track.activeCues[j] as unknown as { startTime?: number; endTime?: number; text?: string }
-        if (typeof cue.startTime !== 'number' || typeof cue.endTime !== 'number') continue
-        nextCues.push({
-          startTime: cue.startTime,
-          endTime: cue.endTime,
-          text: cue.text || ''
-        })
-      }
-    }
-
-    setActiveSubtitleCues(nextCues)
-  }
-
-  function attachCueListeners(video: HTMLVideoElement) {
-    const tracks = video.textTracks
-    for (let i = 0; i < tracks.length; i++) {
-      const track = tracks[i]
-      if (!isSubtitleTextTrack(track)) continue
-      track.oncuechange = () => syncActiveSubtitleCues(video)
-    }
-  }
-
-  function disableAllNativeSubtitleTracks(video: HTMLVideoElement) {
-    const tracks = video.textTracks
-    for (let i = 0; i < tracks.length; i++) {
-      const track = tracks[i]
-      if (!isSubtitleTextTrack(track)) continue
-      track.mode = 'disabled'
-    }
-  }
-
-  function setNativeSubtitleTrack(video: HTMLVideoElement, nativeTrackIndex: number) {
-    const tracks = video.textTracks
-    for (let i = 0; i < tracks.length; i++) {
-      const track = tracks[i]
-      if (!isSubtitleTextTrack(track)) continue
-      // Keep selected track hidden and render all subtitles via custom overlay.
-      track.mode = i === nativeTrackIndex ? 'hidden' : 'disabled'
-    }
-  }
-
-  function setNativeAudioTrack(video: HTMLVideoElement, nativeTrackIndex: number) {
-    const tracks = getNativeAudioTracks(video)
-    if (!tracks) return
-
-    for (let i = 0; i < tracks.length; i++) {
-      tracks[i].enabled = i === nativeTrackIndex
-    }
-  }
-
-  function findNativeSubtitleTrackIndexForHls(
-    video: HTMLVideoElement,
-    hls: Hls,
-    hlsTrackId: number
-  ): number {
-    const hlsTrack = hls.subtitleTracks?.[hlsTrackId]
-    const targetLang = normalizeTrackMeta(hlsTrack?.lang)
-    const targetName = normalizeTrackMeta(hlsTrack?.name)
-    const subtitleTrackIndices: number[] = []
-
-    for (let i = 0; i < video.textTracks.length; i++) {
-      const nativeTrack = video.textTracks[i]
-      if (!isSubtitleTextTrack(nativeTrack)) continue
-
-      subtitleTrackIndices.push(i)
-
-      const nativeLang = normalizeTrackMeta(nativeTrack.language)
-      const nativeLabel = normalizeTrackMeta(nativeTrack.label)
-      if (targetLang && targetName && nativeLang === targetLang && nativeLabel === targetName) {
-        return i
-      }
-    }
-
-    if (targetLang) {
-      for (const index of subtitleTrackIndices) {
-        const nativeTrack = video.textTracks[index]
-        if (normalizeTrackMeta(nativeTrack.language) === targetLang) return index
-      }
-    }
-
-    if (targetName) {
-      for (const index of subtitleTrackIndices) {
-        const nativeTrack = video.textTracks[index]
-        if (normalizeTrackMeta(nativeTrack.label) === targetName) return index
-      }
-    }
-
-    if (hlsTrackId >= 0 && hlsTrackId < subtitleTrackIndices.length) {
-      return subtitleTrackIndices[hlsTrackId]
-    }
-
-    return subtitleTrackIndices[0] ?? -1
-  }
-
-  function applyHlsSubtitleTrack(video: HTMLVideoElement, hls: Hls, trackId: number): boolean {
-    hls.subtitleTrack = trackId
-    hls.subtitleDisplay = true
-
-    const nativeTrackId = findNativeSubtitleTrackIndexForHls(video, hls, trackId)
-    if (nativeTrackId >= 0) {
-      setNativeSubtitleTrack(video, nativeTrackId)
-      syncActiveSubtitleCues(video)
-      return true
-    }
-
-    disableAllNativeSubtitleTracks(video)
-    setActiveSubtitleCues([])
-    return false
-  }
 
   // HLS lifecycle
   useEffect(() => {
@@ -304,31 +317,34 @@ export function usePlayer(
       const nativeTracks = collectNativeAudioTracks(video)
       const nextTracks = hlsTracks.length > 0 ? hlsTracks : nativeTracks
 
-      setAudioTracks(nextTracks)
-
       const selectedTrack = useStore.getState().currentAudioTrack
+      const patch: Parameters<typeof applyPlayerPatch>[0] = { audioTracks: nextTracks }
       if (nextTracks.length === 0) {
-        if (selectedTrack !== null) setCurrentAudioTrack(null)
+        if (selectedTrack !== null) patch.currentAudioTrack = null
+        applyPlayerPatch(patch)
         return
       }
 
       if (selectedTrack && nextTracks.some((track) => track.id === selectedTrack)) {
         audioPreferenceAppliedRef.current = true
+        applyPlayerPatch(patch)
         return
       }
 
       if (!audioPreferenceAppliedRef.current) {
         const preferredAudioLanguage = useStore.getState().settings.preferredAudioLanguage
         const preferredTrackId = pickPreferredAudioTrackId(nextTracks, preferredAudioLanguage)
-        if (preferredTrackId) setCurrentAudioTrack(preferredTrackId)
+        if (preferredTrackId) patch.currentAudioTrack = preferredTrackId
         audioPreferenceAppliedRef.current = true
+        applyPlayerPatch(patch)
         return
       }
 
       const fallbackTrack = nextTracks.find((track) => track.default) ?? nextTracks[0]
       if (fallbackTrack && selectedTrack !== fallbackTrack.id) {
-        setCurrentAudioTrack(fallbackTrack.id)
+        patch.currentAudioTrack = fallbackTrack.id
       }
+      applyPlayerPatch(patch)
     }
 
     const refreshSubtitleTracks = (hls: Hls | null) => {
@@ -336,23 +352,28 @@ export function usePlayer(
       const nativeTracks = collectNativeSubtitleTracks(video)
       const visibleNativeTracks = hlsTracks.length > 0 ? [] : nativeTracks
       const mergedTracks = mergeSubtitleTracks(hlsTracks, visibleNativeTracks, probedTracks)
-      setSubtitleTracks(mergedTracks)
 
       const selectedTrack = useStore.getState().currentSubtitleTrack
+      const patch: Parameters<typeof applyPlayerPatch>[0] = { subtitleTracks: mergedTracks }
 
       if (mergedTracks.length === 0) {
         if (selectedTrack !== null) {
-          setCurrentSubtitleTrack(null)
-          setSubtitleCues([])
-          setActiveSubtitleCues([])
+          patch.currentSubtitleTrack = null
+          patch.subtitleCues = []
+          patch.activeSubtitleCues = []
         }
+        applyPlayerPatch(patch)
         return
       }
 
-      if (selectedTrack === 'external') return
+      if (selectedTrack === 'external') {
+        applyPlayerPatch(patch)
+        return
+      }
 
       if (selectedTrack && mergedTracks.some((track) => String(track.id) === selectedTrack)) {
         subtitlePreferenceAppliedRef.current = true
+        applyPlayerPatch(patch)
         return
       }
 
@@ -362,10 +383,11 @@ export function usePlayer(
         const { defaultSubtitleEnabled, preferredSubtitleLanguage } = useStore.getState().settings
         if (!defaultSubtitleEnabled) {
           if (selectedTrack !== null) {
-            setCurrentSubtitleTrack(null)
-            setSubtitleCues([])
-            setActiveSubtitleCues([])
+            patch.currentSubtitleTrack = null
+            patch.subtitleCues = []
+            patch.activeSubtitleCues = []
           }
+          applyPlayerPatch(patch)
           return
         }
 
@@ -374,25 +396,26 @@ export function usePlayer(
           preferredSubtitleLanguage
         )
         if (preferredTrackId) {
-          setCurrentSubtitleTrack(preferredTrackId)
+          patch.currentSubtitleTrack = preferredTrackId
         } else {
-          setCurrentSubtitleTrack(null)
-          setSubtitleCues([])
-          setActiveSubtitleCues([])
+          patch.currentSubtitleTrack = null
+          patch.subtitleCues = []
+          patch.activeSubtitleCues = []
         }
+        applyPlayerPatch(patch)
         return
       }
 
       if (selectedTrack !== null) {
-        setCurrentSubtitleTrack(null)
-        setSubtitleCues([])
-        setActiveSubtitleCues([])
+        patch.currentSubtitleTrack = null
+        patch.subtitleCues = []
+        patch.activeSubtitleCues = []
       }
+      applyPlayerPatch(patch)
     }
 
     const refreshVideoQualities = (hls: Hls | null) => {
       const nextOptions = hls ? buildVideoQualityOptions(hls.levels) : []
-      setVideoQualityOptions(nextOptions)
 
       const selectedQuality = useStore.getState().currentVideoQuality
       const normalizedSelectedQuality =
@@ -402,14 +425,16 @@ export function usePlayer(
             ? selectedQuality
             : AUTO_VIDEO_QUALITY_ID
 
+      const patch: Parameters<typeof applyPlayerPatch>[0] = { videoQualityOptions: nextOptions }
       if (selectedQuality !== normalizedSelectedQuality) {
-        setCurrentVideoQuality(normalizedSelectedQuality)
+        patch.currentVideoQuality = normalizedSelectedQuality
       }
 
       const activeQuality = hls ? getActiveVideoQualityId(hls.currentLevel) : null
       if (useStore.getState().activeVideoQuality !== activeQuality) {
-        setActiveVideoQuality(activeQuality)
+        patch.activeVideoQuality = activeQuality
       }
+      applyPlayerPatch(patch)
     }
 
     const syncCurrentHlsSubtitleSelection = () => {
@@ -422,15 +447,15 @@ export function usePlayer(
       const trackId = Number.parseInt(selectedTrack.replace(HLS_TRACK_PREFIX, ''), 10)
       if (Number.isNaN(trackId)) return
 
-      applyHlsSubtitleTrack(video, hls, trackId)
+      applyHlsSubtitleTrack(video, hls, trackId, setActiveSubtitleCues)
     }
 
     const textTrackList = video.textTracks
     const handleTextTrackListChange = () => {
       refreshSubtitleTracks(hlsRef.current)
-      attachCueListeners(video)
+      attachCueListeners(video, setActiveSubtitleCues)
       syncCurrentHlsSubtitleSelection()
-      syncActiveSubtitleCues(video)
+      syncActiveSubtitleCues(video, setActiveSubtitleCues)
     }
 
     const nativeAudioTracks = getNativeAudioTracks(video)
@@ -457,9 +482,11 @@ export function usePlayer(
     video.addEventListener('loadeddata', handleMediaTracksMaybeReady)
     video.addEventListener('canplay', handleMediaTracksMaybeReady)
 
-    setVideoQualityOptions([])
-    setCurrentVideoQuality(null)
-    setActiveVideoQuality(null)
+    applyPlayerPatch({
+      videoQualityOptions: [],
+      currentVideoQuality: null,
+      activeVideoQuality: null
+    })
 
     if (isHLS || isTS) {
       if (Hls.isSupported()) {
@@ -485,7 +512,7 @@ export function usePlayer(
           refreshVideoQualities(hls)
           refreshAudioTracks(hls)
           refreshSubtitleTracks(hls)
-          attachCueListeners(video)
+          attachCueListeners(video, setActiveSubtitleCues)
           syncCurrentHlsSubtitleSelection()
         })
 
@@ -506,21 +533,21 @@ export function usePlayer(
 
           const activeTrackId = `${HLS_AUDIO_TRACK_PREFIX}${hls.audioTrack}`
           if (useStore.getState().currentAudioTrack !== activeTrackId) {
-            setCurrentAudioTrack(activeTrackId)
+            applyPlayerPatch({ currentAudioTrack: activeTrackId })
           }
         })
 
         hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
           refreshSubtitleTracks(hls)
-          attachCueListeners(video)
+          attachCueListeners(video, setActiveSubtitleCues)
           syncCurrentHlsSubtitleSelection()
         })
 
         hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, () => {
           refreshSubtitleTracks(hls)
-          attachCueListeners(video)
+          attachCueListeners(video, setActiveSubtitleCues)
           syncCurrentHlsSubtitleSelection()
-          syncActiveSubtitleCues(video)
+          syncActiveSubtitleCues(video, setActiveSubtitleCues)
         })
 
         let retryCount = 0
@@ -528,20 +555,20 @@ export function usePlayer(
         hls.on(Hls.Events.ERROR, (_, data) => {
           if (data.fatal) {
             if (retryCount >= MAX_HLS_RETRIES) {
-              setPlayerError(`Oynatma başarısız: ${data.details}`)
+              applyPlayerPatch({ playerError: `Oynatma başarısız: ${data.details}` })
               return
             }
             retryCount++
             const delay = Math.min(1000 * Math.pow(1.5, retryCount - 1), 10000)
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                setTimeout(() => hls.startLoad(), delay)
+                window.setTimeout(() => hls.startLoad(), delay)
                 break
               case Hls.ErrorTypes.MEDIA_ERROR:
                 hls.recoverMediaError()
                 break
               default:
-                setPlayerError(`Oynatma hatası: ${data.details}`)
+                applyPlayerPatch({ playerError: `Oynatma hatası: ${data.details}` })
                 break
             }
           }
@@ -554,12 +581,14 @@ export function usePlayer(
         video.addEventListener(
           'loadedmetadata',
           () => {
-            setVideoQualityOptions([])
-            setCurrentVideoQuality(null)
-            setActiveVideoQuality(null)
+            applyPlayerPatch({
+              videoQualityOptions: [],
+              currentVideoQuality: null,
+              activeVideoQuality: null
+            })
             refreshAudioTracks(null)
             refreshSubtitleTracks(null)
-            attachCueListeners(video)
+            attachCueListeners(video, setActiveSubtitleCues)
           },
           { once: true }
         )
@@ -567,9 +596,11 @@ export function usePlayer(
     } else {
       const startDirectPlayback = () => {
         // Direct playback (mp4, mkv, etc)
-        setVideoQualityOptions([])
-        setCurrentVideoQuality(null)
-        setActiveVideoQuality(null)
+        applyPlayerPatch({
+          videoQualityOptions: [],
+          currentVideoQuality: null,
+          activeVideoQuality: null
+        })
         video.src = url
         video.play().catch(() => {})
 
@@ -577,8 +608,8 @@ export function usePlayer(
         video.addEventListener('loadedmetadata', () => {
           refreshAudioTracks(null)
           refreshSubtitleTracks(null)
-          attachCueListeners(video)
-          syncActiveSubtitleCues(video)
+          attachCueListeners(video, setActiveSubtitleCues)
+          syncActiveSubtitleCues(video, setActiveSubtitleCues)
         }, { once: true })
       }
 
@@ -595,7 +626,7 @@ export function usePlayer(
             }
 
             probedTracks = collectProbedSubtitleTracks(tracks)
-            setSubtitleTracks(mergeSubtitleTracks([], [], probedTracks))
+            applyPlayerPatch({ subtitleTracks: mergeSubtitleTracks([], [], probedTracks) })
           } catch (error) {
             console.warn('Failed to probe embedded subtitles', error)
           }
@@ -635,15 +666,7 @@ export function usePlayer(
     currentChannel,
     videoRef,
     setActiveSubtitleCues,
-    setAudioTracks,
-    setCurrentAudioTrack,
-    setCurrentSubtitleTrack,
-    setPlayerError,
-    setSubtitleCues,
-    setSubtitleTracks,
-    setVideoQualityOptions,
-    setCurrentVideoQuality,
-    setActiveVideoQuality,
+    applyPlayerPatch,
     disabled
   ])
 
@@ -654,21 +677,7 @@ export function usePlayer(
     if (!video) return
     video.volume = volume
     video.muted = isMuted
-  }, [volume, isMuted, videoRef, disabled])
-
-  // Re-apply persisted volume when a new channel starts
-  useEffect(() => {
-    if (disabled) return
-    if (!currentChannel) return
-    const { volume: storeVolume, isMuted: storeMuted } = useStore.getState()
-    const v = Math.min(1, Math.max(0, storeVolume))
-
-    const video = videoRef.current
-    if (video) {
-      video.volume = v
-      video.muted = storeMuted
-    }
-  }, [currentChannel, videoRef, disabled])
+  }, [volume, isMuted, videoRef, disabled, currentChannelId])
 
   // Audio track switching
   useEffect(() => {
@@ -689,7 +698,7 @@ export function usePlayer(
     if (currentAudioTrack.startsWith(NATIVE_AUDIO_TRACK_PREFIX)) {
       const nativeTrackId = Number.parseInt(currentAudioTrack.replace(NATIVE_AUDIO_TRACK_PREFIX, ''), 10)
       if (!Number.isNaN(nativeTrackId)) {
-        setNativeAudioTrack(video, nativeTrackId)
+        applyNativeAudioTrack(video, nativeTrackId)
       }
       return
     }
@@ -698,7 +707,7 @@ export function usePlayer(
     const legacyTrackId = Number.parseInt(currentAudioTrack, 10)
     if (!Number.isNaN(legacyTrackId)) {
       if (hls) hls.audioTrack = legacyTrackId
-      else setNativeAudioTrack(video, legacyTrackId)
+      else applyNativeAudioTrack(video, legacyTrackId)
     }
   }, [currentAudioTrack, videoRef, disabled])
 
@@ -730,7 +739,7 @@ export function usePlayer(
     if (!video) return
     const hls = hlsRef.current
     let cancelled = false
-    const retryTimers: ReturnType<typeof setTimeout>[] = []
+    const retryTimers: number[] = []
 
     if (currentSubtitleTrack === null || currentSubtitleTrack === 'external') {
       if (hls) {
@@ -739,8 +748,7 @@ export function usePlayer(
       }
       disableAllNativeSubtitleTracks(video)
       if (currentSubtitleTrack === null) {
-        setSubtitleCues([])
-        setActiveSubtitleCues([])
+        applyPlayerPatch({ subtitleCues: [], activeSubtitleCues: [] })
       }
       return
     }
@@ -751,8 +759,7 @@ export function usePlayer(
         hls.subtitleDisplay = false
       }
       disableAllNativeSubtitleTracks(video)
-      setSubtitleCues([])
-      setActiveSubtitleCues([])
+      applyPlayerPatch({ subtitleCues: [], activeSubtitleCues: [] })
 
       const streamIndex = Number.parseInt(currentSubtitleTrack.replace(PROBED_TRACK_PREFIX, ''), 10)
       if (Number.isNaN(streamIndex) || !currentChannel?.streamUrl) return
@@ -762,11 +769,11 @@ export function usePlayer(
           const extracted = await extractEmbeddedSubtitle(currentChannel.streamUrl, streamIndex)
           if (cancelled) return
           if (!extracted) {
-            setSubtitleCues([])
+            applyPlayerPatch({ subtitleCues: [] })
             return
           }
           const cues = parseSubtitles(extracted.content, `embedded.${extracted.format}`)
-          setSubtitleCues(cues)
+          applyPlayerPatch({ subtitleCues: cues })
         } catch (error) {
           if (!cancelled) console.warn('Failed to extract embedded subtitle track', error)
         }
@@ -778,19 +785,18 @@ export function usePlayer(
     }
 
     if (currentSubtitleTrack.startsWith(HLS_TRACK_PREFIX)) {
-      setSubtitleCues([])
-      setActiveSubtitleCues([])
+      applyPlayerPatch({ subtitleCues: [], activeSubtitleCues: [] })
 
       const trackId = Number.parseInt(currentSubtitleTrack.replace(HLS_TRACK_PREFIX, ''), 10)
       if (!Number.isNaN(trackId) && hls) {
-        const appliedNow = applyHlsSubtitleTrack(video, hls, trackId)
+        const appliedNow = applyHlsSubtitleTrack(video, hls, trackId, setActiveSubtitleCues)
 
         if (!appliedNow) {
           for (let attempt = 1; attempt <= 8; attempt++) {
             retryTimers.push(
-              setTimeout(() => {
+              window.setTimeout(() => {
                 if (cancelled) return
-                const applied = applyHlsSubtitleTrack(video, hls, trackId)
+                const applied = applyHlsSubtitleTrack(video, hls, trackId, setActiveSubtitleCues)
                 if (applied) {
                   for (const timer of retryTimers) clearTimeout(timer)
                 }
@@ -807,15 +813,15 @@ export function usePlayer(
     }
 
     if (currentSubtitleTrack.startsWith(NATIVE_TRACK_PREFIX)) {
-      setSubtitleCues([])
+      applyPlayerPatch({ subtitleCues: [] })
       const nativeTrackId = Number.parseInt(currentSubtitleTrack.replace(NATIVE_TRACK_PREFIX, ''), 10)
       if (!Number.isNaN(nativeTrackId)) {
         if (hls) {
           hls.subtitleTrack = -1
           hls.subtitleDisplay = false
         }
-        setNativeSubtitleTrack(video, nativeTrackId)
-        syncActiveSubtitleCues(video)
+        applyNativeSubtitleTrack(video, nativeTrackId)
+        syncActiveSubtitleCues(video, setActiveSubtitleCues)
       }
       return
     }
@@ -823,16 +829,15 @@ export function usePlayer(
     // Backward compatibility for old persisted numeric IDs
     const legacyTrackId = Number.parseInt(currentSubtitleTrack, 10)
     if (!Number.isNaN(legacyTrackId) && hls) {
-      setSubtitleCues([])
-      setActiveSubtitleCues([])
-      applyHlsSubtitleTrack(video, hls, legacyTrackId)
+      applyPlayerPatch({ subtitleCues: [], activeSubtitleCues: [] })
+      applyHlsSubtitleTrack(video, hls, legacyTrackId, setActiveSubtitleCues)
     }
 
     return () => {
       cancelled = true
       for (const timer of retryTimers) clearTimeout(timer)
     }
-  }, [currentSubtitleTrack, currentChannel, videoRef, setActiveSubtitleCues, setSubtitleCues, disabled])
+  }, [currentSubtitleTrack, currentChannel, videoRef, setActiveSubtitleCues, applyPlayerPatch, disabled])
 
   // Video events
   useEffect(() => {
@@ -840,15 +845,14 @@ export function usePlayer(
     const video = videoRef.current
     if (!video) return
 
-    const onPlay = () => { setPlaying(true); setPaused(false) }
-    const onPause = () => setPaused(true)
-    const onWaiting = () => setBuffering(true)
+    const onPlay = () => applyPlayerPatch({ isPlaying: true, isPaused: false })
+    const onPause = () => applyPlayerPatch({ isPaused: true })
+    const onWaiting = () => applyPlayerPatch({ isBuffering: true })
     const onPlaying = () => {
-      setBuffering(false)
-      setPlayerError(null)
+      applyPlayerPatch({ isBuffering: false, playerError: null })
     }
-    const onTimeUpdate = () => setCurrentTime(video.currentTime)
-    const onDurationChange = () => setDuration(video.duration)
+    const onTimeUpdate = () => applyPlayerPatch({ currentTime: video.currentTime })
+    const onDurationChange = () => applyPlayerPatch({ duration: video.duration })
     const onError = () => {
       const message = video.error?.message || 'Oynatma hatasi'
       const isDirectStream = !!currentChannel?.streamUrl && !(urlIsHlsOrTs(currentChannel.streamUrl))
@@ -861,8 +865,7 @@ export function usePlayer(
 
         if (src) {
           directReadErrorRetryCountRef.current += 1
-          setPlayerError(null)
-          setBuffering(true)
+          applyPlayerPatch({ playerError: null, isBuffering: true })
 
           video.pause()
           video.src = src
@@ -883,7 +886,7 @@ export function usePlayer(
         }
       }
 
-      setPlayerError(message)
+      applyPlayerPatch({ playerError: message })
     }
 
     video.addEventListener('play', onPlay)
@@ -903,7 +906,7 @@ export function usePlayer(
       video.removeEventListener('durationchange', onDurationChange)
       video.removeEventListener('error', onError)
     }
-  }, [videoRef, currentChannel, setPlaying, setPaused, setBuffering, setCurrentTime, setDuration, setPlayerError, disabled])
+  }, [videoRef, currentChannel, applyPlayerPatch, disabled])
 
   // Live stream stall detection — recovers frozen HLS/direct streams
   useEffect(() => {
@@ -924,7 +927,7 @@ export function usePlayer(
         lastProgressTime = Date.now()
         if (recoveryCount > 0) {
           recoveryCount = 0
-          setPlayerError(null)
+          applyPlayerPatch({ playerError: null })
         }
       }
     }
@@ -937,7 +940,7 @@ export function usePlayer(
     const STALL_CHECK_INTERVAL_MS = 2_500
     let terminalErrorShown = false
 
-    const stallCheck = setInterval(() => {
+    const stallCheck = window.setInterval(() => {
       if (video.paused || lastTimePos < 0) return
 
       const now = Date.now()
@@ -946,7 +949,7 @@ export function usePlayer(
         if (terminalErrorShown) {
           terminalErrorShown = false
           recoveryCount = 0
-          setPlayerError(null)
+          applyPlayerPatch({ playerError: null })
         }
         return
       }
@@ -955,9 +958,9 @@ export function usePlayer(
       if (recoveryCount < MAX_RECOVERIES) {
         recoveryCount++
         lastProgressTime = now
-        setPlayerError(
-          `Bağlantı kesildi, yeniden bağlanılıyor... (${recoveryCount}/${MAX_RECOVERIES})`
-        )
+        applyPlayerPatch({
+          playerError: `Bağlantı kesildi, yeniden bağlanılıyor... (${recoveryCount}/${MAX_RECOVERIES})`
+        })
 
         if (hls) {
           hls.stopLoad()
@@ -971,7 +974,7 @@ export function usePlayer(
         }
       } else if (!terminalErrorShown) {
         terminalErrorShown = true
-        setPlayerError('Yayın bağlantısı kesildi.')
+        applyPlayerPatch({ playerError: 'Yayın bağlantısı kesildi.' })
         // Keep the interval alive — if the network recovers on its own, the
         // progress branch above will clear the error and resume monitoring.
       }
@@ -979,9 +982,9 @@ export function usePlayer(
 
     return () => {
       video.removeEventListener('timeupdate', onStallTimeUpdate)
-      clearInterval(stallCheck)
+      window.clearInterval(stallCheck)
     }
-  }, [currentChannel, videoRef, setPlayerError, disabled])
+  }, [currentChannel, videoRef, applyPlayerPatch, disabled])
 
   // Cue matching for parsed subtitle sources (external files + extracted embedded tracks)
   useEffect(() => {
@@ -995,7 +998,7 @@ export function usePlayer(
       return
     }
 
-    const interval = setInterval(() => {
+    const interval = window.setInterval(() => {
       const video = videoRef.current
       if (!video) return
       const t = video.currentTime
@@ -1003,6 +1006,6 @@ export function usePlayer(
       setActiveSubtitleCues(active)
     }, 100)
 
-    return () => clearInterval(interval)
+    return () => window.clearInterval(interval)
   }, [currentSubtitleTrack, subtitleCues, videoRef, setActiveSubtitleCues, disabled])
 }

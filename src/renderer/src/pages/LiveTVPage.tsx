@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import { useState, useReducer, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { CategoryList } from '@/components/channels/CategoryList'
@@ -40,15 +40,56 @@ interface LiveTVRouteState {
   restoreScrollTop?: number
 }
 
-export default function LiveTVPage() {
-  const location = useLocation()
+interface LoadStatus {
+  error: string | null
+  foregroundMessage: string | null
+  isForegroundLoading: boolean
+  isBackgroundSyncing: boolean
+}
+
+type LoadStatusAction =
+  | { type: 'foregroundStart'; message: string }
+  | { type: 'foregroundEnd' }
+  | { type: 'failed'; message: string }
+  | { type: 'backgroundSyncing'; value: boolean }
+  | { type: 'stopLoading' }
+  | { type: 'reset' }
+
+const initialLoadStatus: LoadStatus = {
+  error: null,
+  foregroundMessage: null,
+  isForegroundLoading: false,
+  isBackgroundSyncing: false
+}
+
+function loadStatusReducer(state: LoadStatus, action: LoadStatusAction): LoadStatus {
+  switch (action.type) {
+    case 'foregroundStart':
+      return { ...state, error: null, foregroundMessage: action.message, isForegroundLoading: true }
+    case 'foregroundEnd':
+      return { ...state, foregroundMessage: null, isForegroundLoading: false }
+    case 'failed':
+      return { ...state, error: action.message }
+    case 'backgroundSyncing':
+      return { ...state, isBackgroundSyncing: action.value }
+    case 'stopLoading':
+      return { ...state, foregroundMessage: null, isForegroundLoading: false, isBackgroundSyncing: false }
+    case 'reset':
+      return initialLoadStatus
+    default:
+      return state
+  }
+}
+
+function useLiveTVPageContent() {
+  const routeLocation = useLocation()
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [reloadToken, setReloadToken] = useState(0)
-  const [foregroundLoadingMessage, setForegroundLoadingMessage] = useState<string | null>(null)
-  const [isForegroundLoading, setIsForegroundLoading] = useState(false)
-  const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false)
+  const [reloadToken, bumpReloadToken] = useReducer((value: number) => value + 1, 0)
+  const [
+    { error: loadError, foregroundMessage: foregroundLoadingMessage, isForegroundLoading, isBackgroundSyncing },
+    dispatchLoad
+  ] = useReducer(loadStatusReducer, initialLoadStatus)
   const loadedCatsRef = useRef(loadedLiveCategoryCache)
   const previousSourceIdRef = useRef<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -59,8 +100,6 @@ export default function LiveTVPage() {
   const hydratedSourceIds = useStore((s) => s.hydratedSourceIds)
   const isSourceTypeHydrated = useStore((s) => s.isSourceTypeHydrated)
   const selectedCategoryId = useStore((s) => s.selectedCategoryId)
-  const channelFilter = useStore((s) => s.channelFilter)
-  const setChannelFilter = useStore((s) => s.setChannelFilter)
   const playChannel = useStore((s) => s.playChannel)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
   const addChannels = useStore((s) => s.addChannels)
@@ -87,7 +126,7 @@ export default function LiveTVPage() {
   )
 
   useEffect(() => {
-    const state = location.state as LiveTVRouteState | null
+    const state = routeLocation.state as LiveTVRouteState | null
     if (!state) return
 
     let shouldClearLocationState = false
@@ -118,17 +157,13 @@ export default function LiveTVPage() {
 
     navigate(
       {
-        pathname: location.pathname,
-        search: location.search,
-        hash: location.hash
+        pathname: routeLocation.pathname,
+        search: routeLocation.search,
+        hash: routeLocation.hash
       },
       { replace: true, state: null }
     )
-  }, [location.hash, location.pathname, location.search, location.state, navigate, setSelectedCategory])
-
-  useEffect(() => {
-    setChannelFilter('live')
-  }, [setChannelFilter])
+  }, [routeLocation.hash, routeLocation.pathname, routeLocation.search, routeLocation.state, navigate, setSelectedCategory])
 
   useEffect(() => {
     const previousSourceId = previousSourceIdRef.current
@@ -139,10 +174,7 @@ export default function LiveTVPage() {
 
     setSearchQuery('')
     setSelectedCategory(null)
-    setLoadError(null)
-    setForegroundLoadingMessage(null)
-    setIsForegroundLoading(false)
-    setIsBackgroundSyncing(false)
+    dispatchLoad({ type: 'reset' })
   }, [activeSourceId, setSelectedCategory])
 
   useEffect(() => {
@@ -214,9 +246,7 @@ export default function LiveTVPage() {
     let cancelled = false
     const controller = new AbortController()
     const load = async () => {
-      setLoadError(null)
-      setForegroundLoadingMessage('Seçili kategori yükleniyor...')
-      setIsForegroundLoading(true)
+      dispatchLoad({ type: 'foregroundStart', message: 'Seçili kategori yükleniyor...' })
 
       try {
         const streams = await xtreamApi.getLiveStreams(creds, rawCategoryId, {
@@ -228,11 +258,10 @@ export default function LiveTVPage() {
       } catch (err) {
         if (cancelled) return
         console.error('Failed to load live streams:', err)
-        setLoadError(err instanceof Error ? err.message : 'Kanallar yüklenemedi')
+        dispatchLoad({ type: 'failed', message: err instanceof Error ? err.message : 'Kanallar yüklenemedi' })
       } finally {
         if (!cancelled) {
-          setIsForegroundLoading(false)
-          setForegroundLoadingMessage(null)
+          dispatchLoad({ type: 'foregroundEnd' })
         }
       }
     }
@@ -249,6 +278,7 @@ export default function LiveTVPage() {
     channels,
     getXtreamCredentials,
     addChannels,
+    isSourceTypeHydrated,
     reloadToken
   ])
 
@@ -274,9 +304,7 @@ export default function LiveTVPage() {
       )
 
       if (!loadedLivePreviewSourceCache.has(activeSourceId) && !hasSourceChannels) {
-        setLoadError(null)
-        setForegroundLoadingMessage('Kanallar hızlı ön izleme listesiyle açılıyor...')
-        setIsForegroundLoading(true)
+        dispatchLoad({ type: 'foregroundStart', message: 'Kanallar hızlı ön izleme listesiyle açılıyor...' })
 
         try {
           const previewStreams = await xtreamApi.getLivePreviewStreams(creds, 500, {
@@ -288,12 +316,11 @@ export default function LiveTVPage() {
         } catch (err) {
           if (cancelled) return
           console.error('Failed to load live preview:', err)
-          setLoadError(err instanceof Error ? err.message : 'Kanallar yüklenemedi')
+          dispatchLoad({ type: 'failed', message: err instanceof Error ? err.message : 'Kanallar yüklenemedi' })
           return
         } finally {
           if (!cancelled) {
-            setIsForegroundLoading(false)
-            setForegroundLoadingMessage(null)
+            dispatchLoad({ type: 'foregroundEnd' })
           }
         }
       } else if (hasSourceChannels) {
@@ -305,7 +332,7 @@ export default function LiveTVPage() {
       }
 
       // Sync live first (priority), then vod+series sequentially in background
-      if (!cancelled) setIsBackgroundSyncing(true)
+      if (!cancelled) dispatchLoad({ type: 'backgroundSyncing', value: true })
       syncingLiveFullSourceCache.add(activeSourceId)
       void ensureStagedSync(activeSourceId, 'live', creds)
         .then(() => {
@@ -315,7 +342,7 @@ export default function LiveTVPage() {
         })
         .finally(() => {
           syncingLiveFullSourceCache.delete(activeSourceId)
-          if (!cancelled) setIsBackgroundSyncing(false)
+          if (!cancelled) dispatchLoad({ type: 'backgroundSyncing', value: false })
         })
         .catch(() => undefined)
     }
@@ -333,11 +360,12 @@ export default function LiveTVPage() {
     hydratedSourceIds,
     getXtreamCredentials,
     addChannels,
+    isSourceTypeHydrated,
     reloadToken
   ])
 
   const filtered = useMemo(() => {
-    let list = channels.filter((c) => c.type === channelFilter)
+    let list = channels.filter((c) => c.type === 'live')
 
     if (activeSourceId) {
       list = list.filter((c) => c.sourceId === activeSourceId)
@@ -351,7 +379,7 @@ export default function LiveTVPage() {
     }
 
     return list
-  }, [channels, activeSourceId, channelFilter, selectedCategoryId, searchQuery])
+  }, [channels, activeSourceId, selectedCategoryId, searchQuery])
   const displayedChannels = useRetainedListWhileLoading(filtered, isForegroundLoading, retainResetKey)
   const isPreviewMode =
     !rawCategoryId &&
@@ -367,7 +395,7 @@ export default function LiveTVPage() {
       playChannel(channel)
       setMiniPlayer(false)
       openPlayerFromRoute({
-        location,
+        location: routeLocation,
         navigate,
         returnState: {
           restoreSearchQuery: searchQuery,
@@ -377,13 +405,13 @@ export default function LiveTVPage() {
         setPlayerReturnTarget
       })
     },
-    [location, navigate, playChannel, searchQuery, selectedCategoryId, setMiniPlayer, setPlayerReturnTarget]
+    [routeLocation, navigate, playChannel, searchQuery, selectedCategoryId, setMiniPlayer, setPlayerReturnTarget]
   )
 
   return (
     <div className="flex h-full gap-3 p-3">
       <div className="rounded-lg border border-surface-800 bg-surface-900 w-64 shrink-0 overflow-y-auto p-3">
-        <CategoryList />
+        <CategoryList filter="live" />
       </div>
         <div ref={scrollContainerRef} className="rounded-lg border border-surface-800 bg-surface-900 flex-1 overflow-y-auto p-5">
           <div className="mb-5">
@@ -423,10 +451,8 @@ export default function LiveTVPage() {
                   loadedLiveFullSourceCache.clear()
                   syncingLiveFullSourceCache.clear()
                 }
-                setIsForegroundLoading(false)
-                setForegroundLoadingMessage(null)
-                setIsBackgroundSyncing(false)
-                setReloadToken((v) => v + 1)
+                dispatchLoad({ type: 'stopLoading' })
+                bumpReloadToken()
               }}
             >
               Tekrar Dene
@@ -458,4 +484,8 @@ export default function LiveTVPage() {
       </div>
     </div>
   )
+}
+
+export default function LiveTVPage() {
+  return useLiveTVPageContent()
 }

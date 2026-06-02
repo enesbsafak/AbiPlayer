@@ -167,6 +167,7 @@ export function PlayerSidebar() {
           {typeLabel}
         </span>
         <button
+          type="button"
           onClick={() => setPlayerSidebarOpen(false)}
           className="rounded p-1 text-surface-400 hover:text-white hover:bg-white/8 transition-colors duration-normal"
           aria-label="Kanal listesini kapat"
@@ -180,6 +181,7 @@ export function PlayerSidebar() {
       {availableCategories.length > 1 && (
         <div ref={categoryDropdownRef} className="relative border-b border-white/6">
           <button
+            type="button"
             onClick={() => setIsCategoryOpen(!isCategoryOpen)}
             className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/4 transition-colors"
           >
@@ -195,6 +197,7 @@ export function PlayerSidebar() {
           {isCategoryOpen && (
             <div className="absolute left-0 right-0 top-full z-dropdown max-h-64 overflow-y-auto border-b border-white/8 bg-surface-950">
               <button
+                type="button"
                 onClick={() => handleCategorySelect(null)}
                 className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
                   !selectedCategoryId ? 'text-accent bg-accent/8' : 'text-surface-300 hover:bg-white/4'
@@ -205,6 +208,7 @@ export function PlayerSidebar() {
               {availableCategories.map((cat) => (
                 <button
                   key={cat.id}
+                  type="button"
                   onClick={() => handleCategorySelect(cat.id)}
                   className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors truncate ${
                     selectedCategoryId === cat.id ? 'text-accent bg-accent/8' : 'text-surface-300 hover:bg-white/4'
@@ -232,6 +236,7 @@ export function PlayerSidebar() {
             <button
               key={ch.id}
               ref={isActive ? activeRef : undefined}
+              type="button"
               onClick={() => handleSelect(ch)}
               className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left transition-colors ${
                 isActive
@@ -239,7 +244,7 @@ export function PlayerSidebar() {
                   : 'border-l-2 border-transparent hover:bg-white/5'
               }`}
             >
-              <div className="relative flex-shrink-0 w-8 h-8 rounded overflow-hidden bg-white/5 flex items-center justify-center">
+              <div className="relative flex-shrink-0 size-8 rounded overflow-hidden bg-white/5 flex items-center justify-center">
                 {artwork ? (
                   <LazyImage src={artwork} alt={ch.name} className="h-full w-full" fit="cover" />
                 ) : (
@@ -255,6 +260,7 @@ export function PlayerSidebar() {
                 <ClampText
                   as="p"
                   lines={1}
+                  titleText={ch.name}
                   className={`text-label ${isActive ? 'font-semibold text-accent' : 'font-medium text-surface-200'}`}
                 >
                   {ch.name}

@@ -55,25 +55,31 @@ function clampVolume(value: number): number {
 }
 
 function mapAudioTracks(tracks: MpvTrackInfo[]): AudioTrack[] {
-  return tracks
-    .filter((track) => track.type === 'audio')
-    .map((track, index) => ({
+  const audioTracks: AudioTrack[] = []
+  for (const track of tracks) {
+    if (track.type !== 'audio') continue
+    audioTracks.push({
       id: `${MPV_AUDIO_TRACK_PREFIX}${track.id}`,
-      name: track.title || track.lang || `Audio ${index + 1}`,
+      name: track.title || track.lang || `Audio ${audioTracks.length + 1}`,
       lang: track.lang,
       default: track.selected
-    }))
+    })
+  }
+  return audioTracks
 }
 
 function mapSubtitleTracks(tracks: MpvTrackInfo[]): SubtitleTrack[] {
-  return tracks
-    .filter((track) => track.type === 'sub')
-    .map((track, index) => ({
+  const subtitleTracks: SubtitleTrack[] = []
+  for (const track of tracks) {
+    if (track.type !== 'sub') continue
+    subtitleTracks.push({
       id: `${MPV_SUBTITLE_TRACK_PREFIX}${track.id}`,
-      name: track.title || track.lang || `Subtitle ${index + 1}`,
+      name: track.title || track.lang || `Subtitle ${subtitleTracks.length + 1}`,
       lang: track.lang,
       type: track.external ? 'external' : 'embedded'
-    }))
+    })
+  }
+  return subtitleTracks
 }
 
 function getSelectedVideoTrackId(snapshot: MpvStateSnapshot): number | null {
@@ -95,7 +101,7 @@ export function useMpvPlayer(enabled: boolean) {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastGoodPlaybackRef = useRef(0)
   const startupVisibleRef = useRef(false)
-  const [isStarting, setIsStarting] = useState(false)
+  const [isStartupVisible, setIsStartupVisible] = useState(false)
   const {
     currentChannel,
     currentAudioTrack,
@@ -123,13 +129,14 @@ export function useMpvPlayer(enabled: boolean) {
     setSubtitleCues,
     setActiveSubtitleCues,
     setVolume,
-    setMuted
+    setMuted,
+    applyPlayerPatch
   } = useStore()
 
   const updateStartupVisibility = (next: boolean) => {
     if (startupVisibleRef.current === next) return
     startupVisibleRef.current = next
-    setIsStarting(next)
+    setIsStartupVisible(next)
   }
 
   useEffect(() => {
@@ -147,7 +154,7 @@ export function useMpvPlayer(enabled: boolean) {
         clearTimeout(reconnectTimerRef.current)
         reconnectTimerRef.current = null
       }
-      updateStartupVisibility(false)
+      startupVisibleRef.current = false
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current)
         pollTimerRef.current = null
@@ -467,8 +474,7 @@ export function useMpvPlayer(enabled: boolean) {
     if (!enabled) return
 
     if (currentSubtitleTrack === null) {
-      setSubtitleCues([])
-      setActiveSubtitleCues([])
+      applyPlayerPatch({ subtitleCues: [], activeSubtitleCues: [] })
       void mpvSetSubtitleTrack(null).catch(() => undefined)
       return
     }
@@ -477,10 +483,9 @@ export function useMpvPlayer(enabled: boolean) {
 
     const rawId = Number.parseInt(currentSubtitleTrack.replace(MPV_SUBTITLE_TRACK_PREFIX, ''), 10)
     if (Number.isNaN(rawId)) return
-    setSubtitleCues([])
-    setActiveSubtitleCues([])
+    applyPlayerPatch({ subtitleCues: [], activeSubtitleCues: [] })
     void mpvSetSubtitleTrack(rawId).catch(() => undefined)
-  }, [enabled, currentSubtitleTrack, setActiveSubtitleCues, setSubtitleCues])
+  }, [enabled, currentSubtitleTrack, applyPlayerPatch])
 
-  return isStarting
+  return enabled && startupUrlRef.current !== null && isStartupVisible
 }

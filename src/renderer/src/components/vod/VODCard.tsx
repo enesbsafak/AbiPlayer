@@ -20,12 +20,10 @@ export const VODCard = memo(function VODCard({
   const qualityLabel = inferContentQualityLabel(item)
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border border-surface-800 bg-surface-900 transition-colors hover:border-surface-700"
+    <button
+      type="button"
+      className="group relative flex w-full flex-col overflow-hidden rounded-lg border border-surface-800 bg-surface-900 text-left transition-colors hover:border-surface-700"
       onClick={() => onPlay(item)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPlay(item) } }}
       aria-label={`${item.name} oynat`}
     >
       <div className="relative aspect-[2/3] bg-surface-800">
@@ -46,16 +44,16 @@ export const VODCard = memo(function VODCard({
         )}
       </div>
       <div className="p-3">
-        <ClampText as="p" lines={2} className="text-sm font-medium text-surface-100">
+        <ClampText as="p" lines={2} titleText={item.name} className="text-sm font-medium text-surface-100">
           {item.name}
         </ClampText>
         <div className="mt-1 flex items-center justify-between gap-2 text-label text-surface-500">
-          <ClampText as="span" lines={1} className="min-w-0 flex-1">
+          <ClampText as="span" lines={1} titleText={item.group || item.categoryName || 'Film'} className="min-w-0 flex-1">
             {item.group || item.categoryName || 'Film'}
           </ClampText>
           {item.year && <span className="shrink-0 text-surface-400">{item.year}</span>}
         </div>
       </div>
-    </div>
+    </button>
   )
 })
