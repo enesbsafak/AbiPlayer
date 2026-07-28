@@ -47,29 +47,41 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>()
-  const [mpvAvailable, setMpvAvailable] = useState(false)
+  // `null` = detection still running. Neither engine may touch the stream until
+  // this settles, otherwise HTML5 opens the URL and MPV immediately opens it a
+  // second time — providers count that against their max-connection limit.
+  const [mpvAvailable, setMpvAvailable] = useState<boolean | null>(null)
   const [playerSize, setPlayerSize] = useState(DEFAULT_PLAYER_SIZE)
 
-  const {
-    currentChannel, isBuffering, playerError, showControls,
-    playbackEngine, setShowControls, isFullscreen, setFullscreen, setPlaybackEngine,
-    isPlayerSidebarOpen, subtitleCues
-  } = useStore()
-  const mpvEnabled = mpvAvailable && playbackEngine === 'mpv'
+  const currentChannel = useStore((s) => s.currentChannel)
+  const isBuffering = useStore((s) => s.isBuffering)
+  const playerError = useStore((s) => s.playerError)
+  const showControls = useStore((s) => s.showControls)
+  const playbackEngine = useStore((s) => s.playbackEngine)
+  const setShowControls = useStore((s) => s.setShowControls)
+  const isFullscreen = useStore((s) => s.isFullscreen)
+  const setFullscreen = useStore((s) => s.setFullscreen)
+  const setPlaybackEngine = useStore((s) => s.setPlaybackEngine)
+  const isPlayerSidebarOpen = useStore((s) => s.isPlayerSidebarOpen)
+  const subtitleCues = useStore((s) => s.subtitleCues)
+  const isEngineResolved = mpvAvailable !== null
+  const mpvEnabled = mpvAvailable === true && playbackEngine === 'mpv'
   const captionsTrackSrc = useMemo(() => buildCaptionsTrackSrc(subtitleCues), [subtitleCues])
 
-  usePlayer(videoRef, { disabled: mpvEnabled })
+  usePlayer(videoRef, { disabled: mpvEnabled || !isEngineResolved })
   const isMpvStarting = useMpvPlayer(mpvEnabled)
   // MPV handles buffering natively — only show overlay on initial startup or HTML5 buffering
-  const showLoadingOverlay = mpvEnabled ? isMpvStarting : isBuffering
+  const showLoadingOverlay = !isEngineResolved || (mpvEnabled ? isMpvStarting : isBuffering)
 
   useEffect(() => {
     let cancelled = false
     const detectMpv = async () => {
       const available = await mpvIsAvailable().catch(() => false)
       if (cancelled) return
-      setMpvAvailable(available)
+      // Publish the engine before lifting the gate, so no render can ever see
+      // "detection finished" while the engine still reads html5.
       setPlaybackEngine(available ? 'mpv' : 'html5')
+      setMpvAvailable(available)
     }
 
     void detectMpv()
@@ -121,6 +133,8 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
       hideTimerRef.current = setTimeout(() => setShowControls(false), 3000)
     }
   }, [setShowControls, isPlayerSidebarOpen])
+
+  useEffect(() => () => clearTimeout(hideTimerRef.current), [])
 
   const toggleFullscreen = useCallback(async () => {
     if (mpvEnabled) {

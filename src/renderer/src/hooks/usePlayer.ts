@@ -276,14 +276,17 @@ export function usePlayer(
   const audioPreferenceAppliedRef = useRef(false)
   const subtitlePreferenceAppliedRef = useRef(false)
 
-  const {
-    currentChannel, volume, isMuted, currentAudioTrack, currentSubtitleTrack, currentVideoQuality,
-    setPlaying, setPaused, setBuffering, setCurrentTime, setDuration,
-    setPlayerError, setAudioTracks, setCurrentAudioTrack,
-    setSubtitleTracks, setCurrentSubtitleTrack, setVideoQualityOptions,
-    setCurrentVideoQuality, setActiveVideoQuality, setSubtitleCues,
-    subtitleCues, setActiveSubtitleCues, applyPlayerPatch
-  } = useStore()
+  // Select individually: a bare `useStore()` re-runs this hook on every store
+  // write, and playback pushes several per second.
+  const currentChannel = useStore((s) => s.currentChannel)
+  const volume = useStore((s) => s.volume)
+  const isMuted = useStore((s) => s.isMuted)
+  const currentAudioTrack = useStore((s) => s.currentAudioTrack)
+  const currentSubtitleTrack = useStore((s) => s.currentSubtitleTrack)
+  const currentVideoQuality = useStore((s) => s.currentVideoQuality)
+  const subtitleCues = useStore((s) => s.subtitleCues)
+  const setActiveSubtitleCues = useStore((s) => s.setActiveSubtitleCues)
+  const applyPlayerPatch = useStore((s) => s.applyPlayerPatch)
 
   useEffect(() => {
     audioPreferenceAppliedRef.current = false

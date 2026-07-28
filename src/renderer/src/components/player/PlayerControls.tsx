@@ -119,13 +119,31 @@ function VolumeControl({ isMuted, volume, onToggleMute, onVolumeChange }: Volume
 
 export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsProps) {
   const navigate = useNavigate()
-  const {
-    isPlaying, isPaused, isBuffering, currentTime, duration, volume, isMuted, isFullscreen,
-    channels, categories, currentChannel, playbackEngine, playerReturnTarget,
-    selectedCategoryId,
-    clearPlayerReturnTarget, setVolume, setMuted, setPiP, stopPlayback, setMiniPlayer, playChannel,
-    togglePlayerSidebar, isPlayerSidebarOpen
-  } = useStore()
+  // Select individually — a bare `useStore()` re-renders these controls on
+  // every store write, and playback pushes time updates several times a second.
+  const isPlaying = useStore((s) => s.isPlaying)
+  const isPaused = useStore((s) => s.isPaused)
+  const isBuffering = useStore((s) => s.isBuffering)
+  const currentTime = useStore((s) => s.currentTime)
+  const duration = useStore((s) => s.duration)
+  const volume = useStore((s) => s.volume)
+  const isMuted = useStore((s) => s.isMuted)
+  const isFullscreen = useStore((s) => s.isFullscreen)
+  const channels = useStore((s) => s.channels)
+  const categories = useStore((s) => s.categories)
+  const currentChannel = useStore((s) => s.currentChannel)
+  const playbackEngine = useStore((s) => s.playbackEngine)
+  const playerReturnTarget = useStore((s) => s.playerReturnTarget)
+  const selectedCategoryId = useStore((s) => s.selectedCategoryId)
+  const clearPlayerReturnTarget = useStore((s) => s.clearPlayerReturnTarget)
+  const setVolume = useStore((s) => s.setVolume)
+  const setMuted = useStore((s) => s.setMuted)
+  const setPiP = useStore((s) => s.setPiP)
+  const stopPlayback = useStore((s) => s.stopPlayback)
+  const setMiniPlayer = useStore((s) => s.setMiniPlayer)
+  const playChannel = useStore((s) => s.playChannel)
+  const togglePlayerSidebar = useStore((s) => s.togglePlayerSidebar)
+  const isPlayerSidebarOpen = useStore((s) => s.isPlayerSidebarOpen)
 
   const video = videoRef.current
 

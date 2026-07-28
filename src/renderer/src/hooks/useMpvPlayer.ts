@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AudioTrack, SubtitleTrack } from '@/types/player'
+import type { AudioTrack, SubtitleTrack, VideoQualityOption } from '@/types/player'
 import {
   type MpvStateSnapshot,
   mpvGetState,
@@ -87,6 +87,44 @@ function getSelectedVideoTrackId(snapshot: MpvStateSnapshot): number | null {
   return selectedTrack?.id ?? snapshot.vid
 }
 
+// The poll below runs 4x/s and rebuilds these lists from scratch every tick.
+// Writing them unconditionally would hand the store a fresh array reference on
+// every tick and re-render every track/quality consumer, so compare by value
+// and only publish real changes.
+function sameAudioTracks(a: AudioTrack[], b: AudioTrack[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((track, index) => {
+    const other = b[index]
+    return (
+      track.id === other.id &&
+      track.name === other.name &&
+      track.lang === other.lang &&
+      track.default === other.default
+    )
+  })
+}
+
+function sameSubtitleTracks(a: SubtitleTrack[], b: SubtitleTrack[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((track, index) => {
+    const other = b[index]
+    return (
+      track.id === other.id &&
+      track.name === other.name &&
+      track.lang === other.lang &&
+      track.type === other.type
+    )
+  })
+}
+
+function sameQualityOptions(a: VideoQualityOption[], b: VideoQualityOption[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((option, index) => {
+    const other = b[index]
+    return option.id === other.id && option.label === other.label
+  })
+}
+
 const MAX_AUTO_RECONNECT = 5
 const RECONNECT_DELAY_MS = 1000
 const STALL_THRESHOLD_MS = 12_000
@@ -102,36 +140,18 @@ export function useMpvPlayer(enabled: boolean) {
   const lastGoodPlaybackRef = useRef(0)
   const startupVisibleRef = useRef(false)
   const [isStartupVisible, setIsStartupVisible] = useState(false)
-  const {
-    currentChannel,
-    currentAudioTrack,
-    currentSubtitleTrack,
-    currentVideoQuality,
-    settings,
-    volume,
-    isMuted,
-    setPlaybackEngine,
-    setPlaying,
-    setPaused,
-    setBuffering,
-    setCurrentTime,
-    setDuration,
-    setDemuxerCacheDuration,
-    setFullscreen,
-    setPlayerError,
-    setAudioTracks,
-    setCurrentAudioTrack,
-    setSubtitleTracks,
-    setCurrentSubtitleTrack,
-    setVideoQualityOptions,
-    setCurrentVideoQuality,
-    setActiveVideoQuality,
-    setSubtitleCues,
-    setActiveSubtitleCues,
-    setVolume,
-    setMuted,
-    applyPlayerPatch
-  } = useStore()
+  // Select individually: a bare `useStore()` re-runs this hook on every store
+  // write, and the poll below writes several times per second.
+  const currentChannel = useStore((s) => s.currentChannel)
+  const currentAudioTrack = useStore((s) => s.currentAudioTrack)
+  const currentSubtitleTrack = useStore((s) => s.currentSubtitleTrack)
+  const currentVideoQuality = useStore((s) => s.currentVideoQuality)
+  const settings = useStore((s) => s.settings)
+  const volume = useStore((s) => s.volume)
+  const isMuted = useStore((s) => s.isMuted)
+  const setPlaybackEngine = useStore((s) => s.setPlaybackEngine)
+  const setPlayerError = useStore((s) => s.setPlayerError)
+  const applyPlayerPatch = useStore((s) => s.applyPlayerPatch)
 
   const updateStartupVisibility = (next: boolean) => {
     if (startupVisibleRef.current === next) return
@@ -191,21 +211,23 @@ export function useMpvPlayer(enabled: boolean) {
         startupStartedAtRef.current = null
         updateStartupVisibility(false)
         await mpvStop().catch(() => undefined)
-        setAudioTracks([])
-        setSubtitleTracks([])
-        setCurrentAudioTrack(null)
-        setCurrentSubtitleTrack(null)
-        setVideoQualityOptions([])
-        setCurrentVideoQuality(null)
-        setActiveVideoQuality(null)
-        setSubtitleCues([])
-        setActiveSubtitleCues([])
-        setPlaying(false)
-        setPaused(true)
-        setBuffering(false)
-        setCurrentTime(0)
-        setDuration(0)
-        setDemuxerCacheDuration(0)
+        applyPlayerPatch({
+          audioTracks: [],
+          subtitleTracks: [],
+          currentAudioTrack: null,
+          currentSubtitleTrack: null,
+          videoQualityOptions: [],
+          currentVideoQuality: null,
+          activeVideoQuality: null,
+          subtitleCues: [],
+          activeSubtitleCues: [],
+          isPlaying: false,
+          isPaused: true,
+          isBuffering: false,
+          currentTime: 0,
+          duration: 0,
+          demuxerCacheDuration: 0
+        })
         return
       }
 
@@ -240,29 +262,7 @@ export function useMpvPlayer(enabled: boolean) {
       // switching natively via loadfile-replace. Full teardown only
       // happens when the enabled flag changes (separate effect).
     }
-  }, [
-    enabled,
-    currentChannel,
-    setActiveSubtitleCues,
-    setAudioTracks,
-    setBuffering,
-    setCurrentAudioTrack,
-    setCurrentSubtitleTrack,
-    setVideoQualityOptions,
-    setCurrentVideoQuality,
-    setActiveVideoQuality,
-    setCurrentTime,
-    setDuration,
-    setDemuxerCacheDuration,
-    setMuted,
-    setPaused,
-    setPlaybackEngine,
-    setPlayerError,
-    setPlaying,
-    setSubtitleCues,
-    setSubtitleTracks,
-    setVolume
-  ])
+  }, [enabled, currentChannel, applyPlayerPatch, setPlaybackEngine, setPlayerError])
 
   useEffect(() => {
     if (!enabled) return
@@ -279,13 +279,28 @@ export function useMpvPlayer(enabled: boolean) {
       if (startupVisibleRef.current && !shouldKeepStartupOverlay(snapshot, startupUrlRef.current, startupStartedAtRef.current, now)) {
         updateStartupVisibility(false)
       }
-      setPlaying(snapshot.running && !snapshot.paused)
-      setPaused(snapshot.paused)
-      setBuffering(snapshot.buffering)
-      setCurrentTime(snapshot.timePos || 0)
-      setDuration(snapshot.duration || 0)
-      setDemuxerCacheDuration(snapshot.demuxerCacheDuration || 0)
-      setFullscreen(Boolean(windowFullscreen || snapshot.fullscreen))
+
+      // Accumulate everything this tick observed into one patch and publish it
+      // once, carrying only the keys whose value actually moved.
+      const store = useStore.getState()
+      const patch: Parameters<typeof applyPlayerPatch>[0] = {}
+
+      const isPlayingNow = snapshot.running && !snapshot.paused
+      if (store.isPlaying !== isPlayingNow) patch.isPlaying = isPlayingNow
+      if (store.isPaused !== snapshot.paused) patch.isPaused = snapshot.paused
+      if (store.isBuffering !== snapshot.buffering) patch.isBuffering = snapshot.buffering
+
+      const timePos = snapshot.timePos || 0
+      if (store.currentTime !== timePos) patch.currentTime = timePos
+
+      const duration = snapshot.duration || 0
+      if (store.duration !== duration) patch.duration = duration
+
+      const cacheDuration = snapshot.demuxerCacheDuration || 0
+      if (store.demuxerCacheDuration !== cacheDuration) patch.demuxerCacheDuration = cacheDuration
+
+      const fullscreen = Boolean(windowFullscreen || snapshot.fullscreen)
+      if (store.isFullscreen !== fullscreen) patch.isFullscreen = fullscreen
 
       // time-pos is unreliable as a liveness signal: many IPTV live streams
       // (proxied TS, HLS at segment boundaries, DVR-less feeds) hold it steady
@@ -294,7 +309,7 @@ export function useMpvPlayer(enabled: boolean) {
       // actually empty and no packets are arriving. The 12s threshold gives
       // mpv's own reconnect (reconnect_delay_max=5s) two attempts before we
       // forcibly reload.
-      const isLiveStream = useStore.getState().currentChannel?.type === 'live'
+      const isLiveStream = store.currentChannel?.type === 'live'
       if (snapshot.running && !snapshot.error && !snapshot.buffering) {
         lastGoodPlaybackRef.current = now
         reconnectCountRef.current = 0
@@ -311,53 +326,61 @@ export function useMpvPlayer(enabled: boolean) {
 
       // Auto-reconnect on error OR stall for live streams
       const needsReconnect = (snapshot.error || isStalledLive) && startupUrlRef.current && !reconnectTimerRef.current
+      let nextPlayerError = store.playerError
       if (needsReconnect) {
         if (isLiveStream && reconnectCountRef.current < MAX_AUTO_RECONNECT) {
           reconnectCountRef.current++
           const delay = RECONNECT_DELAY_MS * reconnectCountRef.current
-          setPlayerError(`Bağlantı kesildi, yeniden bağlanılıyor... (${reconnectCountRef.current}/${MAX_AUTO_RECONNECT})`)
+          nextPlayerError = `Bağlantı kesildi, yeniden bağlanılıyor... (${reconnectCountRef.current}/${MAX_AUTO_RECONNECT})`
           lastGoodPlaybackRef.current = now // reset stall timer
           reconnectTimerRef.current = setTimeout(() => {
             reconnectTimerRef.current = null
             void mpvOpen(startupUrlRef.current!).catch(() => undefined)
           }, delay)
         } else if (snapshot.error) {
-          setPlayerError(snapshot.error)
+          nextPlayerError = snapshot.error
         }
       } else if (!snapshot.error && !isStalledLive) {
-        setPlayerError(null)
+        nextPlayerError = null
       }
+      if (store.playerError !== nextPlayerError) patch.playerError = nextPlayerError
 
       const nextAudioTracks = mapAudioTracks(snapshot.tracks)
-      setAudioTracks(nextAudioTracks)
+      if (!sameAudioTracks(store.audioTracks, nextAudioTracks)) {
+        patch.audioTracks = nextAudioTracks
+      }
 
-      const currentStoreAudioTrack = useStore.getState().currentAudioTrack
+      const currentStoreAudioTrack = store.currentAudioTrack
       const selectedAudioTrack = snapshot.aid ? `${MPV_AUDIO_TRACK_PREFIX}${snapshot.aid}` : null
       if (!audioPreferenceAppliedRef.current && nextAudioTracks.length > 0) {
-        const preferredAudioLanguage = useStore.getState().settings.preferredAudioLanguage
-        const preferredTrackId = pickPreferredAudioTrackId(nextAudioTracks, preferredAudioLanguage)
+        const preferredTrackId = pickPreferredAudioTrackId(
+          nextAudioTracks,
+          store.settings.preferredAudioLanguage
+        )
         const targetAudioTrack = preferredTrackId ?? selectedAudioTrack
         if (targetAudioTrack && currentStoreAudioTrack !== targetAudioTrack) {
-          setCurrentAudioTrack(targetAudioTrack)
+          patch.currentAudioTrack = targetAudioTrack
         } else if (!targetAudioTrack && currentStoreAudioTrack !== null) {
-          setCurrentAudioTrack(null)
+          patch.currentAudioTrack = null
         }
         audioPreferenceAppliedRef.current = true
       } else if (selectedAudioTrack && currentStoreAudioTrack === null) {
-        setCurrentAudioTrack(selectedAudioTrack)
+        patch.currentAudioTrack = selectedAudioTrack
       }
 
       const nextSubtitleTracks = mapSubtitleTracks(snapshot.tracks)
-      setSubtitleTracks(nextSubtitleTracks)
+      if (!sameSubtitleTracks(store.subtitleTracks, nextSubtitleTracks)) {
+        patch.subtitleTracks = nextSubtitleTracks
+      }
 
       const selectedSubtitleTrack = snapshot.sid ? `${MPV_SUBTITLE_TRACK_PREFIX}${snapshot.sid}` : null
-      const currentStoreSubtitleTrack = useStore.getState().currentSubtitleTrack
+      const currentStoreSubtitleTrack = store.currentSubtitleTrack
       if (!subtitlePreferenceAppliedRef.current) {
-        const { defaultSubtitleEnabled, preferredSubtitleLanguage } = useStore.getState().settings
+        const { defaultSubtitleEnabled, preferredSubtitleLanguage } = store.settings
 
         if (!defaultSubtitleEnabled || nextSubtitleTracks.length === 0) {
           if (currentStoreSubtitleTrack !== null) {
-            setCurrentSubtitleTrack(null)
+            patch.currentSubtitleTrack = null
           }
         } else {
           const preferredTrackId = pickPreferredSubtitleTrackId(
@@ -366,29 +389,31 @@ export function useMpvPlayer(enabled: boolean) {
           )
           const targetSubtitleTrack = preferredTrackId ?? selectedSubtitleTrack
           if (targetSubtitleTrack && currentStoreSubtitleTrack !== targetSubtitleTrack) {
-            setCurrentSubtitleTrack(targetSubtitleTrack)
+            patch.currentSubtitleTrack = targetSubtitleTrack
           } else if (!targetSubtitleTrack && currentStoreSubtitleTrack !== null) {
-            setCurrentSubtitleTrack(null)
+            patch.currentSubtitleTrack = null
           }
         }
         subtitlePreferenceAppliedRef.current = true
       } else if (selectedSubtitleTrack && currentStoreSubtitleTrack === null) {
-        setCurrentSubtitleTrack(selectedSubtitleTrack)
+        patch.currentSubtitleTrack = selectedSubtitleTrack
       }
 
       const videoTracks = snapshot.tracks.filter((track) => track.type === 'video')
       const nextVideoQualityOptions = buildMpvVideoQualityOptions(videoTracks)
-      setVideoQualityOptions(nextVideoQualityOptions)
-
-      const activeVideoQuality = getActiveMpvVideoQualityId(getSelectedVideoTrackId(snapshot))
-      if (useStore.getState().activeVideoQuality !== activeVideoQuality) {
-        setActiveVideoQuality(activeVideoQuality)
+      if (!sameQualityOptions(store.videoQualityOptions, nextVideoQualityOptions)) {
+        patch.videoQualityOptions = nextVideoQualityOptions
       }
 
-      const currentStoreVideoQuality = useStore.getState().currentVideoQuality
+      const activeVideoQuality = getActiveMpvVideoQualityId(getSelectedVideoTrackId(snapshot))
+      if (store.activeVideoQuality !== activeVideoQuality) {
+        patch.activeVideoQuality = activeVideoQuality
+      }
+
+      const currentStoreVideoQuality = store.currentVideoQuality
       if (nextVideoQualityOptions.length === 0) {
         if (currentStoreVideoQuality !== null) {
-          setCurrentVideoQuality(null)
+          patch.currentVideoQuality = null
         }
       } else if (
         currentStoreVideoQuality === null ||
@@ -397,8 +422,10 @@ export function useMpvPlayer(enabled: boolean) {
           !nextVideoQualityOptions.some((option) => option.id === currentStoreVideoQuality)
         )
       ) {
-        setCurrentVideoQuality(AUTO_VIDEO_QUALITY_ID)
+        patch.currentVideoQuality = AUTO_VIDEO_QUALITY_ID
       }
+
+      if (Object.keys(patch).length > 0) applyPlayerPatch(patch)
     }
 
     void poll()
@@ -412,24 +439,7 @@ export function useMpvPlayer(enabled: boolean) {
         pollTimerRef.current = null
       }
     }
-  }, [
-    enabled,
-    setAudioTracks,
-    setBuffering,
-    setCurrentAudioTrack,
-    setCurrentSubtitleTrack,
-    setCurrentVideoQuality,
-    setCurrentTime,
-    setDuration,
-    setDemuxerCacheDuration,
-    setFullscreen,
-    setPaused,
-    setPlayerError,
-    setPlaying,
-    setSubtitleTracks,
-    setVideoQualityOptions,
-    setActiveVideoQuality
-  ])
+  }, [enabled, applyPlayerPatch])
 
   useEffect(() => {
     if (!enabled) return

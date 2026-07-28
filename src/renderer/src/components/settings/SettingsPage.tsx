@@ -449,20 +449,20 @@ function PlayerSettingsSection({
 }
 
 export function SettingsContent() {
-  const {
-    settings,
-    audioTracks,
-    subtitleTracks,
-    currentAudioTrack,
-    currentSubtitleTrack,
-    updateSettings,
-    resetSettings,
-    setCurrentAudioTrack,
-    setCurrentSubtitleTrack,
-    setSubtitleCues,
-    setActiveSubtitleCues,
-    setVolume
-  } = useStore()
+  // Select individually so playback state churn doesn't re-render the whole
+  // settings form while a stream is running in the mini player.
+  const settings = useStore((s) => s.settings)
+  const audioTracks = useStore((s) => s.audioTracks)
+  const subtitleTracks = useStore((s) => s.subtitleTracks)
+  const currentAudioTrack = useStore((s) => s.currentAudioTrack)
+  const currentSubtitleTrack = useStore((s) => s.currentSubtitleTrack)
+  const updateSettings = useStore((s) => s.updateSettings)
+  const resetSettings = useStore((s) => s.resetSettings)
+  const setCurrentAudioTrack = useStore((s) => s.setCurrentAudioTrack)
+  const setCurrentSubtitleTrack = useStore((s) => s.setCurrentSubtitleTrack)
+  const setSubtitleCues = useStore((s) => s.setSubtitleCues)
+  const setActiveSubtitleCues = useStore((s) => s.setActiveSubtitleCues)
+  const setVolume = useStore((s) => s.setVolume)
 
   const subtitleOpacity = parseSubtitleBackgroundOpacity(settings.subtitleBackground)
   const languageCodes = useMemo(() => {

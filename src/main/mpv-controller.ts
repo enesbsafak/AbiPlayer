@@ -28,6 +28,8 @@ interface MpvSocketResponse {
   data?: unknown
   event?: string
   name?: string
+  reason?: string
+  file_error?: string
 }
 
 const MPV_REQUEST_TIMEOUT_MS = 5000
@@ -74,6 +76,25 @@ function normalizeTrackType(value: unknown): 'audio' | 'sub' | 'video' | null {
 function toPositiveNumber(value: unknown): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined
   return value
+}
+
+// mpv reports load/playback failures through the `end-file` IPC event. The
+// `file_error` payload is an English libmpv string ("loading failed",
+// "unrecognized file format", …) — map the common ones so the UI can show
+// something actionable instead of raw engine output.
+const MPV_FILE_ERROR_MESSAGES: Record<string, string> = {
+  'loading failed': 'Yayın açılamadı. Kaynak yanıt vermiyor veya adres geçersiz.',
+  'unrecognized file format': 'Yayın biçimi tanınmadı.',
+  'unknown error': 'Yayın açılırken bilinmeyen bir hata oluştu.'
+}
+
+function describeMpvFileError(fileError: unknown): string {
+  if (typeof fileError !== 'string' || !fileError.trim()) {
+    return 'Yayın açılamadı.'
+  }
+
+  const normalized = fileError.trim().toLowerCase()
+  return MPV_FILE_ERROR_MESSAGES[normalized] ?? `Yayın açılamadı: ${fileError.trim().slice(0, 200)}`
 }
 
 export class MpvController {
@@ -277,11 +298,15 @@ export class MpvController {
     this.state.fullscreen = fullscreen
   }
 
-  async setVideoMargin(right: number): Promise<void> {
+  /**
+   * Shrink the rendered video away from the right edge so an overlaying panel
+   * doesn't cover it. `ratio` is a fraction of the window width (mpv's own
+   * unit for this property); 0 restores the full-width video.
+   */
+  async setVideoMarginRatio(ratio: number): Promise<void> {
     if (!this.process) return
-    const clamped = Math.max(0, Math.min(800, Math.round(right)))
-    // video-align-x: -1.0 = left-align, 0.0 = center
-    await this.command(['set_property', 'video-align-x', clamped > 0 ? -1.0 : 0.0]).catch(() => undefined)
+    const clamped = Math.max(0, Math.min(0.9, ratio))
+    await this.command(['set_property', 'video-margin-ratio-right', clamped]).catch(() => undefined)
   }
 
   async setSubtitleStyle(style: MpvSubtitleStyle): Promise<void> {
@@ -481,7 +506,6 @@ export class MpvController {
       '--no-osc',
       '--no-input-default-bindings',
       '--input-vo-keyboard=no',
-      '--msg-level=all=warn',
       '--pause=yes',
       // Network resilience for live streams
       '--network-timeout=30',
@@ -507,12 +531,11 @@ export class MpvController {
 
     this.process = child
     this.state.error = null
-    child.stderr.setEncoding('utf8')
-    child.stderr.on('data', (chunk) => {
-      const text = chunk.trim()
-      if (!text) return
-      this.state.error = text.slice(-300)
-    })
+    // `--terminal=no` silences mpv entirely, so these pipes stay empty. Drain
+    // them anyway so a future flag change can never stall the child on a full
+    // pipe buffer. Playback failures arrive via the `end-file` IPC event.
+    child.stdout.resume()
+    child.stderr.resume()
 
     child.on('error', async (error) => {
       this.state.error = error.message
@@ -689,6 +712,23 @@ export class MpvController {
         pending.resolve(message.data)
       }
 
+      return
+    }
+
+    // mpv is started with `--terminal=no`, which silences every message it
+    // would otherwise print (and those go to stdout, not stderr, anyway). The
+    // JSON IPC event stream is the only reliable failure channel.
+    if (message.event === 'start-file') {
+      this.state.error = null
+      return
+    }
+
+    if (message.event === 'end-file') {
+      if (message.reason === 'error') {
+        this.state.error = describeMpvFileError(message.file_error)
+        this.state.running = false
+        this.state.buffering = false
+      }
       return
     }
 

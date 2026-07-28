@@ -96,6 +96,44 @@ export async function fetchAndParseEPG(url: string): Promise<EPGData> {
 // runtime bugs or unsafe downstream lookups. We reject these unsafe keys outright.
 const UNSAFE_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
 
+const XML_NAMED_ENTITIES: Record<string, string> = {
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  amp: '&'
+}
+
+/**
+ * fast-xml-parser runs with `processEntities: false` so a hostile XMLTV feed
+ * can't blow us up with a custom DOCTYPE entity expansion. That also leaves the
+ * five predefined entities and numeric references raw, so titles arrive as
+ * "Tom &amp; Jerry" — decode just those, without touching DTD-defined names.
+ */
+export function decodeXmlEntities(value: string): string {
+  if (!value.includes('&')) return value
+
+  return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
+    if (entity.startsWith('#x') || entity.startsWith('#X')) {
+      const code = Number.parseInt(entity.slice(2), 16)
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match
+    }
+
+    if (entity.startsWith('#')) {
+      const code = Number.parseInt(entity.slice(1), 10)
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match
+    }
+
+    return XML_NAMED_ENTITIES[entity.toLowerCase()] ?? match
+  })
+}
+
+function decodeXmlText(value: unknown): string | undefined {
+  if (typeof value === 'string') return decodeXmlEntities(value)
+  if (typeof value === 'number') return String(value)
+  return undefined
+}
+
 export function normalizeEpgChannelKey(id: string | null | undefined): string | null {
   if (!id) return null
   // EPG IDs are technical identifiers (e.g. "istanbul.tr", "TRT1.tr") — compare
@@ -139,10 +177,11 @@ export function parseEPGXml(xml: string): EPGData {
     const key = normalizeChannelKey(id)
     if (!key) continue
     const displayNames = ensureArray(ch['display-name'])
-    const displayName = typeof displayNames[0] === 'object' ? displayNames[0]['#text'] : displayNames[0]
+    const rawDisplayName =
+      typeof displayNames[0] === 'object' ? displayNames[0]?.['#text'] : displayNames[0]
     channels[key] = {
       id,
-      displayName: displayName || id,
+      displayName: decodeXmlText(rawDisplayName) || id,
       icon: ch.icon?.['@_src']
     }
   }
@@ -161,9 +200,11 @@ export function parseEPGXml(xml: string): EPGData {
     // Skip programs outside our window
     if (end < windowStart || start > windowEnd) continue
 
-    const title = typeof prog.title === 'object' ? prog.title['#text'] : prog.title
-    const desc = typeof prog.desc === 'object' ? prog.desc?.['#text'] : prog.desc
-    const catVal = typeof prog.category === 'object' ? prog.category?.['#text'] : prog.category
+    const title = decodeXmlText(typeof prog.title === 'object' ? prog.title?.['#text'] : prog.title)
+    const desc = decodeXmlText(typeof prog.desc === 'object' ? prog.desc?.['#text'] : prog.desc)
+    const catVal = decodeXmlText(
+      typeof prog.category === 'object' ? prog.category?.['#text'] : prog.category
+    )
 
     if (!programs[channelId]) programs[channelId] = []
 

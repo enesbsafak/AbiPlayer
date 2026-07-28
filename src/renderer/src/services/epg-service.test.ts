@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeEpgChannelKey, parseEPGXml } from './epg-service'
+import { decodeXmlEntities, normalizeEpgChannelKey, parseEPGXml } from './epg-service'
 
 describe('normalizeEpgChannelKey', () => {
   it('lowercases ASCII channel ids consistently', () => {
@@ -17,6 +17,32 @@ describe('normalizeEpgChannelKey', () => {
     expect(normalizeEpgChannelKey('__proto__')).toBeNull()
     expect(normalizeEpgChannelKey('constructor')).toBeNull()
     expect(normalizeEpgChannelKey('prototype')).toBeNull()
+  })
+})
+
+describe('decodeXmlEntities', () => {
+  it('decodes the five predefined XML entities', () => {
+    expect(decodeXmlEntities('Tom &amp; Jerry')).toBe('Tom & Jerry')
+    expect(decodeXmlEntities('&lt;b&gt;')).toBe('<b>')
+    expect(decodeXmlEntities('&quot;Special&quot;')).toBe('"Special"')
+    expect(decodeXmlEntities("Anne&apos;nin")).toBe("Anne'nin")
+  })
+
+  it('decodes decimal and hexadecimal numeric references', () => {
+    expect(decodeXmlEntities('&#66;&#x69;r')).toBe('Bir')
+    expect(decodeXmlEntities('&#128512;')).toBe('\u{1F600}')
+  })
+
+  it('leaves DTD-defined and malformed entities untouched', () => {
+    // `processEntities: false` means custom DOCTYPE entities were never
+    // expanded — we must not start expanding them here either.
+    expect(decodeXmlEntities('&customEntity;')).toBe('&customEntity;')
+    expect(decodeXmlEntities('&#x110000;')).toBe('&#x110000;')
+    expect(decodeXmlEntities('100% & rising')).toBe('100% & rising')
+  })
+
+  it('returns the input untouched when there is nothing to decode', () => {
+    expect(decodeXmlEntities('Haberler')).toBe('Haberler')
   })
 })
 
@@ -60,6 +86,29 @@ describe('parseEPGXml prototype pollution protection', () => {
       expect.objectContaining({ id: 'real', displayName: 'Real Channel' })
     )
     expect(data.programs['real']).toHaveLength(1)
+  })
+
+  it('decodes entities in programme and channel text', () => {
+    const xml = `<?xml version="1.0"?>
+<tv>
+  <channel id="kanal"><display-name>Kanal &amp; Co</display-name></channel>
+  <programme channel="kanal" start="${startStr}" stop="${endStr}">
+    <title>Tom &amp; Jerry &quot;Ozel&quot;</title>
+    <desc>Bir &lt;b&gt;klasik&lt;/b&gt;</desc>
+    <category>Cizgi &amp; Animasyon</category>
+  </programme>
+</tv>`
+
+    const data = parseEPGXml(xml)
+
+    expect(data.channels['kanal'].displayName).toBe('Kanal & Co')
+    expect(data.programs['kanal'][0]).toEqual(
+      expect.objectContaining({
+        title: 'Tom & Jerry "Ozel"',
+        description: 'Bir <b>klasik</b>',
+        category: 'Cizgi & Animasyon'
+      })
+    )
   })
 
   it('uses null-prototype maps so property lookups never fall back to Object.prototype', () => {

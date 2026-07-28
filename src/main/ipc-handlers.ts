@@ -684,12 +684,25 @@ export function registerIpcHandlers(): void {
     await mpvController.setSubtitleStyle(style)
   })
 
-  ipcMain.handle('mpv-set-video-margin', async (_, right: unknown): Promise<void> => {
+  ipcMain.handle('mpv-set-video-margin', async (event, right: unknown): Promise<void> => {
     if (typeof right !== 'number' || !Number.isFinite(right)) throw new Error('Geçersiz margin değeri')
-    await mpvController.setVideoMargin(right)
+
+    // mpv expresses this margin as a fraction of the window, so translate the
+    // renderer's pixel width against the window that actually hosts the video.
+    const window =
+      BrowserWindow.fromWebContents(event.sender) ??
+      BrowserWindow.getFocusedWindow() ??
+      BrowserWindow.getAllWindows()[0]
+    const windowWidth = window?.getContentBounds().width ?? 0
+    const ratio = windowWidth > 0 ? Math.max(0, right) / windowWidth : 0
+
+    await mpvController.setVideoMarginRatio(ratio)
   })
 
-  ipcMain.handle('mpv-get-state', async (): Promise<MpvStateSnapshot> => {
-    return mpvController.refreshState()
+  // mpv pushes every property this snapshot exposes via `observe_property`
+  // (see MpvController.startMpv), so the cached state is already current.
+  // Re-querying here would cost 12 IPC round-trips per renderer poll.
+  ipcMain.handle('mpv-get-state', (): MpvStateSnapshot => {
+    return mpvController.getState()
   })
 }

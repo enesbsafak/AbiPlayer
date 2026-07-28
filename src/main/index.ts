@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
-import { app, shell, BrowserWindow, screen } from 'electron'
+import { app, shell, BrowserWindow, screen, session } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { initializeAppUpdater } from './app-updater'
@@ -62,8 +62,38 @@ function isStateInBounds(state: WindowState): boolean {
 
 // Enable native audio track API in Chromium so multi-audio streams can be switched.
 app.commandLine.appendSwitch('enable-blink-features', 'AudioTracks')
-// Tolerate self-signed / expired TLS certificates common in IPTV servers
-app.commandLine.appendSwitch('ignore-certificate-errors')
+
+// IPTV providers routinely serve self-signed or expired certificates, so stream
+// and catalog requests must tolerate a broken chain. Update traffic must NOT:
+// electron-updater downloads through this same Chromium network stack, and the
+// Windows build is unsigned (`forceCodeSigning: false`), so a relaxed chain
+// there would let a network attacker hand us an arbitrary installer.
+const STRICT_TLS_HOSTS = new Set([
+  'github.com',
+  'api.github.com',
+  'codeload.github.com',
+  'objects.githubusercontent.com',
+  'raw.githubusercontent.com',
+  'release-assets.githubusercontent.com'
+])
+
+function isStrictTlsHost(hostname: string): boolean {
+  const host = hostname.toLowerCase()
+  if (STRICT_TLS_HOSTS.has(host)) return true
+  return host.endsWith('.githubusercontent.com')
+}
+
+function installCertificateVerifyProc(): void {
+  session.defaultSession.setCertificateVerifyProc((request, callback) => {
+    // 0 = trust, -3 = defer to Chromium's own verification result.
+    if (request.errorCode === 0) {
+      callback(0)
+      return
+    }
+
+    callback(isStrictTlsHost(request.hostname) ? -3 : 0)
+  })
+}
 
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:'])
 
@@ -176,6 +206,7 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  installCertificateVerifyProc()
   registerIpcHandlers()
   createWindow()
   initializeAppUpdater()
