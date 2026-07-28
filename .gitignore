@@ -6,3 +6,5 @@ out/
 .env
 .env.*
 resources/mpv/
+.agents/
+.claude/

@@ -6,11 +6,17 @@ publish:
   repo: AbiPlayer
 directories:
   buildResources: build
+# These are negation-only patterns, so electron-builder falls back to `**/*`:
+# anything left in the project root ends up inside app.asar. .gitignore is NOT
+# consulted here, so every non-runtime root entry has to be listed explicitly.
 files:
   - '!**/.vscode/*'
   - '!src/*'
   - '!resources/mpv/**'
+  - '!docs/**'
+  - '!{.agents,.claude}/**'
   - '!electron.vite.config.*'
+  - '!{postcss.config.js,tailwind.config.ts,vitest.config.ts}'
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
