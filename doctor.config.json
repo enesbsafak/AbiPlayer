@@ -1,0 +1,8 @@
+{
+  "$schema": "https://www.react.doctor/schema/doctor.config.json",
+  "surfaces": {
+    "score": {
+      "excludeRules": ["react-doctor/effect-needs-cleanup"]
+    }
+  }
+}
