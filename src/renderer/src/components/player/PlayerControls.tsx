@@ -1,14 +1,8 @@
 import { useNavigate } from 'react-router-dom'
-import { type RefObject, useMemo } from 'react'
-import {
-  ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize,
-  Rewind, FastForward, SkipBack, SkipForward, PictureInPicture2, X, List
-} from 'lucide-react'
+import { type RefObject } from 'react'
 import { useStore } from '@/store'
-import { AudioTrackSelector } from './AudioTrackSelector'
-import { QualitySelector } from './QualitySelector'
-import { SubtitleSelector } from './SubtitleSelector'
-import { isPlayableChannel } from '@/services/playback'
+import { PlayerActionControls } from './PlayerActionControls'
+import { PlayerTransportControls } from './PlayerTransportControls'
 import { navigateToPlayerReturnTarget } from '@/services/player-navigation'
 import {
   mpvSeek,
@@ -33,13 +27,6 @@ interface ProgressScrubberProps {
   progress: number
   playbackEngine: string
   video: HTMLVideoElement | null
-}
-
-interface VolumeControlProps {
-  isMuted: boolean
-  volume: number
-  onToggleMute: () => void
-  onVolumeChange: (event: React.ChangeEvent<HTMLInputElement>) => void
 }
 
 function formatTime(s: number) {
@@ -79,7 +66,7 @@ function ProgressScrubber({
             video.currentTime = t
           }
         }}
-        className="flex-1 h-1 appearance-none bg-surface-600 rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent"
+        className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-surface-600 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent"
         style={{ background: `linear-gradient(to right, ${PROGRESS_TRACK_COLOR} ${progress}%, ${PROGRESS_BACK_COLOR} ${progress}%)` }}
         aria-label="Oynatma ilerlemesi"
         aria-valuemin={0}
@@ -94,56 +81,24 @@ function ProgressScrubber({
   )
 }
 
-function VolumeControl({ isMuted, volume, onToggleMute, onVolumeChange }: VolumeControlProps) {
-  return (
-    <div className="flex items-center gap-1 ml-2">
-      <button type="button" onClick={onToggleMute} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title={isMuted ? 'Sesi Aç' : 'Sesi Kapat'} aria-label={isMuted ? 'Sesi Aç' : 'Sesi Kapat'}>
-        {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
-      </button>
-      <input
-        type="range"
-        min={0}
-        max={1}
-        step={0.05}
-        value={isMuted ? 0 : volume}
-        onChange={onVolumeChange}
-        className="w-20 h-1 appearance-none bg-surface-600 rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
-        aria-label="Ses seviyesi"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
-      />
-    </div>
-  )
-}
-
 export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsProps) {
   const navigate = useNavigate()
   // Select individually — a bare `useStore()` re-renders these controls on
   // every store write, and playback pushes time updates several times a second.
-  const isPlaying = useStore((s) => s.isPlaying)
   const isPaused = useStore((s) => s.isPaused)
-  const isBuffering = useStore((s) => s.isBuffering)
   const currentTime = useStore((s) => s.currentTime)
   const duration = useStore((s) => s.duration)
-  const volume = useStore((s) => s.volume)
   const isMuted = useStore((s) => s.isMuted)
   const isFullscreen = useStore((s) => s.isFullscreen)
-  const channels = useStore((s) => s.channels)
-  const categories = useStore((s) => s.categories)
   const currentChannel = useStore((s) => s.currentChannel)
   const playbackEngine = useStore((s) => s.playbackEngine)
   const playerReturnTarget = useStore((s) => s.playerReturnTarget)
-  const selectedCategoryId = useStore((s) => s.selectedCategoryId)
   const clearPlayerReturnTarget = useStore((s) => s.clearPlayerReturnTarget)
   const setVolume = useStore((s) => s.setVolume)
   const setMuted = useStore((s) => s.setMuted)
   const setPiP = useStore((s) => s.setPiP)
   const stopPlayback = useStore((s) => s.stopPlayback)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
-  const playChannel = useStore((s) => s.playChannel)
-  const togglePlayerSidebar = useStore((s) => s.togglePlayerSidebar)
-  const isPlayerSidebarOpen = useStore((s) => s.isPlayerSidebarOpen)
 
   const video = videoRef.current
 
@@ -213,25 +168,23 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
     navigateToPlayerReturnTarget({ navigate, target: playerReturnTarget })
   }
 
-  const leavePlayer = async () => {
+  const exitFullscreenIfNeeded = async () => {
     if (playbackEngine === 'mpv' && isFullscreen) {
       await Promise.allSettled([windowSetFullscreen(false), mpvSetFullscreen(false)])
     } else if (document.fullscreenElement) {
       await document.exitFullscreen().catch(() => undefined)
     }
+  }
 
+  const leavePlayer = async () => {
+    await exitFullscreenIfNeeded()
     setPiP(false)
     setMiniPlayer(true)
     navigateBackToOrigin()
   }
 
   const exitPlayer = async () => {
-    if (playbackEngine === 'mpv' && isFullscreen) {
-      await Promise.allSettled([windowSetFullscreen(false), mpvSetFullscreen(false)])
-    } else if (document.fullscreenElement) {
-      await document.exitFullscreen().catch(() => undefined)
-    }
-
+    await exitFullscreenIfNeeded()
     setPiP(false)
     setMiniPlayer(false)
     stopPlayback()
@@ -239,52 +192,9 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
     navigateBackToOrigin()
   }
 
-  const playlistCandidates = useMemo(() => {
-    if (!currentChannel) return []
-    const sameTypeAndSource = channels.filter((channel) =>
-      channel.type === currentChannel.type &&
-      channel.sourceId === currentChannel.sourceId &&
-      isPlayableChannel(channel)
-    )
-    // Keep prev/next within the user's active category (if any) so skipping doesn't
-    // jump outside the channel list the user is browsing in the sidebar.
-    const storeCat = selectedCategoryId
-      ? categories.find((c) => c.id === selectedCategoryId)
-      : null
-    const effectiveCategoryId =
-      storeCat && storeCat.type === currentChannel.type && storeCat.sourceId === currentChannel.sourceId
-        ? selectedCategoryId
-        : currentChannel.categoryId ?? null
-    if (!effectiveCategoryId) return sameTypeAndSource
-    const withinCategory = sameTypeAndSource.filter((ch) => ch.categoryId === effectiveCategoryId)
-    return withinCategory.length > 0 ? withinCategory : sameTypeAndSource
-  }, [channels, categories, currentChannel, selectedCategoryId])
-
-  const currentIndex = useMemo(() => {
-    if (!currentChannel) return -1
-    return playlistCandidates.findIndex((item) => item.id === currentChannel.id)
-  }, [playlistCandidates, currentChannel])
-
-  const previousChannel = currentIndex > 0 ? playlistCandidates[currentIndex - 1] : null
-  const nextChannel = currentIndex >= 0 && currentIndex < playlistCandidates.length - 1
-    ? playlistCandidates[currentIndex + 1]
-    : null
-
-  const playAdjacent = (direction: 'prev' | 'next') => {
-    const target = direction === 'prev' ? previousChannel : nextChannel
-    if (!target) return
-    playChannel(target)
-  }
-
   const isLive = currentChannel?.type === 'live'
   const remainingTime = !isLive && duration > 0 ? Math.max(0, duration - currentTime) : 0
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
-
-  // "Behind live" signals: user paused (gap grows while paused), or the engine
-  // is actively buffering (stalled — user will drift behind on recovery). We
-  // intentionally do NOT rely on demuxer cache size here because MPV's cache
-  // size in steady-state playback doesn't cleanly map to drift from live edge.
-  const isBehindLive = isPaused || isBuffering
 
   const jumpToLive = () => {
     if (playbackEngine === 'mpv') {
@@ -300,9 +210,6 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
     }
     if (el.paused) el.play().catch(() => undefined)
   }
-
-  const seekBackLabel = '10 saniye geri sar'
-  const seekForwardLabel = '10 saniye ileri sar'
 
   return (
     <div
@@ -322,111 +229,20 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
       )}
 
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => void leavePlayer()}
-            className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal"
-            title="Geri dön"
-            aria-label="Geri dön"
-          >
-            <ArrowLeft size={18} />
-          </button>
-          <button
-            type="button"
-            onClick={() => playAdjacent('prev')}
-            disabled={!previousChannel}
-            className="rounded-lg p-2 transition-colors duration-normal hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
-            title={previousChannel ? `Önceki: ${previousChannel.name}` : 'Önceki içerik yok'}
-            aria-label={previousChannel ? `Önceki: ${previousChannel.name}` : 'Önceki içerik yok'}
-          >
-            <SkipBack size={18} />
-          </button>
+        <PlayerTransportControls
+          onLeave={() => void leavePlayer()}
+          onSeek={seek}
+          onTogglePlay={togglePlay}
+          onJumpToLive={jumpToLive}
+          onToggleMute={toggleMute}
+          onVolumeChange={handleVolumeChange}
+        />
 
-          {!isLive && (
-            <button type="button" onClick={() => seek(-10)} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title={seekBackLabel} aria-label={seekBackLabel}>
-              <Rewind size={18} />
-            </button>
-          )}
-          <button type="button" onClick={togglePlay} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Oynat/Duraklat" aria-label={isPaused || !isPlaying ? 'Oynat' : 'Duraklat'}>
-            {isPaused || !isPlaying ? <Play size={22} fill="white" /> : <Pause size={22} fill="white" />}
-          </button>
-          {!isLive && (
-            <button type="button" onClick={() => seek(10)} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title={seekForwardLabel} aria-label={seekForwardLabel}>
-              <FastForward size={18} />
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => playAdjacent('next')}
-            disabled={!nextChannel}
-            className="rounded-lg p-2 transition-colors duration-normal hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
-            title={nextChannel ? `Sonraki: ${nextChannel.name}` : 'Sonraki içerik yok'}
-            aria-label={nextChannel ? `Sonraki: ${nextChannel.name}` : 'Sonraki içerik yok'}
-          >
-            <SkipForward size={18} />
-          </button>
-
-          {isLive && (
-            <button
-              type="button"
-              onClick={jumpToLive}
-              className={`ml-1 flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold uppercase tracking-wide transition-colors duration-normal ${
-                isBehindLive
-                  ? 'border border-white/50 text-white hover:bg-white/10'
-                  : 'bg-red-600 text-white hover:bg-red-500'
-              }`}
-              title={isBehindLive ? 'Canlıya dön' : 'Canlı yayındasın'}
-              aria-label={isBehindLive ? 'Canlıya dön' : 'Canlı yayındasın'}
-            >
-              <span
-                className={`inline-block h-2 w-2 rounded-full ${
-                  isBehindLive ? 'bg-white/70' : 'bg-white'
-                }`}
-              />
-              CANLI
-            </button>
-          )}
-
-          <VolumeControl
-            isMuted={isMuted}
-            volume={volume}
-            onToggleMute={toggleMute}
-            onVolumeChange={handleVolumeChange}
-          />
-
-          {currentChannel && (
-            <span className="ml-4 text-sm font-medium truncate max-w-[240px]" title={currentChannel.name}>{currentChannel.name}</span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1">
-          <button type="button" onClick={() => void exitPlayer()} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Durdur ve çık" aria-label="Durdur ve çık">
-            <X size={18} />
-          </button>
-          <QualitySelector />
-          <AudioTrackSelector />
-          <SubtitleSelector />
-          {playbackEngine !== 'mpv' && (
-            <button type="button" onClick={togglePiP} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Resim İçinde Resim" aria-label="Resim İçinde Resim">
-              <PictureInPicture2 size={18} />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={togglePlayerSidebar}
-            className={`rounded-lg p-2 transition-colors duration-normal ${isPlayerSidebarOpen ? 'bg-white/20' : 'hover:bg-white/10'}`}
-            title="Kanal Listesi (L)"
-            aria-label="Kanal Listesi"
-            aria-pressed={isPlayerSidebarOpen}
-          >
-            <List size={18} />
-          </button>
-          <button type="button" onClick={onToggleFullscreen} className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal" title="Tam Ekran (F)" aria-label={isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'}>
-            {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
-          </button>
-        </div>
+        <PlayerActionControls
+          onExit={() => void exitPlayer()}
+          onTogglePiP={() => void togglePiP()}
+          onToggleFullscreen={onToggleFullscreen}
+        />
       </div>
     </div>
   )
