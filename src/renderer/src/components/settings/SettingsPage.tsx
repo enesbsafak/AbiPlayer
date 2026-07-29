@@ -182,7 +182,7 @@ function UpdateSettingsSection() {
             <div className="space-y-2">
               <div className="h-2 overflow-hidden rounded-full bg-surface-800">
                 <div
-                  className="h-full rounded-full bg-accent transition-all"
+                  className="h-full rounded-full bg-accent transition-[width]"
                   style={{ width: `${Math.round((appUpdateState.progress ?? 0) * 100)}%` }}
                 />
               </div>

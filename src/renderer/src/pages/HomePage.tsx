@@ -230,7 +230,7 @@ export default function HomePage() {
             aria-valuenow={Math.round(progress * 100)}
           >
             <div
-              className="h-full rounded-full bg-accent transition-all duration-500"
+              className="h-full rounded-full bg-accent transition-[width] duration-500"
               style={{ width: `${Math.round(progress * 100)}%` }}
             />
           </div>
@@ -287,7 +287,7 @@ export default function HomePage() {
               <div className="mt-2 flex items-center gap-3">
                 <div className="w-32 h-1.5 rounded-full bg-surface-800 overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-accent transition-all duration-700"
+                    className="h-full rounded-full bg-accent transition-[width] duration-700"
                     style={{ width: `${Math.round((syncProgress.completedTypes / 3) * 100)}%` }}
                   />
                 </div>

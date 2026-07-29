@@ -304,6 +304,12 @@ export function usePlayer(
     if (!url) return
     let disposed = false
     let probedTracks: SubtitleTrack[] = []
+    const hlsRetryTimers: number[] = []
+    // `{ once: true }` only self-removes AFTER the event fires. Switching
+    // channels before `loadedmetadata` arrives left the previous run's handler
+    // attached, so it fired on the NEW source and wrote the OLD channel's
+    // track state (stale `probedTracks` included). Abort them on cleanup.
+    const listenerAbort = new AbortController()
 
     // Cleanup previous
     if (hlsRef.current) {
@@ -565,7 +571,10 @@ export function usePlayer(
             const delay = Math.min(1000 * Math.pow(1.5, retryCount - 1), 10000)
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                window.setTimeout(() => hls.startLoad(), delay)
+                // Tracked so cleanup can cancel it: the backoff reaches 10s and
+                // a channel switch in between destroys `hls`, leaving this timer
+                // to call startLoad() on a dead instance.
+                hlsRetryTimers.push(window.setTimeout(() => hls.startLoad(), delay))
                 break
               case Hls.ErrorTypes.MEDIA_ERROR:
                 hls.recoverMediaError()
@@ -593,7 +602,7 @@ export function usePlayer(
             refreshSubtitleTracks(null)
             attachCueListeners(video, setActiveSubtitleCues)
           },
-          { once: true }
+          { once: true, signal: listenerAbort.signal }
         )
       }
     } else {
@@ -613,7 +622,7 @@ export function usePlayer(
           refreshSubtitleTracks(null)
           attachCueListeners(video, setActiveSubtitleCues)
           syncActiveSubtitleCues(video, setActiveSubtitleCues)
-        }, { once: true })
+        }, { once: true, signal: listenerAbort.signal })
       }
 
       // Probe direct VOD streams before playback starts to avoid concurrent
@@ -643,6 +652,9 @@ export function usePlayer(
 
     return () => {
       disposed = true
+      listenerAbort.abort()
+      for (const timer of hlsRetryTimers) window.clearTimeout(timer)
+      hlsRetryTimers.length = 0
       if (typeof textTrackList.removeEventListener === 'function') {
         textTrackList.removeEventListener('addtrack', handleTextTrackListChange)
         textTrackList.removeEventListener('removetrack', handleTextTrackListChange)
@@ -848,6 +860,11 @@ export function usePlayer(
     const video = videoRef.current
     if (!video) return
 
+    // Same reason as the HLS effect: the recovery listener below is
+    // `{ once: true }` and would survive cleanup until it fires, seeking the
+    // next channel to the previous one's resume position.
+    const listenerAbort = new AbortController()
+
     const onPlay = () => applyPlayerPatch({ isPlaying: true, isPaused: false })
     const onPause = () => applyPlayerPatch({ isPaused: true })
     const onWaiting = () => applyPlayerPatch({ isBuffering: true })
@@ -882,7 +899,7 @@ export function usePlayer(
               }
               video.play().catch(() => {})
             },
-            { once: true }
+            { once: true, signal: listenerAbort.signal }
           )
           video.load()
           return
@@ -901,6 +918,7 @@ export function usePlayer(
     video.addEventListener('error', onError)
 
     return () => {
+      listenerAbort.abort()
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
       video.removeEventListener('waiting', onWaiting)

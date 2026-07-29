@@ -438,6 +438,13 @@ export function useMpvPlayer(enabled: boolean) {
         clearInterval(pollTimerRef.current)
         pollTimerRef.current = null
       }
+      // poll() schedules this one, so this effect owns it too. The teardown
+      // effect also clears it, but relying on that split ownership means a
+      // reconnect can still fire after this effect stopped polling.
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
     }
   }, [enabled, applyPlayerPatch])
 

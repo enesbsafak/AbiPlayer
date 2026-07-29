@@ -221,7 +221,7 @@ export default function EPGPage() {
                       <p className="text-xs text-surface-500 truncate mt-0.5">{current.description}</p>
                     )}
                     <div className="mt-2 h-1 w-full rounded-full bg-surface-700">
-                      <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${progress}%` }} />
+                      <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${progress}%` }} />
                     </div>
                   </div>
                 ) : (

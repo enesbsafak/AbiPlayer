@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { createHashRouter, RouterProvider } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary'
+import { RouteError } from '@/components/layout/RouteError'
 import { Spinner } from '@/components/ui/Spinner'
 
 const HomePage = lazy(() => import('@/pages/HomePage'))
@@ -26,6 +27,7 @@ const router = createHashRouter([
   {
     path: '/',
     element: <AppShell />,
+    errorElement: <RouteError />,
     children: [
       { index: true, element: <Suspense fallback={<Loading />}><HomePage /></Suspense> },
       { path: 'live', element: <Suspense fallback={<Loading />}><LiveTVPage /></Suspense> },
