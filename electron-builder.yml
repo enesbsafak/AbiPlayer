@@ -14,9 +14,9 @@ files:
   - '!src/*'
   - '!resources/mpv/**'
   - '!docs/**'
-  - '!{.agents,.claude}/**'
+  - '!{.agents,.claude,.react-doctor}/**'
   - '!electron.vite.config.*'
-  - '!{postcss.config.js,tailwind.config.ts,vitest.config.ts}'
+  - '!{postcss.config.js,tailwind.config.ts,vitest.config.ts,doctor.config.*}'
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
