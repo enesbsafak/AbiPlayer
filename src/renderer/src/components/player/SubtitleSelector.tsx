@@ -74,31 +74,40 @@ export function SubtitleSelector() {
       >
         <Subtitles size={18} />
       </button>
+      {/*
+        The panel opens upward from the control bar, so it must be capped to the
+        space above it. Streams routinely carry 15+ subtitle tracks and the
+        unbounded list grew straight past the top of the window, leaving the
+        first entries clipped and unreachable. Only the track list scrolls — the
+        style controls stay pinned so they are always in reach.
+      */}
       {open && (
-        <div className="absolute bottom-full right-0 mb-2 w-64 rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-lg">
-          <p className="px-3 py-1.5 text-xs font-medium text-surface-500">Altyazı</p>
-          <button
-            type="button"
-            onClick={handleOff}
-            className={`flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-800 transition-colors ${
-              !currentSubtitleTrack ? 'text-accent' : 'text-surface-200'
-            }`}
-          >
-            Kapali
-          </button>
-          {subtitleTracks.map((track) => (
+        <div className="absolute bottom-full right-0 mb-2 flex max-h-[calc(100vh-5rem)] w-64 flex-col rounded-lg border border-surface-700 bg-surface-900 shadow-lg">
+          <div className="min-h-0 flex-1 overflow-y-auto py-1">
+            <p className="px-3 py-1.5 text-xs font-medium text-surface-500">Altyazı</p>
             <button
-              key={track.id}
               type="button"
-              onClick={() => { setCurrentSubtitleTrack(String(track.id)); setOpen(false) }}
+              onClick={handleOff}
               className={`flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-800 transition-colors ${
-                String(track.id) === currentSubtitleTrack ? 'text-accent' : 'text-surface-200'
+                !currentSubtitleTrack ? 'text-accent' : 'text-surface-200'
               }`}
             >
-              {track.name || track.lang || `Altyazi ${track.id}`}
+              Kapali
             </button>
-          ))}
-          <div className="border-t border-surface-700 mt-1 px-3 py-2">
+            {subtitleTracks.map((track) => (
+              <button
+                key={track.id}
+                type="button"
+                onClick={() => { setCurrentSubtitleTrack(String(track.id)); setOpen(false) }}
+                className={`flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-800 transition-colors ${
+                  String(track.id) === currentSubtitleTrack ? 'text-accent' : 'text-surface-200'
+                }`}
+              >
+                {track.name || track.lang || `Altyazi ${track.id}`}
+              </button>
+            ))}
+          </div>
+          <div className="shrink-0 border-t border-surface-700 px-3 py-2">
             <p className="text-label font-medium text-surface-500">
               Altyazı Stili
             </p>
@@ -165,7 +174,7 @@ export function SubtitleSelector() {
             </div>
           </div>
 
-          <div className="border-t border-surface-700 px-3 py-1">
+          <div className="shrink-0 border-t border-surface-700 px-3 py-1">
             <button
               type="button"
               onClick={handleLoadExternal}

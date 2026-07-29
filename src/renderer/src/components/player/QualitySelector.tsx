@@ -46,7 +46,9 @@ export function QualitySelector() {
       {open && (
         <ul
           id={menuId}
-          className="absolute bottom-full right-0 mb-2 w-56 list-none rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-lg"
+          // Capped + scrollable: this opens upward and HLS ladders can carry
+          // more renditions than fit above the control bar.
+          className="absolute bottom-full right-0 mb-2 max-h-[calc(100vh-5rem)] w-56 list-none overflow-y-auto rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-lg"
           aria-label="Görüntü Kalitesi"
         >
           <li className="px-3 py-1.5 text-xs font-medium text-surface-500">Goruntu Kalitesi</li>

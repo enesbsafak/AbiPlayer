@@ -35,7 +35,9 @@ export function AudioTrackSelector() {
       {open && (
         <ul
           id={menuId}
-          className="absolute bottom-full right-0 mb-2 w-48 list-none rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-lg"
+          // Capped + scrollable: this opens upward and multi-audio IPTV streams
+          // can list more tracks than fit above the control bar.
+          className="absolute bottom-full right-0 mb-2 max-h-[calc(100vh-5rem)] w-48 list-none overflow-y-auto rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-lg"
           aria-label="Ses Kanalı"
         >
           <li className="px-3 py-1.5 text-xs font-medium text-surface-500">Ses Kanalı</li>
