@@ -45,6 +45,8 @@ const api = {
     ipcRenderer.invoke('mpv-add-subtitle-file', filePath) as Promise<number | null>,
   mpvSetFullscreen: (fullscreen: boolean) =>
     ipcRenderer.invoke('mpv-set-fullscreen', fullscreen) as Promise<void>,
+  mpvSetHardwareDecoding: (enabled: boolean) =>
+    ipcRenderer.invoke('mpv-set-hardware-decoding', enabled) as Promise<void>,
   mpvSetSubtitleStyle: (style: MpvSubtitleStyle) =>
     ipcRenderer.invoke('mpv-set-subtitle-style', style) as Promise<void>,
   mpvSetVideoMargin: (right: number) =>

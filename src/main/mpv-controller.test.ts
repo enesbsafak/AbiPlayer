@@ -79,3 +79,66 @@ describe('MpvController socket events', () => {
     expect(state.running).toBe(true)
   })
 })
+
+describe('MpvController hardware decoding', () => {
+  type HwdecInternals = {
+    hwdecValue: string
+    process: unknown
+    command: (command: unknown[]) => Promise<unknown>
+  }
+
+  const internals = (controller: unknown) => controller as unknown as HwdecInternals
+
+  it('defaults to the safe whitelist rather than mpv-picks-anything', () => {
+    // `auto` would let mpv choose decoders known to misbehave on some drivers;
+    // `auto-safe` is the whole reason this can ship enabled by default.
+    expect(internals(new MpvController()).hwdecValue).toBe('auto-safe')
+  })
+
+  it('forces software decoding when the user turns the setting off', async () => {
+    const controller = new MpvController()
+
+    await controller.setHardwareDecoding(false)
+
+    expect(internals(controller).hwdecValue).toBe('no')
+  })
+
+  it('stays silent while mpv is not running so the value only rides the launch args', async () => {
+    const controller = new MpvController()
+    let commandCalls = 0
+    internals(controller).command = async () => {
+      commandCalls += 1
+    }
+
+    await controller.setHardwareDecoding(false)
+
+    expect(commandCalls).toBe(0)
+    expect(internals(controller).hwdecValue).toBe('no')
+  })
+
+  it('applies the change over IPC when mpv is already playing', async () => {
+    const controller = new MpvController()
+    const sent: unknown[][] = []
+    internals(controller).process = {}
+    internals(controller).command = async (command: unknown[]) => {
+      sent.push(command)
+    }
+
+    await controller.setHardwareDecoding(false)
+
+    expect(sent).toEqual([['set_property', 'hwdec', 'no']])
+  })
+
+  it('skips redundant IPC when the value did not change', async () => {
+    const controller = new MpvController()
+    const sent: unknown[][] = []
+    internals(controller).process = {}
+    internals(controller).command = async (command: unknown[]) => {
+      sent.push(command)
+    }
+
+    await controller.setHardwareDecoding(true)
+
+    expect(sent).toEqual([])
+  })
+})

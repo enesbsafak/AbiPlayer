@@ -110,6 +110,10 @@ export class MpvController {
   private availabilityChecked = false
   private availability = false
   private readonly mpvPath = process.env['MPV_PATH'] || resolveBundledMpvPath() || 'mpv'
+  // Mirrors DEFAULT_SETTINGS.hardwareAcceleration so a startup race (mpv opened
+  // before the renderer pushes its stored setting) still lands on the value the
+  // user most likely has.
+  private hardwareDecoding = true
   private subtitleStyle: MpvSubtitleStyle = {
     fontSize: 24,
     color: '#ffffff',
@@ -307,6 +311,27 @@ export class MpvController {
     if (!this.process) return
     const clamped = Math.max(0, Math.min(0.9, ratio))
     await this.command(['set_property', 'video-margin-ratio-right', clamped]).catch(() => undefined)
+  }
+
+  /**
+   * `auto-safe` limits mpv to the hardware decoders on its own known-good list,
+   * which is what keeps a flaky driver from producing a black picture; `auto`
+   * would happily pick those. `no` forces software decoding.
+   */
+  private get hwdecValue(): string {
+    return this.hardwareDecoding ? 'auto-safe' : 'no'
+  }
+
+  async setHardwareDecoding(enabled: boolean): Promise<void> {
+    if (this.hardwareDecoding === enabled) return
+    this.hardwareDecoding = enabled
+
+    // Not running yet — startMpv picks the value up as a launch argument.
+    if (!this.process) return
+
+    // mpv reinitialises the decoder in place, so this takes effect on the
+    // stream that is already playing without reloading it.
+    await this.command(['set_property', 'hwdec', this.hwdecValue]).catch(() => undefined)
   }
 
   async setSubtitleStyle(style: MpvSubtitleStyle): Promise<void> {
@@ -507,6 +532,7 @@ export class MpvController {
       '--no-input-default-bindings',
       '--input-vo-keyboard=no',
       '--pause=yes',
+      `--hwdec=${this.hwdecValue}`,
       // Network resilience for live streams
       '--network-timeout=30',
       '--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5,reconnect_on_network_error=1',

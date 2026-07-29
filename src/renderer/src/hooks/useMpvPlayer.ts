@@ -6,6 +6,7 @@ import {
   mpvIsAvailable,
   mpvOpen,
   mpvSetAudioTrack,
+  mpvSetHardwareDecoding,
   mpvSetMute,
   mpvSetSubtitleStyle,
   mpvSetSubtitleTrack,
@@ -187,6 +188,16 @@ export function useMpvPlayer(enabled: boolean) {
     }
     teardown() // runs immediately when enabled becomes false
   }, [enabled])
+
+  // Declared ahead of the channel-sync effect on purpose: effects run in
+  // declaration order, so the controller learns the user's choice before mpv is
+  // ever launched. That matters because the failure this setting exists to
+  // escape — a driver that black-screens on hardware decoding — would otherwise
+  // happen during the moment mpv starts with the default and gets corrected.
+  useEffect(() => {
+    if (!enabled) return
+    void mpvSetHardwareDecoding(settings.hardwareAcceleration).catch(() => undefined)
+  }, [enabled, settings.hardwareAcceleration])
 
   useEffect(() => {
     if (!enabled) return

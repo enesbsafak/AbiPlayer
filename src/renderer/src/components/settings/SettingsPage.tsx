@@ -431,6 +431,22 @@ function PlayerSettingsSection({
         </label>
       </div>
 
+      <div className="mt-4">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={settings.hardwareAcceleration}
+            onChange={(e) => updateSettings({ hardwareAcceleration: e.target.checked })}
+            className="rounded border-surface-700 bg-surface-900 text-accent focus:ring-accent"
+          />
+          <span className="text-sm text-surface-300">Donanım hızlandırmalı video çözme</span>
+        </label>
+        <p className="mt-1 text-xs text-surface-500">
+          Video çözmeyi ekran kartına devreder; işlemci kullanımını belirgin şekilde düşürür.
+          Görüntü siyah geliyor veya takılıyorsa kapatın.
+        </p>
+      </div>
+
       <div className="mt-5">
         <Input
           id="tmdb-api-key"

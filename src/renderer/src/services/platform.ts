@@ -120,6 +120,11 @@ export async function mpvSetFullscreen(fullscreen: boolean): Promise<void> {
   await window.electron.mpvSetFullscreen(fullscreen)
 }
 
+export async function mpvSetHardwareDecoding(enabled: boolean): Promise<void> {
+  if (!isElectron() || !window.electron?.mpvSetHardwareDecoding) return
+  await window.electron.mpvSetHardwareDecoding(enabled)
+}
+
 export async function mpvSetSubtitleStyle(style: MpvSubtitleStyle): Promise<void> {
   if (!isElectron() || !window.electron?.mpvSetSubtitleStyle) return
   await window.electron.mpvSetSubtitleStyle(style)

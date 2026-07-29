@@ -679,6 +679,11 @@ export function registerIpcHandlers(): void {
     await mpvController.setFullscreen(fullscreen)
   })
 
+  ipcMain.handle('mpv-set-hardware-decoding', async (_, enabled: unknown): Promise<void> => {
+    if (typeof enabled !== 'boolean') throw new Error('Geçersiz donanım hızlandırma değeri')
+    await mpvController.setHardwareDecoding(enabled)
+  })
+
   ipcMain.handle('mpv-set-subtitle-style', async (_, style: unknown): Promise<void> => {
     if (!isValidMpvSubtitleStyle(style)) throw new Error('Geçersiz altyazı stil verisi')
     await mpvController.setSubtitleStyle(style)

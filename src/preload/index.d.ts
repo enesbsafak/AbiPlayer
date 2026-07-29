@@ -36,6 +36,7 @@ declare global {
       mpvSetSubtitleTrack: (trackId: number | null) => Promise<void>
       mpvAddSubtitleFile: (filePath: string) => Promise<number | null>
       mpvSetFullscreen: (fullscreen: boolean) => Promise<void>
+      mpvSetHardwareDecoding: (enabled: boolean) => Promise<void>
       mpvSetSubtitleStyle: (style: MpvSubtitleStyle) => Promise<void>
       mpvSetVideoMargin: (right: number) => Promise<void>
       mpvGetState: () => Promise<MpvStateSnapshot>
