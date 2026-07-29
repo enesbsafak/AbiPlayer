@@ -510,11 +510,63 @@ async function uploadAssetWithRetry(apiBase, release, token, filePath) {
   }
 }
 
-async function replaceReleaseAssets(apiBase, release, token, filePaths) {
+function ghCliAvailable() {
+  const result = spawnSync('gh', ['--version'], { stdio: 'ignore', shell: process.platform === 'win32' })
+  return result.status === 0
+}
+
+/**
+ * Node's fetch buffers the whole body in memory, and a ~250MB installer upload
+ * fails on it reliably: v0.4.8 lost the connection after GitHub had already
+ * stored the file, v0.4.9 failed all three attempts outright. `gh` streams the
+ * upload and handles resumption itself, so prefer it whenever it is installed
+ * and keep the API uploader as the fallback for environments without it.
+ */
+const UPDATE_MANIFEST = 'latest.yml'
+
+async function uploadGroup(apiBase, release, token, repo, tag, filePaths) {
+  if (filePaths.length === 0) return
+
+  if (ghCliAvailable()) {
+    try {
+      runLogged('gh', ['release', 'upload', tag, ...filePaths, '--clobber', '--repo', repo])
+      for (const filePath of filePaths) console.log(`Uploaded ${basename(filePath)}`)
+      return
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn(`gh release upload failed (${message}); falling back to the API uploader...`)
+    }
+  }
+
   for (const filePath of filePaths) {
     await uploadAssetWithRetry(apiBase, release, token, filePath)
     console.log(`Uploaded ${basename(filePath)}`)
   }
+}
+
+async function replaceReleaseAssets(apiBase, release, token, repo, tag, filePaths) {
+  // Skip anything already stored intact, so re-running the script against a
+  // finished release doesn't delete and re-upload a 250MB installer for nothing.
+  const pending = []
+  for (const filePath of filePaths) {
+    const { size } = await stat(filePath)
+    const existing = await findReleaseAsset(apiBase, release.id, token, basename(filePath))
+    if (existing?.state === 'uploaded' && existing.size === size) {
+      console.log(`Skipped ${basename(filePath)} (already uploaded)`)
+      continue
+    }
+    pending.push(filePath)
+  }
+
+  // latest.yml is what tells every installed client a new version exists, so it
+  // must land only after the binary it points at is fully there. Uploading them
+  // together published a 5-minute window where the updater advertised
+  // v0.4.9-beta and then 404'd on the installer it pointed at.
+  const manifest = pending.filter((filePath) => basename(filePath) === UPDATE_MANIFEST)
+  const payload = pending.filter((filePath) => basename(filePath) !== UPDATE_MANIFEST)
+
+  await uploadGroup(apiBase, release, token, repo, tag, payload)
+  await uploadGroup(apiBase, release, token, repo, tag, manifest)
 }
 
 async function main() {
@@ -574,7 +626,7 @@ async function main() {
     draft: options.draft
   })
 
-  await replaceReleaseAssets(apiBase, release, token, [
+  await replaceReleaseAssets(apiBase, release, token, repo, tag, [
     artifacts.installerPath,
     artifacts.blockmapPath,
     artifacts.latestYmlPath
