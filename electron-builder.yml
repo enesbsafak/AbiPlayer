@@ -9,6 +9,11 @@ directories:
 # These are negation-only patterns, so electron-builder falls back to `**/*`:
 # anything left in the project root ends up inside app.asar. .gitignore is NOT
 # consulted here, so every non-runtime root entry has to be listed explicitly.
+#
+# Keep every exclusion in THIS list. Adding a `files:` block under `win:` makes
+# electron-builder build a second negation-only matcher that falls back to
+# `**/*` on its own, which silently defeats everything listed here — a build
+# that way packed dist/, docs/ and src/ into app.asar and grew it to 3.3GB.
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -19,6 +24,13 @@ files:
   - '!{postcss.config.js,tailwind.config.ts,vitest.config.ts,doctor.config.*}'
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  # ffprobe-static ships a prebuilt binary for every platform it supports and
+  # all of them get packaged — 275MB of binaries that can never execute on a
+  # win32-x64 build. Only win32/x64 is reachable. This project builds Windows
+  # only (see the release:win / build:win scripts); restore these paths before
+  # producing a mac, linux or ia32 build.
+  - '!**/ffprobe-static/bin/{darwin,linux}/**'
+  - '!**/ffprobe-static/bin/win32/ia32/**'
 asarUnpack:
   - resources/**
 win:

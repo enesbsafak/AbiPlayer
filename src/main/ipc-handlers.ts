@@ -12,6 +12,7 @@ import {
   type AppUpdateState
 } from './app-updater'
 import { MpvController, type MpvStateSnapshot, type MpvSubtitleStyle } from './mpv-controller'
+import { resolveUnpackedBinary } from './unpacked-binary'
 import type {
   EmbeddedSubtitleProbeTrack,
   EmbeddedSubtitleExtractionResult,
@@ -26,6 +27,9 @@ const MAX_SUBTITLE_FILE_PATH_LENGTH = 4096
 const MAX_COLOR_VALUE_LENGTH = 64
 
 const mpvController = new MpvController()
+
+const ffmpegExecutablePath = resolveUnpackedBinary(ffmpegPath)
+const ffprobeExecutablePath = resolveUnpackedBinary(ffprobeStatic.path)
 
 type FileFilter = { name: string; extensions: string[] }
 
@@ -230,7 +234,7 @@ async function runProcess(
 }
 
 async function probeEmbeddedSubtitles(streamUrl: string): Promise<EmbeddedSubtitleProbeTrack[]> {
-  const ffprobeExecutable = ffprobeStatic.path
+  const ffprobeExecutable = ffprobeExecutablePath
   if (!ffprobeExecutable) return []
 
   const { stdout } = await runProcess(
@@ -266,7 +270,7 @@ async function extractEmbeddedSubtitle(
   streamUrl: string,
   streamIndex: number
 ): Promise<EmbeddedSubtitleExtractionResult | null> {
-  const ffmpegExecutable = ffmpegPath
+  const ffmpegExecutable = ffmpegExecutablePath
   if (!ffmpegExecutable) {
     throw new Error('ffmpeg çalıştırılabilir dosyası bulunamadı')
   }
