@@ -452,34 +452,68 @@ async function upsertRelease({
   })
 }
 
+const UPLOAD_MAX_ATTEMPTS = 3
+const UPLOAD_RETRY_DELAY_MS = 4000
+
+function delay(ms) {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, ms))
+}
+
 async function uploadAsset(uploadUrlTemplate, token, filePath) {
   const uploadUrl = uploadUrlTemplate.split('{')[0]
   const fileName = basename(filePath)
   const content = await readFile(filePath)
 
+  // Content-Length is derived from the body by undici; setting it by hand is a
+  // forbidden header and only risks disagreeing with what is actually sent.
   await githubRequest(`${uploadUrl}?name=${encodeURIComponent(fileName)}`, token, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/octet-stream',
-      'Content-Length': String(content.byteLength)
-    },
+    headers: { 'Content-Type': 'application/octet-stream' },
     body: content
   })
 }
 
-async function replaceReleaseAssets(apiBase, release, token, filePaths) {
-  const existingAssets = Array.isArray(release.assets) ? release.assets : []
+async function findReleaseAsset(apiBase, releaseId, token, fileName) {
+  const assets = await githubRequest(`${apiBase}/releases/${releaseId}/assets?per_page=100`, token)
+  return (Array.isArray(assets) ? assets : []).find((item) => item.name === fileName) ?? null
+}
 
-  for (const filePath of filePaths) {
-    const fileName = basename(filePath)
-    for (const asset of existingAssets.filter((item) => item.name === fileName)) {
-      await githubRequest(`${apiBase}/releases/assets/${asset.id}`, token, {
-        method: 'DELETE'
-      })
+// The installer is ~250MB and GitHub regularly drops the connection after it has
+// already stored the body, which surfaces client-side as an opaque
+// `TypeError: fetch failed`. Aborting there publishes a release that is missing
+// latest.yml, which silently breaks auto-update for everyone. So: re-read the
+// server state before each attempt and treat an already-complete asset as done.
+async function uploadAssetWithRetry(apiBase, release, token, filePath) {
+  const fileName = basename(filePath)
+  const { size } = await stat(filePath)
+
+  for (let attempt = 1; attempt <= UPLOAD_MAX_ATTEMPTS; attempt += 1) {
+    const existing = await findReleaseAsset(apiBase, release.id, token, fileName)
+    if (existing) {
+      if (existing.state === 'uploaded' && existing.size === size) return
+      await githubRequest(`${apiBase}/releases/assets/${existing.id}`, token, { method: 'DELETE' })
     }
 
-    await uploadAsset(release.upload_url, token, filePath)
-    console.log(`Uploaded ${fileName}`)
+    try {
+      await uploadAsset(release.upload_url, token, filePath)
+      return
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (attempt === UPLOAD_MAX_ATTEMPTS) {
+        throw new Error(`Failed to upload ${fileName} after ${attempt} attempts: ${message}`)
+      }
+      console.warn(
+        `Upload of ${fileName} failed (${message}); retrying ${attempt + 1}/${UPLOAD_MAX_ATTEMPTS}...`
+      )
+      await delay(UPLOAD_RETRY_DELAY_MS)
+    }
+  }
+}
+
+async function replaceReleaseAssets(apiBase, release, token, filePaths) {
+  for (const filePath of filePaths) {
+    await uploadAssetWithRetry(apiBase, release, token, filePath)
+    console.log(`Uploaded ${basename(filePath)}`)
   }
 }
 
