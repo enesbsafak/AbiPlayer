@@ -9,6 +9,8 @@ export interface AuthSlice {
   credentialsHydrated: boolean
   isLoading: boolean
   error: string | null
+  /** Bumped to ask useAutoConnect to retry every source immediately. */
+  connectRetryToken: number
   addSource: (source: PlaylistSource) => void
   removeSource: (id: string) => void
   setActiveSource: (id: string | null) => void
@@ -17,6 +19,7 @@ export interface AuthSlice {
   setCredentialsHydrated: (hydrated: boolean) => void
   setAuthLoading: (loading: boolean) => void
   setAuthError: (error: string | null) => void
+  requestSourceReconnect: () => void
   getActiveSource: () => PlaylistSource | null
   getXtreamCredentials: (sourceId: string) => XtreamCredentials | null
 }
@@ -28,6 +31,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
   credentialsHydrated: false,
   isLoading: false,
   error: null,
+  connectRetryToken: 0,
 
   addSource: (source) =>
     set((state) => ({
@@ -74,6 +78,9 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
   setCredentialsHydrated: (hydrated) => set({ credentialsHydrated: hydrated }),
   setAuthLoading: (loading) => set({ isLoading: loading }),
   setAuthError: (error) => set({ error }),
+
+  requestSourceReconnect: () =>
+    set((state) => ({ connectRetryToken: state.connectRetryToken + 1, error: null })),
 
   getActiveSource: () => {
     const { sources, activeSourceId } = get()

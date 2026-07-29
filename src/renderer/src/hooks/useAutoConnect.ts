@@ -16,6 +16,7 @@ export function useAutoConnect() {
   const hydratingRef = useRef(false)
   const inFlightRef = useRef(false)
   const sourceAttemptAtRef = useRef<Record<string, number>>({})
+  const lastRetryTokenRef = useRef(0)
   const sources = useStore((s) => s.sources)
   const activeSourceId = useStore((s) => s.activeSourceId)
   const xtreamAuth = useStore((s) => s.xtreamAuth)
@@ -29,6 +30,8 @@ export function useAutoConnect() {
   const setAuthError = useStore((s) => s.setAuthError)
   const addChannels = useStore((s) => s.addChannels)
   const addCategories = useStore((s) => s.addCategories)
+  const connectRetryToken = useStore((s) => s.connectRetryToken)
+  const isLoading = useStore((s) => s.isLoading)
 
   useEffect(() => {
     if (credentialsHydrated || hydratingRef.current) return
@@ -80,6 +83,13 @@ export function useAutoConnect() {
       if (!knownSourceIds.has(sourceId)) delete sourceAttemptAtRef.current[sourceId]
     }
 
+    // An explicit user retry must bypass the cooldown below, otherwise pressing
+    // "Yeniden Dene" within 15s of the failed attempt silently does nothing.
+    if (connectRetryToken !== lastRetryTokenRef.current) {
+      lastRetryTokenRef.current = connectRetryToken
+      sourceAttemptAtRef.current = {}
+    }
+
     const now = Date.now()
     const pendingSources = sources.filter((source) => {
       const lastAttemptAt = sourceAttemptAtRef.current[source.id] ?? 0
@@ -105,6 +115,8 @@ export function useAutoConnect() {
       return
     }
 
+    // A run is already going. `isLoading` is in this effect's deps, so we get
+    // re-invoked the moment it settles and can pick the retry up then.
     if (inFlightRef.current) return
 
     const connectAll = async (): Promise<void> => {
@@ -112,41 +124,48 @@ export function useAutoConnect() {
       setAuthLoading(true)
       setAuthError(null)
 
+      // Each source reports independently: a dead one used to keep the whole
+      // startup screen up until IT timed out, with no message until the very
+      // end. Now every failure surfaces the moment it happens.
+      const failures: string[] = []
+      const reportFailure = (source: (typeof pendingSources)[number], error: unknown) => {
+        const reason = error instanceof Error ? error.message : 'Bilinmeyen hata'
+        failures.push(`${source.name}: ${reason}`)
+        setAuthError(
+          failures.length === 1
+            ? failures[0]
+            : `${failures.length} kaynağa bağlanılamadı — ${failures.join(' · ')}`
+        )
+      }
+
       try {
-        const results = await Promise.allSettled(
+        await Promise.all(
           pendingSources.map(async (source) => {
             sourceAttemptAtRef.current[source.id] = Date.now()
 
-            if (source.type === 'xtream') {
-              const creds = { url: source.url!, username: source.username!, password: source.password! }
-              const auth = await xtreamApi.authenticate(creds)
+            try {
+              if (source.type === 'xtream') {
+                const creds = { url: source.url!, username: source.username!, password: source.password! }
+                const auth = await xtreamApi.authenticate(creds)
 
-              if (auth.user_info.auth === 1) {
+                if (auth.user_info.auth !== 1) {
+                  throw new Error('Kimlik doğrulama başarısız (kullanıcı adı veya şifre reddedildi)')
+                }
+
                 setXtreamAuth(source.id, auth)
                 return
               }
 
-              throw new Error('Kimlik doğrulama başarısız')
-            }
-
-            if (source.type === 'm3u_url' && source.url) {
-              const { channels: chs, categories: cats } = await fetchAndParseM3U(source.url, source.id)
-              addChannels(chs)
-              addCategories(cats)
+              if (source.type === 'm3u_url' && source.url) {
+                const { channels: chs, categories: cats } = await fetchAndParseM3U(source.url, source.id)
+                addChannels(chs)
+                addCategories(cats)
+              }
+            } catch (error) {
+              reportFailure(source, error)
             }
           })
         )
-
-        const rejectedMessages = results
-          .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-          .map((r) => (r.reason instanceof Error ? r.reason.message : 'Bilinmeyen hata'))
-        if (rejectedMessages.length > 0) {
-          setAuthError(
-            rejectedMessages.length === 1
-              ? rejectedMessages[0]
-              : `${rejectedMessages.length} kaynak baglanilamadi: ${rejectedMessages.join('; ')}`
-          )
-        }
 
         // Ensure activeSourceId is set if we have sources
         if (!activeSourceId && sources.length > 0) {
@@ -165,6 +184,8 @@ export function useAutoConnect() {
     activeSourceId,
     xtreamAuth,
     channels,
+    connectRetryToken,
+    isLoading,
     setXtreamAuth,
     setActiveSource,
     setAuthLoading,

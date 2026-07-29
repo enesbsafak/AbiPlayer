@@ -11,6 +11,18 @@ import { isPlayableChannel } from '@/services/playback'
 import { openPlayerFromRoute } from '@/services/player-navigation'
 import { APP_NAME, APP_VERSION_LABEL } from '@/constants/app-info'
 
+// Bootstrap ilerlemesi: mesaj ve cubuk tek kaynaktan gelsin ki birbirinden
+// kopmasin. Onceki surumde cubuk sabit %33'te duruyordu ve calisirken bile
+// donmus gibi gorunuyordu.
+const BOOTSTRAP_STAGES = {
+  idle: { message: 'İçerikler taranıyor...', progress: 0.1 },
+  categories: { message: 'Kategoriler yükleniyor...', progress: 0.4 },
+  preview: { message: 'Ön izleme yükleniyor...', progress: 0.75 },
+  catalog: { message: 'Tam katalog arka planda yükleniyor...', progress: 0.95 }
+} as const
+
+type BootstrapStage = keyof typeof BOOTSTRAP_STAGES
+
 export default function HomePage() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -31,9 +43,11 @@ export default function HomePage() {
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
   const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
   const syncProgress = useStore((s) => activeSourceId ? s.syncProgress[activeSourceId] : undefined)
+  const authError = useStore((s) => s.error)
+  const requestSourceReconnect = useStore((s) => s.requestSourceReconnect)
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
   const [isBootstrappingSource, setIsBootstrappingSource] = useState(false)
-  const [scanMessage, setScanMessage] = useState('İçerikler taranıyor...')
+  const [bootstrapStage, setBootstrapStage] = useState<BootstrapStage>('idle')
   const [reloadToken, bumpReloadToken] = useReducer((value: number) => value + 1, 0)
   const bootstrapAttemptedRef = useRef<Set<string> | null>(null)
   if (bootstrapAttemptedRef.current === null) bootstrapAttemptedRef.current = new Set<string>()
@@ -71,7 +85,7 @@ export default function HomePage() {
     const bootstrap = async () => {
       setBootstrapError(null)
       setIsBootstrappingSource(true)
-      setScanMessage('Kategoriler yükleniyor...')
+      setBootstrapStage('categories')
       setPlaylistLoading(true)
       try {
         // Step 1: Fetch categories (small, fast — ~18KB total)
@@ -88,7 +102,7 @@ export default function HomePage() {
         ])
 
         // Step 2: Small preview for dashboard display (~150KB total, fast)
-        setScanMessage('Ön izleme yükleniyor...')
+        setBootstrapStage('preview')
         const [livePreview, vodPreview, seriesPreview] = await Promise.all([
           xtreamApi.getLivePreviewStreams(creds, 50, { signal: controller.signal }).catch(() => []),
           xtreamApi.getVodPreviewStreams(creds, 30, { signal: controller.signal }).catch(() => []),
@@ -103,17 +117,20 @@ export default function HomePage() {
 
         // Step 3: Full catalog in background — sequential, not parallel
         // This runs after UI is already showing content, user doesn't wait
-        setScanMessage('Tam katalog arka planda yükleniyor...')
+        setBootstrapStage('catalog')
         void ensureStagedSync(activeSourceId, 'live', creds)
       } catch (error) {
         if (cancelled) return
         setBootstrapError(error instanceof Error ? error.message : 'Ana sayfa içerikleri yüklenemedi')
       } finally {
-        if (!cancelled) {
-          setPlaylistLoading(false)
-          setIsBootstrappingSource(false)
-          setScanMessage('İçerikler taranıyor...')
-        }
+        // `isLoadingPlaylist` lives in the global store, so it MUST be released
+        // even when this run was superseded or the page unmounted mid-flight —
+        // otherwise it stays true for the rest of the session and pins the
+        // full-screen loader on every later visit. Local setState after unmount
+        // is a no-op in React 18, so no guard is needed here.
+        setPlaylistLoading(false)
+        setIsBootstrappingSource(false)
+        setBootstrapStage('idle')
       }
     }
 
@@ -183,40 +200,71 @@ export default function HomePage() {
     sources.length > 0 &&
     (isLoading || isLoadingPlaylist || isBootstrappingSource)
 
+  const retryBootstrap = () => {
+    if (activeSourceId) {
+      bootstrapAttempted.delete(activeSourceId)
+      markSourceHydrated(activeSourceId, false)
+    }
+    setBootstrapError(null)
+    requestSourceReconnect()
+    bumpReloadToken()
+  }
+
   if (showInitialLoading) {
-    const loadingMessage =
-      isLoading && !isLoadingPlaylist ? 'Kaynaklar bağlanıyor...' : scanMessage
+    const isConnectingSources = isLoading && !isLoadingPlaylist
+    const stage = BOOTSTRAP_STAGES[bootstrapStage]
+    const loadingMessage = isConnectingSources ? 'Kaynaklar bağlanıyor...' : stage.message
+    const progress = isConnectingSources ? 0.15 : stage.progress
 
     return (
       <div className="h-full p-3">
-        <div className="rounded-lg border border-surface-800 bg-surface-900 flex h-full flex-col items-center justify-center gap-4 text-center">
+        <div className="rounded-lg border border-surface-800 bg-surface-900 flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
           <Activity size={20} className="animate-pulse text-accent" />
           <p className="text-sm text-surface-300">{loadingMessage}</p>
-          <div className="w-48 h-1.5 rounded-full bg-surface-800 overflow-hidden">
-            <div className="h-full rounded-full bg-accent transition-all duration-500" style={{ width: '33%' }} />
+          <div
+            className="w-48 h-1.5 rounded-full bg-surface-800 overflow-hidden"
+            role="progressbar"
+            aria-label={loadingMessage}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progress * 100)}
+          >
+            <div
+              className="h-full rounded-full bg-accent transition-all duration-500"
+              style={{ width: `${Math.round(progress * 100)}%` }}
+            />
           </div>
-          <p className="text-xs text-surface-500">Kategoriler ve ön izleme yükleniyor</p>
+          <p className="text-xs text-surface-500">
+            {isConnectingSources ? 'Sunucu yanıtı bekleniyor' : 'Kategoriler ve ön izleme yükleniyor'}
+          </p>
+          <Button variant="ghost" size="sm" onClick={retryBootstrap}>
+            <RefreshCw size={14} />
+            Çok uzun sürüyor, yeniden dene
+          </Button>
         </div>
       </div>
     )
   }
 
-  if (bootstrapError && channels.length === 0) {
+  // `bootstrapError` sadece ana sayfa yuklemesini kapsiyor; kaynak baglanti
+  // hatalari auth-slice'ta duruyordu ve hicbir yerde gosterilmiyordu, bu yuzden
+  // yanlis sifre / olu sunucu sessizce bos bir dashboard olarak goruluyordu.
+  const blockingError = bootstrapError ?? authError
+  if (blockingError && channels.length === 0) {
     return (
       <div className="h-full p-3">
         <div className="rounded-lg border border-surface-800 bg-surface-900 flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-          <p className="max-w-xl text-sm text-red-300">{bootstrapError}</p>
-            <Button
-              onClick={() => {
-              if (activeSourceId) bootstrapAttempted.delete(activeSourceId)
-              if (activeSourceId) markSourceHydrated(activeSourceId, false)
-              setBootstrapError(null)
-              bumpReloadToken()
-            }}
-          >
-            <RefreshCw size={16} />
-            Yeniden Dene
-          </Button>
+          <p className="text-sm font-medium text-white">Kaynağa bağlanılamadı</p>
+          <p className="max-w-xl text-sm text-red-300">{blockingError}</p>
+          <div className="flex items-center gap-2">
+            <Button onClick={retryBootstrap}>
+              <RefreshCw size={16} />
+              Yeniden Dene
+            </Button>
+            <Button variant="secondary" onClick={() => navigate('/settings')}>
+              Kaynak Ayarları
+            </Button>
+          </div>
         </div>
       </div>
     )
