@@ -1,20 +1,19 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
+
+const EMPTY: readonly never[] = []
 
 /**
  * Keeps the previously rendered list on screen while a foreground load briefly
  * empties it, so switching category/source doesn't flash an empty grid.
  *
- * This deliberately writes refs during render, which react-doctor flags
- * (`no-ref-current-in-render`). It is safe here and the alternatives are worse:
- * - the writes are idempotent — replaying a render produces the same ref value,
- *   so a discarded or double-invoked (StrictMode) render changes nothing;
- * - the ref is a pure display cache, never a source of truth. The worst case
- *   from a thrown-away render is showing the previous list one extra frame;
- * - moving the writes into an effect would show the *previous category's*
- *   items for a frame after `resetKey` changes — the exact glitch this hook
- *   exists to prevent;
- * - the `useState` adjust-during-render alternative costs an extra render pass
- *   every time the list changes, on virtualised grids with 10k+ channels.
+ * Render only *reads* the refs; every write happens in the effect below, because
+ * React may replay or discard a render and mutations from it would leak.
+ *
+ * The `isStale` read is what makes the effect-based writes safe: right after
+ * `resetKey` changes the retained list still holds the previous scope's items,
+ * and the effect that clears it has not run yet. Treating that render as stale
+ * makes the hook fall through to `items`, so the previous category's channels
+ * can never flash on screen — the exact glitch this hook exists to prevent.
  */
 export function useRetainedListWhileLoading<T>(
   items: T[],
@@ -24,17 +23,25 @@ export function useRetainedListWhileLoading<T>(
   const retainedRef = useRef<T[]>(items)
   const previousResetKeyRef = useRef(resetKey)
 
-  if (previousResetKeyRef.current !== resetKey) {
-    previousResetKeyRef.current = resetKey
-    retainedRef.current = []
+  const isStale = previousResetKeyRef.current !== resetKey
+  const retained = isStale ? (EMPTY as unknown as T[]) : retainedRef.current
+
+  useEffect(() => {
+    if (previousResetKeyRef.current !== resetKey) {
+      previousResetKeyRef.current = resetKey
+      retainedRef.current = []
+      return
+    }
+
+    // Never capture the empty list we are trying to paper over.
+    if (!(loading && items.length === 0)) {
+      retainedRef.current = items
+    }
+  }, [items, loading, resetKey])
+
+  if (loading && items.length === 0 && retained.length > 0) {
+    return retained
   }
 
-  const shouldUseRetained = loading && items.length === 0 && retainedRef.current.length > 0
-
-  if (shouldUseRetained) {
-    return retainedRef.current
-  }
-
-  retainedRef.current = items
   return items
 }

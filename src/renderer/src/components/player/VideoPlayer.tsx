@@ -187,7 +187,6 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
           aria-label={`${currentChannel.name} oynatıcı`}
           className="h-full w-full"
           playsInline
-          autoPlay
         >
           <track
             kind="captions"

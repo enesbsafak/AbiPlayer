@@ -335,7 +335,8 @@ function useSeriesDetailData({
           tmdbTvId,
           seasonNumber: selectedSeason
         })
-        if (cancelled || seasonEpisodes.length === 0) return
+        if (cancelled) return
+        if (seasonEpisodes.length === 0) return
 
         const episodesByNumber = new Map(
           seasonEpisodes.map((episode) => [episode.episodeNumber, episode])

@@ -204,13 +204,17 @@ async function fetchJSON<T>(
         mode: 'cors'
       })
 
-      const body = await res.text()
+      // Status first: `fetch` resolves on 4xx/5xx, so the body is only ever a
+      // JSON payload once we know the request succeeded.
       if (!res.ok) {
         // Mask credentials in any echoed URL the server might include, so
         // 4xx/5xx errors don't print user:pass into the UI or logs.
-        const sample = maskCredentialsInUrl(body.slice(0, 160)).replace(/\s+/g, ' ').trim()
+        const errorBody = await res.text().catch(() => '')
+        const sample = maskCredentialsInUrl(errorBody.slice(0, 160)).replace(/\s+/g, ' ').trim()
         throw new Error(`HTTP ${res.status}: ${res.statusText}${sample ? ` (${sample})` : ''}`)
       }
+
+      const body = await res.text()
 
       try {
         const data = JSON.parse(body) as T
