@@ -1,195 +1,282 @@
+<div align="center">
+
 # Abi Player
 
-Modern, hizli ve masaustu odakli bir IPTV oynatici.
+**Masaüstü için modern, hızlı ve açık kaynak IPTV oynatıcı**
 
-**Surum:** `0.4.9-beta`  
-**Durum:** Public Beta
+Xtream Codes ve M3U kaynaklarıyla çalışır. Oynatma çekirdeği olarak MPV'yi kullanır ve donanım hızlandırmalı video çözmeyi destekler.
 
-Abi Player, Electron + React + TypeScript ile gelistirilmistir. Xtream Codes ve M3U kaynaklariyla calisir, MPV native playback ile daha stabil oynatma hedefler ve beta asamasinda aktif olarak gelistirilmektedir.
+[![Sürüm](https://img.shields.io/github/v/release/enesbsafak/AbiPlayer?include_prereleases&label=s%C3%BCr%C3%BCm&color=7c5cff)](https://github.com/enesbsafak/AbiPlayer/releases/latest)
+[![İndirme](https://img.shields.io/github/downloads/enesbsafak/AbiPlayer/total?label=indirme&color=2ea043)](https://github.com/enesbsafak/AbiPlayer/releases)
+[![Sorunlar](https://img.shields.io/github/issues/enesbsafak/AbiPlayer?label=issue&color=555)](https://github.com/enesbsafak/AbiPlayer/issues)
+![Platform](https://img.shields.io/badge/platform-Windows-0078d4)
 
-## Icerik
+[**İndir**](https://github.com/enesbsafak/AbiPlayer/releases/latest) · [Özellikler](#özellikler) · [Kurulum](#kurulum) · [Geliştirme](#geliştirme)
 
-1. [Beta Uyarisi](#beta-uyarisi)
-2. [Yasal Uyari ve Sorumluluk Reddi](#yasal-uyari-ve-sorumluluk-reddi)
-3. [One Cikan Ozellikler](#one-cikan-ozellikler)
-4. [Teknoloji Yigini](#teknoloji-yigini)
-5. [Sistem Gereksinimleri](#sistem-gereksinimleri)
-6. [Kurulum](#kurulum)
-7. [Gelistirme Komutlari](#gelistirme-komutlari)
-8. [Kullanim Akisi](#kullanim-akisi)
-9. [Cache ve Loading Davranisi](#cache-ve-loading-davranisi)
-10. [MPV Native Oynatma Notlari](#mpv-native-oynatma-notlari)
-11. [TMDB Entegrasyonu](#tmdb-entegrasyonu)
-12. [Guvenlik Notlari](#guvenlik-notlari)
-13. [Bilinen Kisitlar](#bilinen-kisitlar)
-14. [Yol Haritasi](#yol-haritasi)
-15. [Katki](#katki)
-16. [Lisans](#lisans)
+</div>
 
-## Beta Uyarisi
+---
 
-Bu surum **beta** oldugu icin asagidaki durumlar gorulebilir:
+## Ekran Görüntüleri
 
-- Bazi saglayicilarda yavas ilk tarama
-- Saglayiciya ozel API farklarindan kaynakli uyumsuzluklar
-- Arayuzde duzeltilecek edge-case hatalari
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/01-ana-sayfa.png" alt="Ana sayfa"></td>
+    <td width="50%"><img src="docs/images/02-canli-tv.png" alt="Canlı TV"></td>
+  </tr>
+  <tr>
+    <td><b>Ana sayfa</b> — kaynaklarındaki içeriğe tek ekrandan erişim</td>
+    <td><b>Canlı TV</b> — kategoriler, kalite bilgisi, favoriler</td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/03-oynatici.png" alt="Oynatıcı"></td>
+    <td><img src="docs/images/04-ayarlar.png" alt="Ayarlar"></td>
+  </tr>
+  <tr>
+    <td><b>Oynatıcı</b> — MPV tabanlı, pencereye gömülü oynatma</td>
+    <td><b>Ayarlar</b> — oynatma, ses ve altyazı tercihleri</td>
+  </tr>
+</table>
 
-Hata bildirimi ve geri bildirimler public beta sureci icin kritik onemdedir.
+> Ekran görüntülerindeki tüm kanal adları ve görüntüler tanıtım amacıyla üretilmiştir. Gerçek bir yayın, kanal veya sağlayıcı içermez.
 
-## Yasal Uyari ve Sorumluluk Reddi
+---
 
-Abi Player yalnizca genel amacli bir medya oynaticidir.
+## Yasal Uyarı ve Sorumluluk Reddi
 
-- Uygulama herhangi bir TV kanali, film, dizi veya canli yayin **saglamaz**, **satmaz**, **dagitmaz** ve **barindirmez**.
-- Uygulama ile acilan tum icerikler, kullanicinin ekledigi ucuncu taraf kaynaklardan gelir.
-- Kullanici, kullandigi tum kaynaklarin ve yayinlarin kendi ulkesindeki yasalara uygun oldugunu dogrulamaktan sorumludur.
-- Telif hakki ihlali olusturabilecek kullanimlardan sadece kullanici sorumludur.
-- Proje sahipleri/gelistiricileri, kullanicinin ekledigi kaynaklar veya oynattigi icerikler nedeniyle dogrudan ya da dolayli yasal sorumluluk kabul etmez.
-- Uygulama "oldugu gibi" sunulur; belirli bir amaca uygunluk, kesintisiz calisma veya hatasizlik konusunda acik/ortulu garanti verilmez.
-- Bu bildirim bilgilendirme amaclidir, hukuki danismanlik yerine gecmez.
+Abi Player yalnızca genel amaçlı bir medya oynatıcıdır.
 
-## One Cikan Ozellikler
+- Uygulama herhangi bir TV kanalı, film, dizi veya canlı yayın **sağlamaz**, **satmaz**, **dağıtmaz** ve **barındırmaz**.
+- Uygulama ile açılan tüm içerikler, kullanıcının kendi eklediği üçüncü taraf kaynaklardan gelir.
+- Kullanıcı, kullandığı tüm kaynakların ve yayınların kendi ülkesindeki yasalara uygun olduğunu doğrulamaktan sorumludur.
+- Telif hakkı ihlali oluşturabilecek kullanımlardan yalnızca kullanıcı sorumludur.
+- Proje sahipleri ve geliştiricileri, kullanıcının eklediği kaynaklar veya oynattığı içerikler nedeniyle doğrudan ya da dolaylı yasal sorumluluk kabul etmez.
+- Uygulama "olduğu gibi" sunulur; belirli bir amaca uygunluk, kesintisiz çalışma veya hatasızlık konusunda açık ya da örtülü garanti verilmez.
+- Bu bildirim bilgilendirme amaçlıdır, hukuki danışmanlık yerine geçmez.
 
-- Xtream Codes API destegi: Canli TV, Film (VOD), Dizi
-- M3U/M3U8 iceri aktarma: URL veya yerel dosya
-- MPV native playback (gomme) + HTML5/HLS fallback
-- Coklu ses ve altyazi secimi
-- Harici altyazi yukleme: SRT, VTT, ASS, SSA
-- Altyazi gorunum ayarlari: boyut, renk, arka plan opakligi
-- TMDB ile film/dizi detay zenginlestirme
-- EPG (XMLTV) destegi
-- Favoriler, arama, mini player, klavye kisayollari
-- Kaynaklar acilis sirasinda otomatik yeniden baglanti
-- Ilk tam tarama sonrasi oturum ici bellek cache davranisi
-
-## Teknoloji Yigini
-
-- Electron 40 + electron-vite (masaustu runtime ve build)
-- React 18 + React Router 7
-- TypeScript 5
-- Zustand (persist middleware ile state yonetimi)
-- Tailwind CSS + PostCSS
-- MPV (native, gomulu oynatma backend'i)
-- hls.js (HTML5 playback fallback)
-- ffmpeg-static + ffprobe-static (altyazi/probe islemleri)
-- fast-xml-parser (EPG/XMLTV parse)
-- idb (istemci tarafi depolama)
-
-## Sistem Gereksinimleri
-
-- Node.js: **20+** onerilir
-- npm: **10+** onerilir
-- Isletim sistemi:
-  - Windows (aktif test edilen hedef)
-  - macOS / Linux (build script mevcut, test kapsami daha sinirli)
-- Internet baglantisi (kaynaklar ve metadata servisleri icin)
+---
 
 ## Kurulum
 
-```bash
-git clone https://github.com/enesbsafak/AbiPlayer.git
-cd AbiPlayer
-npm install
-```
+### Kullanıcılar için
 
-## Gelistirme Komutlari
+[**Releases sayfasından**](https://github.com/enesbsafak/AbiPlayer/releases/latest) `abi-player-*-setup.exe` dosyasını indirip çalıştırın. Kurulum kullanıcı bazlıdır, yönetici izni istemez.
 
-```bash
-# Gelistirme (Electron + Renderer)
-npm run dev
+MPV oynatma çekirdeği kuruluma dahildir — ayrıca bir şey yüklemeniz gerekmez.
 
-# Production build
-npm run build
+Uygulama yeni sürümleri kendisi kontrol eder ve yalnızca değişen kısımları indirir.
 
-# Paketleme (hedef platforma gore)
-npm run build:win
-npm run build:mac
-npm run build:linux
-```
+### Beta durumu
 
-## Kullanim Akisi
+Proje **public beta** aşamasındadır. Karşılaşabileceğiniz durumlar:
 
-1. Uygulamayi ac.
-2. `Ayarlar` sayfasindan kaynak ekle:
-   - Xtream Codes
-   - M3U URL
-   - M3U dosya
-3. Ilk baglanti ve tarama tamamlanana kadar loading durumunu bekle.
-4. Canli TV / Filmler / Diziler bolumlerinden icerik secip oynat.
-5. Istersen TMDB API anahtari ekleyerek detaylari zenginlestir.
+- Bazı sağlayıcılarda ilk tarama uzun sürebilir
+- Sağlayıcıya özel API farklarından kaynaklı uyumsuzluklar
+- Arayüzde düzeltilmeyi bekleyen kenar durumlar
 
-## Cache ve Loading Davranisi
+Hata bildirimleri bu aşamada kritik önemde. [Issue açarken](https://github.com/enesbsafak/AbiPlayer/issues) tekrar üretme adımlarını yazmanız çok yardımcı olur.
 
-- Ilk kaynak taramasi (ozellikle Xtream saglayicilarinda) zaman alabilir.
-- Uygulama ilk taramada kategori ve icerikleri yuklerken loading state gosterir.
-- Tarama tamamlandiktan sonra veriler uygulama acik oldugu surece bellekte tutulur.
-- Kaynak silme/yenileme durumlarinda ilgili cache temizlenir ve tekrar tarama tetiklenir.
+---
 
-## MPV Native Oynatma Notlari
+## Özellikler
 
-Abi Player, MPV'yi ayni pencereye gomerek kullanir. Bu sayede ayrik pencere olmadan native oynatma hedeflenir.
+### Kaynaklar
 
-### MPV bulunamazsa ne olur?
+- **Xtream Codes API** — Canlı TV, Film (VOD) ve Dizi
+- **M3U / M3U8** — URL veya yerel dosyadan içe aktarma
+- Birden fazla kaynağı aynı anda kullanma
+- Açılışta kaynaklara otomatik yeniden bağlanma
+- Kimlik bilgileri işletim sisteminin güvenli deposunda şifreli tutulur, düz metin olarak saklanmaz
 
-- Uygulama MPV binary bulamazsa fallback akislari devreye girebilir.
-- En iyi deneyim icin sistemde `mpv` kurulu olmalidir.
+### Oynatma
 
-### Ozel MPV yolu tanimlama
+- **MPV tabanlı gömülü oynatma** — ayrı pencere açılmaz, oynatıcı uygulamanın içindedir
+- **Donanım hızlandırmalı video çözme** — video çözme ekran kartına devredilir; 1080p50 HEVC ölçümünde işlemci kullanımı %24,7'den %4,9'a düştü
+- **Ses passthrough** — AC3, DTS, E-AC3 ve TrueHD sesi çözmeden doğrudan amfiye gönderir (varsayılan kapalı)
+- HTML5 / HLS yedek oynatma yolu
+- Canlı yayınlarda kesinti sonrası otomatik yeniden bağlanma
+- Kanal listesi oynatıcı üzerinde açılır; görüntü panelin altında kalmaz, yanına daralır
 
-Varsayilan olarak `mpv` PATH uzerinden aranir. Gerekirse `MPV_PATH` tanimlanabilir.
+### Ses ve Altyazı
 
-PowerShell ornegi:
+- Çoklu ses ve altyazı izi seçimi
+- Yayın içine gömülü altyazıları bulma ve kullanma
+- Harici altyazı dosyası yükleme — SRT, VTT, ASS, SSA
+- Altyazı görünümü — boyut, renk, arka plan opaklığı
+- Tercih edilen dublaj ve altyazı dili; uygun iz varsa kendiliğinden seçilir
+
+### Arayüz
+
+- Favoriler, arama (`Ctrl+K`), mini oynatıcı
+- EPG (XMLTV) yayın akışı
+- TMDB ile film ve dizi detaylarını zenginleştirme (opsiyonel, kendi anahtarınızla)
+- Klavye kısayolları
+
+### Klavye Kısayolları
+
+| Tuş                    | İşlev                        |
+| ---------------------- | ---------------------------- |
+| `Boşluk` / `K`         | Oynat / Duraklat             |
+| `F`                    | Tam ekran                    |
+| `M`                    | Sessize al                   |
+| `↑` / `↓`              | Ses seviyesi                 |
+| `←` / `→`              | Geri / ileri sarma           |
+| `L`                    | Canlı yayına dön             |
+| `Esc`                  | Tam ekrandan veya oynatıcıdan çık |
+| `Ctrl+K`               | Arama                        |
+
+---
+
+## Oynatma Çekirdeği Notları
+
+Abi Player, MPV'yi uygulamanın kendi penceresine gömerek kullanır.
+
+### Donanım hızlandırma
+
+Varsayılan olarak açıktır ve MPV'nin `auto-safe` kipini kullanır: yalnızca sorunsuz çalıştığı bilinen kod çözücüler devreye girer. Ekran kartının çözemediği formatlarda (örneğin 10-bit H.264 veya interlaced MPEG-2) uygulama kendiliğinden yazılım çözmeye geçer.
+
+Donanım hızlandırma ekran kartı sürücüsüne bağlı çalışır. Siyah ekran, takılma veya görüntü bozulması yaşarsanız **Ayarlar → Oynatıcı → Donanım hızlandırmalı video çözme** seçeneğini kapatabilirsiniz; ayar anında etkili olur.
+
+### Ses passthrough
+
+Yalnızca AC3/DTS/E-AC3/TrueHD sesi kendisi çözebilen bir amfi veya ev sinema sistemi bağlıysa işe yarar. Varsayılan kapalıdır.
+
+Açtığınızda uygulama her yayında geçişi doğrular: ses cihazınız gönderilen formatı kabul etmezse otomatik olarak normal ses çözmeye döner. Ayarlar ekranında o an kullanılıp kullanılmadığı gösterilir. Bu nedenle açık bırakmak bir yayını sessiz bırakma riski taşımaz.
+
+### Özel MPV yolu
+
+Windows kurulumunda MPV pakete dahildir. macOS ve Linux'ta `mpv` sistemde kurulu olmalıdır (PATH üzerinden aranır).
+
+Farklı bir MPV kullanmak isterseniz `MPV_PATH` ortam değişkenini tanımlayabilirsiniz:
 
 ```powershell
 $env:MPV_PATH="C:\path\to\mpv.exe"
 npm run dev
 ```
 
-## TMDB Entegrasyonu
+---
 
-- TMDB API key veya bearer token ayarlardan girilebilir.
-- Film/dizi aciklamalari, cast, poster/backdrop ve bolum detaylari zenginlestirilir.
-- Uygulama dili ve TMDB sorgu dili su an Turkce odakli ayarlidir (`tr-TR`).
+## Kullanım Akışı
 
-## Guvenlik Notlari
+1. Uygulamayı açın.
+2. **Ayarlar** sayfasından kaynak ekleyin — Xtream Codes, M3U URL veya M3U dosyası.
+3. İlk bağlantı ve tarama tamamlanana kadar bekleyin.
+4. Canlı TV / Filmler / Diziler bölümlerinden içerik seçip oynatın.
+5. İsterseniz TMDB API anahtarı ekleyerek film ve dizi detaylarını zenginleştirin.
 
-- Xtream kimlik bilgileri renderer localStorage icinde duz metin olarak tutulmaz.
-- Kimlik bilgileri preload/main katmani uzerinden guvenli saklama akisina tasinir.
-- Harici link acma ve navigasyon tarafinda temel guvenlik kontrolleri uygulanir.
+### Önbellek davranışı
 
-## Bilinen Kisitlar
+İlk kaynak taraması, özellikle büyük Xtream sağlayıcılarında zaman alabilir. Tarama bittikten sonra veriler uygulama açık olduğu sürece bellekte tutulur. Kaynak silme veya yenileme durumunda ilgili önbellek temizlenir ve tarama yeniden tetiklenir.
 
-- Buyuk IPTV saglayicilarinda ilk tarama suresi uzun olabilir.
-- Saglayici API kalitesine bagli olarak bazi kategoriler eksik donebilir.
-- MPV davranisi platforma gore degisiklik gosterebilir.
-- Public beta surecinde UI/UX ve performans ince ayarlari devam etmektedir.
+---
 
-## Yol Haritasi
+## Teknoloji Yığını
 
-- Disk tabanli kalici cache (uygulama yeniden acilisinda hizli geri donus)
-- Daha guclu hata raporlama ve telemetri secenekleri
-- Gelismis provider uyumlulugu ve fallback stratejileri
-- Arayuz ve erisilebilirlik iyilestirmeleri
-- Daha net onboarding ve ilk kurulum deneyimi
+| Katman        | Kullanılan                                            |
+| ------------- | ----------------------------------------------------- |
+| Masaüstü      | Electron 40, electron-vite 5, electron-builder 26     |
+| Arayüz        | React 18, React Router 7, Tailwind CSS 3              |
+| Dil           | TypeScript 5                                          |
+| Durum yönetimi| Zustand 5 (persist middleware ile)                    |
+| Oynatma       | MPV (JSON IPC üzerinden, pencereye gömülü), hls.js    |
+| Medya araçları| ffmpeg-static, ffprobe-static (altyazı işlemleri)     |
+| EPG           | fast-xml-parser (XMLTV)                               |
+| Test          | Vitest                                                |
+| Güncelleme    | electron-updater (fark tabanlı indirme)               |
 
-## Katki
+---
 
-Katki ve geri bildirim icin:
+## Geliştirme
 
-1. Issue ac
-2. Repro adimlarini net yaz
-3. Munkunse ekran goruntusu/log ekle
-4. PR gondermeden once local build al
+### Gereksinimler
 
-Basit katkida genel akis:
+- Node.js **20+**
+- npm **10+**
+- Windows (aktif geliştirilen ve test edilen hedef)
+
+### Başlangıç
 
 ```bash
-git checkout -b feat/your-change
-# degisikliklerini yap
-npm run build
-git commit -m "feat: your change"
-git push origin feat/your-change
+git clone https://github.com/enesbsafak/AbiPlayer.git
+cd AbiPlayer
+npm install
+npm run dev
 ```
+
+### Komutlar
+
+```bash
+npm run dev            # Geliştirme (Electron + renderer, hot reload)
+npm run typecheck      # TypeScript denetimi (main + renderer)
+npm test               # Test paketi (Vitest)
+npm run build          # Production build (typecheck dahil)
+npm run build:unpack   # Paketlenmiş ama kurulum dosyası üretmeden derle
+npm run build:win      # Windows kurulum dosyası
+npm run release:win    # Derle, etiketle ve GitHub release'i yayınla
+```
+
+### Proje yapısı
+
+```
+src/
+  main/        Electron ana süreç — MPV denetleyicisi, IPC, güncelleyici
+  preload/     Yalıtılmış köprü (contextIsolation açık, sandbox açık)
+  renderer/    React arayüzü — sayfalar, bileşenler, hook'lar, store
+  shared/      İki taraf arasında paylaşılan tipler
+resources/mpv/ Pakete dahil edilen MPV ikilisi (Windows)
+docs/          Sürüm notları ve görseller
+```
+
+### Doğrulama
+
+Değişiklik gönderirken şunların geçtiğinden emin olun:
+
+```bash
+npm run typecheck && npm test
+```
+
+Arayüz tarafında değişiklik yaptıysanız statik analiz puanının düşmediğini de kontrol edebilirsiniz:
+
+```bash
+npx react-doctor@latest --verbose --scope changed
+```
+
+> Not: Paketlenmiş uygulamada ortaya çıkan hatalar geliştirme ortamında görünmeyebilir. Alt süreç çalıştıran (MPV, ffmpeg, ffprobe) bir değişiklik yaptıysanız `npm run build:unpack` ile derleyip paketlenmiş kopyayı çalıştırarak doğrulayın.
+
+---
+
+## Bilinen Kısıtlar
+
+- Büyük IPTV sağlayıcılarında ilk tarama süresi uzun olabilir.
+- Sağlayıcı API kalitesine bağlı olarak bazı kategoriler eksik dönebilir.
+- Donanım hızlandırma yalnızca NVIDIA ekran kartı üzerinde test edilmiştir; AMD ve Intel için saha geri bildirimi bekleniyor.
+- Ses passthrough'un çalıştığı doğrulanmış bir amfi testi henüz yapılmamıştır; güvenli geri dönüş mekanizması doğrulanmıştır.
+- HDR içerik doğru şekilde çözülür ve ekrana uygun biçimde dönüştürülür; HDR'nin ekrana doğrudan aktarılması henüz desteklenmiyor.
+- macOS ve Linux için build script'leri mevcuttur ancak test kapsamı sınırlıdır.
+
+---
+
+## Yol Haritası
+
+- [ ] HDR doğrudan aktarım (araştırma aşamasında)
+- [ ] Disk tabanlı kalıcı önbellek — uygulama yeniden açılışında hızlı geri dönüş
+- [ ] Gelişmiş sağlayıcı uyumluluğu ve yedek stratejiler
+- [ ] Daha net ilk kurulum deneyimi
+- [ ] Arayüz ve erişilebilirlik iyileştirmeleri
+
+---
+
+## Katkı
+
+1. Bir issue açın ve ne yapmak istediğinizi anlatın.
+2. Dal oluşturun: `git checkout -b feat/degisiklik-adi`
+3. Değişikliğinizi yapın; mevcut kod stiline uyun.
+4. `npm run typecheck && npm test` çalıştırın.
+5. PR gönderin.
+
+Hata bildirirken tekrar üretme adımları, ekran görüntüsü ve varsa log eklemek süreci çok hızlandırır.
+
+---
 
 ## Lisans
 
