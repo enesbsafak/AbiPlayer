@@ -252,6 +252,10 @@ function PlayerSettingsSection({
   setActiveSubtitleCues,
   setVolume
 }: PlayerSettingsSectionProps) {
+  // Read directly rather than threading a prop: this flips from the mpv poll,
+  // and routing it through the parent would re-render the whole settings form.
+  const passthroughActive = useStore((s) => s.passthroughActive)
+
   return (
     <section>
       <h2 className="text-lg font-semibold mb-4">Oynatici</h2>
@@ -445,6 +449,29 @@ function PlayerSettingsSection({
           Video çözmeyi ekran kartına devreder; işlemci kullanımını belirgin şekilde düşürür.
           Görüntü siyah geliyor veya takılıyorsa kapatın.
         </p>
+      </div>
+
+      <div className="mt-4">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={settings.audioPassthrough}
+            onChange={(e) => updateSettings({ audioPassthrough: e.target.checked })}
+            className="rounded border-surface-700 bg-surface-900 text-accent focus:ring-accent"
+          />
+          <span className="text-sm text-surface-300">Ses passthrough (AC3 / DTS / E-AC3 / TrueHD)</span>
+        </label>
+        <p className="mt-1 text-xs text-surface-500">
+          Sesi çözmeden doğrudan ses sisteminize gönderir. Yalnızca bu formatları kendisi
+          çözebilen bir amfi veya ses sistemi bağlıysa işe yarar.
+        </p>
+        {settings.audioPassthrough && (
+          <p className="mt-1 text-xs text-surface-400">
+            {passthroughActive
+              ? 'Şu anki yayında etkin.'
+              : 'Şu anki yayında kullanılmıyor; ses normal şekilde çalınıyor. Cihazınız bu formatı desteklemiyorsa veya yayın bu formatlarda değilse beklenen durumdur.'}
+          </p>
+        )}
       </div>
 
       <div className="mt-5">

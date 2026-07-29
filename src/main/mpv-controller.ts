@@ -32,6 +32,11 @@ interface MpvSocketResponse {
   file_error?: string
 }
 
+const MPV_SPDIF_CODECS = 'ac3,dts,eac3,truehd'
+// Measured: a device rejects the bitstream and drops the audio output within
+// ~300ms. This leaves a wide margin without making a failed attempt feel slow.
+const MPV_PASSTHROUGH_SETTLE_MS = 800
+
 const MPV_REQUEST_TIMEOUT_MS = 5000
 const MPV_CONNECT_TIMEOUT_MS = 8000
 const MPV_CONNECT_RETRY_MS = 150
@@ -114,6 +119,10 @@ export class MpvController {
   // before the renderer pushes its stored setting) still lands on the value the
   // user most likely has.
   private hardwareDecoding = true
+  private audioPassthrough = false
+  // Bumped on every passthrough apply so a verification that is still sleeping
+  // when the next channel loads can tell it has been superseded and bail.
+  private passthroughToken = 0
   private subtitleStyle: MpvSubtitleStyle = {
     fontSize: 24,
     color: '#ffffff',
@@ -136,7 +145,8 @@ export class MpvController {
     fullscreen: false,
     tracks: [],
     path: null,
-    error: null
+    error: null,
+    passthroughActive: false
   }
 
   async isAvailable(): Promise<boolean> {
@@ -193,6 +203,14 @@ export class MpvController {
     this.state.running = true
     this.state.paused = false
     this.state.error = null
+
+    // Re-verify per stream, not just when the setting is toggled: whether the
+    // device can bitstream depends on the codec of whatever just loaded, so a
+    // channel that worked says nothing about the next one. Deliberately not
+    // awaited — verification sleeps ~1s and must not delay the channel switch.
+    if (this.audioPassthrough) {
+      void this.applyAudioPassthrough().catch(() => undefined)
+    }
   }
 
   async stopPlayback(): Promise<void> {
@@ -209,6 +227,7 @@ export class MpvController {
     this.state.vid = null
     this.state.aid = null
     this.state.sid = null
+    this.state.passthroughActive = false
   }
 
   async shutdown(): Promise<void> {
@@ -332,6 +351,77 @@ export class MpvController {
     // mpv reinitialises the decoder in place, so this takes effect on the
     // stream that is already playing without reloading it.
     await this.command(['set_property', 'hwdec', this.hwdecValue]).catch(() => undefined)
+  }
+
+  async setAudioPassthrough(enabled: boolean): Promise<void> {
+    if (this.audioPassthrough === enabled) return
+    this.audioPassthrough = enabled
+    await this.applyAudioPassthrough()
+  }
+
+  /**
+   * Hands the compressed bitstream to the audio device instead of decoding it,
+   * then checks whether the device actually took it.
+   *
+   * A device that cannot bitstream the format does not report an error — mpv
+   * just ends up with no audio output at all and plays on in silence. Two
+   * properties separate the cases that matter:
+   *
+   *   audio-params/format  "spdif-*" once mpv attempts passthrough for this
+   *                        stream (it stays PCM for e.g. AAC, where the setting
+   *                        simply does not apply)
+   *   current-ao           empty when the device refused what was attempted
+   *
+   * Only "attempted AND refused" is a failure worth undoing.
+   */
+  private async applyAudioPassthrough(): Promise<void> {
+    const token = ++this.passthroughToken
+
+    if (!this.process) {
+      this.state.passthroughActive = false
+      return
+    }
+
+    if (!this.audioPassthrough) {
+      await this.command(['set_property', 'audio-spdif', '']).catch(() => undefined)
+      this.state.passthroughActive = false
+      return
+    }
+
+    const applied = await this.command(['set_property', 'audio-spdif', MPV_SPDIF_CODECS])
+      .then(() => true)
+      .catch(() => false)
+    if (!applied) {
+      this.state.passthroughActive = false
+      return
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, MPV_PASSTHROUGH_SETTLE_MS))
+    // A newer apply (channel switch, or the user toggling again) owns the state now.
+    if (token !== this.passthroughToken) return
+
+    const [format, audioOutput] = await Promise.all([
+      this.command(['get_property', 'audio-params/format']).catch(() => null),
+      this.command(['get_property', 'current-ao']).catch(() => null)
+    ])
+
+    const attempted = typeof format === 'string' && format.startsWith('spdif')
+    if (!attempted) {
+      // This stream is not a passthrough candidate; audio keeps playing as PCM
+      // and the option stays armed for whatever plays next.
+      this.state.passthroughActive = false
+      return
+    }
+
+    if (audioOutput) {
+      this.state.passthroughActive = true
+      return
+    }
+
+    // Device refused the bitstream and we are now playing to nothing. Put PCM
+    // back so the user hears audio, and report that passthrough is not live.
+    await this.command(['set_property', 'audio-spdif', '']).catch(() => undefined)
+    this.state.passthroughActive = false
   }
 
   async setSubtitleStyle(style: MpvSubtitleStyle): Promise<void> {
@@ -514,11 +604,7 @@ export class MpvController {
     }
   }
 
-  private async startMpv(parentWid?: string): Promise<void> {
-    const socketPath = createMpvSocketPath()
-    this.socketPath = socketPath
-    this.startupParentWid = parentWid ?? null
-
+  private buildLaunchArgs(socketPath: string, parentWid?: string): string[] {
     const args = [
       '--idle=yes',
       '--keep-open=yes',
@@ -533,6 +619,11 @@ export class MpvController {
       '--input-vo-keyboard=no',
       '--pause=yes',
       `--hwdec=${this.hwdecValue}`,
+      // NOTE: --audio-spdif must NEVER be added here. Passed as a launch
+      // argument it deadlocks mpv outright when the device rejects the
+      // bitstream — the process hangs before it even creates the IPC socket,
+      // leaving no way out but SIGKILL. Applied later via set_property the very
+      // same value degrades gracefully instead (see applyAudioPassthrough).
       // Network resilience for live streams
       '--network-timeout=30',
       '--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5,reconnect_on_network_error=1',
@@ -549,6 +640,16 @@ export class MpvController {
     if (parentWid) {
       args.push(`--wid=${parentWid}`)
     }
+
+    return args
+  }
+
+  private async startMpv(parentWid?: string): Promise<void> {
+    const socketPath = createMpvSocketPath()
+    this.socketPath = socketPath
+    this.startupParentWid = parentWid ?? null
+
+    const args = this.buildLaunchArgs(socketPath, parentWid)
 
     const child = spawn(this.mpvPath, args, {
       windowsHide: true,

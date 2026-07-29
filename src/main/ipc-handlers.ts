@@ -684,6 +684,11 @@ export function registerIpcHandlers(): void {
     await mpvController.setHardwareDecoding(enabled)
   })
 
+  ipcMain.handle('mpv-set-audio-passthrough', async (_, enabled: unknown): Promise<void> => {
+    if (typeof enabled !== 'boolean') throw new Error('Geçersiz ses passthrough değeri')
+    await mpvController.setAudioPassthrough(enabled)
+  })
+
   ipcMain.handle('mpv-set-subtitle-style', async (_, style: unknown): Promise<void> => {
     if (!isValidMpvSubtitleStyle(style)) throw new Error('Geçersiz altyazı stil verisi')
     await mpvController.setSubtitleStyle(style)

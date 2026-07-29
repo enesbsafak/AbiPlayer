@@ -142,3 +142,120 @@ describe('MpvController hardware decoding', () => {
     expect(sent).toEqual([])
   })
 })
+
+describe('MpvController audio passthrough', () => {
+  type PassthroughInternals = {
+    process: unknown
+    command: (command: unknown[]) => Promise<unknown>
+  }
+
+  const internals = (controller: unknown) => controller as unknown as PassthroughInternals
+
+  // Answers to `get_property`; anything else resolves as a plain ack.
+  function stubMpv(
+    controller: unknown,
+    replies: Record<string, unknown>
+  ): { sent: unknown[][] } {
+    const sent: unknown[][] = []
+    internals(controller).process = {}
+    internals(controller).command = async (command: unknown[]) => {
+      sent.push(command)
+      if (command[0] === 'get_property') {
+        const key = String(command[1])
+        if (!(key in replies)) throw new Error('property unavailable')
+        return replies[key]
+      }
+      return undefined
+    }
+    return { sent }
+  }
+
+  const spdifWrites = (sent: unknown[][]) =>
+    sent.filter((c) => c[0] === 'set_property' && c[1] === 'audio-spdif').map((c) => c[2])
+
+  it('never passes audio-spdif as a launch argument', async () => {
+    // Passing it at launch deadlocks mpv before the IPC socket exists, which is
+    // unrecoverable. The whole feature depends on this staying true, so assert
+    // it on the real argument list — including after passthrough is enabled.
+    const controller = new MpvController()
+    const buildArgs = (controller as unknown as {
+      buildLaunchArgs: (socketPath: string, parentWid?: string) => string[]
+    }).buildLaunchArgs.bind(controller)
+
+    expect(buildArgs('\\\\.\\pipe\\test')).not.toContain('--audio-spdif')
+
+    stubMpv(controller, { 'audio-params/format': 'spdif-ac3', 'current-ao': 'wasapi' })
+    await controller.setAudioPassthrough(true)
+
+    expect(buildArgs('\\\\.\\pipe\\test').some((a) => a.startsWith('--audio-spdif'))).toBe(false)
+  })
+
+  it('keeps passthrough on when the device accepts the bitstream', async () => {
+    const controller = new MpvController()
+    const { sent } = stubMpv(controller, {
+      'audio-params/format': 'spdif-ac3',
+      'current-ao': 'wasapi'
+    })
+
+    await controller.setAudioPassthrough(true)
+
+    expect(spdifWrites(sent)).toEqual(['ac3,dts,eac3,truehd'])
+    expect(controller.getState().passthroughActive).toBe(true)
+  })
+
+  it('restores PCM when the device refuses the bitstream', async () => {
+    // mpv reports no error here — it just ends up with no audio output and
+    // plays on silently, so the empty `current-ao` is the only tell.
+    const controller = new MpvController()
+    const { sent } = stubMpv(controller, { 'audio-params/format': 'spdif-ac3' })
+
+    await controller.setAudioPassthrough(true)
+
+    expect(spdifWrites(sent)).toEqual(['ac3,dts,eac3,truehd', ''])
+    expect(controller.getState().passthroughActive).toBe(false)
+  })
+
+  it('leaves passthrough armed for a stream that is not a candidate', async () => {
+    // AAC never engages spdif, so audio is fine as PCM and there is nothing to
+    // undo — reverting here would disarm passthrough for the next channel.
+    const controller = new MpvController()
+    const { sent } = stubMpv(controller, {
+      'audio-params/format': 'floatp',
+      'current-ao': 'wasapi'
+    })
+
+    await controller.setAudioPassthrough(true)
+
+    expect(spdifWrites(sent)).toEqual(['ac3,dts,eac3,truehd'])
+    expect(controller.getState().passthroughActive).toBe(false)
+  })
+
+  it('clears the mpv property when the user turns passthrough off', async () => {
+    const controller = new MpvController()
+    const { sent } = stubMpv(controller, {
+      'audio-params/format': 'spdif-ac3',
+      'current-ao': 'wasapi'
+    })
+
+    await controller.setAudioPassthrough(true)
+    sent.length = 0
+    await controller.setAudioPassthrough(false)
+
+    expect(spdifWrites(sent)).toEqual([''])
+    expect(controller.getState().passthroughActive).toBe(false)
+  })
+
+  it('lets a newer apply win when a channel switch supersedes a pending check', async () => {
+    const controller = new MpvController()
+    const { sent } = stubMpv(controller, { 'audio-params/format': 'spdif-ac3' })
+
+    const stale = controller.setAudioPassthrough(true)
+    // Simulates the next loadfile re-running the check while the first is still
+    // sleeping; without the token guard the stale run would clobber the state.
+    ;(controller as unknown as { passthroughToken: number }).passthroughToken += 1
+    await stale
+
+    expect(spdifWrites(sent)).toEqual(['ac3,dts,eac3,truehd'])
+    expect(controller.getState().passthroughActive).toBe(false)
+  })
+})

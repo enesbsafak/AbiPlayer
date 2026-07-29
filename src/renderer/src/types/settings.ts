@@ -16,6 +16,9 @@ export interface UserSettings {
   epgTimeFormat: '12h' | '24h'
   bufferLength: number // seconds
   hardwareAcceleration: boolean
+  // Off by default: it only helps when an AV receiver is decoding, and mpv
+  // needs an active stream before it can tell whether the device accepts it.
+  audioPassthrough: boolean
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -35,5 +38,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   channelViewMode: 'grid',
   epgTimeFormat: '24h',
   bufferLength: 30,
-  hardwareAcceleration: true
+  hardwareAcceleration: true,
+  audioPassthrough: false
 }

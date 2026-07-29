@@ -28,6 +28,12 @@ export interface MpvStateSnapshot {
   tracks: MpvTrackInfo[]
   path: string | null
   error: string | null
+  /**
+   * Whether bitstream passthrough is actually carrying audio right now. The
+   * user's setting only expresses intent — the audio device gets the final say,
+   * so this reports what really happened.
+   */
+  passthroughActive: boolean
 }
 
 export interface MpvSubtitleStyle {

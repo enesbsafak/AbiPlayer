@@ -20,6 +20,7 @@ function createSnapshot(overrides: Partial<MpvStateSnapshot> = {}): MpvStateSnap
     tracks: [],
     path: null,
     error: null,
+    passthroughActive: false,
     ...overrides
   }
 }

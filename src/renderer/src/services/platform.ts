@@ -125,6 +125,11 @@ export async function mpvSetHardwareDecoding(enabled: boolean): Promise<void> {
   await window.electron.mpvSetHardwareDecoding(enabled)
 }
 
+export async function mpvSetAudioPassthrough(enabled: boolean): Promise<void> {
+  if (!isElectron() || !window.electron?.mpvSetAudioPassthrough) return
+  await window.electron.mpvSetAudioPassthrough(enabled)
+}
+
 export async function mpvSetSubtitleStyle(style: MpvSubtitleStyle): Promise<void> {
   if (!isElectron() || !window.electron?.mpvSetSubtitleStyle) return
   await window.electron.mpvSetSubtitleStyle(style)

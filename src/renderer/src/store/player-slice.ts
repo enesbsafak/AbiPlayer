@@ -13,6 +13,7 @@ type PlayerPatch = Partial<{
   demuxerCacheDuration: number
   isFullscreen: boolean
   playerError: string | null
+  passthroughActive: boolean
   audioTracks: AudioTrack[]
   currentAudioTrack: string | null
   subtitleTracks: SubtitleTrack[]
@@ -38,6 +39,8 @@ export interface PlayerSlice {
   isFullscreen: boolean
   isPiP: boolean
   playerError: string | null
+  /** Reported by mpv: passthrough is on AND the audio device accepted it. */
+  passthroughActive: boolean
   audioTracks: AudioTrack[]
   currentAudioTrack: string | null
   subtitleTracks: SubtitleTrack[]
@@ -94,6 +97,7 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
   isFullscreen: false,
   isPiP: false,
   playerError: null,
+  passthroughActive: false,
   audioTracks: [],
   currentAudioTrack: null,
   subtitleTracks: [],

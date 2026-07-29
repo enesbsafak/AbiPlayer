@@ -5,6 +5,7 @@ import {
   mpvGetState,
   mpvIsAvailable,
   mpvOpen,
+  mpvSetAudioPassthrough,
   mpvSetAudioTrack,
   mpvSetHardwareDecoding,
   mpvSetMute,
@@ -201,6 +202,11 @@ export function useMpvPlayer(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled) return
+    void mpvSetAudioPassthrough(settings.audioPassthrough).catch(() => undefined)
+  }, [enabled, settings.audioPassthrough])
+
+  useEffect(() => {
+    if (!enabled) return
     let cancelled = false
 
     const syncChannel = async () => {
@@ -312,6 +318,10 @@ export function useMpvPlayer(enabled: boolean) {
 
       const fullscreen = Boolean(windowFullscreen || snapshot.fullscreen)
       if (store.isFullscreen !== fullscreen) patch.isFullscreen = fullscreen
+
+      if (store.passthroughActive !== snapshot.passthroughActive) {
+        patch.passthroughActive = snapshot.passthroughActive
+      }
 
       // time-pos is unreliable as a liveness signal: many IPTV live streams
       // (proxied TS, HLS at segment boundaries, DVR-less feeds) hold it steady
