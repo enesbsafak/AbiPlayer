@@ -107,8 +107,8 @@ Hata bildirimleri bu aşamada kritik önemde. [Issue açarken](https://github.co
 
 ### Katalog Düzeni
 
-- **Sıralama** — Alfabetik (Türkçe, "TRT 2" < "TRT 10") veya kaynağın gönderdiği sıra
-- **Yetişkin içerik listenin sonunda** — Her iki sıralama modunda da; kategori ve kanal adından tespit edilir
+- **Kaynak sırası korunur** — Sağlayıcının gönderdiği sıra anlamlıdır (ulusal kanallar önce), bu yüzden bozulmaz
+- **Yetişkin içerik listenin sonunda** — Kategori ve kanal adından tespit edilir; sıranın bozulan tek yeri budur
 - **Kategori gizleme** — İstemediğiniz kategoriler listelerden tamamen çıkar; sol panelde tek tık, Ayarlar'da toplu yönetim
 
 ### Arayüz

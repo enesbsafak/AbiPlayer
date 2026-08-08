@@ -79,7 +79,7 @@ export function PlayerSidebar() {
       categories.filter(
         (c) => c.type === currentChannel.type && c.sourceId === currentChannel.sourceId
       ),
-      { hiddenCategoryIds: catalogView.hiddenCategoryIds, sortMode: catalogView.sortMode }
+      { hiddenCategoryIds: catalogView.hiddenCategoryIds }
     )
   }, [categories, currentChannel, catalogView])
 

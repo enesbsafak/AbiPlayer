@@ -59,10 +59,6 @@ function sanitizeSettings(partial: Partial<UserSettings>): Partial<UserSettings>
     next.tmdbApiKey = next.tmdbApiKey.trim().slice(0, MAX_TMDB_KEY_LENGTH)
   }
 
-  if (next.catalogSortMode !== undefined && next.catalogSortMode !== 'name' && next.catalogSortMode !== 'source') {
-    next.catalogSortMode = DEFAULT_SETTINGS.catalogSortMode
-  }
-
   return next
 }
 

@@ -74,7 +74,7 @@ export default function EPGPage() {
           if (cleaned.length === 0) return false
           return true
         }),
-        { hiddenCategoryIds: catalogView.hiddenCategoryIds, sortMode: catalogView.sortMode }
+        { hiddenCategoryIds: catalogView.hiddenCategoryIds }
       ),
     [categories, activeSourceId, catalogView]
   )

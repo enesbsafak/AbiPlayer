@@ -21,7 +21,6 @@ export function CategoryVisibility() {
   const activeSourceId = useStore((s) => s.activeSourceId)
   const categories = useStore((s) => s.categories)
   const hiddenCategoryIds = useStore((s) => s.hiddenCategoryIds)
-  const sortMode = useStore((s) => s.settings.catalogSortMode)
   const toggleCategoryHidden = useStore((s) => s.toggleCategoryHidden)
   const showAllCategories = useStore((s) => s.showAllCategories)
 
@@ -45,16 +44,12 @@ export function CategoryVisibility() {
     const scoped = categories.filter(
       (category) => category.type === selectedType && category.sourceId === effectiveSourceId
     )
-    const ordered = applyCategoryView(scoped, {
-      hiddenCategoryIds,
-      sortMode,
-      includeHidden: true
-    })
+    const ordered = applyCategoryView(scoped, { hiddenCategoryIds, includeHidden: true })
 
     if (!filterQuery.trim()) return ordered
     const q = normalizeSearchText(filterQuery)
     return ordered.filter((category) => normalizeSearchText(category.name).includes(q))
-  }, [categories, selectedType, effectiveSourceId, hiddenCategoryIds, sortMode, filterQuery])
+  }, [categories, selectedType, effectiveSourceId, hiddenCategoryIds, filterQuery])
 
   const hiddenCountForSource = useMemo(
     () =>

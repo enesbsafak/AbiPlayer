@@ -13,12 +13,11 @@ import type { CatalogViewOptions } from '@/services/catalog-view'
 export function useCatalogView(): CatalogViewOptions {
   const categories = useStore((s) => s.categories)
   const hiddenCategoryIds = useStore((s) => s.hiddenCategoryIds)
-  const sortMode = useStore((s) => s.settings.catalogSortMode)
 
   const adultCategoryIds = useMemo(() => collectAdultCategoryIds(categories), [categories])
 
   return useMemo(
-    () => ({ hiddenCategoryIds, adultCategoryIds, sortMode }),
-    [hiddenCategoryIds, adultCategoryIds, sortMode]
+    () => ({ hiddenCategoryIds, adultCategoryIds }),
+    [hiddenCategoryIds, adultCategoryIds]
   )
 }

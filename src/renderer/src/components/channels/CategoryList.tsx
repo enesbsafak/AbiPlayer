@@ -16,7 +16,6 @@ export const CategoryList = memo(function CategoryList({ filter }: CategoryListP
   const activeSourceId = useStore((s) => s.activeSourceId)
   const allCategories = useStore((s) => s.categories)
   const hiddenCategoryIds = useStore((s) => s.hiddenCategoryIds)
-  const sortMode = useStore((s) => s.settings.catalogSortMode)
   const toggleCategoryHidden = useStore((s) => s.toggleCategoryHidden)
   const categories = useMemo(
     () =>
@@ -24,9 +23,9 @@ export const CategoryList = memo(function CategoryList({ filter }: CategoryListP
         allCategories.filter(
           (category) => category.type === filter && (!activeSourceId || category.sourceId === activeSourceId)
         ),
-        { hiddenCategoryIds, sortMode }
+        { hiddenCategoryIds }
       ),
-    [allCategories, filter, activeSourceId, hiddenCategoryIds, sortMode]
+    [allCategories, filter, activeSourceId, hiddenCategoryIds]
   )
   const hiddenCount = useMemo(
     () =>

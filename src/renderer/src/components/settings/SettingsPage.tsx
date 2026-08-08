@@ -17,7 +17,7 @@ import {
 } from '@/services/platform'
 import { collectTrackLanguages } from '@/services/track-preferences'
 import type { AudioTrack, SubtitleCue, SubtitleTrack } from '@/types/player'
-import type { CatalogSortMode, UserSettings } from '@/types/settings'
+import type { UserSettings } from '@/types/settings'
 
 const COMMON_LANGUAGE_CODES = ['tr', 'en', 'de', 'fr', 'es', 'it', 'pt', 'ru', 'ar']
 let turkishLanguageDisplayNames: Intl.DisplayNames | null = null
@@ -574,26 +574,6 @@ export function SettingsContent() {
             onSelect={(id) => updateSettings({ epgTimeFormat: id as '12h' | '24h' })}
             placeholder="Saat formati"
           />
-        </div>
-
-        <div className="mt-4">
-          <p id="catalog-sort-mode-label" className="text-sm text-surface-400 mb-2">
-            Kanal ve Kategori Sıralaması
-          </p>
-          <Dropdown
-            id="catalog-sort-mode"
-            labelledBy="catalog-sort-mode-label"
-            items={[
-              { id: 'name', label: 'Alfabetik (A-Z)' },
-              { id: 'source', label: 'Kaynak sırası (sağlayıcının gönderdiği sıra)' }
-            ]}
-            value={settings.catalogSortMode}
-            onSelect={(id) => updateSettings({ catalogSortMode: id as CatalogSortMode })}
-            placeholder="Sıralama"
-          />
-          <p className="mt-1 text-xs text-surface-500">
-            Yetişkin içerik her iki sıralamada da listenin sonuna alınır.
-          </p>
         </div>
       </section>
 
