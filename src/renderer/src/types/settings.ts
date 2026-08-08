@@ -1,6 +1,14 @@
+/**
+ * `source` keeps whatever order the provider sent (M3U line order, Xtream API
+ * order); `name` sorts A-Z. Default is `name` because provider order routinely
+ * puts adult groups first in M3U playlists.
+ */
+export type CatalogSortMode = 'name' | 'source'
+
 export interface UserSettings {
   theme: 'dark' | 'light'
   language: string
+  catalogSortMode: CatalogSortMode
   epgRefreshInterval: number // minutes
   defaultVolume: number // 0-1
   preferredAudioLanguage: string // auto | IETF language tag (tr, en, en-us, ...)
@@ -24,6 +32,7 @@ export interface UserSettings {
 export const DEFAULT_SETTINGS: UserSettings = {
   theme: 'dark',
   language: 'tr',
+  catalogSortMode: 'name',
   epgRefreshInterval: 60,
   defaultVolume: 0.8,
   preferredAudioLanguage: 'auto',

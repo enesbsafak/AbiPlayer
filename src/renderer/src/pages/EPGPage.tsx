@@ -4,6 +4,8 @@ import { useStore } from '@/store'
 import { fetchAndParseEPG } from '@/services/epg-service'
 import { findCurrentProgram, getUpcomingPrograms, normalizeEpgChannelKey } from '@/services/epg-service'
 import { normalizeSearchText } from '@/services/text-normalize'
+import { applyCatalogView, applyCategoryView } from '@/services/catalog-view'
+import { useCatalogView } from '@/hooks/useCatalogView'
 import { xtreamApi } from '@/services/xtream-api'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
@@ -35,6 +37,7 @@ export default function EPGPage() {
   const setEpgData = useStore((s) => s.setEpgData)
   const setEpgLoading = useStore((s) => s.setEpgLoading)
   const setEpgError = useStore((s) => s.setEpgError)
+  const catalogView = useCatalogView()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
@@ -61,15 +64,19 @@ export default function EPGPage() {
 
   // Live categories for filter — skip separator/decorative entries
   const liveCategories = useMemo(
-    () => categories.filter((c) => {
-      if (c.type !== 'live') return false
-      if (activeSourceId && c.sourceId !== activeSourceId) return false
-      // Skip separator categories (e.g. "---", "***", "===", "~~~")
-      const cleaned = c.name.replace(/[-=*~_.#|/\\► ]/g, '').trim()
-      if (cleaned.length === 0) return false
-      return true
-    }),
-    [categories, activeSourceId]
+    () =>
+      applyCategoryView(
+        categories.filter((c) => {
+          if (c.type !== 'live') return false
+          if (activeSourceId && c.sourceId !== activeSourceId) return false
+          // Skip separator categories (e.g. "---", "***", "===", "~~~")
+          const cleaned = c.name.replace(/[-=*~_.#|/\\► ]/g, '').trim()
+          if (cleaned.length === 0) return false
+          return true
+        }),
+        { hiddenCategoryIds: catalogView.hiddenCategoryIds, sortMode: catalogView.sortMode }
+      ),
+    [categories, activeSourceId, catalogView]
   )
 
   // Build channel EPG list — only channels that have EPG data
@@ -79,13 +86,19 @@ export default function EPGPage() {
     const normalizedQuery = searchQuery ? normalizeSearchText(searchQuery) : ''
     const list: ChannelEPG[] = []
 
-    for (const channel of channels) {
-      if (channel.type !== 'live' || !channel.epgChannelId) continue
-      if (activeSourceId && channel.sourceId !== activeSourceId) continue
-      if (selectedCategoryId && channel.categoryId !== selectedCategoryId) continue
-      const text = normalizeSearchText(channel.name)
-      if (normalizedQuery && !text.includes(normalizedQuery)) continue
+    const candidates = applyCatalogView(
+      channels.filter((channel) => {
+        if (channel.type !== 'live' || !channel.epgChannelId) return false
+        if (activeSourceId && channel.sourceId !== activeSourceId) return false
+        if (selectedCategoryId && channel.categoryId !== selectedCategoryId) return false
+        const text = normalizeSearchText(channel.name)
+        if (normalizedQuery && !text.includes(normalizedQuery)) return false
+        return true
+      }),
+      catalogView
+    )
 
+    for (const channel of candidates) {
       const key = normalizeEpgChannelKey(channel.epgChannelId)
       const programs = key ? sourceEpgData.programs[key] : undefined
       if (!programs || programs.length === 0) continue
@@ -99,7 +112,7 @@ export default function EPGPage() {
     }
 
     return list
-  }, [channels, sourceEpgData, activeSourceId, selectedCategoryId, searchQuery])
+  }, [channels, sourceEpgData, activeSourceId, selectedCategoryId, searchQuery, catalogView])
 
   return (
     <div className="flex h-full gap-3 p-3">

@@ -21,6 +21,8 @@ export interface PlaylistSlice {
   hydratedSourceIds: Record<string, true>
   syncProgress: Record<string, SyncProgress>
   syncErrors: Record<string, string>
+  /** Categories the user chose to hide; their channels drop out of every list. */
+  hiddenCategoryIds: Set<string>
   selectedCategoryId: string | null
   selectedChannelId: string | null
   channelFilter: ContentType
@@ -39,6 +41,10 @@ export interface PlaylistSlice {
   isSourceTypeHydrated: (sourceId: string, type: ContentType) => boolean
   setSyncProgress: (sourceId: string, progress: SyncProgress | null) => void
   setSyncError: (sourceId: string, error: string | null) => void
+  toggleCategoryHidden: (categoryId: string) => void
+  setHiddenCategories: (ids: string[]) => void
+  /** Unhides every category, or only those belonging to one source. */
+  showAllCategories: (sourceId?: string) => void
   setPlaylistLoading: (loading: boolean) => void
   getFilteredChannels: () => Channel[]
   getChannelById: (id: string) => Channel | undefined
@@ -52,6 +58,7 @@ export const createPlaylistSlice: StateCreator<PlaylistSlice, [], [], PlaylistSl
   hydratedSourceIds: {},
   syncProgress: {},
   syncErrors: {},
+  hiddenCategoryIds: new Set<string>(),
   selectedCategoryId: null,
   selectedChannelId: null,
   channelFilter: 'live',
@@ -89,7 +96,20 @@ export const createPlaylistSlice: StateCreator<PlaylistSlice, [], [], PlaylistSl
       return { categories: [...state.categories, ...newCats] }
     }),
   removeCategoriesBySource: (sourceId) =>
-    set((state) => ({ categories: state.categories.filter((c) => c.sourceId !== sourceId) })),
+    set((state) => {
+      // Drop this source's hidden entries too, otherwise removing and re-adding
+      // a source resurrects hidden flags for ids the user no longer recognises
+      // (M3U category ids are name hashes, so they come back identical).
+      const nextHidden = new Set(state.hiddenCategoryIds)
+      for (const category of state.categories) {
+        if (category.sourceId === sourceId) nextHidden.delete(category.id)
+      }
+
+      return {
+        categories: state.categories.filter((c) => c.sourceId !== sourceId),
+        hiddenCategoryIds: nextHidden
+      }
+    }),
 
   setSelectedCategory: (id) => set({ selectedCategoryId: id }),
   setSelectedChannel: (id) => set({ selectedChannelId: id }),
@@ -148,6 +168,44 @@ export const createPlaylistSlice: StateCreator<PlaylistSlice, [], [], PlaylistSl
         delete nextErrors[sourceId]
       }
       return { syncErrors: nextErrors }
+    }),
+
+  toggleCategoryHidden: (categoryId) =>
+    set((state) => {
+      const next = new Set(state.hiddenCategoryIds)
+      if (next.has(categoryId)) {
+        next.delete(categoryId)
+        return { hiddenCategoryIds: next }
+      }
+
+      next.add(categoryId)
+      // Hiding the category the user is currently browsing would leave them
+      // staring at an empty grid with no way back, so fall back to "all".
+      return state.selectedCategoryId === categoryId
+        ? { hiddenCategoryIds: next, selectedCategoryId: null }
+        : { hiddenCategoryIds: next }
+    }),
+
+  setHiddenCategories: (ids) => set({ hiddenCategoryIds: new Set(ids) }),
+
+  showAllCategories: (sourceId) =>
+    set((state) => {
+      if (!sourceId) {
+        if (state.hiddenCategoryIds.size === 0) return state
+        return { hiddenCategoryIds: new Set<string>() }
+      }
+
+      const sourceCategoryIds = new Set<string>()
+      for (const category of state.categories) {
+        if (category.sourceId === sourceId) sourceCategoryIds.add(category.id)
+      }
+
+      const next = new Set<string>()
+      for (const id of state.hiddenCategoryIds) {
+        if (!sourceCategoryIds.has(id)) next.add(id)
+      }
+      if (next.size === state.hiddenCategoryIds.size) return state
+      return { hiddenCategoryIds: next }
     }),
 
   setPlaylistLoading: (loading) => set({ isLoadingPlaylist: loading }),

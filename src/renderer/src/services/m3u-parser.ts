@@ -1,4 +1,5 @@
 import type { Channel, Category } from '@/types/playlist'
+import { isAdultLabel } from './adult-content'
 
 interface M3UEntry {
   name: string
@@ -176,19 +177,31 @@ export function parseM3U(content: string, sourceId: string): { channels: Channel
   const groupToCategoryId = new Map<string, string>()
   categories.forEach((c) => groupToCategoryId.set(c.name, c.id))
 
+  // M3U has no adult flag of its own, so resolve it from the labels once here.
+  // Doing it at parse time keeps it off the sort path, which runs on the full
+  // channel list every time the catalog changes.
+  const adultGroups = new Set<string>()
+  for (const groupName of groupedEntries.keys()) {
+    if (isAdultLabel(groupName)) adultGroups.add(groupName)
+  }
+
   // Create channels with type matching their category
-  const channels: Channel[] = entries.map((e, i) => ({
-    id: stableChannelId(sourceId, e.url, i),
-    name: e.name || e.tvgName || 'Bilinmeyen',
-    logo: e.logo || undefined,
-    streamUrl: e.url,
-    sourceId,
-    categoryId: e.group ? groupToCategoryId.get(e.group) : undefined,
-    categoryName: e.group || undefined,
-    epgChannelId: e.tvgId || undefined,
-    group: e.group || undefined,
-    type: e.group ? (groupTypeMap.get(e.group) || 'live') : detectChannelType(e.url)
-  }))
+  const channels: Channel[] = entries.map((e, i) => {
+    const name = e.name || e.tvgName || 'Bilinmeyen'
+    return {
+      id: stableChannelId(sourceId, e.url, i),
+      name,
+      logo: e.logo || undefined,
+      streamUrl: e.url,
+      sourceId,
+      categoryId: e.group ? groupToCategoryId.get(e.group) : undefined,
+      categoryName: e.group || undefined,
+      epgChannelId: e.tvgId || undefined,
+      group: e.group || undefined,
+      type: e.group ? (groupTypeMap.get(e.group) || 'live') : detectChannelType(e.url),
+      isAdult: adultGroups.has(e.group) || isAdultLabel(name)
+    }
+  })
 
   return { channels, categories }
 }

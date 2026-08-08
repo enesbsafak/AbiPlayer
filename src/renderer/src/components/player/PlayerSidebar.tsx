@@ -4,6 +4,8 @@ import { useStore } from '@/store'
 import { isPlayableChannel } from '@/services/playback'
 import { mpvSetVideoMargin } from '@/services/platform'
 import { ensureFullSync } from '@/services/background-sync'
+import { applyCatalogView, applyCategoryView } from '@/services/catalog-view'
+import { useCatalogView } from '@/hooks/useCatalogView'
 import { LazyImage } from '@/components/ui/LazyImage'
 import { ClampText } from '@/components/ui'
 import type { Channel } from '@/types/playlist'
@@ -21,6 +23,7 @@ export function PlayerSidebar() {
   const hydratedSourceIds = useStore((s) => s.hydratedSourceIds)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const storeSelectedCategoryId = useStore((s) => s.selectedCategoryId)
+  const catalogView = useCatalogView()
   const activeRef = useRef<HTMLButtonElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const isMpv = playbackEngine === 'mpv'
@@ -72,10 +75,13 @@ export function PlayerSidebar() {
   // Available categories for this source + type
   const availableCategories = useMemo(() => {
     if (!currentChannel) return []
-    return categories.filter(
-      (c) => c.type === currentChannel.type && c.sourceId === currentChannel.sourceId
+    return applyCategoryView(
+      categories.filter(
+        (c) => c.type === currentChannel.type && c.sourceId === currentChannel.sourceId
+      ),
+      { hiddenCategoryIds: catalogView.hiddenCategoryIds, sortMode: catalogView.sortMode }
     )
-  }, [categories, currentChannel])
+  }, [categories, currentChannel, catalogView])
 
   // Current category label
   const activeCategoryLabel = useMemo(() => {
@@ -96,8 +102,8 @@ export function PlayerSidebar() {
     if (selectedCategoryId) {
       list = list.filter((ch) => ch.categoryId === selectedCategoryId)
     }
-    return list
-  }, [channels, currentChannel, selectedCategoryId])
+    return applyCatalogView(list, catalogView)
+  }, [channels, currentChannel, selectedCategoryId, catalogView])
 
   // Ensure full channel list is available when sidebar opens
   useEffect(() => {

@@ -114,7 +114,8 @@ export const useStore = create<AppStore>()(
         activeSourceId: state.activeSourceId,
         volume: state.volume,
         isMuted: state.isMuted,
-        favoriteIds: Array.from(state.favoriteIds)
+        favoriteIds: Array.from(state.favoriteIds),
+        hiddenCategoryIds: Array.from(state.hiddenCategoryIds)
       }),
       merge: (persisted, current) => {
         // Only accept known keys from persisted state. Spreading raw `persisted` can
@@ -136,6 +137,12 @@ export const useStore = create<AppStore>()(
           if (typeof item === 'string') favoriteIds.add(item)
         }
 
+        const rawHiddenCategoryIds = Array.isArray(p.hiddenCategoryIds) ? p.hiddenCategoryIds : []
+        const hiddenCategoryIds = new Set<string>()
+        for (const item of rawHiddenCategoryIds) {
+          if (typeof item === 'string') hiddenCategoryIds.add(item)
+        }
+
         const volume =
           typeof p.volume === 'number' && Number.isFinite(p.volume)
             ? Math.max(0, Math.min(1, p.volume))
@@ -153,7 +160,8 @@ export const useStore = create<AppStore>()(
           activeSourceId,
           volume,
           isMuted,
-          favoriteIds
+          favoriteIds,
+          hiddenCategoryIds
         }
       }
     }

@@ -1,5 +1,6 @@
 import type { XtreamCredentials, XtreamAuthResponse, XtreamCategory, XtreamLiveStream, XtreamVODStream, XtreamVODInfo, XtreamSeriesStream, XtreamSeriesInfo } from '@/types/xtream'
 import type { Channel, Category } from '@/types/playlist'
+import { isAdultLabel } from './adult-content'
 
 const XTREAM_REQUEST_TIMEOUT_MS = 20_000
 const PREVIEW_SCAN_CATEGORY_LIMIT = 12
@@ -438,7 +439,10 @@ export const xtreamApi = {
       categoryId: s.category_id ? `${sourceId}_live_${s.category_id}` : undefined,
       epgChannelId: s.epg_channel_id || undefined,
       type: 'live' as const,
-      isAdult: s.is_adult === '1',
+      // Plenty of providers never populate is_adult, so fall back to the name.
+      // The category is checked separately at view time (adultCategoryIds),
+      // because Xtream streams carry only a category id, not its name.
+      isAdult: s.is_adult === '1' || isAdultLabel(s.name),
       tvArchive: s.tv_archive === 1,
       tvArchiveDuration: s.tv_archive_duration
     }))
@@ -454,7 +458,7 @@ export const xtreamApi = {
       sourceId,
       categoryId: s.category_id ? `${sourceId}_vod_${s.category_id}` : undefined,
       type: 'vod' as const,
-      isAdult: s.is_adult === '1',
+      isAdult: s.is_adult === '1' || isAdultLabel(s.name),
       rating: s.rating,
       containerExtension: s.container_extension
     }))
@@ -470,6 +474,8 @@ export const xtreamApi = {
       sourceId,
       categoryId: s.category_id ? `${sourceId}_series_${s.category_id}` : undefined,
       type: 'series' as const,
+      // XtreamSeriesStream carries no is_adult field at all — name only.
+      isAdult: isAdultLabel(s.name),
       rating: s.rating,
       plot: s.plot,
       cast: s.cast,

@@ -12,7 +12,8 @@ import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
-import { buildCatalogRetainResetKey } from '@/services/catalog-view'
+import { useCatalogView } from '@/hooks/useCatalogView'
+import { applyCatalogView, buildCatalogRetainResetKey } from '@/services/catalog-view'
 import { ensureStagedSync } from '@/services/background-sync'
 import { normalizeSearchText } from '@/services/text-normalize'
 
@@ -158,6 +159,7 @@ function useSeriesPageContent() {
   const setSelectedCategory = useStore((s) => s.setSelectedCategory)
   const categories = useStore((s) => s.categories)
   const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
+  const catalogView = useCatalogView()
 
   const source = useMemo(
     () => sources.find((item) => item.id === activeSourceId) ?? null,
@@ -445,8 +447,8 @@ function useSeriesPageContent() {
       list = list.filter((c) => normalizeSearchText(c.name).includes(q))
     }
 
-    return list
-  }, [channels, activeSourceId, selectedCategoryId, searchQuery])
+    return applyCatalogView(list, catalogView)
+  }, [channels, activeSourceId, selectedCategoryId, searchQuery, catalogView])
   const displayedItems = useRetainedListWhileLoading(filtered, isForegroundLoading, retainResetKey)
   const isPreviewMode =
     !rawCategoryId &&

@@ -6,8 +6,10 @@ import { HomeHero } from '@/components/home/HomeHero'
 import { HomeSection } from '@/components/home/HomeSection'
 import { HomeError, HomeLoading, HomeWelcome } from '@/components/home/HomeStates'
 import { useHomeBootstrap } from '@/hooks/useHomeBootstrap'
+import { useCatalogView } from '@/hooks/useCatalogView'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
+import { applyCatalogView } from '@/services/catalog-view'
 import { openPlayerFromRoute } from '@/services/player-navigation'
 
 const MAX_LIVE = 12
@@ -44,29 +46,38 @@ export default function HomePage() {
     [location, playChannel, setMiniPlayer, navigate, setPlayerReturnTarget]
   )
 
-  const { recentLive, recentVod, recentSeries, favChannels } = useMemo(() => {
+  const catalogView = useCatalogView()
+
+  const { recentLive, recentVod, recentSeries } = useMemo(() => {
     const live: Channel[] = []
     const vod: Channel[] = []
     const series: Channel[] = []
-    const fav: Channel[] = []
 
-    for (const channel of channels) {
+    // The dashboard shows the first few of each type, so it is the screen the
+    // catalog order hits hardest — an M3U playlist that opens with its adult
+    // groups used to fill every row here.
+    for (const channel of applyCatalogView(channels, catalogView)) {
       if (live.length < MAX_LIVE && channel.type === 'live') live.push(channel)
       if (vod.length < MAX_OTHER && channel.type === 'vod') vod.push(channel)
       if (series.length < MAX_OTHER && channel.type === 'series') series.push(channel)
-      if (fav.length < MAX_OTHER && favoriteIds.has(channel.id)) fav.push(channel)
 
-      if (
-        live.length >= MAX_LIVE &&
-        vod.length >= MAX_OTHER &&
-        series.length >= MAX_OTHER &&
-        fav.length >= MAX_OTHER
-      ) {
+      if (live.length >= MAX_LIVE && vod.length >= MAX_OTHER && series.length >= MAX_OTHER) {
         break
       }
     }
 
-    return { recentLive: live, recentVod: vod, recentSeries: series, favChannels: fav }
+    return { recentLive: live, recentVod: vod, recentSeries: series }
+  }, [channels, catalogView])
+
+  // Favourites are an explicit user pick rather than a catalog listing, so
+  // category hiding deliberately does not apply to them.
+  const favChannels = useMemo(() => {
+    const fav: Channel[] = []
+    for (const channel of channels) {
+      if (fav.length >= MAX_OTHER) break
+      if (favoriteIds.has(channel.id)) fav.push(channel)
+    }
+    return fav
   }, [channels, favoriteIds])
 
   if (sources.length === 0) return <HomeWelcome />

@@ -105,6 +105,12 @@ Hata bildirimleri bu aşamada kritik önemde. [Issue açarken](https://github.co
 - Altyazı görünümü — boyut, renk, arka plan opaklığı
 - Tercih edilen dublaj ve altyazı dili; uygun iz varsa kendiliğinden seçilir
 
+### Katalog Düzeni
+
+- **Sıralama** — Alfabetik (Türkçe, "TRT 2" < "TRT 10") veya kaynağın gönderdiği sıra
+- **Yetişkin içerik listenin sonunda** — Her iki sıralama modunda da; kategori ve kanal adından tespit edilir
+- **Kategori gizleme** — İstemediğiniz kategoriler listelerden tamamen çıkar; sol panelde tek tık, Ayarlar'da toplu yönetim
+
 ### Arayüz
 
 - Favoriler, arama (`Ctrl+K`), mini oynatıcı

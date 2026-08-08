@@ -5,8 +5,10 @@ import { useStore } from '@/store'
 import { ChannelGrid } from '@/components/channels/ChannelGrid'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
+import { applyCatalogView } from '@/services/catalog-view'
 import { openPlayerFromRoute } from '@/services/player-navigation'
 import { normalizeSearchText } from '@/services/text-normalize'
+import { useCatalogView } from '@/hooks/useCatalogView'
 
 export default function SearchPage() {
   const routeLocation = useLocation()
@@ -16,6 +18,7 @@ export default function SearchPage() {
   const playChannel = useStore((s) => s.playChannel)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
   const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
+  const catalogView = useCatalogView()
 
   useEffect(() => {
     const state = routeLocation.state as { restoreSearchQuery?: string } | null
@@ -35,12 +38,15 @@ export default function SearchPage() {
   const results = useMemo(() => {
     if (!query || query.length < 2) return []
     const q = normalizeSearchText(query)
-    return channels.filter((c) =>
+    const matches = channels.filter((c) =>
       normalizeSearchText(c.name).includes(q) ||
       (c.group ? normalizeSearchText(c.group).includes(q) : false) ||
       (c.categoryName ? normalizeSearchText(c.categoryName).includes(q) : false)
-    ).slice(0, 100)
-  }, [query, channels])
+    )
+    // Order before capping, otherwise WHICH 100 results survive still depends
+    // on raw playlist order.
+    return applyCatalogView(matches, catalogView).slice(0, 100)
+  }, [query, channels, catalogView])
 
   const handlePlay = useCallback((channel: Channel) => {
     if (!isPlayableChannel(channel)) {

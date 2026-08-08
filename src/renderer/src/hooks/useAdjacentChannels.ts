@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 import { useStore } from '@/store'
 import { isPlayableChannel } from '@/services/playback'
+import { applyCatalogView } from '@/services/catalog-view'
+import { useCatalogView } from '@/hooks/useCatalogView'
 import type { Channel } from '@/types/playlist'
 
 export interface AdjacentChannels {
@@ -14,20 +16,28 @@ export interface AdjacentChannels {
  * Skipping stays inside the category the user is actually browsing, so pressing
  * next in a filtered list doesn't jump into unrelated content. Falls back to the
  * whole source when the active category yields nothing.
+ *
+ * The candidate list runs through the same view rules as the on-screen lists —
+ * otherwise "next" follows raw playlist order and lands somewhere the user
+ * cannot see in the list they picked the channel from.
  */
 export function useAdjacentChannels(currentChannel: Channel | null): AdjacentChannels {
   const channels = useStore((s) => s.channels)
   const categories = useStore((s) => s.categories)
   const selectedCategoryId = useStore((s) => s.selectedCategoryId)
+  const catalogView = useCatalogView()
 
   const candidates = useMemo(() => {
     if (!currentChannel) return []
 
-    const sameTypeAndSource = channels.filter(
-      (channel) =>
-        channel.type === currentChannel.type &&
-        channel.sourceId === currentChannel.sourceId &&
-        isPlayableChannel(channel)
+    const sameTypeAndSource = applyCatalogView(
+      channels.filter(
+        (channel) =>
+          channel.type === currentChannel.type &&
+          channel.sourceId === currentChannel.sourceId &&
+          isPlayableChannel(channel)
+      ),
+      catalogView
     )
 
     const storeCategory = selectedCategoryId
@@ -44,7 +54,7 @@ export function useAdjacentChannels(currentChannel: Channel | null): AdjacentCha
 
     const withinCategory = sameTypeAndSource.filter((ch) => ch.categoryId === effectiveCategoryId)
     return withinCategory.length > 0 ? withinCategory : sameTypeAndSource
-  }, [channels, categories, currentChannel, selectedCategoryId])
+  }, [channels, categories, currentChannel, selectedCategoryId, catalogView])
 
   return useMemo(() => {
     if (!currentChannel) return { previous: null, next: null }

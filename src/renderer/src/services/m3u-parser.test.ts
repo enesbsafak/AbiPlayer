@@ -29,7 +29,8 @@ https://cdn.example.com/media/movie.mp4`
         categoryName: 'Ulusal',
         epgChannelId: 'kanal.tr',
         group: 'Ulusal',
-        type: 'live'
+        type: 'live',
+        isAdult: false
       },
       {
         id: 'source_1_m3u_ch_7b5bf0c6',
@@ -41,7 +42,8 @@ https://cdn.example.com/media/movie.mp4`
         epgChannelId: undefined,
         group: 'Filmler',
         logo: undefined,
-        type: 'vod'
+        type: 'vod',
+        isAdult: false
       }
     ])
   })
@@ -61,7 +63,8 @@ https://cdn.example.com/media/movie.mp4`
         epgChannelId: undefined,
         group: undefined,
         logo: undefined,
-        type: 'live'
+        type: 'live',
+        isAdult: false
       }
     ])
   })
@@ -86,6 +89,37 @@ https://stream.example.com/1.m3u8`
     expect(channels[0].group).toBe('Ulusal')
     expect(categories).toHaveLength(1)
     expect(categories[0].name).toBe('Ulusal')
+  })
+
+  it('flags channels in an adult group, even when the channel name is clean', () => {
+    // Real M3U playlists routinely open with the adult groups, which is why
+    // "Tüm Kanallar" used to lead with them.
+    const playlist = `#EXTM3U
+#EXTINF:-1 group-title="XXX",Kanal A
+https://a.com/1.m3u8
+#EXTINF:-1 group-title="Yetişkin",Kanal B
+https://a.com/2.m3u8
+#EXTINF:-1 group-title="Ulusal",Kanal C
+https://a.com/3.m3u8`
+
+    const { channels } = parseM3U(playlist, 'src')
+
+    expect(channels.map((c) => [c.name, c.isAdult])).toEqual([
+      ['Kanal A', true],
+      ['Kanal B', true],
+      ['Kanal C', false]
+    ])
+  })
+
+  it('flags an adult channel name inside an ordinary group', () => {
+    const playlist = `#EXTINF:-1 group-title="Ulusal",Brazzers TV
+https://a.com/1.m3u8
+#EXTINF:-1 group-title="Ulusal",Haber TV
+https://a.com/2.m3u8`
+
+    const { channels } = parseM3U(playlist, 'src')
+    expect(channels[0].isAdult).toBe(true)
+    expect(channels[1].isAdult).toBe(false)
   })
 
   it('stable category IDs across same content', () => {

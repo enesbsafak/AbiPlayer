@@ -6,6 +6,8 @@ import { useStore } from '@/store'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 import { normalizeEpgChannelKey } from '@/services/epg-service'
+import { applyCatalogView } from '@/services/catalog-view'
+import { useCatalogView } from '@/hooks/useCatalogView'
 
 const HOUR_WIDTH = 240
 const ROW_HEIGHT = 56
@@ -52,6 +54,7 @@ export function EPGGrid() {
   const epgError = useStore((s) => s.epgError)
   const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
+  const catalogView = useCatalogView()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [timeOffset, setTimeOffset] = useState(0)
   const currentTime = useSyncExternalStore(subscribeCurrentTime, getCurrentTimeSnapshot, getServerTimeSnapshot)
@@ -64,13 +67,16 @@ export function EPGGrid() {
 
   const liveChannels = useMemo(
     () =>
-      channels.filter(
-        (c) =>
-          c.type === 'live' &&
-          c.epgChannelId &&
-          (activeSourceId ? c.sourceId === activeSourceId : true)
+      applyCatalogView(
+        channels.filter(
+          (c) =>
+            c.type === 'live' &&
+            c.epgChannelId &&
+            (activeSourceId ? c.sourceId === activeSourceId : true)
+        ),
+        catalogView
       ),
-    [channels, activeSourceId]
+    [channels, activeSourceId, catalogView]
   )
 
   if (epgLoading && !sourceEpgData) {
