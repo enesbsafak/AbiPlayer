@@ -152,6 +152,52 @@ describe('player-slice playback tuning', () => {
   })
 })
 
+describe('player-slice resume flag', () => {
+  const movie: Channel = {
+    id: 'vod_1',
+    name: 'Film',
+    streamUrl: 'https://cdn.example.com/movie.mkv',
+    sourceId: 'source_1',
+    type: 'vod'
+  }
+
+  it('arms a resume only when playback is actually started', () => {
+    const store = createPlayerTestStore()
+
+    store.getState().playChannel(movie)
+
+    expect(store.getState().pendingResumeStreamUrl).toBe(movie.streamUrl)
+  })
+
+  it('never arms one for live', () => {
+    const store = createPlayerTestStore()
+
+    store.getState().playChannel({ ...movie, type: 'live' })
+
+    expect(store.getState().pendingResumeStreamUrl).toBeNull()
+  })
+
+  it('is consumed once so returning to the player cannot re-seek', () => {
+    // /player unmounts whenever the viewer drops to the mini player. Coming back
+    // must not drag them to a stored position they already scrubbed away from.
+    const store = createPlayerTestStore()
+
+    store.getState().playChannel(movie)
+    store.getState().clearPendingResume()
+
+    expect(store.getState().pendingResumeStreamUrl).toBeNull()
+  })
+
+  it('clears on stop', () => {
+    const store = createPlayerTestStore()
+
+    store.getState().playChannel(movie)
+    store.getState().stopPlayback()
+
+    expect(store.getState().pendingResumeStreamUrl).toBeNull()
+  })
+})
+
 describe('player-slice', () => {
   it('resets video quality state when playback changes or stops', () => {
     const store = createPlayerTestStore()

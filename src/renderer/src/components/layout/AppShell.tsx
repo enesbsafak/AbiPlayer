@@ -8,6 +8,7 @@ import { useStore } from '@/store'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useEPG } from '@/hooks/useEPG'
 import { useAutoConnect } from '@/hooks/useAutoConnect'
+import { useWatchProgress } from '@/hooks/useWatchProgress'
 
 const LAST_ROUTE_KEY = 'iptv:last-route'
 const RESTORABLE_ROUTES = new Set(['/live', '/vod', '/series', '/epg', '/favorites', '/search', '/settings'])
@@ -23,6 +24,9 @@ export function AppShell() {
   useAutoConnect()
   useKeyboard()
   useEPG()
+  // Lives here rather than in the player: playback continues in the mini player
+  // and survives leaving /player, so the recorder has to outlive that route.
+  useWatchProgress()
 
   // Save last visited route
   useEffect(() => {

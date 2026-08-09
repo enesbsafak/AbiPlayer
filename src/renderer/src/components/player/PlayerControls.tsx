@@ -29,7 +29,7 @@ interface ProgressScrubberProps {
   video: HTMLVideoElement | null
 }
 
-function formatTime(s: number) {
+export function formatTime(s: number) {
   if (!isFinite(s)) return '--:--'
   const totalSeconds = Math.max(0, Math.floor(s))
   const hours = Math.floor(totalSeconds / 3600)

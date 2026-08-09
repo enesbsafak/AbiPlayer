@@ -60,6 +60,12 @@ export interface PlayerSlice {
   activeSubtitleCues: SubtitleCue[]
   /** Session-scoped lip-sync / speed / aspect corrections; reset per channel. */
   playbackTuning: MpvPlaybackTuning
+  /**
+   * Stream awaiting a resume seek, set only when playback is actually started.
+   * Tied to the action rather than to the player mounting, so returning from the
+   * mini player cannot drag the viewer back to a stored position.
+   */
+  pendingResumeStreamUrl: string | null
   showControls: boolean
   isMiniPlayer: boolean
   isPlayerSidebarOpen: boolean
@@ -68,6 +74,7 @@ export interface PlayerSlice {
   resetPlaybackTuning: () => void
   playChannel: (channel: Channel) => void
   stopPlayback: () => void
+  clearPendingResume: () => void
   setPlaying: (playing: boolean) => void
   setPaused: (paused: boolean) => void
   setBuffering: (buffering: boolean) => void
@@ -120,6 +127,7 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
   subtitleCues: [],
   activeSubtitleCues: [],
   playbackTuning: DEFAULT_PLAYBACK_TUNING,
+  pendingResumeStreamUrl: null,
   showControls: true,
   isMiniPlayer: false,
   isPlayerSidebarOpen: false,
@@ -140,6 +148,7 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
           isBuffering: false,
           currentTime: 0,
           duration: 0,
+          pendingResumeStreamUrl: null,
           playerError: 'Seçilen içerik doğrudan oynatılamıyor.'
         }
       }
@@ -162,6 +171,8 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
         activeVideoQuality: null,
         subtitleCues: [],
         activeSubtitleCues: [],
+        // Live has no position to return to; everything else may.
+        pendingResumeStreamUrl: channel.type === 'live' ? null : channel.streamUrl,
         // A lip-sync offset that fixed the previous broadcast is wrong for this
         // one, so corrections never carry across a channel change.
         playbackTuning: DEFAULT_PLAYBACK_TUNING
@@ -188,8 +199,11 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
       subtitleCues: [],
       activeSubtitleCues: [],
       playbackTuning: DEFAULT_PLAYBACK_TUNING,
+      pendingResumeStreamUrl: null,
       isPlayerSidebarOpen: false
     }),
+
+  clearPendingResume: () => set({ pendingResumeStreamUrl: null }),
 
   setPlaying: (playing) => set({ isPlaying: playing }),
   setPaused: (paused) => set({ isPaused: paused }),

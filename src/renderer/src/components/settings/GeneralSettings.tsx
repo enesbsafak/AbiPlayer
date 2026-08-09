@@ -7,6 +7,8 @@ export function GeneralSettings() {
   const settings = useStore((s) => s.settings)
   const updateSettings = useStore((s) => s.updateSettings)
   const resetSettings = useStore((s) => s.resetSettings)
+  const watchProgressCount = useStore((s) => s.watchProgress.length)
+  const clearWatchProgress = useStore((s) => s.clearWatchProgress)
 
   return (
     <div className="flex flex-col gap-6">
@@ -55,6 +57,23 @@ export function GeneralSettings() {
         <p className="mt-1 text-xs text-surface-500">
           Film ve dizi detayları ile bölüm adlarını zenginleştirmek için kullanılır.
         </p>
+      </div>
+
+      <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
+        <p className="text-sm font-medium text-surface-200">İzleme Geçmişi</p>
+        <p className="mt-1 text-xs text-surface-500">
+          {watchProgressCount > 0
+            ? `Ana sayfadaki "Devam Et" listesinde ${watchProgressCount} içerik var.`
+            : 'Kaldığınız yer kaydedilen bir içerik yok.'}
+        </p>
+        <Button
+          variant="secondary"
+          className="mt-3"
+          onClick={clearWatchProgress}
+          disabled={watchProgressCount === 0}
+        >
+          İzleme Geçmişini Temizle
+        </Button>
       </div>
 
       <div className="rounded-lg border border-red-500/25 bg-surface-900 p-5">

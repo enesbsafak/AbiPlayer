@@ -474,7 +474,9 @@ function useSeriesPageContent() {
         id: `ep_${Date.now()}`,
         name: title,
         streamUrl: url,
-        sourceId: '',
+        // Carries the owning source so watch progress can rebuild this URL
+        // later — the stored copy has its credentials stripped out.
+        sourceId: selectedSeries?.sourceId ?? '',
         type: 'vod' as const
       }
       if (!isPlayableChannel(episodeChannel)) return

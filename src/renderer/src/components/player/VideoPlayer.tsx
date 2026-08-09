@@ -3,11 +3,12 @@ import { useStore } from '@/store'
 import { usePlayer } from '@/hooks/usePlayer'
 import { useMpvPlayer } from '@/hooks/useMpvPlayer'
 import { useKeepDisplayAwake } from '@/hooks/useKeepDisplayAwake'
-import { PlayerControls } from './PlayerControls'
+import { useResumePlayback } from '@/hooks/useResumePlayback'
+import { PlayerControls, formatTime } from './PlayerControls'
 import { PlayerSidebar } from './PlayerSidebar'
 import { SubtitleOverlay } from './SubtitleOverlay'
 import { Spinner } from '@/components/ui/Spinner'
-import { AlertCircle, RefreshCw } from 'lucide-react'
+import { AlertCircle, RefreshCw, RotateCcw, X } from 'lucide-react'
 import { mpvIsAvailable, mpvSetFullscreen, windowSetFullscreen } from '@/services/platform'
 import { GENERATED_CAPTIONS_TRACK_LABEL, GENERATED_CAPTIONS_TRACK_LANGUAGE } from '@/constants/captions'
 import type { SubtitleCue } from '@/types/player'
@@ -72,6 +73,11 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
   usePlayer(videoRef, { disabled: mpvEnabled || !isEngineResolved })
   const isMpvStarting = useMpvPlayer(mpvEnabled)
   useKeepDisplayAwake()
+  const { resumedFrom, dismissResumeNotice, restartFromStart } = useResumePlayback(
+    videoRef,
+    mpvEnabled,
+    isEngineResolved
+  )
   // MPV handles buffering natively — only show overlay on initial startup or HTML5 buffering
   const showLoadingOverlay = !isEngineResolved || (mpvEnabled ? isMpvStarting : isBuffering)
 
@@ -222,6 +228,28 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
               Yeniden Bağlan
             </button>
           )}
+        </div>
+      )}
+
+      {resumedFrom !== null && (
+        <div className="absolute left-1/2 top-6 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-surface-700 bg-surface-950/95 px-4 py-2.5 text-sm text-surface-200 shadow-lg">
+          <span>{formatTime(resumedFrom)} konumundan devam ediliyor</span>
+          <button
+            type="button"
+            onClick={restartFromStart}
+            className="flex items-center gap-1.5 rounded-md border border-surface-700 px-2.5 py-1 text-xs text-surface-300 transition-colors hover:border-surface-600 hover:text-surface-50"
+          >
+            <RotateCcw size={13} />
+            Baştan başla
+          </button>
+          <button
+            type="button"
+            onClick={dismissResumeNotice}
+            aria-label="Bildirimi kapat"
+            className="text-surface-500 transition-colors hover:text-surface-200"
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
 

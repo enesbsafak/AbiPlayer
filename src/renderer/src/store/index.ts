@@ -7,6 +7,8 @@ import { createPlayerSlice, type PlayerSlice } from './player-slice'
 import { createEpgSlice, type EpgSlice } from './epg-slice'
 import { createFavoritesSlice, type FavoritesSlice } from './favorites-slice'
 import { createNavigationSlice, type NavigationSlice } from './navigation-slice'
+import { createWatchProgressSlice, type WatchProgressSlice } from './watch-progress-slice'
+import { sanitizeProgressEntries } from '@/services/watch-progress'
 import type { PlaylistSource } from '@/types/playlist'
 
 export type AppStore =
@@ -17,6 +19,7 @@ export type AppStore =
   & EpgSlice
   & FavoritesSlice
   & NavigationSlice
+  & WatchProgressSlice
 
 function isPersistedSource(source: unknown): source is PlaylistSource {
   if (!source || typeof source !== 'object') return false
@@ -99,7 +102,8 @@ export const useStore = create<AppStore>()(
       ...createPlayerSlice(...a),
       ...createEpgSlice(...a),
       ...createFavoritesSlice(...a),
-      ...createNavigationSlice(...a)
+      ...createNavigationSlice(...a),
+      ...createWatchProgressSlice(...a)
     }),
     {
       name: 'iptv-player-store',
@@ -115,7 +119,8 @@ export const useStore = create<AppStore>()(
         volume: state.volume,
         isMuted: state.isMuted,
         favoriteIds: Array.from(state.favoriteIds),
-        hiddenCategoryIds: Array.from(state.hiddenCategoryIds)
+        hiddenCategoryIds: Array.from(state.hiddenCategoryIds),
+        watchProgress: state.watchProgress
       }),
       merge: (persisted, current) => {
         // Only accept known keys from persisted state. Spreading raw `persisted` can
@@ -161,7 +166,8 @@ export const useStore = create<AppStore>()(
           volume,
           isMuted,
           favoriteIds,
-          hiddenCategoryIds
+          hiddenCategoryIds,
+          watchProgress: sanitizeProgressEntries(p.watchProgress)
         }
       }
     }
