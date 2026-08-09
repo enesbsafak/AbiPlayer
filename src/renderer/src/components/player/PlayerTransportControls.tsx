@@ -1,4 +1,4 @@
-import { ArrowLeft, FastForward, Pause, Play, Rewind, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
+import { FastForward, Pause, Play, Rewind, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { useStore } from '@/store'
 import { useAdjacentChannels } from '@/hooks/useAdjacentChannels'
 
@@ -42,7 +42,6 @@ function VolumeControl({ isMuted, volume, onToggleMute, onVolumeChange }: Volume
 
 interface PlayerTransportControlsProps {
   /** Engine-specific actions stay with the parent, which owns the video ref. */
-  onLeave: () => void
   onSeek: (seconds: number) => void
   onTogglePlay: () => void
   onJumpToLive: () => void
@@ -51,14 +50,16 @@ interface PlayerTransportControlsProps {
 }
 
 /**
- * Left-hand cluster: navigation, playback transport, live edge, volume.
+ * Left-hand cluster: playback transport, live edge, volume.
+ *
+ * Purely about controlling the stream — leaving the player lives in the
+ * right-hand cluster with the other window-level actions.
  *
  * Reads playback state straight from the store like the other player controls
  * rather than taking it as props — drilling a handful of booleans through the
  * parent only couples the two components' render cycles together.
  */
 export function PlayerTransportControls({
-  onLeave,
   onSeek,
   onTogglePlay,
   onJumpToLive,
@@ -93,10 +94,6 @@ export function PlayerTransportControls({
 
   return (
     <div className="flex items-center gap-1">
-      <button type="button" onClick={onLeave} className={ICON_BUTTON} title="Geri dön" aria-label="Geri dön">
-        <ArrowLeft size={18} />
-      </button>
-
       <button
         type="button"
         onClick={() => playAdjacent('prev')}

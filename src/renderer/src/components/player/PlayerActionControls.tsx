@@ -1,4 +1,4 @@
-import { List, Maximize, Minimize, PictureInPicture2 } from 'lucide-react'
+import { ArrowLeft, List, Maximize, Minimize, PictureInPicture2 } from 'lucide-react'
 import { useStore } from '@/store'
 import { AudioTrackSelector } from './AudioTrackSelector'
 import { PlaybackTuningSelector } from './PlaybackTuningSelector'
@@ -8,22 +8,25 @@ import { SubtitleSelector } from './SubtitleSelector'
 const ICON_BUTTON = 'rounded-lg p-2 transition-colors duration-normal hover:bg-white/10'
 
 interface PlayerActionControlsProps {
-  /** Both need the video element / fullscreen coordination the parent owns. */
+  /** All three need the video element / fullscreen coordination the parent owns. */
+  onLeave: () => void
   onTogglePiP: () => void
   onToggleFullscreen: () => void
 }
 
 /**
- * Right-hand cluster: track/quality pickers and window-level toggles. Reads its
- * own state from the store, like the selectors it renders.
+ * Right-hand cluster: track/quality pickers and window-level actions — leaving
+ * the player, the channel list and fullscreen. Reads its own state from the
+ * store, like the selectors it renders.
  *
- * There is deliberately no "stop and exit" button here. It sat next to the back
- * arrow looking like a second way out, while actually doing something else
- * (ending playback instead of minimising it) — a distinction the two icons
+ * There is deliberately no "stop and exit" button. It used to sit next to the
+ * back arrow looking like a second way out, while actually doing something
+ * else (ending playback instead of minimising it) — a distinction the two icons
  * could not convey. Stopping now lives on the mini player, where it reads as
  * "close this".
  */
 export function PlayerActionControls({
+  onLeave,
   onTogglePiP,
   onToggleFullscreen
 }: PlayerActionControlsProps) {
@@ -73,6 +76,16 @@ export function PlayerActionControls({
         aria-label={isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'}
       >
         {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+      </button>
+
+      <button
+        type="button"
+        onClick={onLeave}
+        className={ICON_BUTTON}
+        title="Geri dön (Esc) — oynatma devam eder"
+        aria-label="Geri dön"
+      >
+        <ArrowLeft size={18} />
       </button>
     </div>
   )

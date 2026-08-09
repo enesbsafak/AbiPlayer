@@ -219,7 +219,6 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
 
       <div className="flex items-center justify-between">
         <PlayerTransportControls
-          onLeave={() => void leavePlayer()}
           onSeek={seek}
           onTogglePlay={togglePlay}
           onJumpToLive={jumpToLive}
@@ -228,6 +227,7 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
         />
 
         <PlayerActionControls
+          onLeave={() => void leavePlayer()}
           onTogglePiP={() => void togglePiP()}
           onToggleFullscreen={onToggleFullscreen}
         />
