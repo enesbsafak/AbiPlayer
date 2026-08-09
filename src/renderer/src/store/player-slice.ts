@@ -1,7 +1,15 @@
 import type { StateCreator } from 'zustand'
 import type { AudioTrack, SubtitleTrack, SubtitleCue, VideoQualityOption } from '@/types/player'
 import type { Channel } from '@/types/playlist'
+import type { MpvPlaybackTuning } from '@/services/platform'
 import { isPlayableChannel } from '@/services/playback'
+
+export const DEFAULT_PLAYBACK_TUNING: MpvPlaybackTuning = {
+  audioDelay: 0,
+  subDelay: 0,
+  speed: 1,
+  aspectRatio: 'auto'
+}
 
 type PlayerPatch = Partial<{
   playbackEngine: 'html5' | 'mpv'
@@ -50,10 +58,14 @@ export interface PlayerSlice {
   activeVideoQuality: string | null
   subtitleCues: SubtitleCue[]
   activeSubtitleCues: SubtitleCue[]
+  /** Session-scoped lip-sync / speed / aspect corrections; reset per channel. */
+  playbackTuning: MpvPlaybackTuning
   showControls: boolean
   isMiniPlayer: boolean
   isPlayerSidebarOpen: boolean
   setPlaybackEngine: (engine: 'html5' | 'mpv') => void
+  setPlaybackTuning: (patch: Partial<MpvPlaybackTuning>) => void
+  resetPlaybackTuning: () => void
   playChannel: (channel: Channel) => void
   stopPlayback: () => void
   setPlaying: (playing: boolean) => void
@@ -107,10 +119,15 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
   activeVideoQuality: null,
   subtitleCues: [],
   activeSubtitleCues: [],
+  playbackTuning: DEFAULT_PLAYBACK_TUNING,
   showControls: true,
   isMiniPlayer: false,
   isPlayerSidebarOpen: false,
   setPlaybackEngine: (engine) => set({ playbackEngine: engine }),
+
+  setPlaybackTuning: (patch) =>
+    set((state) => ({ playbackTuning: { ...state.playbackTuning, ...patch } })),
+  resetPlaybackTuning: () => set({ playbackTuning: DEFAULT_PLAYBACK_TUNING }),
 
   playChannel: (channel) =>
     set((state) => {
@@ -144,7 +161,10 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
         currentVideoQuality: null,
         activeVideoQuality: null,
         subtitleCues: [],
-        activeSubtitleCues: []
+        activeSubtitleCues: [],
+        // A lip-sync offset that fixed the previous broadcast is wrong for this
+        // one, so corrections never carry across a channel change.
+        playbackTuning: DEFAULT_PLAYBACK_TUNING
       }
     }),
 
@@ -167,6 +187,7 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
       activeVideoQuality: null,
       subtitleCues: [],
       activeSubtitleCues: [],
+      playbackTuning: DEFAULT_PLAYBACK_TUNING,
       isPlayerSidebarOpen: false
     }),
 

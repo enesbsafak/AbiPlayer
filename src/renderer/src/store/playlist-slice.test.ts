@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { create } from 'zustand'
 import { createPlaylistSlice, type PlaylistSlice } from './playlist-slice'
-import { createPlayerSlice, type PlayerSlice } from './player-slice'
+import { createPlayerSlice, DEFAULT_PLAYBACK_TUNING, type PlayerSlice } from './player-slice'
 import type { Category, Channel } from '@/types/playlist'
 
 function createTestStore() {
@@ -96,6 +96,59 @@ describe('playlist-slice category visibility', () => {
     store.getState().removeCategoriesBySource('s1')
 
     expect(store.getState().hiddenCategoryIds).toEqual(new Set(['s2_live_1']))
+  })
+})
+
+describe('player-slice playback tuning', () => {
+  const channel: Channel = {
+    id: 'live_1',
+    name: 'Kanal 1',
+    streamUrl: 'https://cdn.example.com/1.m3u8',
+    sourceId: 'source_1',
+    type: 'live'
+  }
+
+  it('merges partial tuning patches', () => {
+    const store = createPlayerTestStore()
+
+    store.getState().setPlaybackTuning({ audioDelay: 0.25 })
+    store.getState().setPlaybackTuning({ speed: 1.5 })
+
+    expect(store.getState().playbackTuning).toEqual({
+      audioDelay: 0.25,
+      subDelay: 0,
+      speed: 1.5,
+      aspectRatio: 'auto'
+    })
+  })
+
+  it('resets tuning when a new channel starts', () => {
+    // A lip-sync offset that fixed one broadcast is wrong for the next, and a
+    // forgotten offset is indistinguishable from a broken stream.
+    const store = createPlayerTestStore()
+
+    store.getState().setPlaybackTuning({ audioDelay: -0.4, subDelay: 1.2, aspectRatio: '4:3' })
+    store.getState().playChannel(channel)
+
+    expect(store.getState().playbackTuning).toEqual(DEFAULT_PLAYBACK_TUNING)
+  })
+
+  it('resets tuning when playback stops', () => {
+    const store = createPlayerTestStore()
+
+    store.getState().setPlaybackTuning({ speed: 2 })
+    store.getState().stopPlayback()
+
+    expect(store.getState().playbackTuning).toEqual(DEFAULT_PLAYBACK_TUNING)
+  })
+
+  it('restores defaults explicitly', () => {
+    const store = createPlayerTestStore()
+
+    store.getState().setPlaybackTuning({ audioDelay: 1, speed: 0.75 })
+    store.getState().resetPlaybackTuning()
+
+    expect(store.getState().playbackTuning).toEqual(DEFAULT_PLAYBACK_TUNING)
   })
 })
 

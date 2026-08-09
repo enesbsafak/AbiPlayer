@@ -2,6 +2,7 @@ import type {
   AppUpdateState,
   EmbeddedSubtitleExtractionResult,
   EmbeddedSubtitleProbeTrack,
+  MpvPlaybackTuning,
   MpvStateSnapshot,
   MpvSubtitleStyle,
   MpvTrackInfo
@@ -11,6 +12,7 @@ export type {
   AppUpdateState,
   EmbeddedSubtitleExtractionResult,
   EmbeddedSubtitleProbeTrack,
+  MpvPlaybackTuning,
   MpvStateSnapshot,
   MpvSubtitleStyle,
   MpvTrackInfo
@@ -133,6 +135,11 @@ export async function mpvSetAudioPassthrough(enabled: boolean): Promise<void> {
 export async function mpvSetSubtitleStyle(style: MpvSubtitleStyle): Promise<void> {
   if (!isElectron() || !window.electron?.mpvSetSubtitleStyle) return
   await window.electron.mpvSetSubtitleStyle(style)
+}
+
+export async function mpvSetPlaybackTuning(tuning: MpvPlaybackTuning): Promise<void> {
+  if (!isElectron() || !window.electron?.mpvSetPlaybackTuning) return
+  await window.electron.mpvSetPlaybackTuning(tuning)
 }
 
 export async function mpvGetState(): Promise<MpvStateSnapshot | null> {

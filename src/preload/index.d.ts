@@ -2,6 +2,7 @@ import type {
   AppUpdateState,
   EmbeddedSubtitleExtractionResult,
   EmbeddedSubtitleProbeTrack,
+  MpvPlaybackTuning,
   MpvStateSnapshot,
   MpvSubtitleStyle,
   MpvTrackInfo
@@ -39,6 +40,7 @@ declare global {
       mpvSetHardwareDecoding: (enabled: boolean) => Promise<void>
       mpvSetAudioPassthrough: (enabled: boolean) => Promise<void>
       mpvSetSubtitleStyle: (style: MpvSubtitleStyle) => Promise<void>
+      mpvSetPlaybackTuning: (tuning: MpvPlaybackTuning) => Promise<void>
       mpvSetVideoMargin: (right: number) => Promise<void>
       mpvGetState: () => Promise<MpvStateSnapshot>
       setPreventDisplaySleep: (prevented: boolean) => Promise<void>

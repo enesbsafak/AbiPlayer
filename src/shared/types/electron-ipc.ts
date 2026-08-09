@@ -42,6 +42,23 @@ export interface MpvSubtitleStyle {
   background: string
 }
 
+/**
+ * Per-stream playback corrections. All four are session-scoped and reset on
+ * channel change — a lip-sync offset that fixes one broadcast is wrong for the
+ * next one, and a persisted value the user forgot about is indistinguishable
+ * from a broken stream.
+ */
+export interface MpvPlaybackTuning {
+  /** Seconds; positive delays audio relative to video. */
+  audioDelay: number
+  /** Seconds; positive delays subtitles. */
+  subDelay: number
+  /** 1 = normal. */
+  speed: number
+  /** 'auto' keeps whatever the stream declares. */
+  aspectRatio: 'auto' | '16:9' | '4:3'
+}
+
 export type AppUpdateStatus =
   | 'unsupported'
   | 'idle'

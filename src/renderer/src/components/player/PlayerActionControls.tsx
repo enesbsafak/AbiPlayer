@@ -1,6 +1,7 @@
 import { List, Maximize, Minimize, PictureInPicture2, X } from 'lucide-react'
 import { useStore } from '@/store'
 import { AudioTrackSelector } from './AudioTrackSelector'
+import { PlaybackTuningSelector } from './PlaybackTuningSelector'
 import { QualitySelector } from './QualitySelector'
 import { SubtitleSelector } from './SubtitleSelector'
 
@@ -36,6 +37,7 @@ export function PlayerActionControls({
       <QualitySelector />
       <AudioTrackSelector />
       <SubtitleSelector />
+      <PlaybackTuningSelector />
 
       {/* MPV renders into its own native surface, which PiP cannot capture. */}
       {playbackEngine !== 'mpv' && (

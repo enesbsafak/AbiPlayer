@@ -11,7 +11,12 @@ import {
   installDownloadedUpdate,
   type AppUpdateState
 } from './app-updater'
-import { MpvController, type MpvStateSnapshot, type MpvSubtitleStyle } from './mpv-controller'
+import {
+  MpvController,
+  type MpvPlaybackTuning,
+  type MpvStateSnapshot,
+  type MpvSubtitleStyle
+} from './mpv-controller'
 import { setPreventDisplaySleep } from './display-sleep'
 import { resolveUnpackedBinary } from './unpacked-binary'
 import type {
@@ -130,6 +135,27 @@ function isValidMpvSubtitleStyle(value: unknown): value is MpvSubtitleStyle {
     style.background.length <= MAX_COLOR_VALUE_LENGTH
 
   return isValidFontSize && isValidColor && isValidBackground
+}
+
+const MAX_TUNING_DELAY_SECONDS = 10
+const MIN_PLAYBACK_SPEED = 0.25
+const MAX_PLAYBACK_SPEED = 4
+const ALLOWED_ASPECT_RATIOS = new Set<MpvPlaybackTuning['aspectRatio']>(['auto', '16:9', '4:3'])
+
+function isFiniteInRange(value: unknown, min: number, max: number): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
+}
+
+function isValidPlaybackTuning(value: unknown): value is MpvPlaybackTuning {
+  if (!value || typeof value !== 'object') return false
+  const tuning = value as MpvPlaybackTuning
+
+  return (
+    isFiniteInRange(tuning.audioDelay, -MAX_TUNING_DELAY_SECONDS, MAX_TUNING_DELAY_SECONDS) &&
+    isFiniteInRange(tuning.subDelay, -MAX_TUNING_DELAY_SECONDS, MAX_TUNING_DELAY_SECONDS) &&
+    isFiniteInRange(tuning.speed, MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) &&
+    ALLOWED_ASPECT_RATIOS.has(tuning.aspectRatio)
+  )
 }
 
 function getNativeWindowId(window: BrowserWindow): string | null {
@@ -698,6 +724,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('mpv-set-audio-passthrough', async (_, enabled: unknown): Promise<void> => {
     if (typeof enabled !== 'boolean') throw new Error('Geçersiz ses passthrough değeri')
     await mpvController.setAudioPassthrough(enabled)
+  })
+
+  ipcMain.handle('mpv-set-playback-tuning', async (_, tuning: unknown): Promise<void> => {
+    if (!isValidPlaybackTuning(tuning)) throw new Error('Geçersiz oynatma ayar verisi')
+    await mpvController.setPlaybackTuning(tuning)
   })
 
   ipcMain.handle('mpv-set-subtitle-style', async (_, style: unknown): Promise<void> => {

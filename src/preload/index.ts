@@ -3,6 +3,7 @@ import type {
   AppUpdateState,
   EmbeddedSubtitleExtractionResult,
   EmbeddedSubtitleProbeTrack,
+  MpvPlaybackTuning,
   MpvStateSnapshot,
   MpvSubtitleStyle,
   SecureXtreamCredentials
@@ -51,6 +52,8 @@ const api = {
     ipcRenderer.invoke('mpv-set-audio-passthrough', enabled) as Promise<void>,
   mpvSetSubtitleStyle: (style: MpvSubtitleStyle) =>
     ipcRenderer.invoke('mpv-set-subtitle-style', style) as Promise<void>,
+  mpvSetPlaybackTuning: (tuning: MpvPlaybackTuning) =>
+    ipcRenderer.invoke('mpv-set-playback-tuning', tuning) as Promise<void>,
   mpvSetVideoMargin: (right: number) =>
     ipcRenderer.invoke('mpv-set-video-margin', right) as Promise<void>,
   mpvGetState: () => ipcRenderer.invoke('mpv-get-state') as Promise<MpvStateSnapshot>,

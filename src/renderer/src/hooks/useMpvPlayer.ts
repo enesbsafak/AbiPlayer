@@ -9,6 +9,7 @@ import {
   mpvSetAudioTrack,
   mpvSetHardwareDecoding,
   mpvSetMute,
+  mpvSetPlaybackTuning,
   mpvSetSubtitleStyle,
   mpvSetSubtitleTrack,
   mpvSetVideoTrack,
@@ -149,6 +150,7 @@ export function useMpvPlayer(enabled: boolean) {
   const currentSubtitleTrack = useStore((s) => s.currentSubtitleTrack)
   const currentVideoQuality = useStore((s) => s.currentVideoQuality)
   const settings = useStore((s) => s.settings)
+  const playbackTuning = useStore((s) => s.playbackTuning)
   const volume = useStore((s) => s.volume)
   const isMuted = useStore((s) => s.isMuted)
   const setPlaybackEngine = useStore((s) => s.setPlaybackEngine)
@@ -487,6 +489,14 @@ export function useMpvPlayer(enabled: boolean) {
       background: settings.subtitleBackground
     }).catch(() => undefined)
   }, [enabled, settings.subtitleBackground, settings.subtitleColor, settings.subtitleFontSize])
+
+  // Also re-sent on channel change: mpv keeps audio-delay/sub-delay/speed across
+  // loadfile, so the store resetting to defaults has to be pushed down or the
+  // previous stream's correction stays applied to the new one.
+  useEffect(() => {
+    if (!enabled) return
+    void mpvSetPlaybackTuning(playbackTuning).catch(() => undefined)
+  }, [enabled, playbackTuning, currentChannel?.streamUrl])
 
   useEffect(() => {
     if (!enabled || !currentAudioTrack?.startsWith(MPV_AUDIO_TRACK_PREFIX)) return

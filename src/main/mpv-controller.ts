@@ -6,9 +6,9 @@ import { tmpdir } from 'os'
 import { existsSync } from 'fs'
 import { unlink } from 'fs/promises'
 import type { Readable } from 'stream'
-import type { MpvTrackInfo, MpvStateSnapshot } from '../shared/types/electron-ipc'
+import type { MpvTrackInfo, MpvStateSnapshot, MpvPlaybackTuning } from '../shared/types/electron-ipc'
 
-export type { MpvTrackInfo, MpvStateSnapshot }
+export type { MpvTrackInfo, MpvStateSnapshot, MpvPlaybackTuning }
 
 export interface MpvSubtitleStyle {
   fontSize: number
@@ -422,6 +422,28 @@ export class MpvController {
     // back so the user hears audio, and report that passthrough is not live.
     await this.command(['set_property', 'audio-spdif', '']).catch(() => undefined)
     this.state.passthroughActive = false
+  }
+
+  /**
+   * Applies lip-sync / subtitle offsets, playback speed and aspect override.
+   *
+   * Unlike audio-spdif these are plain playback properties — no device
+   * negotiation, so none of them can wedge mpv the way passthrough could. Sent
+   * together because the renderer holds them as one object; set_property is
+   * idempotent, so re-sending unchanged values costs nothing.
+   */
+  async setPlaybackTuning(tuning: MpvPlaybackTuning): Promise<void> {
+    if (!this.process) return
+
+    // mpv wants -1 for "use whatever the stream says"; a ratio string otherwise.
+    const aspect: string | number = tuning.aspectRatio === 'auto' ? -1 : tuning.aspectRatio
+
+    await Promise.allSettled([
+      this.command(['set_property', 'audio-delay', tuning.audioDelay]),
+      this.command(['set_property', 'sub-delay', tuning.subDelay]),
+      this.command(['set_property', 'speed', tuning.speed]),
+      this.command(['set_property', 'video-aspect-override', aspect])
+    ])
   }
 
   async setSubtitleStyle(style: MpvSubtitleStyle): Promise<void> {

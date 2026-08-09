@@ -1,6 +1,7 @@
 export { VideoPlayer } from './VideoPlayer'
 export { PlayerControls } from './PlayerControls'
 export { AudioTrackSelector } from './AudioTrackSelector'
+export { PlaybackTuningSelector } from './PlaybackTuningSelector'
 export { SubtitleSelector } from './SubtitleSelector'
 export { SubtitleOverlay } from './SubtitleOverlay'
 export { MiniPlayer } from './MiniPlayer'
