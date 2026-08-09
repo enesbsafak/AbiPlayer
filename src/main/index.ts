@@ -199,22 +199,40 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.abiplayer.beta')
+// A second copy is not a harmless duplicate: it spawns its own mpv, races the
+// first one writing window-state.json, and — the part users actually feel —
+// opens a second connection to the provider. Xtream subscriptions typically
+// allow one or two, so the second window reports "connection limit reached"
+// and the app gets blamed for it.
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
 
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+if (!hasSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    const [existingWindow] = BrowserWindow.getAllWindows()
+    if (!existingWindow) return
+    if (existingWindow.isMinimized()) existingWindow.restore()
+    existingWindow.focus()
   })
 
-  installCertificateVerifyProc()
-  registerIpcHandlers()
-  createWindow()
-  initializeAppUpdater()
+  app.whenReady().then(() => {
+    electronApp.setAppUserModelId('com.abiplayer.beta')
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    app.on('browser-window-created', (_, window) => {
+      optimizer.watchWindowShortcuts(window)
+    })
+
+    installCertificateVerifyProc()
+    registerIpcHandlers()
+    createWindow()
+    initializeAppUpdater()
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
   })
-})
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
