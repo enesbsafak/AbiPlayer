@@ -113,9 +113,11 @@ Hata bildirimleri bu aşamada kritik önemde. [Issue açarken](https://github.co
 
 ### Arayüz
 
+- **Kaldığınız yerden devam** — Film ve dizi bölümlerinde nerede kaldığınız kaydedilir; ana sayfadaki "Devam Et" listesinden tek tıkla dönersiniz. Canlı yayınlar izlenmez, tamamladığınız içerikler listeden düşer
 - Favoriler, arama (`Ctrl+K`), mini oynatıcı
 - EPG (XMLTV) yayın akışı
 - TMDB ile film ve dizi detaylarını zenginleştirme (opsiyonel, kendi anahtarınızla)
+- Sürüm rozetinden güncelleme kontrolü; Ayarlar'da sürüm notları ve geri bildirim bağlantıları
 - Klavye kısayolları
 
 ### Klavye Kısayolları
