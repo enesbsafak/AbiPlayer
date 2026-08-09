@@ -93,11 +93,9 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
   const currentChannel = useStore((s) => s.currentChannel)
   const playbackEngine = useStore((s) => s.playbackEngine)
   const playerReturnTarget = useStore((s) => s.playerReturnTarget)
-  const clearPlayerReturnTarget = useStore((s) => s.clearPlayerReturnTarget)
   const setVolume = useStore((s) => s.setVolume)
   const setMuted = useStore((s) => s.setMuted)
   const setPiP = useStore((s) => s.setPiP)
-  const stopPlayback = useStore((s) => s.stopPlayback)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
 
   const video = videoRef.current
@@ -183,15 +181,6 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
     navigateBackToOrigin()
   }
 
-  const exitPlayer = async () => {
-    await exitFullscreenIfNeeded()
-    setPiP(false)
-    setMiniPlayer(false)
-    stopPlayback()
-    clearPlayerReturnTarget()
-    navigateBackToOrigin()
-  }
-
   const isLive = currentChannel?.type === 'live'
   const remainingTime = !isLive && duration > 0 ? Math.max(0, duration - currentTime) : 0
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
@@ -239,7 +228,6 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
         />
 
         <PlayerActionControls
-          onExit={() => void exitPlayer()}
           onTogglePiP={() => void togglePiP()}
           onToggleFullscreen={onToggleFullscreen}
         />

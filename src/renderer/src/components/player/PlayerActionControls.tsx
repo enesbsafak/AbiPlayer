@@ -1,4 +1,4 @@
-import { List, Maximize, Minimize, PictureInPicture2, X } from 'lucide-react'
+import { List, Maximize, Minimize, PictureInPicture2 } from 'lucide-react'
 import { useStore } from '@/store'
 import { AudioTrackSelector } from './AudioTrackSelector'
 import { PlaybackTuningSelector } from './PlaybackTuningSelector'
@@ -9,7 +9,6 @@ const ICON_BUTTON = 'rounded-lg p-2 transition-colors duration-normal hover:bg-w
 
 interface PlayerActionControlsProps {
   /** Both need the video element / fullscreen coordination the parent owns. */
-  onExit: () => void
   onTogglePiP: () => void
   onToggleFullscreen: () => void
 }
@@ -17,9 +16,14 @@ interface PlayerActionControlsProps {
 /**
  * Right-hand cluster: track/quality pickers and window-level toggles. Reads its
  * own state from the store, like the selectors it renders.
+ *
+ * There is deliberately no "stop and exit" button here. It sat next to the back
+ * arrow looking like a second way out, while actually doing something else
+ * (ending playback instead of minimising it) — a distinction the two icons
+ * could not convey. Stopping now lives on the mini player, where it reads as
+ * "close this".
  */
 export function PlayerActionControls({
-  onExit,
   onTogglePiP,
   onToggleFullscreen
 }: PlayerActionControlsProps) {
@@ -30,10 +34,6 @@ export function PlayerActionControls({
 
   return (
     <div className="flex items-center gap-1">
-      <button type="button" onClick={onExit} className={ICON_BUTTON} title="Durdur ve çık" aria-label="Durdur ve çık">
-        <X size={18} />
-      </button>
-
       <QualitySelector />
       <AudioTrackSelector />
       <SubtitleSelector />
