@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Captions, Database, Download, LayoutGrid, Play, SlidersHorizontal } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Captions, Database, Download, Heart, LayoutGrid, Play, SlidersHorizontal } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { SourcesSettings } from './SourcesSettings'
 import { PlaybackSettings } from './PlaybackSettings'
@@ -7,8 +7,16 @@ import { SubtitleSettings } from './SubtitleSettings'
 import { CatalogSettings } from './CatalogSettings'
 import { GeneralSettings } from './GeneralSettings'
 import { UpdateSettings } from './UpdateSettings'
+import { SupportSettings } from './SupportSettings'
 
-type SettingsTabId = 'sources' | 'playback' | 'subtitles' | 'catalog' | 'general' | 'updates'
+type SettingsTabId =
+  | 'sources'
+  | 'playback'
+  | 'subtitles'
+  | 'catalog'
+  | 'general'
+  | 'updates'
+  | 'support'
 
 interface SettingsTab {
   id: SettingsTabId
@@ -23,7 +31,8 @@ const TABS: SettingsTab[] = [
   { id: 'subtitles', label: 'Altyazı', description: 'Altyazı dili ve görünümü', icon: Captions },
   { id: 'catalog', label: 'Katalog', description: 'Kategori görünürlüğü ve liste düzeni', icon: LayoutGrid },
   { id: 'general', label: 'Genel', description: 'Saat, EPG, TMDB ve sıfırlama', icon: SlidersHorizontal },
-  { id: 'updates', label: 'Güncelleme', description: 'Sürüm bilgisi ve güncelleme kontrolü', icon: Download }
+  { id: 'updates', label: 'Güncelleme', description: 'Sürüm bilgisi ve güncelleme kontrolü', icon: Download },
+  { id: 'support', label: 'Destek', description: 'Projeye katkı, geri bildirim ve sürüm notları', icon: Heart }
 ]
 
 function renderTab(tabId: SettingsTabId) {
@@ -40,7 +49,13 @@ function renderTab(tabId: SettingsTabId) {
       return <GeneralSettings />
     case 'updates':
       return <UpdateSettings />
+    case 'support':
+      return <SupportSettings />
   }
+}
+
+function isTabId(value: string | null): value is SettingsTabId {
+  return TABS.some((tab) => tab.id === value)
 }
 
 /**
@@ -52,7 +67,11 @@ function renderTab(tabId: SettingsTabId) {
  * past to be found.
  */
 export function SettingsContent() {
-  const [activeTab, setActiveTab] = useState<SettingsTabId>('sources')
+  // The URL owns the active tab so deep links like /settings?tab=support land on
+  // the right section even when this page is already mounted.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedTab = searchParams.get('tab')
+  const activeTab: SettingsTabId = isTabId(requestedTab) ? requestedTab : 'sources'
   const active = TABS.find((tab) => tab.id === activeTab) ?? TABS[0]
 
   return (
@@ -69,7 +88,7 @@ export function SettingsContent() {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => setSearchParams({ tab: tab.id }, { replace: true })}
               aria-current={isActive ? 'page' : undefined}
               className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
                 isActive

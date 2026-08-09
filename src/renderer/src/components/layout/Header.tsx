@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { Search, Plus } from 'lucide-react'
 import { useStore } from '@/store'
-import { APP_VERSION_LABEL } from '@/constants/app-info'
 
 export function Header() {
   const navigate = useNavigate()
@@ -10,9 +9,6 @@ export function Header() {
   return (
     <header className="flex h-14 items-center justify-between border-b border-surface-800 bg-surface-950 px-4">
       <div className="flex min-w-0 items-center gap-3">
-        <span className="hidden rounded border border-surface-700 bg-surface-900 px-2 py-0.5 text-label font-medium text-surface-500 lg:block">
-          {APP_VERSION_LABEL}
-        </span>
         {activeSource && (
           <div className="flex min-w-0 items-center gap-2 rounded-md border border-signal-600/30 bg-signal/5 px-2.5 py-1 text-xs font-medium text-surface-300">
             <div className="size-1.5 rounded-full bg-signal" />

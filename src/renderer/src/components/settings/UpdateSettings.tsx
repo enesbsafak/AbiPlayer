@@ -1,13 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Button } from '@/components/ui/Button'
-import {
-  checkForAppUpdates,
-  getAppUpdateState,
-  installAppUpdate,
-  isElectron,
-  onAppUpdateStateChange,
-  type AppUpdateState
-} from '@/services/platform'
+import { useAppUpdate } from '@/hooks/useAppUpdate'
+import type { AppUpdateState } from '@/services/platform'
 
 function formatUpdateTimestamp(timestamp: number | null): string {
   if (!timestamp) return 'Henüz kontrol edilmedi'
@@ -54,32 +48,13 @@ function getUpdateStatusLabel(updateState: AppUpdateState | null): string {
 }
 
 export function UpdateSettings() {
-  const [appUpdateState, setAppUpdateState] = useState<AppUpdateState | null>(null)
-  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
-  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
-
-  useEffect(() => {
-    if (!isElectron()) return
-
-    let mounted = true
-    void getAppUpdateState().then((nextState) => {
-      if (!mounted || !nextState) return
-      setAppUpdateState(nextState)
-    })
-
-    const unsubscribe = onAppUpdateStateChange((nextState) => {
-      if (!mounted) return
-      setAppUpdateState(nextState)
-      if (nextState.status !== 'checking') {
-        setIsCheckingUpdates(false)
-      }
-    })
-
-    return () => {
-      mounted = false
-      unsubscribe?.()
-    }
-  }, [])
+  const {
+    state: appUpdateState,
+    isChecking: isCheckingUpdates,
+    isInstalling: isInstallingUpdate,
+    check,
+    install
+  } = useAppUpdate()
 
   const updateProgressLabel = useMemo(() => {
     if (!appUpdateState || appUpdateState.status !== 'downloading') return null
@@ -130,14 +105,7 @@ export function UpdateSettings() {
         <div className="flex flex-wrap items-center gap-3">
           <Button
             variant="secondary"
-            onClick={async () => {
-              setIsCheckingUpdates(true)
-              const nextState = await checkForAppUpdates()
-              if (nextState) setAppUpdateState(nextState)
-              if (!nextState || nextState.status !== 'checking') {
-                setIsCheckingUpdates(false)
-              }
-            }}
+            onClick={() => void check()}
             disabled={
               !appUpdateState?.canCheck ||
               isCheckingUpdates ||
@@ -150,14 +118,7 @@ export function UpdateSettings() {
           </Button>
 
           {appUpdateState?.updateReadyToInstall && (
-            <Button
-              onClick={async () => {
-                setIsInstallingUpdate(true)
-                const started = await installAppUpdate()
-                if (!started) setIsInstallingUpdate(false)
-              }}
-              disabled={isInstallingUpdate}
-            >
+            <Button onClick={() => void install()} disabled={isInstallingUpdate}>
               {isInstallingUpdate ? 'Yeniden başlatılıyor...' : 'Yeniden Başlat ve Yükle'}
             </Button>
           )}

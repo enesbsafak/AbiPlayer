@@ -1,5 +1,5 @@
-import { NavLink } from 'react-router-dom'
-import { Tv, Film, Clapperboard, Calendar, Star, Search, Settings, Radio, Zap } from 'lucide-react'
+import { Link, NavLink } from 'react-router-dom'
+import { Tv, Film, Clapperboard, Calendar, Star, Search, Settings, Radio, Zap, Heart } from 'lucide-react'
 import { APP_NAME, APP_VERSION_LABEL } from '@/constants/app-info'
 
 const navItems = [
@@ -44,7 +44,17 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="mt-2 border-t border-surface-800 px-2 pt-2 lg:px-3">
+      <div className="mt-2 flex flex-col gap-0.5 border-t border-surface-800 px-2 pt-2 lg:px-3">
+        {/* Plain Link, not NavLink: this points at a tab inside /settings, and
+            NavLink's active state ignores the query string. */}
+        <Link
+          to="/settings?tab=support"
+          className="flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-surface-400 transition-colors hover:bg-surface-900 hover:text-surface-200"
+        >
+          <Heart size={18} className="mx-auto shrink-0 lg:mx-0" />
+          <span className="hidden lg:block">Destek</span>
+        </Link>
+
         <NavLink
           to="/settings"
           className={({ isActive }) =>
