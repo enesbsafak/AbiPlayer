@@ -61,20 +61,16 @@ export function CategoryVisibility() {
 
   if (sources.length === 0) {
     return (
-      <section>
-        <h2 className="text-lg font-semibold mb-4">Kategoriler</h2>
-        <p className="rounded-lg border border-surface-800 bg-surface-900 px-4 py-3 text-sm text-surface-400">
-          Kategori yönetimi için önce bir kaynak ekleyin.
-        </p>
-      </section>
+      <p className="rounded-lg border border-surface-800 bg-surface-900 px-4 py-3 text-sm text-surface-400">
+        Kategori yönetimi için önce bir kaynak ekleyin.
+      </p>
     )
   }
 
   return (
-    <section>
-      <h2 className="text-lg font-semibold mb-4">Kategoriler</h2>
       <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
-        <p className="text-sm text-surface-400">
+        <p className="text-sm font-medium text-surface-200">Kategori Görünürlüğü</p>
+        <p className="mt-1 text-sm text-surface-400">
           Gizlediğiniz kategoriler listelerden tamamen çıkar; içindeki kanallar da görünmez.
         </p>
 
@@ -182,6 +178,5 @@ export function CategoryVisibility() {
           </span>
         </div>
       </div>
-    </section>
   )
 }
