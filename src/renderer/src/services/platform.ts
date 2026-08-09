@@ -140,6 +140,11 @@ export async function mpvGetState(): Promise<MpvStateSnapshot | null> {
   return window.electron.mpvGetState()
 }
 
+export async function setPreventDisplaySleep(prevented: boolean): Promise<void> {
+  if (!isElectron() || !window.electron?.setPreventDisplaySleep) return
+  await window.electron.setPreventDisplaySleep(prevented)
+}
+
 export function windowMinimize(): void {
   if (isElectron()) window.electron!.windowMinimize()
 }

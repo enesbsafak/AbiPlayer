@@ -41,6 +41,7 @@ declare global {
       mpvSetSubtitleStyle: (style: MpvSubtitleStyle) => Promise<void>
       mpvSetVideoMargin: (right: number) => Promise<void>
       mpvGetState: () => Promise<MpvStateSnapshot>
+      setPreventDisplaySleep: (prevented: boolean) => Promise<void>
       windowMinimize: () => Promise<void>
       windowMaximize: () => Promise<void>
       windowClose: () => Promise<void>

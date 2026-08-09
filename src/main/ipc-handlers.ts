@@ -12,6 +12,7 @@ import {
   type AppUpdateState
 } from './app-updater'
 import { MpvController, type MpvStateSnapshot, type MpvSubtitleStyle } from './mpv-controller'
+import { setPreventDisplaySleep } from './display-sleep'
 import { resolveUnpackedBinary } from './unpacked-binary'
 import type {
   EmbeddedSubtitleProbeTrack,
@@ -456,7 +457,13 @@ async function writeSecureCredentialStore(store: SecureCredentialStore): Promise
 
 export function registerIpcHandlers(): void {
   app.once('before-quit', () => {
+    setPreventDisplaySleep(false)
     void mpvController.shutdown()
+  })
+
+  ipcMain.handle('display-sleep-set-prevented', (_, prevented: unknown): void => {
+    if (typeof prevented !== 'boolean') throw new Error('Geçersiz ekran uyku değeri')
+    setPreventDisplaySleep(prevented)
   })
 
   ipcMain.handle('pick-file-content', async (_, filters?: FileFilter[]): Promise<PickedFile | null> => {

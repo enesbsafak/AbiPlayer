@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback, useMemo, useState, type MouseEvent } fr
 import { useStore } from '@/store'
 import { usePlayer } from '@/hooks/usePlayer'
 import { useMpvPlayer } from '@/hooks/useMpvPlayer'
+import { useKeepDisplayAwake } from '@/hooks/useKeepDisplayAwake'
 import { PlayerControls } from './PlayerControls'
 import { PlayerSidebar } from './PlayerSidebar'
 import { SubtitleOverlay } from './SubtitleOverlay'
@@ -70,6 +71,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
 
   usePlayer(videoRef, { disabled: mpvEnabled || !isEngineResolved })
   const isMpvStarting = useMpvPlayer(mpvEnabled)
+  useKeepDisplayAwake()
   // MPV handles buffering natively — only show overlay on initial startup or HTML5 buffering
   const showLoadingOverlay = !isEngineResolved || (mpvEnabled ? isMpvStarting : isBuffering)
 

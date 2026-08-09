@@ -54,6 +54,8 @@ const api = {
   mpvSetVideoMargin: (right: number) =>
     ipcRenderer.invoke('mpv-set-video-margin', right) as Promise<void>,
   mpvGetState: () => ipcRenderer.invoke('mpv-get-state') as Promise<MpvStateSnapshot>,
+  setPreventDisplaySleep: (prevented: boolean) =>
+    ipcRenderer.invoke('display-sleep-set-prevented', prevented) as Promise<void>,
   windowMinimize: () => ipcRenderer.invoke('window-minimize'),
   windowMaximize: () => ipcRenderer.invoke('window-maximize'),
   windowClose: () => ipcRenderer.invoke('window-close'),
