@@ -391,6 +391,7 @@ async function loadElectronUpdaterBackend(): Promise<UpdaterBackend> {
   // a sizeable dependency tree that start-up does not need. `require`, not
   // `import()`: the package exposes `autoUpdater` through a getter that Node's
   // ESM interop does not see as a named export.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- see above
   const { autoUpdater } = require('electron-updater') as typeof import('electron-updater')
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = false
