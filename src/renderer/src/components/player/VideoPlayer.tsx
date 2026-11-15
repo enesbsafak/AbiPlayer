@@ -12,6 +12,7 @@ import { AlertCircle, Info, RefreshCw, RotateCcw, X } from 'lucide-react'
 import { mpvIsAvailable, mpvSetFullscreen, windowSetFullscreen } from '@/services/platform'
 import { GENERATED_CAPTIONS_TRACK_LABEL, GENERATED_CAPTIONS_TRACK_LANGUAGE } from '@/constants/captions'
 import type { SubtitleCue } from '@/types/player'
+import { perfMark, usePerfTransition } from '@/services/perf'
 
 interface VideoPlayerProps {
   className?: string
@@ -82,6 +83,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
   )
   // MPV handles buffering natively — only show overlay on initial startup or HTML5 buffering
   const showLoadingOverlay = !isEngineResolved || (mpvEnabled ? isMpvStarting : isBuffering)
+  usePerfTransition('player:overlay-hidden', !showLoadingOverlay)
 
   useEffect(() => {
     let cancelled = false
@@ -92,6 +94,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
       // "detection finished" while the engine still reads html5.
       setPlaybackEngine(available ? 'mpv' : 'html5')
       setMpvAvailable(available)
+      perfMark('player:engine-resolved', { engine: available ? 'mpv' : 'html5' })
     }
 
     void detectMpv()

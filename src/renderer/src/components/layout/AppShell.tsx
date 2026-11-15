@@ -9,6 +9,7 @@ import { useKeyboard } from '@/hooks/useKeyboard'
 import { useEPG } from '@/hooks/useEPG'
 import { useAutoConnect } from '@/hooks/useAutoConnect'
 import { useWatchProgress } from '@/hooks/useWatchProgress'
+import { usePerfMarkOnce } from '@/services/perf'
 
 export function AppShell() {
   const routeLocation = useLocation()
@@ -23,6 +24,7 @@ export function AppShell() {
   // Lives here rather than in the player: playback continues in the mini player
   // and survives leaving /player, so the recorder has to outlive that route.
   useWatchProgress()
+  usePerfMarkOnce('renderer:shell-mounted')
 
   useEffect(() => {
     const useTransparentSurface = isPlayerRoute && playbackEngine === 'mpv'

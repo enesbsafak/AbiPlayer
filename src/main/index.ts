@@ -1,3 +1,5 @@
+import { perfLoadFileOptions, perfMark } from './perf'
+import { applyE2eWindowMode } from './e2e-mode'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { app, shell, BrowserWindow, dialog, screen, session } from 'electron'
 import { join } from 'path'
@@ -152,6 +154,10 @@ function createWindow(services: MainServices): void {
     }
   })
 
+  // --- ABI_E2E test mode (see e2e-mode.ts): off-screen, never activated, no taskbar. ---
+  applyE2eWindowMode(mainWindow)
+  // --- end ABI_E2E ---
+
   const tracker = new WindowStateTracker(mainWindow, savedState.isMaximized)
   const webContentsId = mainWindow.webContents.id
 
@@ -221,7 +227,7 @@ function createWindow(services: MainServices): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     void mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'), perfLoadFileOptions())
   }
 }
 
@@ -251,6 +257,7 @@ if (!hasSingleInstanceLock) {
   })
 
   void app.whenReady().then(() => {
+    perfMark('main:when-ready')
     electronApp.setAppUserModelId('com.abiplayer.beta')
 
     app.on('browser-window-created', (_, window) => {
@@ -258,7 +265,9 @@ if (!hasSingleInstanceLock) {
     })
 
     installCertificateVerifyProc()
+    perfMark('main:ipc-register-start')
     const services = registerIpcHandlers()
+    perfMark('main:ipc-register-done')
     installPermissionPolicy(services)
 
     app.once('before-quit', () => setPreventDisplaySleep(false))

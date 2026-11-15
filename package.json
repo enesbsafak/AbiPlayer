@@ -10,6 +10,10 @@
     "preview": "electron-vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "tsc -p e2e/tsconfig.json && electron-vite build && playwright test -c e2e/playwright.config.ts",
+    "test:e2e:packaged": "node e2e/smoke/packaged-smoke.ts",
+    "perf:baseline": "electron-vite build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON e2e/perf/baseline.ts",
+    "perf:mock": "node e2e/mock-provider/cli.ts",
     "lint": "eslint src scripts",
     "lint:changed": "node scripts/lint-changed.mjs",
     "postinstall": "electron-builder install-app-deps",
@@ -39,6 +43,7 @@
   "devDependencies": {
     "@electron-toolkit/utils": "^3.0.0",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.64.1",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^18.3.14",
     "@types/react-dom": "^18.3.3",

@@ -8,3 +8,6 @@ out/
 resources/mpv/
 .agents/
 .claude/
+.worktrees/
+e2e/.cache/
+e2e/.output/

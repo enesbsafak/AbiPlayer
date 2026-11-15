@@ -3,6 +3,7 @@ import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
 import { fetchAndParseM3U } from '@/services/m3u-parser'
 import { secureCredentialService } from '@/services/secure-credentials'
+import { perfMark } from '@/services/perf'
 
 const AUTO_RETRY_INTERVAL_MS = 15_000
 
@@ -39,7 +40,9 @@ export function useAutoConnect() {
 
     const hydrateCredentials = async () => {
       try {
+        perfMark('connect:credentials-ipc-start')
         const credentialsBySource = await secureCredentialService.getAll()
+        perfMark('connect:credentials-ipc-done')
         const mergedCredentials = { ...credentialsBySource }
         const migrationTasks: Promise<void>[] = []
 
@@ -146,7 +149,9 @@ export function useAutoConnect() {
             try {
               if (source.type === 'xtream') {
                 const creds = { url: source.url!, username: source.username!, password: source.password! }
+                perfMark('connect:auth-start')
                 const auth = await xtreamApi.authenticate(creds)
+                perfMark('connect:auth-done')
 
                 if (auth.user_info.auth !== 1) {
                   throw new Error('Kimlik doğrulama başarısız (kullanıcı adı veya şifre reddedildi)')
@@ -157,9 +162,11 @@ export function useAutoConnect() {
               }
 
               if (source.type === 'm3u_url' && source.url) {
+                perfMark('connect:m3u-fetch-start')
                 const { channels: chs, categories: cats } = await fetchAndParseM3U(source.url, source.id)
                 addChannels(chs)
                 addCategories(cats)
+                perfMark('connect:m3u-added', { channels: chs.length })
               }
             } catch (error) {
               reportFailure(source, error)

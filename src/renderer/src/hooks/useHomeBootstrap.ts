@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
 import { ensureStagedSync } from '@/services/background-sync'
+import { perfMark } from '@/services/perf'
 
 // Message and progress bar come from one source so they can never drift apart.
 export const BOOTSTRAP_STAGES = {
@@ -72,11 +73,13 @@ export function useHomeBootstrap(): HomeBootstrap {
       setPlaylistLoading(true)
       try {
         // Step 1: Fetch categories (small, fast — ~18KB total)
+        perfMark('bootstrap:start')
         const [liveCats, vodCats, seriesCats] = await Promise.all([
           xtreamApi.getLiveCategories(creds, { signal: controller.signal }).catch(() => []),
           xtreamApi.getVodCategories(creds, { signal: controller.signal }).catch(() => []),
           xtreamApi.getSeriesCategories(creds, { signal: controller.signal }).catch(() => [])
         ])
+        perfMark('bootstrap:categories-done')
         if (cancelled) return
         addCategories([
           ...xtreamApi.categoriesToApp(liveCats, activeSourceId, 'live'),
@@ -91,12 +94,14 @@ export function useHomeBootstrap(): HomeBootstrap {
           xtreamApi.getVodPreviewStreams(creds, 30, { signal: controller.signal }).catch(() => []),
           xtreamApi.getSeriesPreviewStreams(creds, 30, { signal: controller.signal }).catch(() => [])
         ])
+        perfMark('bootstrap:previews-done')
         if (cancelled) return
         addChannels([
           ...xtreamApi.liveStreamsToChannels(livePreview, creds, activeSourceId),
           ...xtreamApi.vodStreamsToChannels(vodPreview, creds, activeSourceId),
           ...xtreamApi.seriesToChannels(seriesPreview, activeSourceId)
         ])
+        perfMark('bootstrap:preview-added')
 
         // Step 3: Full catalog in background — sequential, not parallel
         // This runs after UI is already showing content, user doesn't wait

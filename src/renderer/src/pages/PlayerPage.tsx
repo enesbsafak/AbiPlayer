@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { VideoPlayer } from '@/components/player/VideoPlayer'
 import { navigateToPlayerReturnTarget } from '@/services/player-navigation'
+import { perfMark } from '@/services/perf'
+perfMark('route:player-chunk-loaded')
 
 export default function PlayerPage() {
   const navigate = useNavigate()
