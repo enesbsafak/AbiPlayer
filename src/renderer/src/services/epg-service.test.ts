@@ -219,8 +219,14 @@ describe('truncated XMLTV', () => {
     const stop = fmt(new Date(now.getTime() + 3600_000))
     const programme = `<programme channel="kanal" start="${start}" stop="${stop}"><title>Program</title></programme>\n`
     const encoder = new TextEncoder()
-    const head = encoder.encode('<?xml version="1.0"?>\n<tv>\n')
-    const block = encoder.encode(programme.repeat(5000))
+    // closeTruncatedXmltv drops everything after the last complete programme, so
+    // only the programmes before the cut are ever parsed. The rest of the 50 MB
+    // limit is filled with an unfinished programme: the size-limit path is
+    // exercised without the test's CPU time (and its timeout) depending on load.
+    const head = encoder.encode(
+      `<?xml version="1.0"?>\n<tv>\n${programme.repeat(50)}<programme channel="kanal"><title>`
+    )
+    const block = new Uint8Array(4 * 1024 * 1024).fill(0x78)
     const limit = 50 * 1024 * 1024
     let sent = 0
     let headSent = false
