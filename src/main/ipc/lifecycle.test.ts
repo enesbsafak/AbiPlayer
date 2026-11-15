@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  applicationMenuPlan,
   attachRendererRecovery,
   createMainLogger,
   createReloadPolicy,
@@ -79,6 +80,19 @@ describe('renderer crash recovery', () => {
     expect(window.webContents.reload).toHaveBeenCalledTimes(1)
   })
 
+  // P3: Ctrl+R while a channel plays left mpv playing over the reloaded page.
+  it('stops playback when the page itself is loaded again, not on in-page navigation', () => {
+    const { window, deps } = setupRecovery()
+    window.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: true, url: 'file:///index.html#/live' })
+    window.webContents.emit('did-start-navigation', { isMainFrame: false, isSameDocument: false, url: 'about:blank' })
+    expect(deps.stopPlayback).not.toHaveBeenCalled()
+
+    window.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url: 'file:///index.html' })
+    expect(deps.stopPlayback).toHaveBeenCalledTimes(1)
+    expect(deps.cancelMediaJobs).toHaveBeenCalledWith(7)
+    expect(deps.releaseDisplaySleep).toHaveBeenCalledTimes(1)
+  })
+
   it('withdraws the hang prompt when the window recovers', async () => {
     let seenSignal: AbortSignal | null = null
     const { window } = setupRecovery((signal) => {
@@ -91,6 +105,15 @@ describe('renderer crash recovery', () => {
 
     expect(seenSignal!.aborted).toBe(true)
     expect(window.webContents.reload).not.toHaveBeenCalled()
+  })
+})
+
+describe('application menu', () => {
+  it('drops the default menu (Reload, DevTools) from packaged builds only', () => {
+    expect(applicationMenuPlan({ isPackaged: true, platform: 'win32' })).toBe('none')
+    expect(applicationMenuPlan({ isPackaged: true, platform: 'linux' })).toBe('none')
+    expect(applicationMenuPlan({ isPackaged: true, platform: 'darwin' })).toBe('edit-only')
+    expect(applicationMenuPlan({ isPackaged: false, platform: 'win32' })).toBe('electron-default')
   })
 })
 
