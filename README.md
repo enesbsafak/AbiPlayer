@@ -60,7 +60,7 @@ Abi Player yalnızca genel amaçlı bir medya oynatıcıdır.
 
 ### Kullanıcılar için
 
-[**Releases sayfasından**](https://github.com/enesbsafak/AbiPlayer/releases/latest) `abi-player-*-setup.exe` dosyasını indirip çalıştırın. Kurulum kullanıcı bazlıdır, yönetici izni istemez.
+[**Releases sayfasından**](https://github.com/enesbsafak/AbiPlayer/releases/latest) `abi-player-*-setup.exe` dosyasını indirip çalıştırın. Kurulum kullanıcı bazlıdır, yönetici izni istemez. Desteklenen platform Windows'tur (64 bit); macOS ve Linux sürümü yoktur.
 
 MPV oynatma çekirdeği kuruluma dahildir — ayrıca bir şey yüklemeniz gerekmez.
 
@@ -153,9 +153,9 @@ Açtığınızda uygulama her yayında geçişi doğrular: ses cihazınız gönd
 
 ### Özel MPV yolu
 
-Windows kurulumunda MPV pakete dahildir. macOS ve Linux'ta `mpv` sistemde kurulu olmalıdır (PATH üzerinden aranır).
+Kurulumda MPV ve ffmpeg/ffprobe pakete dahildir ve kurulu uygulama yalnızca kendi kopyalarını kullanır.
 
-Farklı bir MPV kullanmak isterseniz `MPV_PATH` ortam değişkenini tanımlayabilirsiniz:
+Geliştirme sırasında farklı bir MPV denemek isterseniz `MPV_PATH` ortam değişkenini tanımlayabilirsiniz (paketlenmiş uygulama bu değişkeni dikkate almaz):
 
 ```powershell
 $env:MPV_PATH="C:\path\to\mpv.exe"
@@ -182,14 +182,14 @@ npm run dev
 
 | Katman        | Kullanılan                                            |
 | ------------- | ----------------------------------------------------- |
-| Masaüstü      | Electron 40, electron-vite 5, electron-builder 26     |
+| Masaüstü      | Electron 45, electron-vite 5, electron-builder 26     |
 | Arayüz        | React 18, React Router 7, Tailwind CSS 3              |
 | Dil           | TypeScript 5                                          |
 | Durum yönetimi| Zustand 5 (persist middleware ile)                    |
 | Oynatma       | MPV (JSON IPC üzerinden, pencereye gömülü), hls.js    |
-| Medya araçları| ffmpeg-static, ffprobe-static (altyazı işlemleri)     |
+| Medya araçları| ffmpeg ve ffprobe 9.0, sabitlenmiş FFmpeg-Builds yapısı (altyazı işlemleri) |
 | EPG           | fast-xml-parser (XMLTV)                               |
-| Test          | Vitest                                                |
+| Test          | Vitest, Playwright (gerçek mpv ile uçtan uca)         |
 | Güncelleme    | electron-updater (fark tabanlı indirme)               |
 
 ---
@@ -198,9 +198,9 @@ npm run dev
 
 ### Gereksinimler
 
-- Node.js **20.19+** (CI Node 26 kullanır)
+- Node.js **22.18+** (Electron 45 en az 22.12 ister; uçtan uca testler ve paket duman testi Node'un TypeScript çalıştırma desteğini kullanır. CI Node 26 kullanır.)
 - npm **10+**
-- Windows (aktif geliştirilen ve test edilen hedef)
+- Windows x64. Desteklenen tek platform budur; macOS ve Linux için derleme yapılandırması yoktur.
 
 ### Başlangıç
 
@@ -211,20 +211,30 @@ npm install
 npm run dev
 ```
 
+`npm run dev` önce sabitlenmiş mpv ve ffmpeg'i `resources/` altına kurar. Electron 42'den beri Electron ikilisi `npm install` sırasında değil ilk kullanımda indirilir; `dev` bunu da yapar.
+
 ### Komutlar
 
 ```bash
 npm run dev            # Geliştirme (Electron + renderer, hot reload)
 npm run typecheck      # TypeScript denetimi (main + renderer)
-npm run lint           # ESLint (src/ ve scripts/)
+npm run lint           # ESLint (src/, scripts/ ve e2e/)
 npm run lint:changed   # origin/main'e göre değişen dosyalar, uyarıya izin vermeden
 npm test               # Test paketi (Vitest: main ve scripts Node'da, renderer jsdom'da)
+npm run test:e2e       # Uçtan uca testler: derlenmiş uygulama, gerçek mpv, sahte sağlayıcı (Playwright)
+npm run test:e2e:packaged  # build:unpack sonrası paket duman testi (ikililer, paket içeriği, boyut)
+npm run perf:baseline  # Açılış ve oynatma sürelerinin taban ölçümü (docs/olcumler/)
+npm run perf:mock      # Sahte Xtream/M3U sağlayıcıyı elle denemek için başlat
 npm run build          # Production build (typecheck dahil)
 npm run build:unpack   # Paketlenmiş ama kurulum dosyası üretmeden derle
 npm run build:win      # Windows kurulum dosyası
 npm run release:win    # Test et, derle, etiketle, taslak release yükle, doğrula, yayınla
-npm run update:mpv-pin # Pakete giren mpv'yi yeni bir sürüme sabitle
+npm run prepare:binaries:win  # Sabitlenmiş mpv ve ffmpeg'i resources/ altına kur
+npm run update:mpv-pin        # Pakete giren mpv'yi yeni bir sürüme sabitle
+npm run update:ffmpeg-pin     # Pakete giren ffmpeg ve ffprobe'u yeni bir yapıya sabitle
 ```
+
+Uçtan uca testler uygulamayı ekran dışında, odak almadan ve sessiz çalıştırır (`ABI_E2E=1`). Sonuçlar `e2e/.output/` altına yazılır; son çalıştırmanın özeti için `node e2e/summary.ts`.
 
 ### Sürüm çıkarma
 
@@ -240,18 +250,27 @@ npm version 0.4.16-beta --no-git-tag-version
 - `--draft`: dosyalar yüklenip doğrulanır ama release taslak bırakılır.
 - `--no-push`: etiket uzak depoda zaten bulunmalı ve HEAD'i göstermelidir.
 
-### mpv sabitlemesi
+### mpv ve ffmpeg sabitlemesi
 
-Windows paketindeki mpv, `scripts/mpv-pin.json` dosyasındaki sürüm etiketi, dosya adı, boyut ve SHA256 ile sabitlenmiştir. `npm run prepare:mpv:win` (dev ve build komutları bunu çağırır) yalnızca bu dosyayı indirir; özet tutmazsa derleme durur. Kurulu mpv'nin `.mpv-source.json` kaydı sabitle eşleşmiyorsa yeniden kurulur.
+Pakete giren iki dış ikili de depoda sabitlenmiştir: sürüm etiketi, dosya adı, boyut ve SHA256.
 
-Yeni bir mpv sürümüne geçmek için:
+| İkili | Sabit | Kaynak | Kurulum yeri |
+| --- | --- | --- | --- |
+| mpv | `scripts/mpv-pin.json` | shinchiro/mpv-winbuild-cmake | `resources/mpv/win32-x64` |
+| ffmpeg, ffprobe | `scripts/ffmpeg-pin.json` | FFmpeg-Builds; sürüm dalı, win64, GPL, paylaşımlı kitaplıklı, ay sonu yapısı | `resources/ffmpeg/win32-x64` |
+
+`npm run prepare:mpv:win` ve `npm run prepare:ffmpeg:win` (dev ve build komutları ikisini `prepare:binaries:win` ile çağırır) yalnızca sabitteki dosyayı indirir; özet tutmazsa derleme durur. Arşiv geçici bir klasöre açılır, hazırlanan kopya denendikten sonra hedefe tek adımda taşınır. Kurulu kopyanın `.mpv-source.json` / `.ffmpeg-source.json` kaydı sabitle eşleşmiyorsa yeniden kurulur.
+
+Yeni bir sürüme geçmek için:
 
 ```bash
-npm run update:mpv-pin              # son sürüm; belirli etiket için: npm run update:mpv-pin -- 20261111
-npm run prepare:mpv:win             # yeni sabiti kur
+npm run update:mpv-pin       # son sürüm; belirli etiket için: npm run update:mpv-pin -- 20261111
+npm run prepare:mpv:win      # yeni sabiti kur
+npm run update:ffmpeg-pin    # en yeni ay sonu yapısı; belirli etiket: npm run update:ffmpeg-pin -- autobuild-2026-10-31-12-59
+npm run prepare:ffmpeg:win
 ```
 
-Ardından uygulamayı deneyip `scripts/mpv-pin.json` değişikliğini commit edin.
+FFmpeg-Builds günlük yapıları birkaç gün sonra siler, ay sonu yapılarını tutar; `update:ffmpeg-pin` bu yüzden yalnızca ay sonu yapısını kabul eder. Ardından `npm run test:e2e` çalıştırıp sabit dosyasının değişikliğini commit edin.
 
 ### Proje yapısı
 
@@ -261,9 +280,15 @@ src/
   preload/     Yalıtılmış köprü (contextIsolation açık, sandbox açık)
   renderer/    React arayüzü — sayfalar, bileşenler, hook'lar, store
   shared/      İki taraf arasında paylaşılan tipler
-resources/mpv/ Pakete dahil edilen MPV ikilisi (Windows)
-docs/          Sürüm notları ve görseller
+e2e/           Uçtan uca testler, sahte sağlayıcı, ölçüm ve paket duman testi
+scripts/       Sabitleme, sürüm ve lint betikleri
+resources/     Pakete giren mpv ve ffmpeg (prepare betikleri kurar, depoda yok)
+docs/          Sürüm notları, görseller, ölçümler, iyileştirme planı
 ```
+
+### İyileştirme planı
+
+Kod taramasından çıkan düzeltme planı [docs/iyilestirme-plani.md](docs/iyilestirme-plani.md) dosyasında, iş paketlerinin durumu [docs/iyilestirme-durum.md](docs/iyilestirme-durum.md) dosyasındadır. Ölçümler `docs/olcumler/` altındadır.
 
 ### Doğrulama
 
@@ -273,7 +298,7 @@ Değişiklik gönderirken şunların geçtiğinden emin olun:
 npm run lint && npm run typecheck && npm test
 ```
 
-Aynı denetimler ve `electron-vite build`, her push ve PR'da GitHub Actions üzerinde (Windows) çalışır. PR'larda ayrıca değişen dosyalar uyarısız olmalıdır (`npm run lint:changed`).
+Aynı denetimler ve `electron-vite build`, her push ve PR'da GitHub Actions üzerinde (Windows) çalışır; bunlar geçince ayrı bir işte uçtan uca testler gerçek mpv ile koşar, başarısız olursa Playwright raporu yüklenir. PR'larda ayrıca değişen dosyalar uyarısız olmalıdır (`npm run lint:changed`).
 
 Arayüz tarafında değişiklik yaptıysanız statik analiz puanının düşmediğini de kontrol edebilirsiniz:
 
@@ -281,7 +306,7 @@ Arayüz tarafında değişiklik yaptıysanız statik analiz puanının düşmedi
 npx react-doctor@latest --verbose --scope changed
 ```
 
-> Not: Paketlenmiş uygulamada ortaya çıkan hatalar geliştirme ortamında görünmeyebilir. Alt süreç çalıştıran (MPV, ffmpeg, ffprobe) bir değişiklik yaptıysanız `npm run build:unpack` ile derleyip paketlenmiş kopyayı çalıştırarak doğrulayın.
+> Not: Paketlenmiş uygulamada ortaya çıkan hatalar geliştirme ortamında görünmeyebilir. Alt süreç çalıştıran (MPV, ffmpeg, ffprobe) veya paket içeriğini değiştiren bir değişiklik yaptıysanız `npm run build:unpack` ve ardından `npm run test:e2e:packaged` çalıştırın.
 
 ---
 
@@ -292,7 +317,7 @@ npx react-doctor@latest --verbose --scope changed
 - Donanım hızlandırma yalnızca NVIDIA ekran kartı üzerinde test edilmiştir; AMD ve Intel için saha geri bildirimi bekleniyor.
 - Ses passthrough'un çalıştığı doğrulanmış bir amfi testi henüz yapılmamıştır; güvenli geri dönüş mekanizması doğrulanmıştır.
 - HDR içerik doğru şekilde çözülür ve ekrana uygun biçimde dönüştürülür; HDR'nin ekrana doğrudan aktarılması henüz desteklenmiyor.
-- macOS ve Linux için build script'leri mevcuttur ancak test kapsamı sınırlıdır.
+- Yalnızca Windows x64 desteklenir.
 
 ---
 
@@ -320,4 +345,6 @@ Hata bildirirken tekrar üretme adımları, ekran görüntüsü ve varsa log ekl
 
 ## Lisans
 
-MIT
+Abi Player [MIT lisansıyla](LICENSE) dağıtılır.
+
+Kuruluma giren üçüncü taraf ikililer kendi lisanslarıyla gelir: mpv (shinchiro/mpv-winbuild-cmake yapısı) ve FFmpeg (FFmpeg-Builds GPL yapısı) GPL lisanslıdır; FFmpeg'in lisans metni kurulumda `resources/ffmpeg/LICENSE.txt` olarak bulunur. Uygulama bu araçları ayrı süreç olarak çalıştırır.
