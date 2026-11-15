@@ -4,21 +4,18 @@ import { Search } from 'lucide-react'
 import { useStore } from '@/store'
 import { ChannelGrid } from '@/components/channels/ChannelGrid'
 import type { Channel } from '@/types/playlist'
-import { isPlayableChannel } from '@/services/playback'
 import { applyCatalogView } from '@/services/catalog-view'
-import { openPlayerFromRoute } from '@/services/player-navigation'
 import { normalizeSearchText } from '@/services/text-normalize'
 import { useCatalogView } from '@/hooks/useCatalogView'
+import { useOpenCatalogItem } from '@/hooks/useOpenCatalogItem'
 
 export default function SearchPage() {
   const routeLocation = useLocation()
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const channels = useStore((s) => s.channels)
-  const playChannel = useStore((s) => s.playChannel)
-  const setMiniPlayer = useStore((s) => s.setMiniPlayer)
-  const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
   const catalogView = useCatalogView()
+  const openItem = useOpenCatalogItem()
 
   useEffect(() => {
     const state = routeLocation.state as { restoreSearchQuery?: string } | null
@@ -48,31 +45,14 @@ export default function SearchPage() {
     return applyCatalogView(matches, catalogView).slice(0, 100)
   }, [query, channels, catalogView])
 
-  const handlePlay = useCallback((channel: Channel) => {
-    if (!isPlayableChannel(channel)) {
-      if (channel.type === 'series' && channel.seriesId) {
-        navigate('/series', {
-          state: {
-            restoreSelectedSeries: {
-              seriesId: channel.seriesId,
-              sourceId: channel.sourceId
-            },
-            restoreSearchQuery: query
-          }
-        })
-      }
-      return
-    }
-
-    playChannel(channel)
-    setMiniPlayer(false)
-    openPlayerFromRoute({
-      location: routeLocation,
-      navigate,
-      returnState: query.length >= 2 ? { restoreSearchQuery: query } : undefined,
-      setPlayerReturnTarget
-    })
-  }, [routeLocation, playChannel, query, setMiniPlayer, navigate, setPlayerReturnTarget])
+  const handlePlay = useCallback(
+    (channel: Channel) =>
+      openItem(channel, {
+        returnState: query.length >= 2 ? { restoreSearchQuery: query } : undefined,
+        seriesRouteState: { restoreSearchQuery: query }
+      }),
+    [openItem, query]
+  )
 
   return (
     <div className="h-full p-3">

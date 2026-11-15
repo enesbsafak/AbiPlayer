@@ -3,6 +3,7 @@ import { Activity, Plus, RefreshCw, Tv } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { APP_NAME, APP_VERSION_LABEL } from '@/constants/app-info'
 import { BOOTSTRAP_STAGES, type BootstrapStage } from '@/hooks/useHomeBootstrap'
+import { toUserMessage } from '@/services/user-error'
 
 function Panel({ children }: { children: React.ReactNode }) {
   return (
@@ -90,7 +91,7 @@ export function HomeError({ message, onRetry }: HomeErrorProps) {
   return (
     <Panel>
       <p className="text-sm font-medium text-white">Kaynağa bağlanılamadı</p>
-      <p className="max-w-xl text-sm text-red-300">{message}</p>
+      <p className="max-w-xl text-sm text-red-300">{toUserMessage(message, 'Bağlantı kurulamadı.')}</p>
       <div className="flex items-center gap-2">
         <Button onClick={onRetry}>
           <RefreshCw size={16} />
