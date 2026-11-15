@@ -6,7 +6,7 @@ import type {
   EmbeddedSubtitleProbeTrack
 } from '../../shared/types/electron-ipc'
 import { MEDIA_JOB_CANCELLED_MESSAGE, type MediaJobOptions } from '../../shared/ipc/contract'
-import { maskCredentials } from '../../shared/mask-credentials'
+import { credentialsInUrl, maskCredentials } from '../../shared/mask-credentials'
 
 export type MediaChildProcess = ChildProcessByStdio<null, Readable, Readable>
 export type SpawnMediaProcess = (executable: string, args: string[]) => MediaChildProcess
@@ -91,28 +91,29 @@ export class MediaJobRunner {
 
   constructor(private readonly spawnProcess: SpawnMediaProcess) {}
 
-  run(spec: MediaRunSpec, owner: string, jobId: string = randomUUID()): Promise<MediaRunResult> {
+  /**
+   * `spec` may be a function that still has to work out the arguments (the TLS
+   * policy can probe the host for seconds). The job is registered, and the
+   * owner's other jobs cancelled, before that: a cancel, window close or
+   * shutdown in the meantime ends it, and a newer job of the same owner cancels
+   * it rather than being cancelled by it when its preparation finishes.
+   */
+  run(
+    spec: MediaRunSpec | (() => Promise<MediaRunSpec>),
+    owner: string,
+    jobId: string = randomUUID()
+  ): Promise<MediaRunResult> {
     this.cancel(owner)
     const key = jobKey(owner, jobId)
 
     return new Promise<MediaRunResult>((resolve, reject) => {
-      let child: MediaChildProcess
-      try {
-        child = this.spawnProcess(spec.executable, spec.args)
-      } catch (error) {
-        reject(error instanceof Error ? error : new Error(String(error)))
-        return
-      }
-
-      let stdout = ''
-      let stderr = ''
-      let stdoutBytes = 0
-      let stoppedBy: MediaStopReason | null = null
+      let child: MediaChildProcess | null = null
+      let timer: ReturnType<typeof setTimeout> | undefined
       let settled = false
 
       const kill = (): void => {
         try {
-          child.kill('SIGKILL')
+          child?.kill('SIGKILL')
         } catch {
           // already gone
         }
@@ -131,53 +132,78 @@ export class MediaJobRunner {
         reject(error)
       }
 
-      const hitLimit = (reason: MediaStopReason): void => {
-        if (settled || stoppedBy) return
-        if (spec.onLimit === 'fail') {
-          fail(
-            new Error(
-              reason === 'timeout'
-                ? `İşlem zaman aşımına uğradı (${spec.timeoutMs}ms)`
-                : 'İşlem çıktısı izin verilen boyutu aştı'
-            )
-          )
-          return
-        }
-        stoppedBy = reason
-        kill()
-      }
-
       const job: RunningJob = {
         owner,
         cancel: () => fail(new MediaJobCancelledError())
       }
       this.jobs.set(key, job)
 
-      const timer = setTimeout(() => hitLimit('timeout'), spec.timeoutMs)
-
-      child.on('error', (error) => fail(error))
-
-      child.stdout.setEncoding('utf8')
-      child.stdout.on('data', (chunk: string) => {
-        if (settled || stoppedBy) return
-        stdout += chunk
-        stdoutBytes += Buffer.byteLength(chunk)
-        if (stdoutBytes >= spec.maxStdoutBytes) hitLimit('output-limit')
-      })
-
-      child.stderr.setEncoding('utf8')
-      child.stderr.on('data', (chunk: string) => {
-        // Only the tail matters for an error message; keep it bounded.
-        stderr += chunk
-        if (stderr.length > STDERR_TAIL_BYTES) stderr = stderr.slice(-STDERR_TAIL_BYTES)
-      })
-
-      child.on('close', (code) => {
+      const start = (spec: MediaRunSpec): void => {
         if (settled) return
-        settled = true
-        finish()
-        resolve({ stdout, stderr, exitCode: code, stoppedBy })
-      })
+        let spawned: MediaChildProcess
+        try {
+          spawned = this.spawnProcess(spec.executable, spec.args)
+        } catch (error) {
+          fail(toError(error))
+          return
+        }
+        child = spawned
+
+        let stdout = ''
+        let stderr = ''
+        let stdoutBytes = 0
+        let stoppedBy: MediaStopReason | null = null
+
+        const hitLimit = (reason: MediaStopReason): void => {
+          if (settled || stoppedBy) return
+          if (spec.onLimit === 'fail') {
+            fail(
+              new Error(
+                reason === 'timeout'
+                  ? `İşlem zaman aşımına uğradı (${spec.timeoutMs}ms)`
+                  : 'İşlem çıktısı izin verilen boyutu aştı'
+              )
+            )
+            return
+          }
+          stoppedBy = reason
+          kill()
+        }
+
+        timer = setTimeout(() => hitLimit('timeout'), spec.timeoutMs)
+
+        spawned.on('error', (error) => fail(error))
+
+        spawned.stdout.setEncoding('utf8')
+        spawned.stdout.on('data', (chunk: string) => {
+          if (settled || stoppedBy) return
+          stdout += chunk
+          stdoutBytes += Buffer.byteLength(chunk)
+          if (stdoutBytes >= spec.maxStdoutBytes) hitLimit('output-limit')
+        })
+
+        spawned.stderr.setEncoding('utf8')
+        spawned.stderr.on('data', (chunk: string) => {
+          // Only the tail matters for an error message; keep it bounded.
+          stderr += chunk
+          if (stderr.length > STDERR_TAIL_BYTES) stderr = stderr.slice(-STDERR_TAIL_BYTES)
+        })
+
+        spawned.on('close', (code) => {
+          if (settled) return
+          settled = true
+          finish()
+          resolve({ stdout, stderr, exitCode: code, stoppedBy })
+        })
+      }
+
+      if (typeof spec === 'function') {
+        Promise.resolve()
+          .then(spec)
+          .then(start, (error: unknown) => fail(toError(error)))
+      } else {
+        start(spec)
+      }
     })
   }
 
@@ -204,6 +230,10 @@ export class MediaJobRunner {
 
 function jobKey(owner: string, jobId: string): string {
   return `${owner}\u0000${jobId}`
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error))
 }
 
 /** `tlsArgs`: the TLS policy's arguments for this URL (src/main/tls), placed before the input. */
@@ -241,8 +271,9 @@ export function buildExtractArgs(streamUrl: string, streamIndex: number, tlsArgs
   ]
 }
 
-function processFailure(result: MediaRunResult, tool: string): Error {
-  const detail = maskCredentials(result.stderr.trim())
+/** `knownSecrets`: the account in the input URL (`credentialsInUrl`), masked wherever ffmpeg prints it. */
+function processFailure(result: MediaRunResult, tool: string, knownSecrets: readonly string[] = []): Error {
+  const detail = maskCredentials(result.stderr.trim(), knownSecrets)
   return new Error(detail || `${tool} ${result.exitCode ?? 'bilinmeyen'} koduyla sonlandı`)
 }
 
@@ -278,12 +309,15 @@ function dropIncompleteTrailingCue(vtt: string): string {
   return trimmed.includes('-->') ? trimmed : normalized
 }
 
-export function finalizeExtraction(result: MediaRunResult): EmbeddedSubtitleExtractionResult | null {
+export function finalizeExtraction(
+  result: MediaRunResult,
+  knownSecrets: readonly string[] = []
+): EmbeddedSubtitleExtractionResult | null {
   const hasCues = result.stdout.includes('-->')
 
   if (!hasCues) {
     if (result.exitCode === 0 || result.stoppedBy) return null
-    throw processFailure(result, 'ffmpeg')
+    throw processFailure(result, 'ffmpeg', knownSecrets)
   }
 
   // Cut short by our limits, or the stream failed after some cues: either way
@@ -303,21 +337,30 @@ export interface MediaServiceOptions {
 }
 
 export function createMediaService({ runner, ffprobePath, ffmpegPath, tlsArgs }: MediaServiceOptions) {
+  // Without a TLS policy the spec is ready at once; with one it is resolved
+  // inside the runner, after the job is registered and can be cancelled.
+  const withTls = (
+    streamUrl: string,
+    build: (tls: string[]) => MediaRunSpec
+  ): MediaRunSpec | (() => Promise<MediaRunSpec>) =>
+    tlsArgs ? async () => build(await tlsArgs(streamUrl)) : build([])
+
   return {
     async probe(owner: string, streamUrl: string, options: MediaJobOptions = {}): Promise<EmbeddedSubtitleProbeTrack[]> {
       if (!ffprobePath) return []
+      const executable = ffprobePath
       const result = await runner.run(
-        {
-          executable: ffprobePath,
-          args: buildProbeArgs(streamUrl, tlsArgs ? await tlsArgs(streamUrl) : []),
+        withTls(streamUrl, (tls) => ({
+          executable,
+          args: buildProbeArgs(streamUrl, tls),
           timeoutMs: resolveMediaTimeout(options.timeoutMs),
           maxStdoutBytes: PROBE_MAX_STDOUT_BYTES,
           onLimit: 'fail'
-        },
+        })),
         owner,
         options.jobId
       )
-      if (result.exitCode !== 0) throw processFailure(result, 'ffprobe')
+      if (result.exitCode !== 0) throw processFailure(result, 'ffprobe', credentialsInUrl(streamUrl))
       return parseProbeOutput(result.stdout)
     },
 
@@ -328,18 +371,19 @@ export function createMediaService({ runner, ffprobePath, ffmpegPath, tlsArgs }:
       options: MediaJobOptions = {}
     ): Promise<EmbeddedSubtitleExtractionResult | null> {
       if (!ffmpegPath) throw new Error('ffmpeg çalıştırılabilir dosyası bulunamadı')
+      const executable = ffmpegPath
       const result = await runner.run(
-        {
-          executable: ffmpegPath,
-          args: buildExtractArgs(streamUrl, streamIndex, tlsArgs ? await tlsArgs(streamUrl) : []),
+        withTls(streamUrl, (tls) => ({
+          executable,
+          args: buildExtractArgs(streamUrl, streamIndex, tls),
           timeoutMs: resolveMediaTimeout(options.timeoutMs),
           maxStdoutBytes: EXTRACT_MAX_STDOUT_BYTES,
           onLimit: 'stop'
-        },
+        })),
         owner,
         options.jobId
       )
-      return finalizeExtraction(result)
+      return finalizeExtraction(result, credentialsInUrl(streamUrl))
     },
 
     cancel(owner: string, jobId?: string): boolean {
