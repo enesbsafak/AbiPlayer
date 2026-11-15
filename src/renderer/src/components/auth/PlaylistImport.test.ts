@@ -8,12 +8,6 @@ vi.mock('@/services/platform', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/platform')>()),
   pickAndReadFile: platform.pickAndReadFile
 }))
-const m3uParser = vi.hoisted(() => ({ fetchAndParseM3U: vi.fn() }))
-vi.mock('@/services/m3u-parser', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/services/m3u-parser')>()
-  m3uParser.fetchAndParseM3U.mockImplementation(actual.fetchAndParseM3U)
-  return { ...actual, fetchAndParseM3U: m3uParser.fetchAndParseM3U }
-})
 
 import { useStore } from '@/store'
 import { catalog } from '@/catalog/catalog-store'
@@ -88,7 +82,6 @@ describe('PlaylistImport (C2c follow-up)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     // Swapped in by the worker ingest, not handed back to the form.
     expect(jobs).toContain('m3u-url')
-    expect(m3uParser.fetchAndParseM3U).not.toHaveBeenCalled()
     expect(catalog.getItems(source.id, 'live').map((item) => item.name)).toEqual(['Kanal 1'])
     expect(useStore.getState().activeSourceId).toBe(source.id)
   })

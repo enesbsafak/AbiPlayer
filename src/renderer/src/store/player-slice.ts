@@ -200,11 +200,6 @@ export interface PlayerSlice {
    */
   pendingResume: PendingResume | null
   /**
-   * Bumped by `reloadPlayback`, which also issues a new playback id. Kept for
-   * code that only needs to know "a reload happened".
-   */
-  playbackReloadToken: number
-  /**
    * The player route was left while something was selected. Neither engine
    * runs in that state (mpv is stopped, the <video> is unmounted): the mini
    * card shows the item as paused and expanding it starts it again.
@@ -383,7 +378,6 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
   activeSubtitleCues: [],
   playbackTuning: DEFAULT_PLAYBACK_TUNING,
   pendingResume: null,
-  playbackReloadToken: 0,
   isPlaybackSuspended: false,
   isCornerPlayback: false,
   isSubtitleTrackUserChoice: false,
@@ -449,7 +443,6 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
       return {
         currentPlayback: playback,
         loadedPlaybackId: null,
-        playbackReloadToken: state.playbackReloadToken + 1,
         playerError: null,
         isBuffering: false,
         currentTime: 0,

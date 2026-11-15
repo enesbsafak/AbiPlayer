@@ -449,12 +449,3 @@ export async function fetchM3uStreamed(
   return parser.end()
 }
 
-/**
- * @deprecated Nothing in the app calls it: playlists are fetched by the
- * catalog worker (`fetchM3uStreamed`). Kept only because
- * components/auth/PlaylistImport.test.ts still mocks it; delete it together
- * with that mock.
- */
-export function fetchAndParseM3U(url: string, sourceId: string): Promise<ParsedPlaylist> {
-  return fetchM3uStreamed(url, sourceId)
-}
