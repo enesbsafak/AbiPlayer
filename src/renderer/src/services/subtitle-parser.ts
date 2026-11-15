@@ -3,13 +3,30 @@ import type { SubtitleCue, SubtitleStyle } from '@/types/player'
 function parseTimeSRT(str: string): number {
   if (!str) return 0
   const parts = str.trim().split(':')
-  if (parts.length < 3) return 0
-  const [sec, ms] = (parts[2] || '0,0').split(/[,.]/)
-  const h = parseInt(parts[0]) || 0
-  const m = parseInt(parts[1]) || 0
+  if (parts.length < 2) return 0
+  // h:mm:ss,ms or, when the hour is left out, mm:ss,ms.
+  const hasHours = parts.length >= 3
+  const [sec, ms] = (parts[hasHours ? 2 : 1] || '0,0').split(/[,.]/)
+  const h = hasHours ? parseInt(parts[0]) || 0 : 0
+  const m = parseInt(parts[hasHours ? 1 : 0]) || 0
   const s = parseInt(sec) || 0
-  const msVal = parseInt((ms || '0').padEnd(3, '0')) || 0
+  const msVal = parseInt((ms || '0').slice(0, 3).padEnd(3, '0')) || 0
   return h * 3600 + m * 60 + s + msVal / 1000
+}
+
+/**
+ * SRT timing as it appears in the wild, not only as the spec writes it:
+ * hours with one to three digits or left out, one to three fraction digits
+ * after a comma or a dot, or no fraction at all. "0:01:02,50" is as valid as
+ * "00:01:02,500".
+ */
+const SRT_TIME = String.raw`(?:\d{1,3}:)?\d{1,2}:\d{1,2}(?:[,.]\d{1,3})?`
+const SRT_TIMING_PATTERN = new RegExp(String.raw`(${SRT_TIME})\s*-->\s*(${SRT_TIME})`)
+
+/** Drop a byte order mark and normalize line endings to LF. */
+function normalizeSubtitleText(content: string): string {
+  const withoutBom = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content
+  return withoutBom.replace(/\r\n?/g, '\n')
 }
 
 function parseTimeVTT(str: string): number {
@@ -43,7 +60,7 @@ function stripHTMLTags(text: string): string {
 
 export function parseSRT(content: string): SubtitleCue[] {
   const cues: SubtitleCue[] = []
-  const blocks = content.trim().split(/\n\s*\n/)
+  const blocks = normalizeSubtitleText(content).trim().split(/\n\s*\n/)
 
   for (const block of blocks) {
     const lines = block.trim().split('\n')
@@ -56,7 +73,7 @@ export function parseSRT(content: string): SubtitleCue[] {
     const timingLine = lines[timingIdx]
     if (!timingLine) continue
 
-    const match = timingLine.match(/(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})/)
+    const match = timingLine.match(SRT_TIMING_PATTERN)
     if (!match) continue
 
     const text = lines
@@ -77,7 +94,7 @@ export function parseSRT(content: string): SubtitleCue[] {
 export function parseVTT(content: string): SubtitleCue[] {
   const cues: SubtitleCue[] = []
   // Remove WEBVTT header and metadata
-  const cleaned = content.replace(/^WEBVTT[^\n]*\n/, '').replace(/^NOTE[^\n]*\n(?:[^\n]+\n)*/gm, '')
+  const cleaned = normalizeSubtitleText(content).replace(/^WEBVTT[^\n]*\n/, '').replace(/^NOTE[^\n]*\n(?:[^\n]+\n)*/gm, '')
   const blocks = cleaned.trim().split(/\n\s*\n/)
 
   for (const block of blocks) {
@@ -175,7 +192,7 @@ function parseASSStyle(styleLine: string, formatLine: string): Map<string, Subti
 
 export function parseASS(content: string): SubtitleCue[] {
   const cues: SubtitleCue[] = []
-  const lines = content.split(/\r?\n/)
+  const lines = normalizeSubtitleText(content).split('\n')
 
   let eventFormatFields: string[] = []
   let eventFormatIndex = new Map<string, number>()
@@ -267,10 +284,13 @@ export function parseSubtitles(content: string, filename: string): SubtitleCue[]
     case 'ass':
     case 'ssa':
       return parseASS(content)
-    default:
-      // Try SRT first, then VTT
-      if (content.includes('-->') && !content.startsWith('WEBVTT')) return parseSRT(content)
-      if (content.startsWith('WEBVTT')) return parseVTT(content)
+    default: {
+      // No usable extension: sniff the content. A BOM in front of "WEBVTT"
+      // used to send VTT files to the SRT parser.
+      const head = normalizeSubtitleText(content).trimStart()
+      if (head.startsWith('WEBVTT')) return parseVTT(content)
+      if (/^\[Script Info\]/i.test(head)) return parseASS(content)
       return parseSRT(content)
+    }
   }
 }
