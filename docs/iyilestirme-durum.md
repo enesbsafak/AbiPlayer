@@ -10,7 +10,7 @@ Karar noktalarında plandaki öneriler uygulanıyor: dürüst mini oynatıcı ka
 |---|---|---|---|
 | A | A1 Araçlar | F0-01..06, F0-08, F5-11 | Bitti (`6d5dedd`..`ba9925a`) |
 | A | A2 Uçtan uca düzenek ve ölçüm | F0-07, F0-09, F2-01 | Sürüyor |
-| B | B1 mpv oturum modeli | F2-02, F2-03, F2-05, F2-14, F1-04..06, F1-16..18 | Sürüyor |
+| B | B1 mpv oturum modeli | F2-02, F2-03, F2-05, F2-14, F1-04..06, F1-16..18 | Birleştirildi |
 | B | B2 Main süreç ve IPC | F3-06, F3-08, F1-27, F1-35, F1-36, F1-39, F2-11, F2-13 | Birleştirildi |
 | B | B3 Oynatıcı hataları | F1-01..03, F1-07..11, F1-14 | Birleştirildi |
 | B | B4 Servisler ve ayrıştırıcılar | F1-12, F1-13, F1-26, F1-28..30, F1-32, F1-37, F1-38, F1-41, F1-53, F1-55, F4-09 | Birleştirildi |
@@ -45,3 +45,4 @@ Karar noktalarında plandaki öneriler uygulanıyor: dürüst mini oynatıcı ka
 - 2026-11-15: A1 bitti. Lint 0 hata, 62 uyarı; 191 test geçiyor. mpv `20261111` sürümüne sabitlendi. Kalan denetim bulguları: Electron 40 (F3-04) ve electron-builder zincirindeki minimatch.
 - 2026-11-15: B2, B3, B4, B5 `wp/int` dalında birleştirildi. Lint 0 hata (51 uyarı), 513 test geçiyor. Tüm test paketinde beş çalıştırmada bir kez tek bir test başarısız oldu ve yinelenmedi; kararsız test aranacak.
 - 2026-11-15: gpt-6-astra'dan ikinci görüş alındı (Codex girişi yenilendi). Bağımsız incelemeyle aynı yönü destekledi; eklenenler: anlık görüntüde `seq` ve `loadId`, oynatma ayarı `playbackId` kapsamında, devam bayrağı yalnızca eşleşen yükleme hazırken tüketilir. `--force-window=no` önerisi alınmadı: pencere şeffaf, mpv yüzeyi yokken masaüstü görünürdü.
+- 2026-11-15: B1 (mpv oturum modeli) birleştirildi; 567 test geçiyor. Gerçek mpv ile doğrulama uçtan uca düzenek gelince yapılacak.
