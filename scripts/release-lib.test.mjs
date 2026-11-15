@@ -1,9 +1,13 @@
+import { createHash } from 'crypto'
 import { describe, expect, it } from 'vitest'
 import {
+  assetSha256,
   buildDefaultNotes,
   checkVersionSync,
+  describeReleaseFiles,
   humanizeCommitSubject,
   inferPrerelease,
+  isAssetIntact,
   orderForUpload,
   parseArgs,
   parseGitHubRepo,
@@ -272,16 +276,19 @@ describe('yükleme sırası ve doğrulama', () => {
 
 describe('publishRelease', () => {
   const manifestContent = Buffer.from('version: 1\n')
-  const files = [
-    { name: 'a.exe', path: 'dist/a.exe', size: 10 },
-    { name: 'a.exe.blockmap', path: 'dist/a.exe.blockmap', size: 2 },
-    { name: 'latest.yml', path: 'dist/latest.yml', size: manifestContent.length, content: manifestContent }
-  ]
+  const files = describeReleaseFiles([
+    { name: 'a.exe', path: 'dist/a.exe', content: Buffer.from('installer!') },
+    { name: 'a.exe.blockmap', path: 'dist/a.exe.blockmap', content: Buffer.from('bm') },
+    { name: 'latest.yml', path: 'dist/latest.yml', content: manifestContent }
+  ])
 
-  function fakeApi({ existing = null, failUploadOf = null, corruptManifest = false } = {}) {
+  // GitHub computes the digest from the uploaded bytes; the fake takes it from
+  // the file's sha256, which describeReleaseFiles derived from its content.
+  function fakeApi({ existing = null, failUploadOf = null, corruptManifest = false, assets: seeded = [] } = {}) {
     const calls = []
     let release = existing
-    const assets = new Map()
+    const assets = new Map(seeded.map((asset) => [asset.name, asset]))
+    let nextId = 100
 
     const api = {
       calls,
@@ -310,12 +317,20 @@ describe('publishRelease', () => {
         calls.push(['upload', batch.map((file) => file.name)])
         for (const file of batch) {
           if (file.name === failUploadOf) throw new Error(`upload of ${file.name} failed`)
-          assets.set(file.name, { id: assets.size + 100, name: file.name, size: file.size, state: 'uploaded' })
+          assets.set(file.name, {
+            id: nextId++,
+            name: file.name,
+            size: file.size,
+            state: 'uploaded',
+            digest: `sha256:${file.sha256}`,
+            content: file.content
+          })
         }
       },
       async downloadAsset(asset) {
         calls.push(['download', asset.name])
-        return corruptManifest ? Buffer.from('version: 2\n') : manifestContent
+        if (corruptManifest) return Buffer.from('version: 2\n')
+        return asset.content ?? Buffer.alloc(0)
       }
     }
     return api
@@ -380,5 +395,128 @@ describe('publishRelease', () => {
     const uploads = api.calls.filter((call) => call[0] === 'upload').map((call) => call[1])
     expect(uploads).toEqual([['a.exe.blockmap'], ['latest.yml']])
     expect(api.calls[1]).toEqual(['update', 7, expect.objectContaining({ draft: true })])
+  })
+
+  // Regression (M4): an existing asset used to count as intact by its size
+  // alone, so a rebuilt installer of the same size was kept.
+  describe('resuming after a rebuild', () => {
+    const draft = { id: 7, draft: true, tag_name: 'v1.0.0-beta', html_url: 'x' }
+    const sha256 = (text) => createHash('sha256').update(text).digest('hex')
+
+    function staleAsset(id, file, content) {
+      return { id, name: file.name, size: content.length, state: 'uploaded', digest: `sha256:${sha256(content)}`, content }
+    }
+
+    it('replaces an asset of the same size whose bytes differ, and publishes a matching release', async () => {
+      // Same size as the local installer ("installer!"), other bytes.
+      const staleInstaller = Buffer.from('INSTALLER?')
+      expect(staleInstaller.length).toBe(files[0].size)
+      const api = fakeApi({
+        existing: { ...draft },
+        assets: [
+          staleAsset(1, files[0], staleInstaller),
+          staleAsset(2, files[1], Buffer.from('bm')),
+          staleAsset(3, files[2], Buffer.from('version: 0\n'))
+        ]
+      })
+
+      const result = await publishRelease({ ...base, api, keepDraft: false })
+
+      expect(result.draft).toBe(false)
+      expect(api.calls.filter((call) => call[0] === 'delete')).toEqual([
+        ['delete', 1],
+        ['delete', 3]
+      ])
+      const uploads = api.calls.filter((call) => call[0] === 'upload').map((call) => call[1])
+      expect(uploads).toEqual([['a.exe'], ['latest.yml']])
+      const remote = await api.listAssets()
+      for (const file of files) {
+        expect(assetSha256(remote.find((asset) => asset.name === file.name))).toBe(file.sha256)
+      }
+    })
+
+    it('replaces an asset whose digest GitHub does not report', async () => {
+      const { digest: _digest, ...withoutDigest } = staleAsset(1, files[0], Buffer.from('installer!'))
+      const api = fakeApi({ existing: { ...draft }, assets: [withoutDigest] })
+      await publishRelease({ ...base, api, keepDraft: true })
+      expect(api.calls).toContainEqual(['delete', 1])
+      expect(api.calls.filter((call) => call[0] === 'upload')[0][1]).toContain('a.exe')
+    })
+
+    it('a run that failed after a rebuild converges on the next run', async () => {
+      const oldFiles = describeReleaseFiles([
+        { name: 'a.exe', path: 'dist/a.exe', content: Buffer.from('OLDINSTALL') },
+        { name: 'a.exe.blockmap', path: 'dist/a.exe.blockmap', content: Buffer.from('bm') },
+        { name: 'latest.yml', path: 'dist/latest.yml', content: Buffer.from('version: 0.9\n') }
+      ])
+      const api = fakeApi()
+      await publishRelease({ ...base, files: oldFiles, api, keepDraft: true })
+
+      // Rebuild: the installer keeps its size, latest.yml changes; the upload
+      // of latest.yml fails, so the draft is left half replaced.
+      const failing = fakeApi({ existing: { ...draft }, assets: await api.listAssets(), failUploadOf: 'latest.yml' })
+      await expect(publishRelease({ ...base, api: failing, keepDraft: false })).rejects.toThrow(/latest\.yml/)
+
+      const resumed = fakeApi({ existing: { ...draft }, assets: await failing.listAssets() })
+      const result = await publishRelease({ ...base, api: resumed, keepDraft: false })
+      expect(result.draft).toBe(false)
+      const remote = await resumed.listAssets()
+      expect(remote.map((asset) => asset.name).sort()).toEqual(['a.exe', 'a.exe.blockmap', 'latest.yml'])
+      for (const file of files) {
+        expect(assetSha256(remote.find((asset) => asset.name === file.name))).toBe(file.sha256)
+      }
+      // The installer already matched after the failed run; only latest.yml is sent again.
+      expect(resumed.calls.filter((call) => call[0] === 'upload').map((call) => call[1])).toEqual([['latest.yml']])
+    })
+  })
+
+  it('does not publish when a verified asset differs from the local file', async () => {
+    const api = fakeApi()
+    const original = api.uploadFiles
+    api.uploadFiles = async (release, batch) => {
+      await original(release, batch)
+      const installer = (await api.listAssets()).find((asset) => asset.name === 'a.exe')
+      if (installer) installer.digest = `sha256:${'0'.repeat(64)}`
+    }
+    await expect(publishRelease({ ...base, api, keepDraft: false })).rejects.toThrow(
+      /stays a draft[\s\S]*a\.exe on GitHub differs from the local file/
+    )
+    expect(api.calls.some((call) => call[0] === 'update')).toBe(false)
+  })
+})
+
+describe('varlık özeti', () => {
+  const file = { name: 'a.exe', size: 3, sha256: 'ab'.repeat(32) }
+
+  it('GitHub’ın sha256 özetini okur', () => {
+    expect(assetSha256({ digest: `sha256:${'AB'.repeat(32)}` })).toBe('ab'.repeat(32))
+    expect(assetSha256({ digest: 'sha512:abc' })).toBeNull()
+    expect(assetSha256({})).toBeNull()
+    expect(assetSha256(undefined)).toBeNull()
+  })
+
+  it('varlığı yalnızca içeriği yerel dosyayla aynıysa sağlam sayar', () => {
+    const asset = { state: 'uploaded', size: 3, digest: `sha256:${file.sha256}` }
+    expect(isAssetIntact(asset, file)).toBe(true)
+    expect(isAssetIntact({ ...asset, digest: `sha256:${'cd'.repeat(32)}` }, file)).toBe(false)
+    expect(isAssetIntact({ ...asset, digest: undefined }, file)).toBe(false)
+    expect(isAssetIntact({ ...asset, size: 4 }, file)).toBe(false)
+    expect(isAssetIntact({ ...asset, state: 'starter' }, file)).toBe(false)
+    expect(isAssetIntact(asset, { ...file, sha256: undefined })).toBe(false)
+    expect(isAssetIntact(undefined, file)).toBe(false)
+  })
+
+  it('dosyaların boyutunu ve sha256’sını içerikten hesaplar; içeriği yalnızca latest.yml taşır', () => {
+    const [installer, manifest] = describeReleaseFiles([
+      { name: 'a.exe', path: 'dist/a.exe', content: Buffer.from('abc') },
+      { name: 'latest.yml', path: 'dist/latest.yml', content: Buffer.from('v') }
+    ])
+    expect(installer).toEqual({
+      name: 'a.exe',
+      path: 'dist/a.exe',
+      size: 3,
+      sha256: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+    })
+    expect(manifest.content).toEqual(Buffer.from('v'))
   })
 })

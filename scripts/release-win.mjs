@@ -9,13 +9,14 @@
 import { spawnSync } from 'child_process'
 import { createHash } from 'crypto'
 import { existsSync } from 'fs'
-import { readFile, stat } from 'fs/promises'
+import { readFile } from 'fs/promises'
 import { basename, join, resolve } from 'path'
 import {
   HELP_TEXT,
   UPDATE_MANIFEST,
   buildDefaultNotes,
   checkVersionSync,
+  describeReleaseFiles,
   ensureLegalNote,
   inferPrerelease,
   isAssetIntact,
@@ -202,12 +203,11 @@ async function verifyArtifacts(packageName, version) {
     throw new Error(`dist/${UPDATE_MANIFEST} is not valid:\n- ${problems.join('\n- ')}`)
   }
 
-  const files = []
-  for (const filePath of [installerPath, blockmapPath, latestYmlPath]) {
-    const { size } = await stat(filePath)
-    files.push({ name: basename(filePath), path: filePath, size })
-  }
-  files[2].content = latestYml
+  const files = describeReleaseFiles([
+    { name: basename(installerPath), path: installerPath, content: installer },
+    { name: basename(blockmapPath), path: blockmapPath, content: await readFile(blockmapPath) },
+    { name: UPDATE_MANIFEST, path: latestYmlPath, content: latestYml }
+  ])
 
   return { installerName, files }
 }
@@ -363,7 +363,7 @@ function createGitHubApi({ repo, token }) {
     for (let attempt = 1; attempt <= UPLOAD_MAX_ATTEMPTS; attempt += 1) {
       const existing = (await api.listAssets(release.id)).find((asset) => asset.name === file.name)
       if (existing) {
-        if (isAssetIntact(existing, file.size)) return
+        if (isAssetIntact(existing, file)) return
         await api.deleteAsset(existing.id)
       }
 
