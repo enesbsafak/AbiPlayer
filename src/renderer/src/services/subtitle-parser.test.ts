@@ -45,7 +45,7 @@ Dört`)
   })
 
   it('handles CRLF line endings, a BOM and cues without a sequence number', () => {
-    const cues = parseSRT('FEFF1\r\n00:00:01,000 --> 00:00:02,000\r\nBir\r\n\r\n00:00:03,000 --> 00:00:04,000\r\nİki\r\n')
+    const cues = parseSRT('\uFEFF1\r\n00:00:01,000 --> 00:00:02,000\r\nBir\r\n\r\n00:00:03,000 --> 00:00:04,000\r\nİki\r\n')
     expect(cues).toEqual([
       { startTime: 1, endTime: 2, text: 'Bir' },
       { startTime: 3, endTime: 4, text: 'İki' }
@@ -110,7 +110,7 @@ Merhaba
   })
 
   it('parses a VTT file that starts with a BOM', () => {
-    const cues = parseVTT('FEFFWEBVTT\r\n\r\n00:00:01.000 --> 00:00:02.000\r\nBir\r\n')
+    const cues = parseVTT('\uFEFFWEBVTT\r\n\r\n00:00:01.000 --> 00:00:02.000\r\nBir\r\n')
     expect(cues).toEqual([{ startTime: 1, endTime: 2, text: 'Bir' }])
   })
 })
@@ -154,8 +154,8 @@ describe('parseSubtitles', () => {
   it('detects VTT without an extension even when the file starts with a BOM', () => {
     // The BOM made startsWith('WEBVTT') fail, so the file went to the SRT
     // parser, which drops VTT's short mm:ss.ttt timestamps.
-    expect(parseSubtitles(`FEFF${vtt}`, 'altyazi')).toEqual([{ startTime: 1, endTime: 2, text: 'Bir' }])
-    expect(parseSubtitles('FEFFWEBVTT\n\n00:01.000 --> 00:02.000\nKısa', 'altyazi')).toEqual([
+    expect(parseSubtitles(`\uFEFF${vtt}`, 'altyazi')).toEqual([{ startTime: 1, endTime: 2, text: 'Bir' }])
+    expect(parseSubtitles('\uFEFFWEBVTT\n\n00:01.000 --> 00:02.000\nKısa', 'altyazi')).toEqual([
       { startTime: 1, endTime: 2, text: 'Kısa' }
     ])
   })
