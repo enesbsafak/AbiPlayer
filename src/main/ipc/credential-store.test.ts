@@ -1,3 +1,5 @@
+import { mainStrings } from '../../shared/main-strings'
+
 // @vitest-environment node
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
@@ -112,7 +114,7 @@ describe('CredentialStore', () => {
       filePath,
       safeStorage: unavailableSafeStorage
     })
-    await expect(store.set('src-1', CRED)).rejects.toThrow('Güvenli kimlik bilgisi saklama')
+    await expect(store.set('src-1', CRED)).rejects.toThrow(mainStrings.credentials.unavailable)
   })
 
   // safeStorage may rotate its key; data it says to re-encrypt is written back with the new one.
@@ -157,7 +159,7 @@ describe('CredentialStore', () => {
     const store = new CredentialStore({ filePath, safeStorage: fakeSafeStorage, fs, lockTimeoutMs: 20 })
 
     void store.getAll()
-    await expect(store.getAll()).rejects.toThrow('Kimlik bilgisi kilidi zaman aşımına uğradı')
+    await expect(store.getAll()).rejects.toThrow(mainStrings.credentials.lockTimeout)
     await expect(store.set('src-1', CRED)).resolves.toBeUndefined()
   })
 })
@@ -191,7 +193,7 @@ describe('catalog cache key (C2c)', () => {
 
   it('is not handed out when secure storage is unavailable', async () => {
     const store = new CredentialStore({ filePath, safeStorage: unavailableSafeStorage })
-    await expect(store.getCacheKey()).rejects.toThrow('Güvenli kimlik bilgisi saklama')
+    await expect(store.getCacheKey()).rejects.toThrow(mainStrings.credentials.unavailable)
   })
 })
 

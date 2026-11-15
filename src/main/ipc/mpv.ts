@@ -16,6 +16,7 @@ import {
   requireBoolean,
   requireFiniteNumber
 } from './validators'
+import { mainStrings } from '../../shared/main-strings'
 
 export type MpvControllerApi = Pick<
   MpvController,
@@ -44,7 +45,7 @@ export type MpvControllerApi = Pick<
   | 'subscribe'
 >
 
-export const SUBTITLE_NOT_PICKED_MESSAGE = 'Altyazı dosyası yalnızca dosya seçme penceresinden eklenebilir'
+export const SUBTITLE_NOT_PICKED_MESSAGE = mainStrings.files.subtitleNotPicked
 
 export function getNativeWindowId(window: BrowserWindow): string | null {
   const handle = window.getNativeWindowHandle()
@@ -100,13 +101,13 @@ export class PlaybackSecrets {
 const PLAYBACK_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 
 export function parseMpvOpenRequest(value: unknown): MpvOpenRequest {
-  if (!value || typeof value !== 'object') throw new Error('Geçersiz oynatma isteği')
+  if (!value || typeof value !== 'object') throw new Error(mainStrings.invalid.playbackRequest)
   const { playbackId, tuning } = value as Partial<MpvOpenRequest>
   if (typeof playbackId !== 'string' || !PLAYBACK_ID_PATTERN.test(playbackId)) {
-    throw new Error('Geçersiz oynatma kimliği')
+    throw new Error(mainStrings.invalid.playbackId)
   }
   if (tuning !== undefined && !isValidPlaybackTuning(tuning)) {
-    throw new Error('Geçersiz oynatma ayar verisi')
+    throw new Error(mainStrings.invalid.playbackTuning)
   }
   return tuning === undefined ? { playbackId } : { playbackId, tuning }
 }
@@ -237,7 +238,7 @@ export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDep
   registrar.handle('mpv-is-available', () => controller.isAvailable())
 
   registrar.handle('mpv-open', async (event, streamUrl, request) => {
-    if (!isValidStreamUrl(streamUrl)) throw new Error('Geçersiz yayın URL')
+    if (!isValidStreamUrl(streamUrl)) throw new Error(mainStrings.invalid.streamUrl)
     const { playbackId, tuning } = parseMpvOpenRequest(request)
     secrets.remember(playbackId, streamUrl)
     // TLS (src/main/tls): options for this load only; rejects if the host is refused.
@@ -260,16 +261,16 @@ export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDep
   registrar.handle('mpv-toggle-pause', () => controller.togglePause())
 
   registrar.handle('mpv-set-pause', (_event, paused) =>
-    controller.setPause(requireBoolean(paused, 'Geçersiz duraklatma değeri'))
+    controller.setPause(requireBoolean(paused, mainStrings.invalid.pause))
   )
 
   registrar.handle('mpv-seek', (_event, seconds) =>
-    controller.seek(requireFiniteNumber(seconds, 'Geçersiz sarma değeri'))
+    controller.seek(requireFiniteNumber(seconds, mainStrings.invalid.seek))
   )
 
   registrar.handle('mpv-seek-to', async (_event, seconds) => {
-    const target = requireFiniteNumber(seconds, 'Geçersiz hedef zaman')
-    if (target < 0) throw new Error('Geçersiz hedef zaman')
+    const target = requireFiniteNumber(seconds, mainStrings.invalid.seekTarget)
+    if (target < 0) throw new Error(mainStrings.invalid.seekTarget)
     await controller.seekTo(target)
   })
 
@@ -285,54 +286,54 @@ export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDep
   )
 
   registrar.handle('mpv-set-mute', (_event, muted) =>
-    controller.setMute(requireBoolean(muted, 'Geçersiz sessiz değeri'))
+    controller.setMute(requireBoolean(muted, mainStrings.invalid.mute))
   )
 
   registrar.handle('mpv-set-audio-track', async (_event, trackId) => {
-    if (!isValidMpvTrackId(trackId)) throw new Error('Geçersiz ses kanal kimliği')
+    if (!isValidMpvTrackId(trackId)) throw new Error(mainStrings.invalid.audioTrack)
     await controller.setAudioTrack(trackId)
   })
 
   registrar.handle('mpv-set-video-track', async (_event, trackId) => {
-    if (!isValidMpvTrackId(trackId)) throw new Error('Geçersiz görüntü kalite kimliği')
+    if (!isValidMpvTrackId(trackId)) throw new Error(mainStrings.invalid.videoTrack)
     await controller.setVideoTrack(trackId)
   })
 
   registrar.handle('mpv-set-subtitle-track', async (_event, trackId) => {
-    if (!isValidMpvTrackId(trackId)) throw new Error('Geçersiz altyazı kanal kimliği')
+    if (!isValidMpvTrackId(trackId)) throw new Error(mainStrings.invalid.subtitleTrack)
     await controller.setSubtitleTrack(trackId)
   })
 
   registrar.handle('mpv-add-subtitle-file', async (_event, filePath) => {
-    if (!isValidFilePathArgument(filePath)) throw new Error('Geçersiz altyazı dosya yolu')
+    if (!isValidFilePathArgument(filePath)) throw new Error(mainStrings.invalid.subtitlePath)
     if (!deps.registry.wasPickedThisSession(filePath)) throw new Error(SUBTITLE_NOT_PICKED_MESSAGE)
     return controller.addSubtitleFile(filePath)
   })
 
   registrar.handle('mpv-set-fullscreen', (_event, fullscreen) =>
-    controller.setFullscreen(requireBoolean(fullscreen, 'Geçersiz tam ekran değeri'))
+    controller.setFullscreen(requireBoolean(fullscreen, mainStrings.invalid.fullscreen))
   )
 
   registrar.handle('mpv-set-hardware-decoding', (_event, enabled) =>
-    controller.setHardwareDecoding(requireBoolean(enabled, 'Geçersiz donanım hızlandırma değeri'))
+    controller.setHardwareDecoding(requireBoolean(enabled, mainStrings.invalid.hardwareDecoding))
   )
 
   registrar.handle('mpv-set-audio-passthrough', (_event, enabled) =>
-    controller.setAudioPassthrough(requireBoolean(enabled, 'Geçersiz ses passthrough değeri'))
+    controller.setAudioPassthrough(requireBoolean(enabled, mainStrings.invalid.passthrough))
   )
 
   registrar.handle('mpv-set-playback-tuning', async (_event, tuning) => {
-    if (!isValidPlaybackTuning(tuning)) throw new Error('Geçersiz oynatma ayar verisi')
+    if (!isValidPlaybackTuning(tuning)) throw new Error(mainStrings.invalid.playbackTuning)
     await controller.setPlaybackTuning(tuning)
   })
 
   registrar.handle('mpv-set-subtitle-style', async (_event, style) => {
-    if (!isValidMpvSubtitleStyle(style)) throw new Error('Geçersiz altyazı stil verisi')
+    if (!isValidMpvSubtitleStyle(style)) throw new Error(mainStrings.invalid.subtitleStyle)
     await controller.setSubtitleStyle(style)
   })
 
   registrar.handle('mpv-set-video-margin', async (event, right) => {
-    const pixels = requireFiniteNumber(right, 'Geçersiz margin değeri')
+    const pixels = requireFiniteNumber(right, mainStrings.invalid.margin)
     // mpv expresses this margin as a fraction of the window, so translate the
     // renderer's pixel width against the window that actually hosts the video.
     const windowWidth = deps.getWindow(event.sender)?.getContentBounds().width ?? 0
@@ -348,7 +349,7 @@ export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDep
       await controller.setVideoRect(null)
       return
     }
-    if (!isValidVideoRect(rect)) throw new Error('Geçersiz görüntü alanı')
+    if (!isValidVideoRect(rect)) throw new Error(mainStrings.invalid.videoRect)
     const bounds = deps.getWindow(event.sender)?.getContentBounds()
     const margins = bounds ? videoMarginRatiosForRect(rect, bounds) : null
     await controller.setVideoRect(margins)

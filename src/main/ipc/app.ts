@@ -8,10 +8,11 @@ import {
 import { setPreventDisplaySleep } from '../display-sleep'
 import type { IpcRegistrar } from './register'
 import { requireBoolean } from './validators'
+import { mainStrings } from '../../shared/main-strings'
 
 export function registerAppHandlers(registrar: IpcRegistrar): void {
   registrar.handle('display-sleep-set-prevented', (_event, prevented) => {
-    setPreventDisplaySleep(requireBoolean(prevented, 'Geçersiz ekran uyku değeri'))
+    setPreventDisplaySleep(requireBoolean(prevented, mainStrings.invalid.displaySleep))
   })
 
   registrar.handle('app-update-get-state', () => getAppUpdateState())

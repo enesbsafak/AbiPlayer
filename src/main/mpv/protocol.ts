@@ -1,3 +1,5 @@
+import { mainStrings } from '../../shared/main-strings'
+
 /**
  * mpv JSON IPC: newline-delimited JSON over a named pipe / unix socket.
  * Replies carry the `request_id` we sent; everything else is an event.
@@ -62,7 +64,7 @@ interface PendingRequest {
 }
 
 export class MpvIpcClosedError extends Error {
-  constructor(message = 'mpv IPC bağlantısı kesildi') {
+  constructor(message: string = mainStrings.mpv.ipcClosed) {
     super(message)
     this.name = 'MpvIpcClosedError'
   }
@@ -105,7 +107,7 @@ export class MpvIpcClient {
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId)
-        reject(new Error('mpv komut zaman aşımına uğradı'))
+        reject(new Error(mainStrings.mpv.commandTimeout))
       }, timeoutMs)
       this.pending.set(requestId, { resolve, reject, timer })
       this.stream.write(`${JSON.stringify({ command, request_id: requestId })}\n`)

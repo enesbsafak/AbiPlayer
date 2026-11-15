@@ -1,4 +1,5 @@
 import type { MpvPlaybackTuning, MpvSubtitleStyle } from '../../shared/types/electron-ipc'
+import { mainStrings } from '../../shared/main-strings'
 
 const ALLOWED_STREAM_PROTOCOLS = new Set(['http:', 'https:'])
 const MAX_STREAM_URL_LENGTH = 4096
@@ -30,7 +31,7 @@ export function isValidStreamIndex(value: unknown): value is number {
 
 export function clampNormalizedVolume(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error('Geçersiz ses seviyesi')
+    throw new Error(mainStrings.invalid.volume)
   }
   return Math.round(Math.max(0, Math.min(1, value)) * 100)
 }

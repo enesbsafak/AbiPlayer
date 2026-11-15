@@ -14,6 +14,7 @@ import {
   type MpvStreamProperty,
   type MpvStreamState
 } from './stream-state'
+import { mainStrings } from '../../shared/main-strings'
 
 export const MPV_CONNECT_TIMEOUT_MS = 8000
 export const MPV_CONNECT_RETRY_MS = 150
@@ -24,7 +25,7 @@ export const MPV_TERM_GRACE_MS = 2000
 /** After SIGKILL there is nothing left to try; stop waiting after this. */
 export const MPV_KILL_GRACE_MS = 1000
 
-export const MPV_UNEXPECTED_EXIT_MESSAGE = 'Oynatıcı beklenmedik biçimde kapandı.'
+export const MPV_UNEXPECTED_EXIT_MESSAGE = mainStrings.mpv.unexpectedExit
 
 /** Re-read once a file has loaded; see `refreshStream`. */
 const REFRESHED_ON_LOAD: MpvStreamProperty[] = ['track-list', 'vid', 'aid', 'sid', 'path', 'duration']
@@ -141,7 +142,7 @@ export class MpvSession {
    * the returned promise rejects.
    */
   async start(): Promise<void> {
-    if (this.state !== 'new') throw new Error('mpv oturumu yeniden başlatılamaz')
+    if (this.state !== 'new') throw new Error(mainStrings.mpv.sessionReused)
     this.state = 'starting'
 
     const aborted = new Promise<never>((_, reject) => {
@@ -158,7 +159,7 @@ export class MpvSession {
       proc.onError((error) => this.handleProcessError(error))
 
       this.schedule(MPV_CONNECT_TIMEOUT_MS, () => {
-        this.failStart(new Error('mpv IPC soketine bağlanılamadı'))
+        this.failStart(new Error(mainStrings.mpv.ipcConnectFailed))
       })
 
       const stream = await guard(this.connectWithRetry())
@@ -174,7 +175,7 @@ export class MpvSession {
           observed.map((name, index) => this.request(['observe_property', index + 1, name]))
         )
       )
-      if (this.state !== 'starting') throw new Error('mpv oturumu kapatıldı')
+      if (this.state !== 'starting') throw new Error(mainStrings.mpv.sessionClosed)
       this.clearTimers()
       this.state = 'ready'
       this.mark('mpv:session-ready')
@@ -189,7 +190,7 @@ export class MpvSession {
   request(command: unknown[], timeoutMs?: number): Promise<unknown> {
     const client = this.client
     if (!client || (this.state !== 'ready' && this.state !== 'starting')) {
-      return Promise.reject(new MpvIpcClosedError('mpv IPC soket bağlantısı yok'))
+      return Promise.reject(new MpvIpcClosedError(mainStrings.mpv.ipcMissing))
     }
     return client.request(command, timeoutMs)
   }
@@ -266,7 +267,7 @@ export class MpvSession {
   close(): Promise<void> {
     if (this.closePromise) return this.closePromise
     this.state = 'closing'
-    this.failStart(new Error('mpv oturumu kapatıldı'))
+    this.failStart(new Error(mainStrings.mpv.sessionClosed))
     this.clearTimers()
     this.resetRestart()
     this.closePromise = this.teardown()
@@ -315,12 +316,12 @@ export class MpvSession {
 
   private async connectWithRetry(): Promise<MpvIpcStream> {
     for (;;) {
-      if (this.state !== 'starting' || this.exited) throw new Error('mpv oturumu kapatıldı')
+      if (this.state !== 'starting' || this.exited) throw new Error(mainStrings.mpv.sessionClosed)
       try {
         const stream = await this.options.connect(this.options.socketPath)
         if (this.state !== 'starting' || this.exited) {
           stream.destroy()
-          throw new Error('mpv oturumu kapatıldı')
+          throw new Error(mainStrings.mpv.sessionClosed)
         }
         return stream
       } catch (error) {
@@ -338,8 +339,7 @@ export class MpvSession {
     for (const waiter of waiters) waiter()
 
     if (this.state === 'starting') {
-      const detail = info.code !== null ? ` (çıkış kodu ${info.code})` : ''
-      this.failStart(new Error(`mpv başlatılırken kapandı${detail}`))
+      this.failStart(new Error(mainStrings.mpv.exitedDuringStart(info.code)))
     } else if (this.state === 'ready') {
       this.reportEnded()
     }
@@ -351,14 +351,14 @@ export class MpvSession {
     // usually without a following 'exit'. Once mpv is up the exit listener is
     // what tells us it is gone.
     if (this.state === 'starting' && !this.client) {
-      this.failStart(new Error(`mpv başlatılamadı: ${error.message}`))
+      this.failStart(new Error(mainStrings.mpv.spawnFailed(error.message)))
       this.handleExit({ code: null, signal: null })
     }
   }
 
   private handleIpcLost(): void {
     if (this.state === 'starting') {
-      this.failStart(new Error('mpv IPC bağlantısı kesildi'))
+      this.failStart(new Error(mainStrings.mpv.ipcClosed))
       return
     }
     if (this.state !== 'ready') return

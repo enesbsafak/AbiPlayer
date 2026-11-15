@@ -1,3 +1,5 @@
+import { mainStrings } from '../shared/main-strings'
+
 // @vitest-environment node
 import { existsSync } from 'fs'
 import { mkdtemp, rm, writeFile } from 'fs/promises'
@@ -132,7 +134,7 @@ describe('app updater', () => {
     expect(updater.getState()).toMatchObject({
       status: 'error',
       updateReadyToInstall: true,
-      message: 'Güncelleme kurulamadı. Lütfen tekrar deneyin.'
+      message: mainStrings.updates.installFailed
     })
 
     await expect(updater.install()).resolves.toBe(true)

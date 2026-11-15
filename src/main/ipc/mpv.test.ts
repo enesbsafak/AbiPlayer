@@ -1,3 +1,5 @@
+import { mainStrings } from '../../shared/main-strings'
+
 // @vitest-environment node
 import type { IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it, vi } from 'vitest'
@@ -111,7 +113,7 @@ describe('parseMpvOpenRequest', () => {
     expect(() => parseMpvOpenRequest({ playbackId: 'x'.repeat(129) })).toThrow('Geçersiz oynatma kimliği')
     expect(() =>
       parseMpvOpenRequest({ playbackId: 'pb', tuning: { audioDelay: 99, subDelay: 0, speed: 1, aspectRatio: 'auto' } })
-    ).toThrow('Geçersiz oynatma ayar verisi')
+    ).toThrow(mainStrings.invalid.playbackTuning)
   })
 })
 

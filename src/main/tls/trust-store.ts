@@ -3,6 +3,7 @@ import type { CertificateProblem, TrustedCertificateHost } from '../../shared/ip
 import { writeFileAtomic } from '../ipc/atomic-file'
 import { normalizeFingerprint, readCertificate } from './certificate'
 import { endpointKey, isNeverRelaxableHost, normalizeHost, normalizePort, type TlsEndpoint } from './hosts'
+import { mainStrings } from '../../shared/main-strings'
 
 /** A trusted host as stored: the public summary plus the pinned certificate. */
 export interface StoredPin extends TrustedCertificateHost {
@@ -125,7 +126,7 @@ export class TrustStore {
   /** Adds or replaces the pin for the pin's host and port. */
   async put(pin: StoredPin): Promise<void> {
     const clean = sanitizePin(pin)
-    if (!clean) throw new Error('Geçersiz sertifika kaydı')
+    if (!clean) throw new Error(mainStrings.invalid.trustRecord)
     this.pins.set(endpointKey(clean), clean)
     await this.persist()
   }

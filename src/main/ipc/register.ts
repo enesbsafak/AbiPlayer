@@ -1,6 +1,7 @@
 import type { IpcMainInvokeEvent } from 'electron'
 import type { IpcArgs, IpcInvokeChannel, IpcResult } from '../../shared/ipc/contract'
 import { maskCredentials } from '../../shared/mask-credentials'
+import { mainStrings } from '../../shared/main-strings'
 
 /**
  * Renderer arguments arrive untyped and untrusted: each handler receives them
@@ -26,7 +27,7 @@ export interface IpcMainLike {
   ): void
 }
 
-export const UNTRUSTED_SENDER_MESSAGE = 'Bu işlem yalnızca uygulama penceresinden çağrılabilir'
+export const UNTRUSTED_SENDER_MESSAGE = mainStrings.app.untrustedSender
 
 /**
  * Wraps `ipcMain.handle` so every handler (1) rejects calls that do not come

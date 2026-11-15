@@ -14,6 +14,7 @@ import {
 import { endpointKey, isNeverRelaxableHost, normalizeHost, normalizePort, tlsEndpointOf, type TlsEndpoint } from './hosts'
 import type { CertificateProbe } from './probe'
 import type { StoredPin, TrustStore } from './trust-store'
+import { mainStrings } from '../../shared/main-strings'
 
 /*
  * TLS policy (plan item F3-01, decision K2).
@@ -52,11 +53,9 @@ export const NOTICE_THROTTLE_MS = 2000
 export const PROBE_CACHE_MS = 10 * 60_000
 const MAX_RECENT_FAILURES = 50
 
-export const NEVER_RELAXABLE_MESSAGE = 'Bu sunucunun sertifikası güvenlik gereği hiçbir koşulda gevşetilemez.'
-export const UNKNOWN_FAILURE_MESSAGE =
-  'Bu sunucu için onaylanacak bir sertifika hatası yok. Bağlantıyı yeniden deneyin.'
-export const CERTIFICATE_CHANGED_MESSAGE =
-  'Sunucunun güvenlik sertifikası, güvendiğiniz sertifikadan farklı. Yeniden onaylamadan bağlanılmıyor.'
+export const NEVER_RELAXABLE_MESSAGE = mainStrings.tls.neverRelaxable
+export const UNKNOWN_FAILURE_MESSAGE = mainStrings.tls.nothingToTrust
+export const CERTIFICATE_CHANGED_MESSAGE = mainStrings.tls.changed
 
 /** A load refused by the policy; the message is Turkish and safe to show. */
 export class CertificateTrustError extends Error {
@@ -133,7 +132,7 @@ export class TlsPolicy {
     const host = normalizeHost(request?.host)
     const port = normalizePort(request?.port)
     const fingerprint = normalizeFingerprint(request?.fingerprint256)
-    if (!host || !port || !fingerprint) throw new Error('Geçersiz sertifika onayı')
+    if (!host || !port || !fingerprint) throw new Error(mainStrings.invalid.trustRequest)
     if (isNeverRelaxableHost(host)) throw new CertificateTrustError(NEVER_RELAXABLE_MESSAGE)
 
     const endpoint = { host, port }
@@ -169,7 +168,7 @@ export class TlsPolicy {
   async revoke(hostValue: unknown, portValue: unknown): Promise<boolean> {
     const host = normalizeHost(hostValue)
     const port = normalizePort(portValue)
-    if (!host || !port) throw new Error('Geçersiz sunucu adresi')
+    if (!host || !port) throw new Error(mainStrings.invalid.serverAddress)
     const endpoint = { host, port }
     const removed = await this.deps.store.remove(endpoint)
     this.forget(endpoint)

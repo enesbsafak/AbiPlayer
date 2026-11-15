@@ -1,3 +1,5 @@
+import { mainStrings } from '../shared/main-strings'
+
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { itemAt } from '../shared/checked'
@@ -64,7 +66,7 @@ describe('MpvController start-up and teardown', () => {
     const { mpv, controller } = setup({ resolveBinary: () => binary })
 
     expect(await controller.isAvailable()).toBe(false)
-    await expect(controller.open(URL_A, '100')).rejects.toThrow('mpv ikili dosyası bulunamadı')
+    await expect(controller.open(URL_A, '100')).rejects.toThrow(mainStrings.mpv.binaryMissing)
     expect(controller.getState().phase).toBe('error')
 
     binary = '/fake/mpv'
@@ -96,7 +98,7 @@ describe('MpvController start-up and teardown', () => {
     }
 
     const first = controller.open(URL_A, '100')
-    const rejected = expect(first).rejects.toThrow('mpv IPC soketine bağlanılamadı')
+    const rejected = expect(first).rejects.toThrow(mainStrings.mpv.ipcConnectFailed)
     await vi.advanceTimersByTimeAsync(8000)
     await rejected
     const abandoned = itemAt(mpv.processes, 0)

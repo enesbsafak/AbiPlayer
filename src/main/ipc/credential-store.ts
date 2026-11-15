@@ -10,6 +10,7 @@ import {
   sanitizeCredentialMap
 } from '../../shared/secure-credentials'
 import { nodeAtomicWriteOps, writeFileAtomic, type AtomicWriteOps } from './atomic-file'
+import { mainStrings } from '../../shared/main-strings'
 
 /**
  * Electron's asynchronous safeStorage (the synchronous methods are deprecated
@@ -161,7 +162,7 @@ export class CredentialStore {
 
   private async ensureAvailable(): Promise<void> {
     if (!(await this.options.safeStorage.isAsyncEncryptionAvailable())) {
-      throw new Error('Güvenli kimlik bilgisi saklama bu sistemde kullanılamıyor')
+      throw new Error(mainStrings.credentials.unavailable)
     }
   }
 
@@ -273,7 +274,7 @@ export class CredentialStore {
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutHandle = setTimeout(() => {
-        reject(new Error('Kimlik bilgisi kilidi zaman aşımına uğradı'))
+        reject(new Error(mainStrings.credentials.lockTimeout))
       }, this.lockTimeoutMs)
     })
 

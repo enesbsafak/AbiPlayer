@@ -24,6 +24,7 @@ import {
   WindowStateTracker,
   type SavedWindowState
 } from './ipc/window-state'
+import { mainStrings } from '../shared/main-strings'
 
 const logMainError = createMainLogger(join(app.getPath('userData'), 'logs', 'main-errors.log'))
 installProcessErrorLogging(process, logMainError)
@@ -109,13 +110,13 @@ function askReloadUnresponsive(window: BrowserWindow, signal: AbortSignal): Prom
   return dialog
     .showMessageBox(window, {
       type: 'warning',
-      buttons: ['Yeniden Yükle', 'Bekle'],
+      buttons: [mainStrings.app.unresponsive.reload, mainStrings.app.unresponsive.wait],
       defaultId: 0,
       cancelId: 1,
       noLink: true,
-      title: 'Uygulama yanıt vermiyor',
-      message: 'Abi Player bir süredir yanıt vermiyor.',
-      detail: 'Oynatma durduruldu. Pencereyi yeniden yükleyebilir ya da beklemeyi sürdürebilirsiniz.',
+      title: mainStrings.app.unresponsive.title,
+      message: mainStrings.app.unresponsive.message('Abi Player'),
+      detail: mainStrings.app.unresponsive.detail,
       signal
     })
     .then((result) => result.response === 0)

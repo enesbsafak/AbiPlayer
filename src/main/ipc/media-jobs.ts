@@ -7,6 +7,7 @@ import type {
 } from '../../shared/types/electron-ipc'
 import { MEDIA_JOB_CANCELLED_MESSAGE, type MediaJobOptions } from '../../shared/ipc/contract'
 import { credentialsInUrl, maskCredentials } from '../../shared/mask-credentials'
+import { mainStrings } from '../../shared/main-strings'
 
 export type MediaChildProcess = ChildProcessByStdio<null, Readable, Readable>
 export type SpawnMediaProcess = (executable: string, args: string[]) => MediaChildProcess
@@ -64,11 +65,11 @@ export function isValidMediaJobId(value: unknown): value is string {
 
 export function parseMediaJobOptions(value: unknown): MediaJobOptions {
   if (value === undefined || value === null) return {}
-  if (typeof value !== 'object') throw new Error('Geçersiz medya işi seçenekleri')
+  if (typeof value !== 'object') throw new Error(mainStrings.invalid.mediaJobOptions)
   const { jobId, timeoutMs } = value as MediaJobOptions
-  if (jobId !== undefined && !isValidMediaJobId(jobId)) throw new Error('Geçersiz medya işi kimliği')
+  if (jobId !== undefined && !isValidMediaJobId(jobId)) throw new Error(mainStrings.invalid.mediaJobId)
   if (timeoutMs !== undefined && (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs))) {
-    throw new Error('Geçersiz medya işi süresi')
+    throw new Error(mainStrings.invalid.mediaJobTimeout)
   }
   return { jobId, timeoutMs }
 }
@@ -159,9 +160,7 @@ export class MediaJobRunner {
           if (spec.onLimit === 'fail') {
             fail(
               new Error(
-                reason === 'timeout'
-                  ? `İşlem zaman aşımına uğradı (${spec.timeoutMs}ms)`
-                  : 'İşlem çıktısı izin verilen boyutu aştı'
+                reason === 'timeout' ? mainStrings.media.timeout(spec.timeoutMs) : mainStrings.media.outputTooLarge
               )
             )
             return
@@ -274,7 +273,7 @@ export function buildExtractArgs(streamUrl: string, streamIndex: number, tlsArgs
 /** `knownSecrets`: the account in the input URL (`credentialsInUrl`), masked wherever ffmpeg prints it. */
 function processFailure(result: MediaRunResult, tool: string, knownSecrets: readonly string[] = []): Error {
   const detail = maskCredentials(result.stderr.trim(), knownSecrets)
-  return new Error(detail || `${tool} ${result.exitCode ?? 'bilinmeyen'} koduyla sonlandı`)
+  return new Error(detail || mainStrings.media.exited(tool, result.exitCode ?? null))
 }
 
 function normalizeOptional(value: string | undefined, lowercase: boolean): string | undefined {
@@ -370,7 +369,7 @@ export function createMediaService({ runner, ffprobePath, ffmpegPath, tlsArgs }:
       streamIndex: number,
       options: MediaJobOptions = {}
     ): Promise<EmbeddedSubtitleExtractionResult | null> {
-      if (!ffmpegPath) throw new Error('ffmpeg çalıştırılabilir dosyası bulunamadı')
+      if (!ffmpegPath) throw new Error(mainStrings.media.ffmpegMissing)
       const executable = ffmpegPath
       const result = await runner.run(
         withTls(streamUrl, (tls) => ({

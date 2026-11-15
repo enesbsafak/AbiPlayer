@@ -5,6 +5,7 @@ import { MAX_LOCAL_FILE_SIZE_BYTES, type FileFilter, type PickedFile } from '../
 import { writeFileAtomic } from './atomic-file'
 import type { IpcRegistrar } from './register'
 import { decodeTextFile } from './text-decoding'
+import { mainStrings } from '../../shared/main-strings'
 
 const MAX_FILTERS = 10
 const MAX_EXTENSIONS_PER_FILTER = 20
@@ -12,9 +13,9 @@ const MAX_FILTER_TEXT_LENGTH = 64
 const MAX_PATH_LENGTH = 4096
 
 export const DEFAULT_FILE_FILTERS: FileFilter[] = [
-  { name: 'Oynatma Listesi Dosyaları', extensions: ['m3u', 'm3u8', 'txt'] },
-  { name: 'Altyazı Dosyaları', extensions: ['srt', 'vtt', 'ass', 'ssa'] },
-  { name: 'Tüm Dosyalar', extensions: ['*'] }
+  { name: mainStrings.files.playlistFilter, extensions: ['m3u', 'm3u8', 'txt'] },
+  { name: mainStrings.files.subtitleFilter, extensions: ['srt', 'vtt', 'ass', 'ssa'] },
+  { name: mainStrings.files.allFilter, extensions: ['*'] }
 ]
 
 export function parseFileFilters(value: unknown): FileFilter[] {
@@ -37,7 +38,7 @@ export function parseFileFilters(value: unknown): FileFilter[] {
         (filter as FileFilter).extensions.every(isText)
     )
   ) {
-    throw new Error('Geçersiz dosya filtresi')
+    throw new Error(mainStrings.invalid.fileFilter)
   }
 
   return (value as FileFilter[]).map((filter) => ({ name: filter.name, extensions: [...filter.extensions] }))
@@ -53,7 +54,7 @@ function formatMegabytes(bytes: number): string {
 }
 
 export function fileTooLargeMessage(sizeBytes: number, limitBytes: number): string {
-  return `Dosya çok büyük (${formatMegabytes(sizeBytes)} MB). En fazla ${formatMegabytes(limitBytes)} MB boyutundaki dosyalar açılabilir.`
+  return mainStrings.files.tooLarge(formatMegabytes(sizeBytes), formatMegabytes(limitBytes))
 }
 
 export interface TextFileReadOps {
@@ -77,7 +78,7 @@ export async function readLocalTextFile(
     size = (await ops.stat(filePath)).size
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
-      throw new Error(`Dosya bulunamadı: ${basename(filePath)}`, { cause: error })
+      throw new Error(mainStrings.files.notFound(basename(filePath)), { cause: error })
     }
     throw error
   }
@@ -199,7 +200,7 @@ export interface FileHandlerDeps {
   readTextFile?: (filePath: string) => Promise<string>
 }
 
-export const NOT_PICKED_MESSAGE = 'Bu dosyayı okuma izni yok. Dosyayı yeniden seçin.'
+export const NOT_PICKED_MESSAGE = mainStrings.files.notPicked
 
 export function registerFileHandlers(registrar: IpcRegistrar, deps: FileHandlerDeps): void {
   const readText = deps.readTextFile ?? ((filePath: string) => readLocalTextFile(filePath))
@@ -229,7 +230,7 @@ export function registerFileHandlers(registrar: IpcRegistrar, deps: FileHandlerD
   })
 
   registrar.handle('read-picked-file', async (_event, filePath): Promise<PickedFile> => {
-    if (!isValidFilePathArgument(filePath)) throw new Error('Geçersiz dosya yolu')
+    if (!isValidFilePathArgument(filePath)) throw new Error(mainStrings.invalid.filePath)
     if (!(await deps.registry.wasEverPicked(filePath))) throw new Error(NOT_PICKED_MESSAGE)
     return { path: filePath, content: await readText(filePath) }
   })

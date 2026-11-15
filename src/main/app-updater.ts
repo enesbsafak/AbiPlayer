@@ -7,15 +7,17 @@ import type { AppUpdateState } from '../shared/types/electron-ipc'
 import { maskCredentials } from '../shared/mask-credentials'
 import { E2E_MODE } from './e2e-mode'
 import { broadcastEvent } from './ipc/events'
+import { mainStrings } from '../shared/main-strings'
 
 const AUTO_CHECK_DELAY_MS = 15_000
 const PERIODIC_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 /** No update download competes with the first catalog sync. */
 const STARTUP_GRACE_MS = 60_000
 
-const UNSUPPORTED_MESSAGE = 'Otomatik güncelleme sadece paketli uygulamada kullanılabilir'
-const UNKNOWN_ERROR_MESSAGE = 'Güncelleme sırasında bilinmeyen bir hata oluştu'
-const INSTALL_FAILED_MESSAGE = 'Güncelleme kurulamadı. Lütfen tekrar deneyin.'
+const text = mainStrings.updates
+const UNSUPPORTED_MESSAGE = text.unsupported
+const UNKNOWN_ERROR_MESSAGE = text.unknownError
+const INSTALL_FAILED_MESSAGE = text.installFailed
 
 export interface UpdateInfoLike {
   version?: string
@@ -99,7 +101,7 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
     transferredBytes: null,
     totalBytes: null,
     bytesPerSecond: null,
-    message: deps.canCheck ? 'Güncelleme kontrolü hazır' : UNSUPPORTED_MESSAGE,
+    message: deps.canCheck ? text.idle : UNSUPPORTED_MESSAGE,
     releaseDate: null,
     canCheck: deps.canCheck,
     updateReadyToInstall: false,
@@ -131,7 +133,7 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
     downloadTimer = null
     if (downloadInFlight || state.updateReadyToInstall) return
     downloadInFlight = true
-    setState({ message: `Yeni sürüm bulundu (${state.availableVersion ?? ''}). İndiriliyor...` })
+    setState({ message: text.found(state.availableVersion) })
     backend
       .downloadUpdate()
       // Failures also arrive through the backend's error event, which owns
@@ -149,7 +151,7 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
       startDownload(backend)
       return
     }
-    setState({ message: `Yeni sürüm bulundu (${state.availableVersion ?? ''}). İndirme birazdan başlayacak.` })
+    setState({ message: text.foundDeferred(state.availableVersion) })
     downloadTimer = setTimeout(() => startDownload(backend), wait)
   }
 
@@ -173,7 +175,7 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
       deps.setProgressBar(null)
       setState({
         status: 'checking',
-        message: 'Güncellemeler kontrol ediliyor...',
+        message: text.checking,
         ...CLEARED_TRANSFER,
         lastCheckedAt: now()
       })
@@ -205,7 +207,7 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
         transferredBytes: progressInfo.transferred ?? null,
         totalBytes: progressInfo.total ?? null,
         bytesPerSecond: progressInfo.bytesPerSecond ?? null,
-        message: `Güncelleme indiriliyor... %${Math.round(normalized * 100)}`
+        message: text.downloading(Math.round(normalized * 100))
       })
     })
 
@@ -219,7 +221,7 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
         ...CLEARED_TRANSFER,
         releaseDate: null,
         updateReadyToInstall: false,
-        message: 'Bu sürüm zaten güncel'
+        message: text.notAvailable
       })
     })
 
@@ -235,7 +237,7 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
         bytesPerSecond: null,
         releaseDate: toReleaseDate(info),
         updateReadyToInstall: true,
-        message: 'Güncelleme hazır. Yeniden başlatarak kurabilirsiniz.'
+        message: text.downloaded
       })
       void promptToInstall()
     })
@@ -455,16 +457,15 @@ function getDefaultUpdater(): AppUpdater {
       },
       confirmInstall: async (version) => {
         const window = getPrimaryWindow()
-        const versionLabel = version ? ` ${version}` : ''
         const options: Electron.MessageBoxOptions = {
           type: 'info',
-          buttons: ['Yeniden Başlat ve Yükle', 'Daha Sonra'],
+          buttons: [text.dialog.install, text.dialog.later],
           defaultId: 0,
           cancelId: 1,
           noLink: true,
-          title: 'Güncelleme Hazır',
-          message: `Abi Player${versionLabel} indirildi`,
-          detail: 'Güncellemeyi tamamlamak için uygulama yeniden başlatılacak.'
+          title: text.dialog.title,
+          message: text.dialog.message('Abi Player', version || null),
+          detail: text.dialog.detail
         }
         const result = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options)
         return result.response === 0

@@ -26,6 +26,7 @@ import {
   emptyStreamState,
   subtitleStyleProperties
 } from './mpv/stream-state'
+import { mainStrings } from '../shared/main-strings'
 
 export type {
   MpvIdentifiedSnapshot,
@@ -560,7 +561,7 @@ export class MpvController {
   private async startSession(parentWid: string | null): Promise<void> {
     const binary = this.resolveBinary()
     if (!binary) {
-      this.failStart(new Error('mpv ikili dosyası bulunamadı'))
+      this.failStart(new Error(mainStrings.mpv.binaryMissing))
       return
     }
 
@@ -621,7 +622,7 @@ export class MpvController {
     if (!playback?.wanted) return
     playback.wanted = false
     playback.phase = 'error'
-    playback.error = 'mpv başlatılamadı.'
+    playback.error = mainStrings.mpv.startFailed
     this.rejectWaiters(playback, error)
     this.notify(true)
   }
@@ -645,7 +646,7 @@ export class MpvController {
       if (this.playback === playback && session === this.current) {
         playback.wanted = false
         playback.phase = 'error'
-        playback.error = 'Yayın açılamadı.'
+        playback.error = mainStrings.mpv.openFailed
         this.rejectWaiters(playback, error instanceof Error ? error : new Error(String(error)))
         this.notify(true)
       }

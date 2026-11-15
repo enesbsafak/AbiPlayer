@@ -1,3 +1,5 @@
+import { mainStrings } from '../../shared/main-strings'
+
 // @vitest-environment node
 import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
@@ -190,7 +192,7 @@ describe('media jobs', () => {
       const { children, media } = setup()
       const probe = media.probe('w1', URL_WITH_CREDS, { timeoutMs: 5000 })
       vi.advanceTimersByTime(5000)
-      await expect(probe).rejects.toThrow('zaman aşımına uğradı (5000ms)')
+      await expect(probe).rejects.toThrow(mainStrings.media.timeout(5000))
       expect(itemAt(children, 0).kill).toHaveBeenCalled()
     })
 
