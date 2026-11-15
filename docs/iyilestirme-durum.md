@@ -9,7 +9,7 @@ Karar noktalarında plandaki öneriler uygulanıyor: dürüst mini oynatıcı ka
 | Dalga | Paket | Kapsam | Durum |
 |---|---|---|---|
 | A | A1 Araçlar | F0-01..06, F0-08, F5-11 | Bitti (`6d5dedd`..`ba9925a`) |
-| A | A2 Uçtan uca düzenek ve ölçüm | F0-07, F0-09, F2-01 | Sürüyor |
+| A | A2 Uçtan uca düzenek ve ölçüm | F0-07, F0-09, F2-01 | Birleştirildi |
 | B | B1 mpv oturum modeli | F2-02, F2-03, F2-05, F2-14, F1-04..06, F1-16..18 | Birleştirildi |
 | B | B2 Main süreç ve IPC | F3-06, F3-08, F1-27, F1-35, F1-36, F1-39, F2-11, F2-13 | Birleştirildi |
 | B | B3 Oynatıcı hataları | F1-01..03, F1-07..11, F1-14 | Birleştirildi |
@@ -47,3 +47,4 @@ Karar noktalarında plandaki öneriler uygulanıyor: dürüst mini oynatıcı ka
 - 2026-11-15: gpt-6-astra'dan ikinci görüş alındı (Codex girişi yenilendi). Bağımsız incelemeyle aynı yönü destekledi; eklenenler: anlık görüntüde `seq` ve `loadId`, oynatma ayarı `playbackId` kapsamında, devam bayrağı yalnızca eşleşen yükleme hazırken tüketilir. `--force-window=no` önerisi alınmadı: pencere şeffaf, mpv yüzeyi yokken masaüstü görünürdü.
 - 2026-11-15: B1 (mpv oturum modeli) birleştirildi; 567 test geçiyor. Gerçek mpv ile doğrulama uçtan uca düzenek gelince yapılacak.
 - 2026-11-15: Kararsız EPG testi düzeltildi. C0 (oynatma kimliği, sürümlü kalıcılık, ertelenmiş yazım) birleştirildi; 641 test geçiyor. C1 ve C2a başladı. Uçtan uca testler artık sessiz ve ekran dışı modda çalışacak.
+- 2026-11-15: A2 birleştirildi: sahte Xtream sağlayıcı, Playwright ile gerçek uygulamayı süren 7 senaryo dosyası, zaman damgaları, taban ölçüm raporu (docs/olcumler/2026-11-15-taban.md), paket duman testi. Testler ekran dışında ve sessiz çalışıyor. Plan K7 düştü: CORS başlığı göndermeyen panel sorunsuz çalışıyor.
