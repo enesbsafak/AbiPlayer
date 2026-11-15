@@ -44,6 +44,25 @@ describe('quality', () => {
     ).toBeNull()
   })
 
+  it('does not badge a film in a .ts container as CAM', () => {
+    expect(
+      inferContentQualityLabel({
+        name: 'Aksiyon Gecesi',
+        streamUrl: 'https://cdn.example.com/movie/u/p/12.ts',
+        containerExtension: 'ts'
+      })
+    ).toBeNull()
+    expect(
+      inferContentQualityLabel({ name: 'Aksiyon Gecesi 1080p', containerExtension: 'ts' })
+    ).toBe('1080p')
+  })
+
+  it('still detects telesync markers in the title', () => {
+    expect(inferContentQualityLabel({ name: 'Yeni Film 2024 TS', containerExtension: 'mkv' })).toBe('CAM')
+    expect(inferContentQualityLabel({ name: 'Yeni Film TSRip' })).toBe('CAM')
+    expect(inferContentQualityLabel({ name: 'Yeni Film HDCAM', containerExtension: 'mp4' })).toBe('CAM')
+  })
+
   it('builds stable HLS quality options with auto mode first', () => {
     const options = buildVideoQualityOptions([
       { height: 1080, bitrate: 5_600_000, name: 'Full HD' },
