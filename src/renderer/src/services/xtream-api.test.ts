@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { maskCredentialsInUrl, xtreamApi } from './xtream-api'
+import {
+  XtreamRequestError,
+  collectXtreamTimestamps,
+  getAllowedLiveFormats,
+  maskCredentialsInUrl,
+  pickLiveFormat,
+  xtreamApi,
+  xtreamRetryDelayMs
+} from './xtream-api'
+import type { XtreamAuthResponse } from '@/types/xtream'
 
 // Give every test a unique url+user so it hits a distinct cache key and
 // doesn't collide with state left behind by previous tests.
@@ -121,7 +130,8 @@ describe('xtream-api', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const rejected = xtreamApi.getLiveStreams(creds).catch((err: Error) => err.message)
+    // maxRetries: 0 keeps the 5xx from being retried with real backoff delays.
+    const rejected = xtreamApi.getLiveStreams(creds, undefined, { maxRetries: 0 }).catch((err: Error) => err.message)
     const message = await rejected
     expect(typeof message).toBe('string')
     expect(message).toContain('username=***')
@@ -153,5 +163,333 @@ describe('maskCredentialsInUrl', () => {
     )
     expect(masked).toContain('username=***')
     expect(masked).toContain('password=***')
+  })
+})
+
+async function captureError(promise: Promise<unknown>): Promise<XtreamRequestError> {
+  try {
+    await promise
+  } catch (error) {
+    if (error instanceof XtreamRequestError) return error
+    throw error
+  }
+  throw new Error('expected the request to fail')
+}
+
+function jsonResponse(body: unknown, init?: ResponseInit): Response {
+  return new Response(JSON.stringify(body), { status: 200, ...init })
+}
+
+describe('xtream-api request layer', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('retries a transient 5xx with backoff and then succeeds', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const creds = uniqueCreds()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('busy', { status: 503 }))
+      .mockResolvedValueOnce(jsonResponse([{ stream_id: 1, name: 'Kanal' }]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const request = xtreamApi.getLiveStreams(creds)
+    await vi.advanceTimersByTimeAsync(xtreamRetryDelayMs(1))
+
+    await expect(request).resolves.toMatchObject([{ stream_id: 1, name: 'Kanal' }])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('gives up after maxRetries and reports a typed http error', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const creds = uniqueCreds()
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('', { status: 502 })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const errorPromise = captureError(xtreamApi.getLiveStreams(creds, undefined, { maxRetries: 1 }))
+    await vi.advanceTimersByTimeAsync(xtreamRetryDelayMs(1))
+    const error = await errorPromise
+
+    expect(error.kind).toBe('http')
+    expect(error.status).toBe(502)
+    expect(error.message).toBe('Sunucu hata döndürdü (HTTP 502)')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry authentication failures', async () => {
+    const creds = uniqueCreds()
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('', { status: 401 })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const error = await captureError(xtreamApi.getLiveStreams(creds))
+
+    expect(error.kind).toBe('auth')
+    expect(error.retryable).toBe(false)
+    expect(error.message).toContain('Kimlik doğrulama başarısız')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry when the caller aborts, even during the backoff wait', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const creds = uniqueCreds()
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('', { status: 503 })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const controller = new AbortController()
+    const errorPromise = captureError(
+      xtreamApi.getLiveStreams(creds, undefined, { signal: controller.signal })
+    )
+    // Let the first attempt fail and enter its backoff sleep.
+    await vi.advanceTimersByTimeAsync(10)
+    controller.abort()
+    await vi.advanceTimersByTimeAsync(xtreamRetryDelayMs(2) * 2)
+
+    const error = await errorPromise
+    expect(error.kind).toBe('aborted')
+    expect(error.message).toBe('İstek iptal edildi')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('times out when the response headers never arrive', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const creds = uniqueCreds()
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const errorPromise = captureError(xtreamApi.getLiveStreams(creds, undefined, { maxRetries: 0 }))
+    await vi.advanceTimersByTimeAsync(20_000)
+    const error = await errorPromise
+
+    expect(error.kind).toBe('timeout')
+    expect(error.message).toContain('zaman aşımına uğradı')
+  })
+
+  it('lets a slow body finish as long as data keeps flowing', async () => {
+    // The old single 20 s timer covered the body too, so a large catalog on a
+    // slow link always failed. Here the body takes 45 s in total but never
+    // pauses for more than 15 s.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const creds = uniqueCreds()
+    const encoder = new TextEncoder()
+    const pieces = ['[{"stream_id":1,', '"name":"Yavaş"}', ']']
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const piece = pieces.shift()
+        if (piece === undefined) {
+          controller.close()
+          return
+        }
+        await new Promise((resolve) => setTimeout(resolve, 15_000))
+        controller.enqueue(encoder.encode(piece))
+      }
+    })
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(body, { status: 200 }))))
+
+    const request = xtreamApi.getLiveStreams(creds, undefined, { maxRetries: 0 })
+    await vi.advanceTimersByTimeAsync(50_000)
+
+    await expect(request).resolves.toMatchObject([{ stream_id: 1, name: 'Yavaş' }])
+  })
+
+  it('fails with a timeout when the body stalls', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const creds = uniqueCreds()
+    const encoder = new TextEncoder()
+    let sent = false
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent) return new Promise<void>(() => undefined)
+        sent = true
+        controller.enqueue(encoder.encode('[{"stream_id":1'))
+        return undefined
+      }
+    })
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(body, { status: 200 }))))
+
+    const errorPromise = captureError(xtreamApi.getLiveStreams(creds, undefined, { maxRetries: 0 }))
+    await vi.advanceTimersByTimeAsync(30_000)
+    const error = await errorPromise
+
+    expect(error.kind).toBe('timeout')
+    expect(error.message).toContain('veri gelmiyor')
+  })
+
+  it('reports a network failure as a retryable network error', async () => {
+    const creds = uniqueCreds()
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))))
+
+    const error = await captureError(xtreamApi.getLiveStreams(creds, undefined, { maxRetries: 0 }))
+
+    expect(error.kind).toBe('network')
+    expect(error.retryable).toBe(true)
+    expect(error.message).toBe('Sunucuya bağlanılamadı. İnternet bağlantısını ve sunucu adresini kontrol edin.')
+  })
+
+  it('turns a non-JSON body into a bad-response error with a Turkish message', async () => {
+    const creds = uniqueCreds()
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('<html>Bakım</html>', { status: 200 }))))
+
+    const error = await captureError(xtreamApi.getLiveStreams(creds))
+
+    expect(error.kind).toBe('bad-response')
+    expect(error.message).toBe('Geçersiz sunucu yanıtı. JSON bekleniyordu: <html>Bakım</html>')
+  })
+
+  it('turns a list response that is not a list into a bad-response error', async () => {
+    // Used to surface as "streams.map is not a function" deep in the UI.
+    const creds = uniqueCreds()
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse({ error: 'unknown action' }))))
+
+    const error = await captureError(xtreamApi.getLiveStreams(creds))
+
+    expect(error.kind).toBe('bad-response')
+    expect(error.message).toContain('Beklenmeyen sunucu yanıtı')
+  })
+
+  it('treats an empty object as an empty list', async () => {
+    const creds = uniqueCreds()
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse({}))))
+
+    await expect(xtreamApi.getVodStreams(creds, '7')).resolves.toEqual([])
+  })
+
+  it('caches small list responses but not large ones', async () => {
+    const small = uniqueCreds()
+    const smallFetch = vi.fn(() => Promise.resolve(jsonResponse([{ stream_id: 1, name: 'A' }])))
+    vi.stubGlobal('fetch', smallFetch)
+    await xtreamApi.getLiveStreams(small)
+    await xtreamApi.getLiveStreams(small)
+    expect(smallFetch).toHaveBeenCalledTimes(1)
+
+    const large = uniqueCreds()
+    const bigName = 'x'.repeat(2 * 1024 * 1024 + 10)
+    const largeFetch = vi.fn(() => Promise.resolve(jsonResponse([{ stream_id: 1, name: bigName }])))
+    vi.stubGlobal('fetch', largeFetch)
+    await xtreamApi.getLiveStreams(large)
+    await xtreamApi.getLiveStreams(large)
+    expect(largeFetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('normalizes the auth flag when the panel sends it as a string', async () => {
+    const creds = uniqueCreds()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            user_info: { auth: '1', status: 'Active', allowed_output_formats: ['m3u8', 'ts'] },
+            server_info: { timestamp_now: '1700000000' }
+          })
+        )
+      )
+    )
+
+    const auth = await xtreamApi.authenticate(creds)
+
+    expect(auth.user_info.auth).toBe(1)
+    expect(auth.user_info.allowed_output_formats).toEqual(['m3u8', 'ts'])
+    expect(auth.server_info.timestamp_now).toBe(1_700_000_000)
+  })
+
+  it('rejects an auth response without user_info as a bad response', async () => {
+    const creds = uniqueCreds()
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse([]))))
+
+    const error = await captureError(xtreamApi.authenticate(creds))
+
+    expect(error.kind).toBe('bad-response')
+    expect(error.message).toBe('Sunucu geçersiz kimlik doğrulama yanıtı döndürdü')
+  })
+})
+
+describe('xtream-api stream URLs', () => {
+  const creds = { url: 'http://panel.example:8080/', username: 'ali veli', password: 'p#a/ss?1' }
+
+  it('encodes username and password path segments', () => {
+    // A '#' used to cut the URL short and a '/' added a path segment.
+    expect(xtreamApi.buildLiveUrl(creds, 42)).toBe(
+      'http://panel.example:8080/live/ali%20veli/p%23a%2Fss%3F1/42.m3u8'
+    )
+    expect(xtreamApi.buildVodUrl(creds, 7, 'mkv')).toBe(
+      'http://panel.example:8080/movie/ali%20veli/p%23a%2Fss%3F1/7.mkv'
+    )
+    expect(xtreamApi.buildSeriesUrl(creds, 9, 'mp4')).toBe(
+      'http://panel.example:8080/series/ali%20veli/p%23a%2Fss%3F1/9.mp4'
+    )
+  })
+
+  it('leaves plain credentials unchanged', () => {
+    expect(xtreamApi.buildLiveUrl({ url: 'http://h', username: 'u', password: 'p' }, 1)).toBe(
+      'http://h/live/u/p/1.m3u8'
+    )
+  })
+
+  it('still masks encoded credentials', () => {
+    expect(maskCredentialsInUrl(xtreamApi.buildLiveUrl(creds, 42))).toBe(
+      'http://panel.example:8080/live/***/***/42.m3u8'
+    )
+  })
+
+  it('builds live channels in the requested format and keeps m3u8 as the default', () => {
+    const streams = [
+      {
+        num: 1, name: 'Kanal', stream_type: 'live', stream_id: 5, stream_icon: '', epg_channel_id: '',
+        added: '', is_adult: false, category_id: '', category_ids: [], custom_sid: '', tv_archive: false,
+        direct_source: '', tv_archive_duration: 0
+      }
+    ]
+    expect(xtreamApi.liveStreamsToChannels(streams, creds, 's')[0].streamUrl).toMatch(/\/5\.m3u8$/)
+    expect(xtreamApi.liveStreamsToChannels(streams, creds, 's', { liveFormat: 'ts' })[0].streamUrl).toMatch(
+      /\/5\.ts$/
+    )
+  })
+})
+
+describe('live output formats', () => {
+  const withFormats = (formats: string[]): Pick<XtreamAuthResponse, 'user_info'> => ({
+    user_info: {
+      username: '', password: '', message: '', auth: 1, status: '', exp_date: '', is_trial: '',
+      active_cons: '', created_at: '', max_connections: '', allowed_output_formats: formats
+    }
+  })
+
+  it('lists only the formats the panel allows', () => {
+    expect(getAllowedLiveFormats(withFormats(['ts']))).toEqual(['ts'])
+    expect(getAllowedLiveFormats(withFormats(['m3u8', 'rtmp']))).toEqual(['m3u8'])
+    expect(getAllowedLiveFormats(withFormats(['ts', 'm3u8']))).toEqual(['m3u8', 'ts'])
+  })
+
+  it('assumes both when the panel says nothing usable', () => {
+    expect(getAllowedLiveFormats(withFormats([]))).toEqual(['m3u8', 'ts'])
+    expect(getAllowedLiveFormats(withFormats(['rtmp']))).toEqual(['m3u8', 'ts'])
+    expect(getAllowedLiveFormats(null)).toEqual(['m3u8', 'ts'])
+  })
+
+  it('picks the preferred format only when it is allowed', () => {
+    expect(pickLiveFormat(['m3u8', 'ts'], 'ts')).toBe('ts')
+    expect(pickLiveFormat(['m3u8'], 'ts')).toBe('m3u8')
+    expect(pickLiveFormat(['ts'], 'm3u8')).toBe('ts')
+  })
+})
+
+describe('collectXtreamTimestamps', () => {
+  it('maps channel ids to added / last_modified timestamps', () => {
+    const vod = [
+      { stream_id: 3, added: '1700000000' },
+      { stream_id: 4, added: '' }
+    ] as Parameters<typeof collectXtreamTimestamps>[0]
+    const series = [{ series_id: 8, last_modified: '1690000000' }] as Parameters<
+      typeof collectXtreamTimestamps
+    >[0]
+
+    expect(collectXtreamTimestamps(vod, 'src', 'vod')).toEqual(new Map([['src_vod_3', 1_700_000_000]]))
+    expect(collectXtreamTimestamps(series, 'src', 'series')).toEqual(
+      new Map([['src_series_8', 1_690_000_000]])
+    )
   })
 })
