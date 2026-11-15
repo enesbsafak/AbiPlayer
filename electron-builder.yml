@@ -31,6 +31,8 @@ files:
   - '!{.worktrees,e2e,scripts,.github}/**'
   - '!{test-results,playwright-report,coverage}/**'
   - '!**/*.tsbuildinfo'
+  # Source maps of dependencies (electron-updater's chain); nothing reads them.
+  - '!**/*.map'
 win:
   icon: build/icon.ico
   executableName: abi-player
