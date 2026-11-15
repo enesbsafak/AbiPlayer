@@ -4,8 +4,10 @@ import { AppShell } from '@/components/layout/AppShell'
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary'
 import { RouteError } from '@/components/layout/RouteError'
 import { Spinner } from '@/components/ui/Spinner'
+// Always the first route: part of the main bundle, so the dashboard does not
+// wait for a second chunk after the shell is up.
+import HomePage from '@/pages/HomePage'
 
-const HomePage = lazy(() => import('@/pages/HomePage'))
 const LiveTVPage = lazy(() => import('@/pages/LiveTVPage'))
 const VODPage = lazy(() => import('@/pages/VODPage'))
 const SeriesPage = lazy(() => import('@/pages/SeriesPage'))
@@ -40,7 +42,7 @@ export const appRoutes: RouteObject[] = [
         // the shell's outlet, leaving title bar and sidebar usable.
         errorElement: <RouteError />,
         children: [
-          { index: true, element: page(<HomePage />) },
+          { index: true, element: <HomePage /> },
           { path: 'live', element: page(<LiveTVPage />) },
           { path: 'vod', element: page(<VODPage />) },
           { path: 'series', element: page(<SeriesPage />) },

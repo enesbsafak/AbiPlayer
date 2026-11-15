@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { MiniPlayer } from '@/components/player/MiniPlayer'
 import { CertificateTrustHost } from '@/components/security/CertificateTrustHost'
+import { CredentialNotice } from '@/components/auth/CredentialNotice'
 import { useStore } from '@/store'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useEPG } from '@/hooks/useEPG'
@@ -73,6 +74,7 @@ export function AppShell() {
       </div>
       {currentChannel && (isMiniPlayer || isPlaybackSuspended) && <MiniPlayer />}
       <CertificateTrustHost />
+      <CredentialNotice />
     </div>
   )
 }

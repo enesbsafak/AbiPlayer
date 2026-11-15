@@ -1,8 +1,12 @@
 import { readFile, rename } from 'fs/promises'
 import { basename } from 'path'
-import type { SecureXtreamCredentials } from '../../shared/types/electron-ipc'
-import type { SecureCredentialMap, SecureCredentialsLossNotice } from '../../shared/ipc/contract'
-import { isValidCredential, isValidSourceId, sanitizeCredentialMap } from '../../shared/secure-credentials'
+import type { SecureCredentialMap, SecureCredentialsLossNotice, SecureSourceSecret } from '../../shared/ipc/contract'
+import {
+  isValidCredential,
+  isValidSourceId,
+  isValidSourceSecret,
+  sanitizeCredentialMap
+} from '../../shared/secure-credentials'
 import { nodeAtomicWriteOps, writeFileAtomic, type AtomicWriteOps } from './atomic-file'
 
 export interface SafeStorageLike {
@@ -33,7 +37,7 @@ const nodeCredentialFs: CredentialStoreFs = {
   rename: (from, to) => rename(from, to)
 }
 
-export { isValidCredential, isValidSourceId }
+export { isValidCredential, isValidSourceId, isValidSourceSecret }
 
 class UnreadableStoreError extends Error {
   constructor(readonly reason: SecureCredentialsLossNotice['reason']) {
@@ -74,7 +78,7 @@ export class CredentialStore {
     return this.withLock(() => this.read())
   }
 
-  set(sourceId: string, credential: SecureXtreamCredentials): Promise<void> {
+  set(sourceId: string, credential: SecureSourceSecret): Promise<void> {
     return this.withLock(async () => {
       const store = await this.read()
       store[sourceId] = credential

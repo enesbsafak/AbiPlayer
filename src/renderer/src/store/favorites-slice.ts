@@ -7,17 +7,20 @@ const CONTENT_TYPES = new Set<Channel['type']>(['live', 'vod', 'series'])
 /**
  * Enough of a favourite to render its card and start it when its catalog is
  * not in memory (after a restart, before the full sync; an inactive source).
- * No credential: Xtream items keep only their ids, M3U entries their URL.
+ * No URL and no credential: Xtream items keep their ids and are rebuilt from
+ * the source; an M3U entry (`m3u: true`) keeps its catalog id and gets its URL
+ * from the playlist once that is loaded, since playlist URLs usually hold the
+ * account password too.
  */
 export interface FavoriteSnapshot {
   id: string
   name: string
   sourceId: string
   type: Channel['type']
-  /** M3U entries only: the entry URL is their identity. */
-  streamUrl?: string
   streamId?: number
   seriesId?: number
+  /** An M3U entry: played by looking its id up in the loaded playlist. */
+  m3u?: true
   containerExtension?: string
   logo?: string
   coverUrl?: string
@@ -25,6 +28,10 @@ export interface FavoriteSnapshot {
   categoryName?: string
   rating?: string
   year?: string
+}
+
+function isHttpUrlText(value: unknown): boolean {
+  return typeof value === 'string' && /^https?:\/\//i.test(value.trim())
 }
 
 export function favoriteSnapshotOf(channel: Channel): FavoriteSnapshot {
@@ -37,7 +44,7 @@ export function favoriteSnapshotOf(channel: Channel): FavoriteSnapshot {
   const isXtream = typeof channel.streamId === 'number' || typeof channel.seriesId === 'number'
   if (typeof channel.streamId === 'number') snapshot.streamId = channel.streamId
   if (typeof channel.seriesId === 'number') snapshot.seriesId = channel.seriesId
-  if (!isXtream && channel.streamUrl) snapshot.streamUrl = channel.streamUrl
+  if (!isXtream && isHttpUrlText(channel.streamUrl)) snapshot.m3u = true
   if (channel.containerExtension) snapshot.containerExtension = channel.containerExtension
   if (channel.logo) snapshot.logo = channel.logo
   if (channel.coverUrl) snapshot.coverUrl = channel.coverUrl
@@ -49,10 +56,35 @@ export function favoriteSnapshotOf(channel: Channel): FavoriteSnapshot {
   return snapshot
 }
 
-/** The card a snapshot renders, playable through the same paths as a catalog item. */
+/**
+ * The card a snapshot renders. Xtream items play through the same paths as a
+ * catalog item; an M3U card has no URL until its playlist is loaded
+ * (`isM3uSnapshotChannel`).
+ */
 export function channelFromFavoriteSnapshot(snapshot: FavoriteSnapshot): Channel {
-  const { streamUrl, ...rest } = snapshot
-  return { ...rest, streamUrl: streamUrl ?? '' }
+  const { m3u: _m3u, ...rest } = snapshot
+  return { ...rest, streamUrl: '' }
+}
+
+/** A card for an M3U entry whose playlist is not loaded: it needs the URL looked up before playing. */
+export function isM3uSnapshotChannel(channel: Channel): boolean {
+  return typeof channel.streamId !== 'number' && typeof channel.seriesId !== 'number' && !channel.streamUrl
+}
+
+/**
+ * Persist v3: snapshots no longer hold the M3U entry URL; one that had an
+ * http(s) entry URL and no Xtream id is marked `m3u` instead. Pure and
+ * idempotent; anything that is not a snapshot passes through (merge validates
+ * the rest).
+ */
+export function stripSnapshotStreamUrls(snapshots: unknown): unknown {
+  if (!Array.isArray(snapshots)) return snapshots
+  return snapshots.map((raw) => {
+    if (!raw || typeof raw !== 'object' || !('streamUrl' in raw)) return raw
+    const { streamUrl, ...rest } = raw as Record<string, unknown>
+    const hasXtreamId = typeof rest.streamId === 'number' || typeof rest.seriesId === 'number'
+    return !hasXtreamId && isHttpUrlText(streamUrl) ? { ...rest, m3u: true } : rest
+  })
 }
 
 function optionalString(value: unknown): string | undefined {
@@ -78,11 +110,12 @@ export function sanitizeFavoriteSnapshot(raw: unknown): FavoriteSnapshot | null 
   const seriesId = optionalId(input.seriesId)
   if (streamId !== undefined) snapshot.streamId = streamId
   if (seriesId !== undefined) snapshot.seriesId = seriesId
-  // A URL on an Xtream item could only be a credential-bearing one.
-  const streamUrl = optionalString(input.streamUrl)
+  // No URL is ever kept: an Xtream one would carry the credentials, and an M3U
+  // entry is found again by its id in the loaded playlist. A snapshot that is
+  // neither cannot be played.
   if (streamId === undefined && seriesId === undefined) {
-    if (!streamUrl || !/^https?:\/\//i.test(streamUrl.trim())) return null
-    snapshot.streamUrl = streamUrl
+    if (input.m3u !== true) return null
+    snapshot.m3u = true
   }
   for (const key of ['containerExtension', 'logo', 'coverUrl', 'categoryId', 'categoryName', 'rating', 'year'] as const) {
     const value = optionalString(input[key])

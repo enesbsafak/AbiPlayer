@@ -1,7 +1,13 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { createSettingsSlice, normalizeSettings, type SettingsSlice } from './settings-slice'
-import { createAuthSlice, type AuthSlice } from './auth-slice'
+import {
+  createAuthSlice,
+  needsStoredSecret,
+  persistableSource,
+  plainSecretOf,
+  type AuthSlice
+} from './auth-slice'
 import { createPlaylistSlice, type PlaylistSlice } from './playlist-slice'
 import { createPlayerSlice, type PlayerSlice } from './player-slice'
 import { createEpgSlice, type EpgSlice } from './epg-slice'
@@ -17,6 +23,7 @@ import { createPersistController, type PersistBackend, type SideStorage } from '
 import { PERSIST_VERSION, runPersistMigrations } from './persist-migrations'
 import { sanitizeProgressEntries, type WatchProgressEntry } from '@/services/watch-progress'
 import type { PlaylistSource } from '@/types/playlist'
+import { perfMark, perfWatchStore } from '@/services/perf'
 
 export type AppStore =
   & SettingsSlice
@@ -138,18 +145,16 @@ export function createPartialize(): (state: AppStore) => PersistedStoreState {
       state.favoriteIds,
       state.favoriteSnapshots,
       state.hiddenCategoryIds,
-      state.watchProgress
+      state.watchProgress,
+      state.legacySecretSourceIds
     ]
     if (last && lastParts && parts.every((part, index) => part === lastParts![index])) return last
 
     lastParts = parts
+    const keepPlainSecret = new Set(state.legacySecretSourceIds)
     last = {
       settings: state.settings,
-      sources: state.sources.map((source) => {
-        if (source.type !== 'xtream') return source
-        const { username: _username, password: _password, ...safeSource } = source
-        return safeSource
-      }),
+      sources: state.sources.map((source) => persistableSource(source, keepPlainSecret.has(source.id))),
       activeSourceId: state.activeSourceId,
       volume: state.volume,
       isMuted: state.isMuted,
@@ -214,11 +219,12 @@ export function mergePersistedState(persisted: unknown, current: AppStore): AppS
   // hydration in useAutoConnect can finish first, against the empty default
   // source list, and mark itself done. The sources arriving here carry no
   // credentials (they are never persisted), so it has to run again.
-  const credentialsHydrated =
-    current.credentialsHydrated &&
-    !persistedSources.some(
-      (source) => source.type === 'xtream' && !(source.username && source.password)
-    )
+  const credentialsHydrated = current.credentialsHydrated && !persistedSources.some(needsStoredSecret)
+  // Written by a version that kept them in plain text: they stay there until
+  // useAutoConnect has copied them to the secure store.
+  const legacySecretSourceIds = persistedSources
+    .filter((source) => plainSecretOf(source) !== null)
+    .map((source) => source.id)
 
   return {
     ...current,
@@ -231,7 +237,8 @@ export function mergePersistedState(persisted: unknown, current: AppStore): AppS
     favoriteSnapshots,
     hiddenCategoryIds,
     watchProgress: sanitizeProgressEntries(p.watchProgress),
-    credentialsHydrated
+    credentialsHydrated,
+    legacySecretSourceIds
   }
 }
 
@@ -275,6 +282,7 @@ export function migratePersistedState(persisted: unknown, version: number): Pers
   return outcome.state as unknown as PersistedStoreState
 }
 
+perfMark('renderer:store-create')
 export const useStore = create<AppStore>()(
   persist(
     (...a) => ({
@@ -309,6 +317,7 @@ export const useStore = create<AppStore>()(
     }
   )
 )
+perfWatchStore(useStore)
 
 declare global {
   interface Window {

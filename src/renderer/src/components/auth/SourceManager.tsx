@@ -40,6 +40,10 @@ export function SourceManager() {
   const setXtreamAuth = useStore((s) => s.setXtreamAuth)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const clearEpg = useStore((s) => s.clearEpg)
+  const sourceErrors = useStore((s) => s.sourceErrors)
+  const setSourceError = useStore((s) => s.setSourceError)
+  const updateSource = useStore((s) => s.updateSource)
+  const [removalError, setRemovalError] = useState<string | null>(null)
 
   // A set, not one id: two refreshes can overlap, and the first to finish
   // used to clear the spinner of the other.
@@ -58,11 +62,16 @@ export function SourceManager() {
   }
 
   const handleRemove = async (source: PlaylistSource) => {
-    if (source.type === 'xtream') {
+    setRemovalError(null)
+    if (source.type === 'xtream' || source.type === 'm3u_url') {
       try {
         await secureCredentialService.delete(source.id)
       } catch (err) {
-        console.error('Failed to remove secure credentials:', err)
+        // The source still goes, as asked; the user learns that its stored
+        // sign-in could not be wiped instead of it failing silently.
+        setRemovalError(
+          `"${source.name}" kaldırıldı, ancak kayıtlı giriş bilgisi güvenli depodan silinemedi: ${toUserMessage(err)}`
+        )
       }
     }
 
@@ -111,7 +120,10 @@ export function SourceManager() {
         if (!result) return
         const parsed = parseM3U(result.content, sourceId)
         if (!sourceStillExists(sourceId)) return
+        // The file may have been picked from a new place: the next start reads it from there.
+        if (result.path !== source.filePath) updateSource(sourceId, { filePath: result.path })
         replaceSourceCatalog(sourceId, m3uPlaylistToReplacement(parsed), revision)
+        setSourceError(sourceId, null)
       }
     } catch (err) {
       setRefreshError((prev) => ({ ...prev, [sourceId]: toUserMessage(err, 'Yenileme başarısız oldu.') }))
@@ -122,12 +134,20 @@ export function SourceManager() {
 
   const isConnected = (sourceId: string, type: string) => {
     if (type === 'xtream') return !!xtreamAuth[sourceId]
-    return true // M3U sources are always "connected" if they exist
+    return !sourceErrors[sourceId]
+  }
+
+  const statusText = (source: PlaylistSource, connected: boolean): string | null => {
+    const failure = sourceErrors[source.id]
+    if (failure?.retryAt != null) return 'yeniden bağlanıyor...'
+    if (source.type === 'xtream' && !connected && !failure) return 'bağlanıyor...'
+    return null
   }
 
   if (sources.length === 0) {
     return (
       <div className="text-center py-8 text-surface-500">
+        {removalError && <p className="mb-2 text-xs text-red-400" role="alert">{removalError}</p>}
         <p>Henüz kaynak eklenmedi.</p>
         <p className="text-sm mt-1">Başlamak için bir Xtream Codes sunucusu veya M3U listesi ekleyin.</p>
       </div>
@@ -137,6 +157,9 @@ export function SourceManager() {
   return (
     <div className="flex flex-col gap-2">
       <h3 className="text-sm font-medium text-surface-400 mb-1">Kaynaklarınız</h3>
+      {removalError && (
+        <p className="text-xs text-red-400" role="alert">{removalError}</p>
+      )}
       {sources.map((source) => {
         const connected = isConnected(source.id, source.type)
         const isRefreshing = refreshingIds.has(source.id)
@@ -169,15 +192,29 @@ export function SourceManager() {
                   <p className="text-sm font-medium">{source.name}</p>
                   <p className="text-xs text-surface-500">
                     {SOURCE_TYPE_LABELS[source.type]}
-                    {source.type === 'xtream' && !connected && ' - yeniden bağlanıyor...'}
+                    {statusText(source, connected) && ` - ${statusText(source, connected)}`}
                   </p>
-                  {refreshError[source.id] && (
-                    <p className="text-xs text-red-400 mt-0.5" role="alert">{refreshError[source.id]}</p>
+                  {(refreshError[source.id] ?? sourceErrors[source.id]?.message) && (
+                    <p className="text-xs text-red-400 mt-0.5" role="alert">
+                      {refreshError[source.id] ?? sourceErrors[source.id]?.message}
+                    </p>
                   )}
                 </div>
               </div>
             </button>
             <div className="flex items-center gap-1">
+              {source.type === 'm3u_file' && sourceErrors[source.id]?.kind === 'file' && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={isRefreshing}
+                  onClick={() => {
+                    void handleRefresh(source.id)
+                  }}
+                >
+                  Dosyayı Yeniden Seç
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"

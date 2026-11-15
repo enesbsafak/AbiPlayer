@@ -8,7 +8,9 @@ import {
   channelFromFavoriteSnapshot,
   createFavoritesSliceFor,
   favoriteSnapshotOf,
+  isM3uSnapshotChannel,
   sanitizeFavoriteSnapshot,
+  stripSnapshotStreamUrls,
   type FavoritesSlice
 } from './favorites-slice'
 import { mergePersistedState, useStore } from './index'
@@ -60,12 +62,15 @@ describe('favourite snapshots (F1-42)', () => {
     expect(store.getState().favoriteSnapshots).toEqual({})
   })
 
-  it('keeps an M3U entry URL and never an Xtream one', () => {
-    expect(favoriteSnapshotOf(entry)).toMatchObject({ streamUrl: 'http://cdn.test/1.m3u8', categoryName: 'Haber' })
+  // F3-02: M3U entry URLs usually hold the account password as well.
+  it('keeps no URL, neither an M3U entry one nor an Xtream one', () => {
+    const snapshot = favoriteSnapshotOf(entry)
+    expect(snapshot).toMatchObject({ id: 'm_ch_1', m3u: true, categoryName: 'Haber' })
+    expect(snapshot).not.toHaveProperty('streamUrl')
     expect(favoriteSnapshotOf({ ...film, streamUrl: 'http://panel/movie/u/p/7.mkv' })).not.toHaveProperty('streamUrl')
   })
 
-  it('renders and plays a favourite from its snapshot when the catalog is not loaded', () => {
+  it('renders a favourite from its snapshot when the catalog is not loaded; an M3U one waits for its playlist', () => {
     const snapshots = { [film.id]: favoriteSnapshotOf(film), [entry.id]: favoriteSnapshotOf(entry) }
     const channels = resolveFavoriteChannels(
       new Set([film.id, entry.id]),
@@ -75,7 +80,11 @@ describe('favourite snapshots (F1-42)', () => {
     )
 
     expect(channels.map((channel) => channel.id)).toEqual([film.id, entry.id])
-    expect(channels.every(isPlayableChannel)).toBe(true)
+    expect(isPlayableChannel(channels[0])).toBe(true)
+    expect(isM3uSnapshotChannel(channels[0])).toBe(false)
+    // No URL to play yet: the card is shown and looks the entry up once loaded.
+    expect(isPlayableChannel(channels[1])).toBe(false)
+    expect(isM3uSnapshotChannel(channels[1])).toBe(true)
     expect(targetFromChannel(channels[0])).toEqual({
       kind: 'movie',
       sourceId: 'x',
@@ -132,9 +141,11 @@ describe('favorite-snapshots migration', () => {
     { key: 'legacy', target: null, channel: { id: 'x_live_3', name: 'Eski', streamUrl: '', sourceId: 'x', type: 'live' } }
   ]
 
-  it('seeds snapshots of watched favourites from their history entries', () => {
+  it('seeds snapshots of watched favourites from their history entries; the next step drops the URL', () => {
     const seeded = seedFavoriteSnapshots(['x_vod_7', 'm_ch_1', 'x_live_3', 'x_series_9'], undefined, watchProgress)
-    expect(seeded.map((snapshot) => sanitizeFavoriteSnapshot(snapshot))).toEqual([
+    expect(seeded[1]).toMatchObject({ streamUrl: 'http://cdn.test/1.m3u8' })
+    expect(stripSnapshotStreamUrls(seeded) as unknown[]).toHaveLength(2)
+    expect((stripSnapshotStreamUrls(seeded) as unknown[]).map((snapshot) => sanitizeFavoriteSnapshot(snapshot))).toEqual([
       {
         id: 'x_vod_7',
         name: 'Film',
@@ -144,8 +155,16 @@ describe('favorite-snapshots migration', () => {
         containerExtension: 'mkv',
         coverUrl: 'http://img/c.jpg'
       },
-      { id: 'm_ch_1', name: 'Liste', sourceId: 'm', type: 'live', streamUrl: 'http://cdn.test/1.m3u8' }
+      { id: 'm_ch_1', name: 'Liste', sourceId: 'm', type: 'live', m3u: true }
     ])
+    expect(stripSnapshotStreamUrls(seeded)).toEqual([seeded[0], { id: 'm_ch_1', name: 'Liste', sourceId: 'm', type: 'live', m3u: true }])
+  })
+
+  it('strips stored URLs idempotently and leaves anything else alone', () => {
+    const once = stripSnapshotStreamUrls([{ id: 'a', streamUrl: 'http://u:p@cdn/1.ts' }, null, 3])
+    expect(once).toEqual([{ id: 'a', m3u: true }, null, 3])
+    expect(stripSnapshotStreamUrls(once)).toEqual(once)
+    expect(stripSnapshotStreamUrls('garbage')).toBe('garbage')
   })
 
   it('is idempotent and tolerates any shape', () => {

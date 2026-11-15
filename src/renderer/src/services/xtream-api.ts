@@ -28,6 +28,7 @@ import {
   normalizeXtreamVodStreams,
   parseXtreamTimestamp
 } from './xtream-normalize'
+import { perfXtreamMark } from './perf'
 
 export { XtreamRequestError, isXtreamRequestError } from './xtream-errors'
 export type { XtreamErrorKind } from './xtream-errors'
@@ -328,7 +329,9 @@ async function requestOnce(
 
   try {
     // cache: no-store avoids stale responses from the HTTP cache.
+    perfXtreamMark('xtream:request', url)
     const res = await fetch(url, { cache: 'no-store', signal: controller.signal, mode: 'cors' })
+    perfXtreamMark('xtream:response', url)
     clearTimeout(headersTimer)
 
     // Status first: `fetch` resolves on 4xx/5xx, so the body is only ever a
@@ -345,9 +348,12 @@ async function requestOnce(
       state.timeoutPhase = 'body'
       controller.abort()
     })
+    perfXtreamMark('xtream:body', url)
 
     try {
-      return { data: JSON.parse(body), size: body.length }
+      const data: unknown = JSON.parse(body)
+      perfXtreamMark('xtream:parsed', url)
+      return { data, size: body.length }
     } catch {
       const sample = maskCredentialsInUrl(body.slice(0, 200)).replace(/\s+/g, ' ').trim()
       throw new XtreamRequestError(

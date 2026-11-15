@@ -15,7 +15,7 @@ import {
 } from './files'
 import type { IpcHandler, IpcRegistrar } from './register'
 import { decodeTextFile, decodeWindows1254 } from './text-decoding'
-import type { IpcInvokeChannel } from '../../shared/ipc/contract'
+import { MAX_LOCAL_FILE_SIZE_BYTES, type IpcInvokeChannel } from '../../shared/ipc/contract'
 
 let dir: string
 
@@ -63,6 +63,17 @@ describe('readLocalTextFile', () => {
 
   it('names a missing file', async () => {
     await expect(readLocalTextFile(join(dir, 'gone.m3u'))).rejects.toThrow('Dosya bulunamadı: gone.m3u')
+  })
+
+  // F1-27: a playlist that imports from a URL (up to 128 MB) must import from disk too.
+  it('by default reads playlists as large as the URL import accepts', async () => {
+    const size = 100 * 1024 * 1024
+    const ops = {
+      stat: vi.fn(() => Promise.resolve({ size })),
+      readFile: vi.fn(() => Promise.resolve(new TextEncoder().encode('#EXTM3U\n')))
+    }
+    expect(MAX_LOCAL_FILE_SIZE_BYTES).toBeGreaterThanOrEqual(128 * 1024 * 1024)
+    await expect(readLocalTextFile(join(dir, 'big.m3u'), undefined, ops)).resolves.toBe('#EXTM3U\n')
   })
 })
 

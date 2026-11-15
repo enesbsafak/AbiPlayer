@@ -1,13 +1,26 @@
 import { useEffect, useRef } from 'react'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
-import { fetchAndParseM3U } from '@/services/m3u-parser'
-import { secureCredentialService } from '@/services/secure-credentials'
+import { XtreamRequestError } from '@/services/xtream-errors'
+import { fetchAndParseM3U, parseM3U } from '@/services/m3u-parser'
+import { readPickedFile } from '@/services/platform'
+import { secureCredentialService, type SourceSecrets } from '@/services/secure-credentials'
+import { classifyError, toUserMessage } from '@/services/user-error'
 import { catalog } from '@/catalog/catalog-store'
 import { m3uPlaylistToReplacement } from '@/catalog/convert'
 import type { CatalogStatusMap } from '@/store/playlist-slice'
+import { plainSecretOf, type SourceConnectionError } from '@/store/auth-slice'
+import type { PlaylistSource } from '@/types/playlist'
+import type { XtreamAuthResponse } from '@/types/xtream'
+import { perfMark } from '@/services/perf'
 
-const AUTO_RETRY_INTERVAL_MS = 15_000
+/** Waits before automatic attempt n (1-based) after a failed connection; the last one repeats. */
+export const RECONNECT_DELAYS_MS = [3_000, 6_000, 12_000, 24_000, 48_000, 60_000] as const
+
+export function reconnectDelayMs(failures: number): number {
+  const index = Math.min(Math.max(failures, 1), RECONNECT_DELAYS_MS.length) - 1
+  return RECONNECT_DELAYS_MS[index]
+}
 
 /** Ids of sources with any catalog data, as one string so the selector result is stable. */
 export function sourcesWithCatalogKey(status: CatalogStatusMap): string {
@@ -18,192 +31,340 @@ export function sourcesWithCatalogKey(status: CatalogStatusMap): string {
   return ids.sort().join('\n')
 }
 
+function authedSourcesKey(auth: Record<string, XtreamAuthResponse>): string {
+  return Object.keys(auth).sort().join('\n')
+}
+
+/** A connection attempt that will fail again the same way until the user acts. */
+export class SourceConnectError extends Error {
+  constructor(
+    readonly kind: Exclude<SourceConnectionError['kind'], 'other'>,
+    message: string,
+    options?: { cause?: unknown }
+  ) {
+    super(message, options)
+    this.name = 'SourceConnectError'
+  }
+}
+
+/** The source still has to be connected: signed in, or its playlist loaded. */
+export function needsConnection(source: PlaylistSource, authed: ReadonlySet<string>, withCatalog: ReadonlySet<string>): boolean {
+  if (source.type === 'xtream') return !authed.has(source.id)
+  return !withCatalog.has(source.id)
+}
+
 /**
- * On app startup, automatically reconnects to saved sources:
- * - Xtream: re-authenticates with stored credentials
- * - M3U URL: re-fetches and parses the playlist
- * - M3U file: skipped (local file may not exist anymore)
+ * What a failure means for the source: the user message to show on it and
+ * whether trying again on a timer can help. A refused account or a missing
+ * file will not fix itself, so those stop the automatic attempts.
+ */
+export function describeConnectFailure(
+  error: unknown,
+  failures: number,
+  now: number
+): SourceConnectionError {
+  if (error instanceof SourceConnectError) {
+    return { kind: error.kind, message: error.message, retryAt: null }
+  }
+  if (classifyError(error) === 'auth') {
+    return { kind: 'auth', message: toUserMessage(error), retryAt: null }
+  }
+  return {
+    kind: 'other',
+    message: toUserMessage(error, 'Kaynağa bağlanılamadı.'),
+    retryAt: now + reconnectDelayMs(failures)
+  }
+}
+
+/** The one-line summary the dashboard shows while sources are not connected. */
+export function connectionSummary(
+  sources: readonly PlaylistSource[],
+  errors: Readonly<Record<string, SourceConnectionError>>
+): string | null {
+  const failures = sources.filter((source) => errors[source.id]).map((source) => `${source.name}: ${errors[source.id].message}`)
+  if (failures.length === 0) return null
+  if (failures.length === 1) return failures[0]
+  return `${failures.length} kaynağa bağlanılamadı — ${failures.join(' · ')}`
+}
+
+export interface ConnectDeps {
+  setXtreamAuth: (sourceId: string, auth: XtreamAuthResponse) => void
+  replaceSourceCatalog: (
+    sourceId: string,
+    replacement: ReturnType<typeof m3uPlaylistToReplacement>,
+    expectedRevision?: number
+  ) => void
+  authenticate?: typeof xtreamApi.authenticate
+  fetchPlaylist?: typeof fetchAndParseM3U
+  readFile?: typeof readPickedFile
+}
+
+/**
+ * One connection attempt for a saved source: sign in to an Xtream panel,
+ * download an M3U playlist, or read a local playlist file again (the catalog
+ * is not kept on disk, so without this a file source came back empty after
+ * every restart). Main only re-reads paths the user once picked in its dialog.
+ */
+export async function connectSource(source: PlaylistSource, deps: ConnectDeps): Promise<void> {
+  if (source.type === 'xtream') {
+    const secret = plainSecretOf(source)
+    if (!secret || !('username' in secret)) {
+      throw new SourceConnectError('missing-secret', 'Kayıtlı kimlik bilgileri bulunamadı. Kaynağı silip yeniden ekleyin.')
+    }
+    perfMark('connect:auth-start')
+    const auth = await (deps.authenticate ?? xtreamApi.authenticate)(secret)
+    perfMark('connect:auth-done')
+    if (auth.user_info.auth !== 1) {
+      throw new XtreamRequestError('auth', 'Kimlik doğrulama başarısız (kullanıcı adı veya şifre reddedildi)')
+    }
+    deps.setXtreamAuth(source.id, auth)
+    return
+  }
+
+  // Dropped by the catalog when the source is removed or refreshed meanwhile.
+  const revision = catalog.getSourceRevision(source.id)
+
+  if (source.type === 'm3u_url') {
+    if (!source.url) {
+      throw new SourceConnectError('missing-secret', 'Kayıtlı liste adresi bulunamadı. Kaynağı silip yeniden ekleyin.')
+    }
+    perfMark('connect:m3u-fetch-start')
+    const parsed = await (deps.fetchPlaylist ?? fetchAndParseM3U)(source.url, source.id)
+    deps.replaceSourceCatalog(source.id, m3uPlaylistToReplacement(parsed), revision)
+    perfMark('connect:m3u-added', { channels: parsed.channels.length })
+    return
+  }
+
+  if (!source.filePath) {
+    throw new SourceConnectError('file', 'Liste dosyasının yolu kayıtlı değil. Dosyayı yeniden seçin.')
+  }
+  let file: Awaited<ReturnType<typeof readPickedFile>>
+  try {
+    file = await (deps.readFile ?? readPickedFile)(source.filePath)
+  } catch (error) {
+    throw new SourceConnectError('file', `${toUserMessage(error, 'Liste dosyası okunamadı.')} Dosyayı yeniden seçin.`, {
+      cause: error
+    })
+  }
+  // Outside Electron there is nothing to read; the source stays empty.
+  if (!file) return
+  deps.replaceSourceCatalog(source.id, m3uPlaylistToReplacement(parseM3U(file.content, source.id)), revision)
+}
+
+export interface SecretMigrationPlan {
+  /** Plain secrets to copy into the secure store. */
+  writes: Array<{ sourceId: string; secret: NonNullable<ReturnType<typeof plainSecretOf>> }>
+  /** Legacy sources the secure store already covers: their plain copy can go. */
+  alreadyStored: string[]
+}
+
+/**
+ * Which plain secrets of an older version still have to reach the secure
+ * store. A source the store already knows keeps the stored value.
+ */
+export function planSecretMigration(
+  sources: readonly PlaylistSource[],
+  legacyIds: readonly string[],
+  stored: SourceSecrets
+): SecretMigrationPlan {
+  const legacy = new Set(legacyIds)
+  const plan: SecretMigrationPlan = { writes: [], alreadyStored: [] }
+  for (const source of sources) {
+    if (!legacy.has(source.id)) continue
+    const secret = plainSecretOf(source)
+    if (!secret) continue
+    const known = source.type === 'xtream' ? stored.xtream[source.id] : stored.m3uUrls[source.id]
+    if (known) plan.alreadyStored.push(source.id)
+    else plan.writes.push({ sourceId: source.id, secret })
+  }
+  return plan
+}
+
+export const SECRET_MIGRATION_FAILED_MESSAGE =
+  'Kayıtlı giriş bilgileri güvenli depoya taşınamadı. Bilgiler kaybolmasın diye şimdilik eski yerinde duruyor; uygulama her açılışta yeniden deneyecek.'
+
+/**
+ * Reads the secure store and puts the secrets on the sources. Secrets an older
+ * version kept in plain text are copied there first; the plain copy is only
+ * dropped (`markSecretsMigrated`) for the writes that succeeded, so a failed
+ * write keeps it for the next start and the user is told.
+ */
+export async function hydrateSecrets(): Promise<void> {
+  const store = useStore.getState()
+  let stored: SourceSecrets
+  try {
+    perfMark('connect:credentials-ipc-start')
+    stored = await secureCredentialService.getAllSecrets()
+    perfMark('connect:credentials-ipc-done')
+  } catch (error) {
+    console.warn('[credentials] reading the secure store failed:', toUserMessage(error))
+    if (store.legacySecretSourceIds.length > 0) store.setSecretMigrationError(SECRET_MIGRATION_FAILED_MESSAGE)
+    store.setCredentialsHydrated(true)
+    return
+  }
+
+  const plan = planSecretMigration(useStore.getState().sources, useStore.getState().legacySecretSourceIds, stored)
+  const secrets: SourceSecrets = { xtream: { ...stored.xtream }, m3uUrls: { ...stored.m3uUrls } }
+  const migrated = [...plan.alreadyStored]
+  let failed = 0
+  await Promise.all(
+    plan.writes.map(async ({ sourceId, secret }) => {
+      try {
+        if ('m3uUrl' in secret) {
+          await secureCredentialService.setM3uUrl(sourceId, secret.m3uUrl)
+          secrets.m3uUrls[sourceId] = secret.m3uUrl
+        } else {
+          await secureCredentialService.set(sourceId, secret)
+          secrets.xtream[sourceId] = secret
+        }
+        migrated.push(sourceId)
+      } catch (error) {
+        failed += 1
+        console.warn('[credentials] moving a stored secret to the secure store failed:', toUserMessage(error))
+      }
+    })
+  )
+
+  const latest = useStore.getState()
+  latest.hydrateSourceSecrets(secrets)
+  latest.markSecretsMigrated(migrated)
+  latest.setSecretMigrationError(failed > 0 ? SECRET_MIGRATION_FAILED_MESSAGE : null)
+}
+
+interface SourceAttempt {
+  phase: 'connecting' | 'waiting' | 'stopped'
+  failures: number
+  timer: ReturnType<typeof setTimeout> | null
+}
+
+/**
+ * On app startup, connects every saved source: Xtream sources sign in, M3U
+ * URL sources download their playlist, M3U file sources read their file again.
+ *
+ * A source that fails is retried on a timer with backoff (3 s, 6 s, 12 s ...
+ * up to a minute), so a provider that was down at startup is picked up once it
+ * is back without the user doing anything. A refused account, a missing secret
+ * and an unreadable file stop the retries: they need the user. "Yeniden Dene"
+ * (`requestSourceReconnect`) starts every source over at once.
  */
 export function useAutoConnect() {
   const hydratingRef = useRef(false)
-  const inFlightRef = useRef(false)
-  const sourceAttemptAtRef = useRef<Record<string, number>>({})
+  const attemptsRef = useRef(new Map<string, SourceAttempt>())
   const lastRetryTokenRef = useRef(0)
+  const inFlightRef = useRef(0)
+  const aliveRef = useRef(true)
   const sources = useStore((s) => s.sources)
   const activeSourceId = useStore((s) => s.activeSourceId)
-  const xtreamAuth = useStore((s) => s.xtreamAuth)
+  const authedKey = useStore((s) => authedSourcesKey(s.xtreamAuth))
   const sourcesWithCatalog = useStore((s) => sourcesWithCatalogKey(s.catalogStatus))
   const credentialsHydrated = useStore((s) => s.credentialsHydrated)
-  const setXtreamAuth = useStore((s) => s.setXtreamAuth)
-  const hydrateXtreamCredentials = useStore((s) => s.hydrateXtreamCredentials)
-  const setCredentialsHydrated = useStore((s) => s.setCredentialsHydrated)
-  const setActiveSource = useStore((s) => s.setActiveSource)
-  const setAuthLoading = useStore((s) => s.setAuthLoading)
-  const setAuthError = useStore((s) => s.setAuthError)
-  const replaceSourceCatalog = useStore((s) => s.replaceSourceCatalog)
   const connectRetryToken = useStore((s) => s.connectRetryToken)
-  const isLoading = useStore((s) => s.isLoading)
 
   useEffect(() => {
     if (credentialsHydrated || hydratingRef.current) return
     hydratingRef.current = true
+    void hydrateSecrets().finally(() => {
+      hydratingRef.current = false
+    })
+  }, [credentialsHydrated])
 
-    const hydrateCredentials = async () => {
-      try {
-        const credentialsBySource = await secureCredentialService.getAll()
-        const mergedCredentials = { ...credentialsBySource }
-        const migrationTasks: Promise<void>[] = []
-
-        for (const source of sources) {
-          if (source.type !== 'xtream') continue
-          if (!source.url || !source.username || !source.password) continue
-          if (mergedCredentials[source.id]) continue
-
-          const creds = {
-            url: source.url,
-            username: source.username,
-            password: source.password
-          }
-          mergedCredentials[source.id] = creds
-          migrationTasks.push(secureCredentialService.set(source.id, creds))
-        }
-
-        if (migrationTasks.length > 0) {
-          await Promise.allSettled(migrationTasks)
-        }
-
-        hydrateXtreamCredentials(mergedCredentials)
-        setCredentialsHydrated(true)
-      } catch (err) {
-        console.error('Credential hydration failed:', err)
-        setCredentialsHydrated(true)
-      } finally {
-        hydratingRef.current = false
-      }
-    }
-
-    void hydrateCredentials()
-  }, [credentialsHydrated, sources, hydrateXtreamCredentials, setCredentialsHydrated])
+  useEffect(() => {
+    if (!activeSourceId && sources.length > 0) useStore.getState().setActiveSource(sources[0].id)
+  }, [activeSourceId, sources])
 
   useEffect(() => {
     if (!credentialsHydrated) return
-    if (sources.length === 0) return
+    const attempts = attemptsRef.current
+    const authed = new Set(authedKey ? authedKey.split('\n') : [])
+    const withCatalog = new Set(sourcesWithCatalog ? sourcesWithCatalog.split('\n') : [])
+    const known = new Map(sources.map((source) => [source.id, source]))
 
-    const loadedSourceIds = new Set(sourcesWithCatalog.split('\n'))
-    const knownSourceIds = new Set(sources.map((s) => s.id))
-    for (const sourceId of Object.keys(sourceAttemptAtRef.current)) {
-      if (!knownSourceIds.has(sourceId)) delete sourceAttemptAtRef.current[sourceId]
+    const forget = (sourceId: string) => {
+      const attempt = attempts.get(sourceId)
+      if (attempt?.timer) clearTimeout(attempt.timer)
+      attempts.delete(sourceId)
     }
 
-    // An explicit user retry must bypass the cooldown below, otherwise pressing
-    // "Yeniden Dene" within 15s of the failed attempt silently does nothing.
-    if (connectRetryToken !== lastRetryTokenRef.current) {
-      lastRetryTokenRef.current = connectRetryToken
-      sourceAttemptAtRef.current = {}
+    const publishSummary = () => {
+      const state = useStore.getState()
+      state.setAuthError(connectionSummary(state.sources, state.sourceErrors))
     }
 
-    const now = Date.now()
-    const pendingSources = sources.filter((source) => {
-      const lastAttemptAt = sourceAttemptAtRef.current[source.id] ?? 0
-      if (now - lastAttemptAt < AUTO_RETRY_INTERVAL_MS) return false
+    const userRetry = connectRetryToken !== lastRetryTokenRef.current
+    lastRetryTokenRef.current = connectRetryToken
+    if (userRetry) for (const sourceId of [...attempts.keys()]) if (attempts.get(sourceId)?.phase !== 'connecting') forget(sourceId)
 
-      if (source.type === 'xtream') {
-        if (xtreamAuth[source.id]) return false
-        return !!(source.url && source.username && source.password)
+    const start = (sourceId: string, visible: boolean) => {
+      const source = useStore.getState().sources.find((item) => item.id === sourceId)
+      if (!source) return
+      const attempt = attempts.get(sourceId) ?? { phase: 'connecting', failures: 0, timer: null }
+      attempt.phase = 'connecting'
+      attempt.timer = null
+      attempts.set(sourceId, attempt)
+
+      // Only the first attempt and the user's retries hold the dashboard on
+      // "Kaynaklar bağlanıyor..."; timer retries run behind the error panel.
+      if (visible) {
+        inFlightRef.current += 1
+        useStore.getState().setAuthLoading(true)
       }
-
-      if (source.type === 'm3u_url') {
-        if (!source.url) return false
-        return !loadedSourceIds.has(source.id)
-      }
-
-      return false
-    })
-
-    if (pendingSources.length === 0) {
-      if (!activeSourceId && sources.length > 0) {
-        setActiveSource(sources[0].id)
-      }
-      return
-    }
-
-    // A run is already going. `isLoading` is in this effect's deps, so we get
-    // re-invoked the moment it settles and can pick the retry up then.
-    if (inFlightRef.current) return
-
-    const connectAll = async (): Promise<void> => {
-      inFlightRef.current = true
-      setAuthLoading(true)
-      setAuthError(null)
-
-      // Each source reports independently: a dead one used to keep the whole
-      // startup screen up until IT timed out, with no message until the very
-      // end. Now every failure surfaces the moment it happens.
-      const failures: string[] = []
-      const reportFailure = (source: (typeof pendingSources)[number], error: unknown) => {
-        const reason = error instanceof Error ? error.message : 'Bilinmeyen hata'
-        failures.push(`${source.name}: ${reason}`)
-        setAuthError(
-          failures.length === 1
-            ? failures[0]
-            : `${failures.length} kaynağa bağlanılamadı — ${failures.join(' · ')}`
-        )
-      }
-
-      try {
-        await Promise.all(
-          pendingSources.map(async (source) => {
-            sourceAttemptAtRef.current[source.id] = Date.now()
-
-            try {
-              if (source.type === 'xtream') {
-                const creds = { url: source.url!, username: source.username!, password: source.password! }
-                const auth = await xtreamApi.authenticate(creds)
-
-                if (auth.user_info.auth !== 1) {
-                  throw new Error('Kimlik doğrulama başarısız (kullanıcı adı veya şifre reddedildi)')
-                }
-
-                setXtreamAuth(source.id, auth)
-                return
-              }
-
-              if (source.type === 'm3u_url' && source.url) {
-                // Dropped by the catalog when the source is removed or
-                // refreshed while the playlist downloads.
-                const revision = catalog.getSourceRevision(source.id)
-                const parsed = await fetchAndParseM3U(source.url, source.id)
-                replaceSourceCatalog(source.id, m3uPlaylistToReplacement(parsed), revision)
-              }
-            } catch (error) {
-              reportFailure(source, error)
+      const { setXtreamAuth, replaceSourceCatalog } = useStore.getState()
+      void connectSource(source, { setXtreamAuth, replaceSourceCatalog })
+        .then(
+          () => {
+            if (attempts.get(sourceId) !== attempt) return
+            attempts.delete(sourceId)
+            useStore.getState().setSourceError(sourceId, null)
+          },
+          (error: unknown) => {
+            if (attempts.get(sourceId) !== attempt) return
+            attempt.failures += 1
+            const failure = describeConnectFailure(error, attempt.failures, Date.now())
+            useStore.getState().setSourceError(sourceId, failure)
+            if (failure.retryAt === null) {
+              attempt.phase = 'stopped'
+              return
             }
-          })
+            attempt.phase = 'waiting'
+            if (!aliveRef.current) return
+            attempt.timer = setTimeout(() => {
+              if (attempts.get(sourceId) !== attempt) return
+              start(sourceId, false)
+            }, failure.retryAt - Date.now())
+          }
         )
-
-        // Ensure activeSourceId is set if we have sources
-        if (!activeSourceId && sources.length > 0) {
-          setActiveSource(sources[0].id)
-        }
-      } finally {
-        setAuthLoading(false)
-        inFlightRef.current = false
-      }
+        .finally(() => {
+          publishSummary()
+          if (!visible) return
+          inFlightRef.current -= 1
+          if (inFlightRef.current === 0) useStore.getState().setAuthLoading(false)
+        })
     }
 
-    void connectAll()
-  }, [
-    credentialsHydrated,
-    sources,
-    activeSourceId,
-    xtreamAuth,
-    sourcesWithCatalog,
-    connectRetryToken,
-    isLoading,
-    setXtreamAuth,
-    setActiveSource,
-    setAuthLoading,
-    setAuthError,
-    replaceSourceCatalog
-  ])
+    for (const sourceId of [...attempts.keys()]) if (!known.has(sourceId)) forget(sourceId)
+    for (const source of sources) {
+      if (!needsConnection(source, authed, withCatalog)) {
+        // Connected some other way meanwhile (the source manager's refresh).
+        forget(source.id)
+        useStore.getState().setSourceError(source.id, null)
+        continue
+      }
+      if (!attempts.has(source.id)) start(source.id, true)
+    }
+    publishSummary()
+  }, [credentialsHydrated, sources, authedKey, sourcesWithCatalog, connectRetryToken])
+
+  useEffect(() => {
+    const attempts = attemptsRef.current
+    aliveRef.current = true
+    return () => {
+      aliveRef.current = false
+      // An attempt in flight stays known, so a remount (React's development
+      // double mount) does not send the same request again.
+      for (const [sourceId, attempt] of attempts) {
+        if (attempt.timer) clearTimeout(attempt.timer)
+        if (attempt.phase !== 'connecting') attempts.delete(sourceId)
+      }
+    }
+  }, [])
 }

@@ -1,7 +1,7 @@
 import { test, expect } from '../support/fixtures.ts'
 import { KNOWN } from '../mock-provider/catalog.ts'
 import { addXtreamSource, anyCard, expectHomeWithContent, openRoute, playLiveChannel, waitForMpvProgress } from '../support/flows.ts'
-import { knownBug, observe } from '../support/known-bugs.ts'
+import { observe } from '../support/known-bugs.ts'
 
 const loginError = (page: import('@playwright/test').Page) => page.locator('form p.text-red-400')
 
@@ -64,7 +64,6 @@ test.describe('sağlayıcı hataları', () => {
     })
 
     test('F1-43: ana sayfa hata ve "Yeniden Dene" gösterir', async ({ launch, mock }) => {
-      knownBug('F1-43', 'Ana sayfa ön yüklemesi tüm hataları yutuyor; hata ve yeniden deneme gösterilmiyor')
       const app = await launch()
       await addXtreamSource(app.page, mock)
       // Requests are retried with backoff; give the bootstrap time to give up

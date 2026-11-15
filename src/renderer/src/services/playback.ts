@@ -4,6 +4,7 @@ import { xtreamApi } from './xtream-api'
 import { getAllowedLiveFormats, pickLiveFormat } from './xtream-normalize'
 import {
   isPlayableTarget,
+  m3uEntryId,
   targetFromCatalogItem,
   type PlaybackTarget
 } from '../../../shared/playback'
@@ -79,6 +80,43 @@ export function resolveStreamUrl(target: PlaybackTarget, context: StreamUrlConte
       if (!context.credentials) return fallback
       return xtreamApi.buildSeriesUrl(context.credentials, target.streamId, target.containerExtension)
   }
+}
+
+/** The catalog reads `findM3uEntry` needs (the catalog store has them). */
+export interface M3uEntryLookup {
+  getItem(id: string): Channel | undefined
+  getItems(sourceId: string, type: Channel['type']): readonly Channel[]
+}
+
+const MEDIA_TYPES: readonly Channel['type'][] = ['live', 'vod', 'series']
+
+/**
+ * The loaded playlist entry an M3U target stands for, or null when its
+ * playlist is not loaded or no longer lists it. Stored history and favourites
+ * keep only the entry id (a hash of the URL), never the URL itself, so the URL
+ * comes from here when they are played. `preferredId` is the catalog id the
+ * entry had when it was stored: tried first, then the source's lists.
+ */
+export function findM3uEntry(
+  target: Extract<PlaybackTarget, { kind: 'm3u' }>,
+  lookup: M3uEntryLookup,
+  preferredId?: string
+): Channel | null {
+  const matches = (item: Channel | undefined): item is Channel =>
+    !!item &&
+    item.sourceId === target.sourceId &&
+    isHttpUrl(item.streamUrl) &&
+    m3uEntryId(item.streamUrl) === target.entryId
+  if (preferredId) {
+    const item = lookup.getItem(preferredId)
+    if (matches(item)) return item
+  }
+  const types = [target.mediaType, ...MEDIA_TYPES.filter((type) => type !== target.mediaType)]
+  for (const type of types) {
+    const found = lookup.getItems(target.sourceId, type).find(matches)
+    if (found) return found
+  }
+  return null
 }
 
 /** The parts of the store a URL is resolved from. Optional so slices can be tested alone. */

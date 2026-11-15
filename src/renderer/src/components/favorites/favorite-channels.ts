@@ -1,7 +1,8 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useStore } from '@/store'
 import { catalog, useCatalogVersion } from '@/catalog'
-import { channelFromFavoriteSnapshot, type FavoriteSnapshot } from '@/store/favorites-slice'
+import { channelFromFavoriteSnapshot, isM3uSnapshotChannel, type FavoriteSnapshot } from '@/store/favorites-slice'
+import type { DeferredPlayRequest } from '@/hooks/useDeferredPlayback'
 import type { Channel } from '@/types/playlist'
 
 /**
@@ -40,4 +41,28 @@ export function useFavoriteChannels(limit?: number): Channel[] {
     const sourceIds = new Set(sources.map((source) => source.id))
     return resolveFavoriteChannels(favoriteIds, snapshots, (id) => catalog.getItem(id), sourceIds, limit)
   }, [favoriteIds, snapshots, sources, catalogVersion, limit])
+}
+
+/**
+ * Click handler for favourite cards. A snapshot card of an M3U entry has no
+ * URL (snapshots never store one); it plays once its playlist is loaded and
+ * lists the entry under the same id.
+ */
+export function useOpenFavorite(
+  open: (channel: Channel) => void,
+  playWhenReady: (request: DeferredPlayRequest, play: (channel: Channel) => void) => void
+): (channel: Channel) => void {
+  return useCallback(
+    (channel: Channel) => {
+      if (!isM3uSnapshotChannel(channel)) {
+        open(channel)
+        return
+      }
+      playWhenReady(
+        { sourceId: channel.sourceId, name: channel.name, resolve: () => catalog.getItem(channel.id) ?? null },
+        open
+      )
+    },
+    [open, playWhenReady]
+  )
 }

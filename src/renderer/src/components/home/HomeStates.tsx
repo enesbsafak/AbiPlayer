@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Activity, Plus, RefreshCw, Tv } from 'lucide-react'
+import { Activity, Plus, RefreshCw, Tv, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { APP_NAME, APP_VERSION_LABEL } from '@/constants/app-info'
 import { BOOTSTRAP_STAGES, type BootstrapStage } from '@/hooks/useHomeBootstrap'
@@ -83,15 +83,18 @@ export function HomeLoading({ isConnectingSources, stage, onRetry }: HomeLoading
 interface HomeErrorProps {
   message: string
   onRetry: () => void
+  /** A second line, e.g. that the app keeps retrying on its own. */
+  detail?: string
 }
 
-export function HomeError({ message, onRetry }: HomeErrorProps) {
+export function HomeError({ message, onRetry, detail }: HomeErrorProps) {
   const navigate = useNavigate()
 
   return (
     <Panel>
       <p className="text-sm font-medium text-white">Kaynağa bağlanılamadı</p>
       <p className="max-w-xl text-sm text-red-300">{toUserMessage(message, 'Bağlantı kurulamadı.')}</p>
+      {detail && <p className="text-xs text-surface-400">{detail}</p>}
       <div className="flex items-center gap-2">
         <Button onClick={onRetry}>
           <RefreshCw size={16} />
@@ -102,5 +105,41 @@ export function HomeError({ message, onRetry }: HomeErrorProps) {
         </Button>
       </div>
     </Panel>
+  )
+}
+
+interface HomeNoticeProps {
+  message: string
+  tone?: 'info' | 'error'
+  onRetry?: () => void
+  onDismiss?: () => void
+}
+
+/** A one-line notice above the dashboard rows: what did not load, or what is still loading. */
+export function HomeNotice({ message, tone = 'error', onRetry, onDismiss }: HomeNoticeProps) {
+  return (
+    <div
+      role={tone === 'error' ? 'alert' : 'status'}
+      className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-2.5 text-sm ${
+        tone === 'error'
+          ? 'border-red-500/30 bg-red-500/10 text-red-200'
+          : 'border-surface-700 bg-surface-900 text-surface-300'
+      }`}
+    >
+      <p>{message}</p>
+      <div className="flex shrink-0 items-center gap-1">
+        {onRetry && (
+          <Button variant="ghost" size="sm" onClick={onRetry}>
+            <RefreshCw size={14} />
+            Tekrar dene
+          </Button>
+        )}
+        {onDismiss && (
+          <Button variant="ghost" size="sm" onClick={onDismiss} aria-label="Bildirimi kapat">
+            <X size={14} />
+          </Button>
+        )}
+      </div>
+    </div>
   )
 }

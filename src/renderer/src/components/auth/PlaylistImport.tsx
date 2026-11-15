@@ -7,7 +7,9 @@ import { Spinner } from '@/components/ui/Spinner'
 import { useStore } from '@/store'
 import { fetchAndParseM3U, parseM3U } from '@/services/m3u-parser'
 import { pickAndReadFile } from '@/services/platform'
+import { secureCredentialService } from '@/services/secure-credentials'
 import { toUserMessage } from '@/services/user-error'
+import { m3uPlaylistToReplacement } from '@/catalog/convert'
 import type { PlaylistSource } from '@/types/playlist'
 
 interface FormState {
@@ -56,8 +58,7 @@ export function PlaylistImport() {
 
   const addSource = useStore((s) => s.addSource)
   const setActiveSource = useStore((s) => s.setActiveSource)
-  const addChannels = useStore((s) => s.addChannels)
-  const addCategories = useStore((s) => s.addCategories)
+  const replaceSourceCatalog = useStore((s) => s.replaceSourceCatalog)
 
   const handleUrlImport = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -99,10 +100,12 @@ export function PlaylistImport() {
         addedAt: Date.now()
       }
 
-      const { channels, categories } = await fetchAndParseM3U(normalizedUrl, source.id)
+      const parsed = await fetchAndParseM3U(normalizedUrl, source.id)
+      // The URL usually holds the account password: it goes to the secure
+      // store, and the source is only added once it is stored there.
+      await secureCredentialService.setM3uUrl(source.id, normalizedUrl)
       addSource(source)
-      addChannels(channels)
-      addCategories(categories)
+      replaceSourceCatalog(source.id, m3uPlaylistToReplacement(parsed))
       setActiveSource(source.id)
       dispatch({ type: 'clearForm' })
       navigate('/')
@@ -140,10 +143,9 @@ export function PlaylistImport() {
         addedAt: Date.now()
       }
 
-      const { channels, categories } = parseM3U(result.content, source.id)
+      const parsed = parseM3U(result.content, source.id)
       addSource(source)
-      addChannels(channels)
-      addCategories(categories)
+      replaceSourceCatalog(source.id, m3uPlaylistToReplacement(parsed))
       setActiveSource(source.id)
       dispatch({ type: 'clearForm' })
       navigate('/')
