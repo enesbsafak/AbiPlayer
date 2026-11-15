@@ -14,6 +14,8 @@ export interface CertificateOptions {
   altNames?: string[]
   notBefore?: Date
   notAfter?: Date
+  /** Serial number as unsigned big-endian bytes; random (16 bytes) by default. */
+  serialNumber?: Buffer
 }
 
 export interface GeneratedCertificate {
@@ -45,6 +47,7 @@ const explicit = (n: number, item: Buffer) => tlv(0xa0 + n, item)
 
 function oid(dotted: string): Buffer {
   const [first, second, ...rest] = dotted.split('.').map(Number)
+  if (first === undefined || second === undefined) throw new Error(`Invalid OID ${dotted}`)
   const bytes = [first * 40 + second]
   for (const value of rest) {
     const chunk: number[] = [value & 0x7f]
@@ -54,8 +57,18 @@ function oid(dotted: string): Buffer {
   return tlv(0x06, Buffer.from(bytes))
 }
 
-function integer(bytes: Buffer): Buffer {
-  return tlv(0x02, bytes[0] & 0x80 ? Buffer.concat([Buffer.from([0]), bytes]) : bytes)
+/**
+ * DER INTEGER of an unsigned big-endian number. DER wants the shortest form:
+ * no leading zero byte unless the next byte has its top bit set (which would
+ * read as negative). OpenSSL rejects any other leading zero ("illegal
+ * padding"), and random serials start with one about once in 256 certificates.
+ */
+export function derUnsignedInteger(bytes: Buffer): Buffer {
+  let start = 0
+  while (start < bytes.length - 1 && bytes[start] === 0) start += 1
+  const digits = bytes.subarray(start)
+  const negativeLooking = ((digits[0] ?? 0) & 0x80) !== 0
+  return tlv(0x02, negativeLooking || digits.length === 0 ? Buffer.concat([Buffer.from([0]), digits]) : digits)
 }
 
 function time(date: Date): Buffer {
@@ -106,12 +119,11 @@ function build(options: CertificateOptions, publicKey: KeyObject, privateKey: Ke
   const now = Date.now()
   const notBefore = options.notBefore ?? new Date(now - DAY_MS)
   const notAfter = options.notAfter ?? new Date(now + 30 * DAY_MS)
-  const serial = randomBytes(16)
-  serial[0] &= 0x7f
+  const serial = options.serialNumber ?? randomBytes(16)
   const algorithm = sequence(oid('1.2.840.10045.4.3.2')) // ecdsa-with-SHA256
   const tbs = sequence(
-    explicit(0, integer(Buffer.from([2]))),
-    integer(serial),
+    explicit(0, derUnsignedInteger(Buffer.from([2]))),
+    derUnsignedInteger(serial),
     algorithm,
     name(commonName),
     sequence(time(notBefore), time(notAfter)),
