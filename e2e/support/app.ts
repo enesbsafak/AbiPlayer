@@ -139,7 +139,8 @@ export async function launchApp(options: LaunchOptions): Promise<AbiApp> {
     },
     windowPlacement() {
       return electron.evaluate(({ BrowserWindow, screen }) => {
-        const window = BrowserWindow.getAllWindows()[0]
+        const [window] = BrowserWindow.getAllWindows()
+        if (!window) throw new Error('the app has no window')
         const bounds = window.getBounds()
         const onAnyDisplay = screen.getAllDisplays().some(({ bounds: display }) =>
           bounds.x < display.x + display.width &&

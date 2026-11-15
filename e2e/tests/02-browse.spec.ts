@@ -3,13 +3,14 @@ import { test, expect } from '../support/fixtures.ts'
 import { KNOWN } from '../mock-provider/catalog.ts'
 import type { MockProvider } from '../mock-provider/server.ts'
 import { addXtreamSource, anyCard, cardButton, expectHomeWithContent, openRoute } from '../support/flows.ts'
+import { itemAt } from '../../src/shared/checked.ts'
 
 /** A live category other than the first, and the first channel in it. */
 function secondLiveCategory(mock: MockProvider) {
-  const category = mock.catalog.liveCategories[1]
+  const category = itemAt(mock.catalog.liveCategories, 1)
   const id = String(category.category_id)
   const index = mock.catalog.liveCategoryOf.findIndex((categoryId) => categoryId === id)
-  return { name: category.category_name, firstChannel: String(mock.catalog.live[index].name) }
+  return { name: category.category_name, firstChannel: String(itemAt(mock.catalog.live, index).name) }
 }
 
 async function signIn(page: Page, mock: MockProvider) {

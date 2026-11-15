@@ -307,7 +307,7 @@ function environment(): string[] {
     // ignore
   }
   try {
-    mpvVersion = execFileSync(MPV_PATH, ['--version']).toString().split('\n')[0].trim()
+    mpvVersion = execFileSync(MPV_PATH, ['--version']).toString().split('\n')[0]?.trim() ?? ''
   } catch {
     // ignore
   }

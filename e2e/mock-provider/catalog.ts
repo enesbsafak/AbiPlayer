@@ -5,6 +5,8 @@
 // that mix on purpose (see `quirk`), so the app is exercised against what it
 // will meet in the field rather than against a tidy schema.
 
+import { defined, itemAt } from '../../src/shared/checked.ts'
+
 export interface CatalogSize {
   live: number
   vod: number
@@ -66,7 +68,7 @@ function mulberry32(seed: number): () => number {
 }
 
 function pick<T>(random: () => number, items: readonly T[]): T {
-  return items[Math.floor(random() * items.length)]
+  return itemAt(items, Math.floor(random() * items.length))
 }
 
 /** Every n-th record gets the "other" representation, as real panels do. */
@@ -129,11 +131,11 @@ function buildCategories(
 
 /** Spreads items over categories unevenly: the first few are much larger, like real panels. */
 function assignCategory(index: number, total: number, categories: readonly CategoryRecord[], random: () => number): string {
-  if (categories.length === 1) return String(categories[0].category_id)
+  if (categories.length === 1) return String(itemAt(categories, 0).category_id)
   // First 2% of items always go to the first category so tests find known titles there.
-  if (index < Math.max(5, Math.floor(total * 0.02))) return String(categories[0].category_id)
+  if (index < Math.max(5, Math.floor(total * 0.02))) return String(itemAt(categories, 0).category_id)
   const skewed = Math.floor(Math.pow(random(), 1.6) * categories.length)
-  return String(categories[Math.min(categories.length - 1, skewed)].category_id)
+  return String(itemAt(categories, Math.min(categories.length - 1, skewed)).category_id)
 }
 
 function addedTimestamp(random: () => number): string {
@@ -148,12 +150,11 @@ export function generateCatalog(size: CatalogSize, baseUrl: string, seed = 20261
   // --- Live ---
   const liveCategories = buildCategories(categoryCount(size.live, 60, 10, 800), 1, KNOWN.liveCategory, () => {
     const country = pick(random, LIVE_COUNTRIES)
-    return `${country} | ${pick(random, LIVE_GENRES[country])}`
+    return `${country} | ${pick(random, defined(LIVE_GENRES[country], country))}`
   })
-  if (liveCategories.length >= 10) {
-    liveCategories[liveCategories.length - 1].category_name = 'XXX | Yetişkin +18'
-  }
-  const adultLiveCategory = liveCategories.length >= 10 ? String(liveCategories[liveCategories.length - 1].category_id) : null
+  const adultCategory = liveCategories.length >= 10 ? liveCategories.at(-1) : undefined
+  if (adultCategory) adultCategory.category_name = 'XXX | Yetişkin +18'
+  const adultLiveCategory = adultCategory ? String(adultCategory.category_id) : null
 
   const live: JsonObject[] = []
   const liveCategoryOf: string[] = []
@@ -163,7 +164,7 @@ export function generateCatalog(size: CatalogSize, baseUrl: string, seed = 20261
     const categoryId = index === size.live - 1 && adultLiveCategory ? adultLiveCategory : assignCategory(index, size.live, liveCategories, random)
     let name: string
     if (index < KNOWN.liveChannels.length) {
-      name = KNOWN.liveChannels[index]
+      name = itemAt(KNOWN.liveChannels, index)
     } else if (index < FAMOUS_TR.length) {
       name = `TR: ${FAMOUS_TR[index]} ${pick(random, QUALITY_SUFFIXES)}`.trim()
     } else {
@@ -344,16 +345,16 @@ export function vodInfo(catalog: Catalog, vodId: number, baseUrl: string): JsonO
       release_date: `${year}-05-01`,
       duration: index === 1 ? '00:05:00' : '00:10:00',
       duration_secs: index === 1 ? 300 : 600,
-      rating: vod.rating,
+      rating: vod.rating ?? null,
       name,
       year
     },
     movie_data: {
       stream_id: vodId,
       name,
-      added: vod.added,
-      category_id: vod.category_id,
-      container_extension: vod.container_extension
+      added: vod.added ?? null,
+      category_id: vod.category_id ?? null,
+      container_extension: vod.container_extension ?? null
     }
   }
 }

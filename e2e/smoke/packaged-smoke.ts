@@ -65,7 +65,7 @@ function version(binary: string, args: string[]): string | null {
     return output.toString().split(/\r?\n/).find((line) => line.trim()) ?? ''
   } catch (error) {
     const stdout = (error as { stdout?: Buffer }).stdout?.toString() ?? ''
-    return stdout.trim() ? stdout.split(/\r?\n/)[0] : null
+    return stdout.trim() ? (stdout.split(/\r?\n/)[0] ?? null) : null
   }
 }
 
