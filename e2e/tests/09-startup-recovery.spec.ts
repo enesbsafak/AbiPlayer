@@ -28,6 +28,9 @@ test.describe('açılışta kapalı sağlayıcı', () => {
     observe(
       `provider down at start: ${attemptsWhileDown} sign-in requests while down; content ${Math.round((Date.now() - backAt) / 1000)} s after it came back, without a click`
     )
-    expect(mock.stats().counts.auth ?? 0).toBeGreaterThan(authBefore + attemptsWhileDown)
+    // The cached catalog (C2c) is on screen before the provider is back; the
+    // reconnect itself is the next timer retry, and it replaces the offline copy.
+    await expect.poll(() => mock.stats().counts.auth ?? 0, { timeout: 90_000 }).toBeGreaterThan(authBefore + attemptsWhileDown)
+    await expect(page.getByText(/çevrimdışı kopya/)).toHaveCount(0, { timeout: 60_000 })
   })
 })
