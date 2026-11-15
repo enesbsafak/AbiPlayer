@@ -6,7 +6,9 @@ Karar noktalarında plandaki öneriler uygulanıyor: dürüst mini oynatıcı ka
 
 ## Sonuç (15 Kasım 2026)
 
-Planın altı fazı uygulandı ve `iyilestirme` dalında birleştirildi. Hiçbir şey push edilmedi.
+Planın altı fazı uygulandı ve `iyilestirme` dalında birleştirildi.
+
+**Sonradan (0.5.0-beta):** aynı gün arayüz "Canlı renk" tasarımına taşındı (`tasarim-v05` dalı; ayrıntı [release-notes/v0.5.0-beta.md](release-notes/v0.5.0-beta.md), tasarım kaynakları [tasarim/](tasarim/)), hitap her yerde "sen" yapıldı, üçüncü taraf lisans bildirimleri eklendi ([THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md)) ve her şey `main` ile birleştirilip 0.5.0-beta olarak yayınlandı. Aşağıdaki "Yapılmayan ve doğrulanmayanlar" listesinde hitap ve lisans maddeleri bu yüzden artık geçerli değil; rakamlar (test sayıları) altı fazın sonundaki durumu gösterir.
 
 **Son doğrulama (birleştirme dalı):**
 

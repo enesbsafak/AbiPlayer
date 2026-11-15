@@ -124,6 +124,7 @@ export const mainStrings = {
     videoRect: 'Geçersiz görüntü alanı',
     trustRequest: 'Geçersiz sertifika onayı',
     serverAddress: 'Geçersiz sunucu adresi',
-    trustRecord: 'Geçersiz sertifika kaydı'
+    trustRecord: 'Geçersiz sertifika kaydı',
+    legalNotice: 'Geçersiz lisans belgesi'
   }
 }

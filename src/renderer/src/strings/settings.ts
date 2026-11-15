@@ -7,7 +7,7 @@ const tabs = {
   catalog: { label: 'Katalog', description: 'Listelerde hangi kategorilerin ve içeriklerin görüneceği.' },
   general: { label: 'Genel', description: 'Saat, yayın akışı, film bilgileri ve sıfırlama.' },
   updates: { label: 'Güncelleme', description: 'Hangi sürümü kullandığın ve yeni sürüm olup olmadığı.' },
-  support: { label: 'Destek', description: 'Projeye katkı, geri bildirim ve sürüm notları.' }
+  support: { label: 'Destek', description: 'Projeye katkı, geri bildirim, sürüm notları ve lisanslar.' }
 }
 
 export type SettingsTabKey = keyof typeof tabs
@@ -163,6 +163,18 @@ export const settings = {
     star: "GitHub'da yıldız ver",
     reportIssue: 'Hata bildir veya öneri gönder',
     releaseNotes: 'Sürüm notları',
-    allReleases: 'Tümü'
+    allReleases: 'Tümü',
+    licensesTitle: 'Lisanslar',
+    licensesText:
+      'Uygulamanın kendi kodu MIT lisanslı. Kurulumla gelen mpv ve FFmpeg, uygulamanın ayrı süreç olarak başlattığı GPL lisanslı programlar. ' +
+      'Bunların ve diğer bileşenlerin sürümlerini, lisans metinlerini ve kaynak kodu adreslerini bildirim dosyasında bulabilirsin.',
+    openNotices: 'Lisans bildirimlerini aç',
+    openLicenses: 'Lisans metinleri klasörü',
+    openFailed: 'Açılamadı. Dosyalar kurulum klasöründe, resources\\legal altında.',
+    tmdbAttribution:
+      "Bu uygulama TMDB'yi ve TMDB API'lerini kullanır, ancak TMDB tarafından onaylanmış, sertifikalandırılmış ya da başka bir şekilde desteklenmiş değildir.",
+    // TMDB'nin kullanım koşullarındaki zorunlu bildirim, özgün dilinde.
+    tmdbAttributionOriginal:
+      'This application uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.'
   }
 }

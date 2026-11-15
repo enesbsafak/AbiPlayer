@@ -13,6 +13,7 @@ import {
   type TrustedCertificateHost,
   type UntrustedCertificateNotice,
   type FileFilter,
+  type LegalNoticeTarget,
   type MediaJobOptions,
   type MpvOpenRequest,
   type MpvVideoRect,
@@ -320,6 +321,17 @@ export async function installAppUpdate(): Promise<boolean> {
 export function onAppUpdateStateChange(listener: (state: AppUpdateState) => void): (() => void) | null {
   if (!isElectron() || !window.electron?.onAppUpdateStateChange) return null
   return window.electron.onAppUpdateStateChange(listener)
+}
+
+export type { LegalNoticeTarget } from '../../../shared/ipc/contract'
+
+/**
+ * Opens the third-party notices file or the licence folder shipped with the
+ * app. False when it is missing, did not open, or outside Electron.
+ */
+export async function openLegalNotice(target: LegalNoticeTarget): Promise<boolean> {
+  if (!isElectron() || !window.electron?.openLegalNotice) return false
+  return window.electron.openLegalNotice(target)
 }
 
 export type {

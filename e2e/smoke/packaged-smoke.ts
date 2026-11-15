@@ -6,9 +6,10 @@
 // 1. mpv, ffmpeg and ffprobe exist where the packaged app resolves them
 //    (mpv/binary.ts resolveMpvBinary; unpacked-binary.ts resolveMediaTools)
 //    and each starts and prints its version.
-// 2. Nothing from the worktrees, e2e/, docs/, scripts/, src/ or test output
-//    is inside the package.
-// 3. Prints the package size.
+// 2. The licence notices are under resources/legal (THIRD-PARTY-NOTICES.md).
+// 3. Nothing from the worktrees, e2e/, docs/, scripts/, src/, licenses/ or
+//    test output is inside app.asar.
+// 4. Prints the package size.
 // The app itself is not launched.
 
 import { execFileSync } from 'node:child_process'
@@ -87,8 +88,15 @@ for (const binary of binaries) {
   check(!!first && binary.expect.test(first), `${binary.name} starts and prints its version: ${first ?? 'no output'}`)
 }
 
-// Nothing that is not runtime code.
-const FORBIDDEN = [/^\.worktrees\//, /^e2e\//, /^docs\//, /^scripts\//, /^src\//, /^test-results\//, /^playwright-report\//, /^coverage\//, /^dist\//, /\.tsbuildinfo$/, /\.test\.[cm]?[jt]sx?$/, /^\.github\//]
+// Licence notices, where Ayarlar → Destek opens them (src/main/legal-notices.ts).
+const legal = join(resources, 'legal')
+for (const file of ['THIRD-PARTY-NOTICES.txt', 'LICENSE.txt', 'licenses/GPL-3.0.txt', 'licenses/GPL-2.0.txt', 'licenses/npm-packages.txt']) {
+  check(existsSync(join(legal, file)), `licence notice resources/legal/${file}`)
+}
+check(existsSync(join(resources, 'ffmpeg', 'LICENSE.txt')), 'FFmpeg licence resources/ffmpeg/LICENSE.txt')
+
+// Nothing that is not runtime code (the notices ship under resources/legal, not in app.asar).
+const FORBIDDEN = [/^\.worktrees\//, /^e2e\//, /^docs\//, /^scripts\//, /^src\//, /^test-results\//, /^playwright-report\//, /^coverage\//, /^dist\//, /\.tsbuildinfo$/, /\.test\.[cm]?[jt]sx?$/, /^\.github\//, /^licenses\//, /^THIRD-PARTY-NOTICES/]
 const packaged = existsSync(archive) ? asarFiles(archive) : []
 const unpackedDir = join(resources, 'app.asar.unpacked')
 const unpacked = existsSync(unpackedDir) ? walk(unpackedDir).map((file) => relative(unpackedDir, file).split(sep).join('/')) : []

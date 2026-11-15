@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, safeStorage, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell, type IpcMainInvokeEvent } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { spawn } from 'child_process'
 import { existsSync } from 'fs'
@@ -6,9 +6,11 @@ import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { MpvController } from './mpv-controller'
 import { resolveMediaTools } from './unpacked-binary'
+import { resolveLegalNoticePath } from './legal-notices'
 import { registerAppHandlers } from './ipc/app'
 import { CredentialStore } from './ipc/credential-store'
 import { registerCredentialHandlers } from './ipc/credentials'
+import { registerLegalHandlers } from './ipc/legal'
 import { broadcastEvent } from './ipc/events'
 import { PickedFileRegistry, registerFileHandlers } from './ipc/files'
 import { registerMediaHandlers, mediaJobOwner } from './ipc/media'
@@ -117,6 +119,20 @@ export function registerIpcHandlers(): MainServices {
     tls
   })
   registerTlsHandlers(registrar, tls)
+  registerLegalHandlers(registrar, {
+    resolve: (target) =>
+      resolveLegalNoticePath(
+        {
+          isPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath,
+          appDir: __dirname,
+          cwd: process.cwd(),
+          exists: existsSync
+        },
+        target
+      ),
+    openPath: (path) => shell.openPath(path)
+  })
 
   return {
     stopPlayback: () => mpvController.stopPlayback(),

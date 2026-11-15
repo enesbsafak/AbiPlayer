@@ -66,6 +66,7 @@ export const INVOKE_METHODS = {
   installAppUpdate: 'app-update-install',
   getStoreBackup: 'store-backup-read',
   deleteStoreBackup: 'store-backup-delete',
+  openLegalNotice: 'legal-open-notice',
 
   tlsListTrusted: 'tls-list-trusted',
   tlsListUntrusted: 'tls-list-untrusted',

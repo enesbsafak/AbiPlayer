@@ -152,6 +152,12 @@ export interface CertificateTrustRequest {
   sourceId?: string
 }
 
+/**
+ * What Ayarlar → Destek can open: the third-party notices file or the folder
+ * of licence texts. Main maps each to a fixed path next to the app.
+ */
+export type LegalNoticeTarget = 'notices' | 'licenses'
+
 type Invoke<Args extends unknown[], Result> = { args: Args; result: Result }
 
 export interface IpcInvokeContract {
@@ -227,6 +233,8 @@ export interface IpcInvokeContract {
   'app-update-install': Invoke<[], boolean>
   'store-backup-read': Invoke<[], string | null>
   'store-backup-delete': Invoke<[], void>
+  /** Opens the notices file or the licence folder with Windows; false when it is missing or did not open. */
+  'legal-open-notice': Invoke<[target: LegalNoticeTarget], boolean>
 
   'tls-list-trusted': Invoke<[], TrustedCertificateHost[]>
   'tls-list-untrusted': Invoke<[], UntrustedCertificateNotice[]>

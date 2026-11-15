@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bug, ChevronDown, ExternalLink, Loader2, Star } from 'lucide-react'
+import { Bug, ChevronDown, ExternalLink, FileText, FolderOpen, Loader2, Star } from 'lucide-react'
 import {
   APP_NAME,
   APP_VERSION,
@@ -8,6 +8,7 @@ import {
   GITHUB_REPO_URL
 } from '@/constants/app-info'
 import { fetchReleaseNotes, type ReleaseNote } from '@/services/github-releases'
+import { openLegalNotice, type LegalNoticeTarget } from '@/services/platform'
 import { toUserMessage } from '@/services/user-error'
 import { LOCALE, strings } from '@/strings'
 import { ACTION, SettingsGroup } from './controls'
@@ -195,6 +196,47 @@ export function SupportSettings() {
       >
         <ReleaseNotes />
       </SettingsGroup>
+
+      <Licenses />
     </div>
+  )
+}
+
+function Licenses() {
+  const [failed, setFailed] = useState(false)
+
+  const open = (target: LegalNoticeTarget) => {
+    setFailed(false)
+    openLegalNotice(target)
+      .then((opened) => setFailed(!opened))
+      .catch(() => setFailed(true))
+  }
+
+  return (
+    <SettingsGroup title={text.licensesTitle}>
+      <div className="flex flex-col gap-4 rounded-card bg-raised px-5 py-5">
+        <p className="max-w-[68ch] text-base text-surface-300">{text.licensesText}</p>
+        <div className="flex flex-wrap gap-3">
+          <button type="button" onClick={() => open('notices')} className={ACTION.secondary}>
+            <FileText size={18} aria-hidden="true" />
+            {text.openNotices}
+          </button>
+          <button type="button" onClick={() => open('licenses')} className={ACTION.secondary}>
+            <FolderOpen size={18} aria-hidden="true" />
+            {text.openLicenses}
+          </button>
+        </div>
+        {failed && (
+          <p role="alert" className="flex items-start gap-2.5 text-[15px] text-white">
+            <span aria-hidden="true" className="mt-[7px] size-2 shrink-0 rounded-full bg-coral" />
+            {text.openFailed}
+          </p>
+        )}
+        <div className="flex max-w-[68ch] flex-col gap-1 text-sm text-surface-400">
+          <p>{text.tmdbAttribution}</p>
+          <p lang="en">{text.tmdbAttributionOriginal}</p>
+        </div>
+      </div>
+    </SettingsGroup>
   )
 }

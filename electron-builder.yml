@@ -24,6 +24,9 @@ files:
   - '!electron.vite.config.*'
   - '!{postcss.config.js,tailwind.config.ts,vitest.config.ts,doctor.config.*}'
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md,LICENSE}'
+  # Shipped as extraResources under legal/ (see win: below), not in app.asar.
+  - '!THIRD-PARTY-NOTICES.md'
+  - '!licenses/**'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json,tsconfig.scripts.json,eslint.config.mjs}'
   # Repository-only trees. `.worktrees/` holds full parallel checkouts; without
   # this line every one of them was packed into app.asar. Checked by
@@ -49,6 +52,17 @@ win:
         - '**/*'
     - from: resources/ffmpeg/win32-x64
       to: ffmpeg
+      filter:
+        - '**/*'
+    # Licence notices, opened from Ayarlar → Destek (src/main/legal-notices.ts
+    # looks for them at <resources>/legal). The notices go out as .txt so that
+    # Windows opens them in a text editor without a .md association.
+    - from: THIRD-PARTY-NOTICES.md
+      to: legal/THIRD-PARTY-NOTICES.txt
+    - from: LICENSE
+      to: legal/LICENSE.txt
+    - from: licenses
+      to: legal/licenses
       filter:
         - '**/*'
 nsis:

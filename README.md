@@ -292,6 +292,7 @@ src/
 e2e/           Uçtan uca testler, sahte sağlayıcı, ölçüm ve paket duman testi
 scripts/       Sabitleme, sürüm ve lint betikleri
 resources/     Pakete giren mpv ve ffmpeg (prepare betikleri kurar, depoda yok)
+licenses/      Üçüncü taraf lisans metinleri (bkz. THIRD-PARTY-NOTICES.md)
 docs/          Sürüm notları, görseller, ölçümler, iyileştirme planı
 ```
 
@@ -352,8 +353,16 @@ Hata bildirirken tekrar üretme adımları, ekran görüntüsü ve varsa log ekl
 
 ---
 
-## Lisans
+## Lisans ve üçüncü taraf bileşenler
 
-Abi Player [MIT lisansıyla](LICENSE) dağıtılır.
+Abi Player'ın kendi kodu [MIT lisansıyla](LICENSE) dağıtılır.
 
-Kuruluma giren üçüncü taraf ikililer kendi lisanslarıyla gelir: mpv (shinchiro/mpv-winbuild-cmake yapısı) ve FFmpeg (FFmpeg-Builds GPL yapısı) GPL lisanslıdır; FFmpeg'in lisans metni kurulumda `resources/ffmpeg/LICENSE.txt` olarak bulunur. Uygulama bu araçları ayrı süreç olarak çalıştırır.
+Kurulum paketi başkalarının yazılımlarını da içerir ve her biri kendi lisansıyla gelir:
+
+- **mpv** (shinchiro/mpv-winbuild-cmake yapısı) ve **FFmpeg** (ffmpeg, ffprobe; FFmpeg-Builds `gpl-shared` yapısı): GNU GPL lisanslı ayrı programlar. Uygulama onları alt süreç olarak başlatır, koduna bağlanmaz.
+- **Electron** ve **Chromium**, uygulamanın paketlediği **npm paketleri**, **Bricolage Grotesque** ve **DM Sans** yazı tipleri (SIL Open Font License 1.1).
+- Film ve dizi bilgileri, anahtarınızı girerseniz **TMDB**'den alınır. This application uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.
+
+Her bileşenin sürümü, yapıldığı kaynak kodu (etiket veya commit ve yapı betikleri) ve lisansı [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) dosyasında, lisans metinleri [licenses/](licenses) klasöründedir. npm paketlerinin listesi (`licenses/npm-packages.txt`) `node_modules`'tan üretilir; bağımlılıklar değişince `npm run notices:npm` ile yenileyin (`npm test` güncel olmadığında uyarır). mpv veya FFmpeg sabiti değişince `THIRD-PARTY-NOTICES.md` de güncellenmelidir.
+
+Kurulu uygulamada bu dosyalar kurulum klasöründeki `resources\legal\` altındadır ve **Ayarlar → Destek → Lisanslar** bölümünden açılır. FFmpeg'in kendi lisans metni ayrıca `resources\ffmpeg\LICENSE.txt` olarak, Electron ve Chromium'unkiler `LICENSE.electron.txt` ve `LICENSES.chromium.html` olarak kurulum klasöründe bulunur.

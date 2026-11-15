@@ -1,6 +1,6 @@
 {
   "name": "abi-player",
-  "version": "0.4.15-beta",
+  "version": "0.5.0-beta",
   "description": "Abi Player - beta IPTV player with Xtream Codes API + M3U support",
   "license": "MIT",
   "main": "./out/main/index.js",
@@ -19,6 +19,7 @@
     "shots": "tsc -p e2e/tsconfig.json && electron-vite build && playwright test -c e2e/playwright.shots.config.ts",
     "lint": "eslint src scripts e2e",
     "make:icons": "node scripts/make-icons.mjs",
+    "notices:npm": "node scripts/generate-npm-notices.mjs",
     "lint:changed": "node scripts/lint-changed.mjs",
     "postinstall": "electron-builder install-app-deps",
     "prepare:binaries:win": "npm run prepare:mpv:win && npm run prepare:ffmpeg:win",
