@@ -1,8 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { SlidersHorizontal } from 'lucide-react'
+import { MonitorPlay } from 'lucide-react'
 import { useStore } from '@/store'
 import { AUTO_VIDEO_QUALITY_ID } from '@/services/quality'
 import { strings } from '@/strings'
+import { DockPill } from './DockPill'
+import { CONTROL_SIZE, MENU_HEADING, MENU_PANEL, menuRow, useDockLayout } from './player-ui'
 
 const text = strings.player.quality
 
@@ -11,6 +13,7 @@ export function QualitySelector() {
   const currentVideoQuality = useStore((s) => s.currentVideoQuality)
   const activeVideoQuality = useStore((s) => s.activeVideoQuality)
   const setCurrentVideoQuality = useStore((s) => s.setCurrentVideoQuality)
+  const { size, tone } = useDockLayout()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const menuId = useId()
@@ -36,28 +39,27 @@ export function QualitySelector() {
 
   return (
     <div ref={ref} className="relative">
-      <button
-        type="button"
+      <DockPill
+        icon={<MonitorPlay size={CONTROL_SIZE[size].icon} strokeWidth={2.4} aria-hidden="true" />}
+        label={text.fallback}
+        value={buttonLabel}
+        active={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm hover:bg-white/10 transition-colors duration-normal"
         title={text.title}
         aria-label={text.label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-      >
-        <SlidersHorizontal size={16} />
-        <span className="max-w-[88px] truncate text-xs font-medium">{buttonLabel}</span>
-      </button>
+      />
       {open && (
         <ul
           id={menuId}
           // Capped + scrollable: this opens upward and HLS ladders can carry
           // more renditions than fit above the control bar.
-          className="absolute bottom-full right-0 mb-2 max-h-[calc(100vh-5rem)] w-56 list-none overflow-y-auto rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-lg"
+          className={`${MENU_PANEL} w-64 list-none space-y-1`}
           aria-label={text.heading}
         >
-          <li className="px-3 py-1.5 text-xs font-medium text-surface-500">{text.heading}</li>
+          <li className={MENU_HEADING}>{text.heading}</li>
           {videoQualityOptions.map((option) => {
             const isSelected = option.id === currentVideoQuality
             const isAutoActive = option.id === AUTO_VIDEO_QUALITY_ID && !!activeOption
@@ -69,14 +71,14 @@ export function QualitySelector() {
                     setCurrentVideoQuality(option.id)
                     setOpen(false)
                   }}
-                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-surface-800 transition-colors duration-normal ${
-                    isSelected ? 'text-accent' : 'text-surface-200'
-                  }`}
+                  className={menuRow(isSelected, tone)}
                   aria-current={isSelected ? 'true' : undefined}
                 >
                   <span className="truncate">{option.label}</span>
                   {isAutoActive && (
-                    <span className="shrink-0 text-label text-surface-500">{activeOption.shortLabel}</span>
+                    <span className={`shrink-0 text-[13px] font-medium ${isSelected ? 'text-ink' : 'text-surface-500'}`}>
+                      {activeOption.shortLabel}
+                    </span>
                   )}
                 </button>
               </li>

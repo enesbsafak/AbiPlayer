@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Button } from '@/components/ui/Button'
+import { ACTION, FieldError, SettingsCard, SettingsGroup } from './controls'
 import { useAppUpdate } from '@/hooks/useAppUpdate'
 import type { AppUpdateState } from '@/services/platform'
 import { LOCALE, strings } from '@/strings'
@@ -72,69 +72,80 @@ export function UpdateSettings() {
     return parts.join(' | ')
   }, [appUpdateState])
 
-  return (
-    <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <p className="text-sm font-medium text-white">
-            {text.version(appUpdateState?.currentVersion)}
-            {appUpdateState?.availableVersion &&
-            appUpdateState.availableVersion !== appUpdateState.currentVersion
-              ? ` → ${appUpdateState.availableVersion}`
-              : ''}
-          </p>
-          <p className="text-sm text-surface-300">{getUpdateStatusLabel(appUpdateState)}</p>
-          {appUpdateState?.message && (
-            <p className="text-xs text-surface-500">{appUpdateState.message}</p>
-          )}
-          {checkError && <p className="text-xs text-red-400">{checkError}</p>}
-          <p className="text-xs text-surface-500">
-            {text.lastChecked(formatUpdateTimestamp(appUpdateState?.lastCheckedAt ?? null))}
-          </p>
-        </div>
+  const readyToInstall = appUpdateState?.updateReadyToInstall === true
+  const status = appUpdateState?.status
+  // Mint once there is nothing to do or the update waits; sun while it moves.
+  const statusDot =
+    status === 'not-available' || status === 'downloaded'
+      ? 'bg-mint'
+      : status === 'error'
+        ? 'bg-coral'
+        : status === 'checking' || status === 'downloading' || status === 'available'
+          ? 'bg-sun'
+          : 'bg-surface-600'
+  const percent = Math.round((appUpdateState?.progress ?? 0) * 100)
 
-        {appUpdateState?.status === 'downloading' && (
-          <div className="space-y-2">
-            <div className="h-2 overflow-hidden rounded-full bg-surface-800">
-              <div
-                className="h-full rounded-full bg-accent transition-[width]"
-                style={{ width: `${Math.round((appUpdateState.progress ?? 0) * 100)}%` }}
-              />
-            </div>
-            {updateProgressLabel && (
-              <p className="text-xs text-surface-500">{updateProgressLabel}</p>
+  return (
+    <SettingsGroup title={text.group}>
+      <SettingsCard>
+        <div className="flex min-w-0 flex-col gap-4 px-5 py-5">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <p className="font-title text-[28px] leading-[1.15]">
+              {text.version(appUpdateState?.currentVersion)}
+              {appUpdateState?.availableVersion && appUpdateState.availableVersion !== appUpdateState.currentVersion
+                ? ` → ${appUpdateState.availableVersion}`
+                : ''}
+            </p>
+            <p className="flex items-center gap-2.5 text-base text-white">
+              <span aria-hidden="true" className={`size-2.5 shrink-0 rounded-full ${statusDot}`} />
+              {getUpdateStatusLabel(appUpdateState)}
+            </p>
+            {appUpdateState?.message && <p className="text-sm text-surface-400">{appUpdateState.message}</p>}
+            {checkError && <FieldError>{checkError}</FieldError>}
+            <p className="text-sm text-surface-400">
+              {text.lastChecked(formatUpdateTimestamp(appUpdateState?.lastCheckedAt ?? null))}
+            </p>
+            {appUpdateState?.releaseDate && (
+              <p className="text-sm text-surface-400">
+                {text.releaseDate(new Date(appUpdateState.releaseDate).toLocaleString(LOCALE))}
+              </p>
             )}
           </div>
-        )}
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            variant="secondary"
-            onClick={() => void check()}
-            disabled={
-              !appUpdateState?.canCheck ||
-              isCheckingUpdates ||
-              appUpdateState?.status === 'downloading'
-            }
-          >
-            {isCheckingUpdates || appUpdateState?.status === 'checking'
-              ? text.checking
-              : text.check}
-          </Button>
-
-          {appUpdateState?.updateReadyToInstall && (
-            <Button onClick={() => void install()} disabled={isInstallingUpdate}>
-              {isInstallingUpdate ? text.restarting : text.restartAndInstall}
-            </Button>
+          {status === 'downloading' && (
+            <div className="flex flex-col gap-2">
+              <div
+                className="h-3 overflow-hidden rounded-full bg-ground"
+                role="progressbar"
+                aria-label={text.downloadProgress}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={percent}
+              >
+                <div className="h-full rounded-full bg-sun transition-[width]" style={{ width: `${percent}%` }} />
+              </div>
+              {updateProgressLabel && <p className="text-sm text-surface-400">{updateProgressLabel}</p>}
+            </div>
           )}
-        </div>
 
-        {appUpdateState?.releaseDate && (
-          <p className="text-xs text-surface-500">
-            {text.releaseDate(new Date(appUpdateState.releaseDate).toLocaleString(LOCALE))}
-          </p>
-        )}
-      </div>
-    </div>
+          {/* One white action: installing once it is ready, checking otherwise. */}
+          <div className="flex flex-wrap items-center gap-3">
+            {readyToInstall && (
+              <button type="button" className={ACTION.primary} onClick={() => void install()} disabled={isInstallingUpdate}>
+                {isInstallingUpdate ? text.restarting : text.restartAndInstall}
+              </button>
+            )}
+            <button
+              type="button"
+              className={readyToInstall ? ACTION.secondary : ACTION.primary}
+              onClick={() => void check()}
+              disabled={!appUpdateState?.canCheck || isCheckingUpdates || status === 'downloading'}
+            >
+              {isCheckingUpdates || status === 'checking' ? text.checking : text.check}
+            </button>
+          </div>
+        </div>
+      </SettingsCard>
+    </SettingsGroup>
   )
 }

@@ -18,7 +18,7 @@ function fill(label: string, value: string) {
 }
 
 function submit() {
-  fireEvent.click(screen.getByRole('button', { name: 'Bağlan' }))
+  fireEvent.click(screen.getByRole('button', { name: strings.sources.xtream.connect }))
 }
 
 afterEach(() => {
@@ -32,8 +32,8 @@ describe('LoginForm', () => {
     render(createElement(MemoryRouter, null, createElement(LoginForm)))
 
     fill(strings.sources.fields.serverUrl, '  example.test:8080  ')
-    fill('Kullanıcı Adı', ' ali \n')
-    fill('Şifre', '\tgizli ')
+    fill(strings.sources.fields.username, ' ali \n')
+    fill(strings.sources.fields.password, '\tgizli ')
     submit()
 
     await waitFor(() => expect(useStore.getState().sources).toHaveLength(1))
@@ -54,12 +54,12 @@ describe('LoginForm', () => {
     render(createElement(MemoryRouter, null, createElement(LoginForm)))
 
     fill(strings.sources.fields.serverUrl, 'example.test')
-    fill('Kullanıcı Adı', 'ali')
-    fill('Şifre', 'gizli')
+    fill(strings.sources.fields.username, 'ali')
+    fill(strings.sources.fields.password, 'gizli')
     submit()
 
     expect((await screen.findByRole('alert')).textContent).toBe(
-      'Sunucuya ulaşılamadı. İnternet bağlantınızı ve sunucu adresini kontrol edin.'
+      'Sunucuya ulaşılamadı. İnternet bağlantını ve sunucu adresini kontrol et.'
     )
   })
 })

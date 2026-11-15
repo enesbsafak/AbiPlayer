@@ -11,7 +11,7 @@ export const mainStrings = {
     unresponsive: {
       title: 'Uygulama yanıt vermiyor',
       message: (appName: string) => `${appName} bir süredir yanıt vermiyor.`,
-      detail: 'Oynatma durduruldu. Pencereyi yeniden yükleyebilir ya da beklemeyi sürdürebilirsiniz.',
+      detail: 'Oynatma durduruldu. Pencereyi yeniden yükleyebilir ya da beklemeyi sürdürebilirsin.',
       reload: 'Yeniden Yükle',
       wait: 'Bekle'
     },
@@ -21,7 +21,7 @@ export const mainStrings = {
   updates: {
     unsupported: 'Otomatik güncelleme yalnızca kurulu uygulamada çalışır',
     unknownError: 'Güncelleme sırasında bilinmeyen bir hata oluştu',
-    installFailed: 'Güncelleme kurulamadı. Tekrar deneyin.',
+    installFailed: 'Güncelleme kurulamadı. Tekrar dene.',
     idle: 'Güncelleme sistemi hazır',
     checking: 'Güncellemeler kontrol ediliyor...',
     found: (version: string | null) => `Yeni sürüm bulundu${version ? ` (${version})` : ''}. İndiriliyor...`,
@@ -29,7 +29,7 @@ export const mainStrings = {
       `Yeni sürüm bulundu${version ? ` (${version})` : ''}. İndirme birazdan başlayacak.`,
     downloading: (percent: number) => `Güncelleme indiriliyor... %${percent}`,
     notAvailable: 'Uygulama güncel',
-    downloaded: 'Güncelleme hazır. Yeniden başlatarak kurabilirsiniz.',
+    downloaded: 'Güncelleme hazır. Yeniden başlatarak kurabilirsin.',
     dialog: {
       title: 'Güncelleme Hazır',
       message: (appName: string, version: string | null) => `${appName}${version ? ` ${version}` : ''} indirildi`,
@@ -47,7 +47,7 @@ export const mainStrings = {
       `Dosya çok büyük (${size} MB). En fazla ${limit} MB boyutundaki dosyalar açılabilir.`,
     notFound: (name: string) => `Dosya bulunamadı: ${name}`,
     /** The renderer recognises this one (`useAutoConnect`). */
-    notPicked: 'Bu dosyayı okuma izni yok. Dosyayı yeniden seçin.',
+    notPicked: 'Bu dosyayı okuma izni yok. Dosyayı yeniden seç.',
     subtitleNotPicked: 'Altyazı dosyası yalnızca dosya seçme penceresinden eklenebilir'
   },
 
@@ -87,8 +87,8 @@ export const mainStrings = {
 
   tls: {
     neverRelaxable: 'Bu sunucunun sertifikası güvenlik gereği hiçbir koşulda gevşetilemez.',
-    nothingToTrust: 'Bu sunucu için onaylanacak bir sertifika hatası yok. Bağlantıyı yeniden deneyin.',
-    changed: 'Sunucunun güvenlik sertifikası, güvendiğiniz sertifikadan farklı. Yeniden onaylamadan bağlanılmıyor.'
+    nothingToTrust: 'Bu sunucu için onaylanacak bir sertifika hatası yok. Bağlantıyı yeniden dene.',
+    changed: 'Sunucunun güvenlik sertifikası, güvendiğin sertifikadan farklı. Yeniden onaylamadan bağlanılmıyor.'
   },
 
   /** Refused IPC arguments: the renderer sent something it should not have. */

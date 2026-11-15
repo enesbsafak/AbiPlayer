@@ -1,8 +1,8 @@
-import { useState } from 'react'
-import { Trash2, RefreshCw, Check, Wifi, WifiOff, Loader2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Trash2, RefreshCw, Loader2 } from 'lucide-react'
 import { useStore } from '@/store'
-import { Button } from '@/components/ui/Button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { ACTION, FieldError, SettingsGroup } from '@/components/settings/controls'
 import { forgetXtreamRequests, xtreamApi } from '@/services/xtream-api'
 import { secureCredentialService } from '@/services/secure-credentials'
 import { pickAndReadFile } from '@/services/platform'
@@ -30,7 +30,8 @@ function sourceStillExists(sourceId: string): boolean {
 
 const SOURCE_TYPE_LABELS: Record<PlaylistSource['type'], string> = strings.sources.typeLabels
 
-export function SourceManager() {
+/** `onEditingChange`: a source's sign-in form opened or closed (it then holds the primary action). */
+export function SourceManager({ onEditingChange }: { onEditingChange?: (editing: boolean) => void } = {}) {
   const sources = useStore((s) => s.sources)
   const activeSourceId = useStore((s) => s.activeSourceId)
   const xtreamAuth = useStore((s) => s.xtreamAuth)
@@ -53,6 +54,9 @@ export function SourceManager() {
   const [pendingRemoval, setPendingRemoval] = useState<PlaylistSource | null>(null)
   // Sources whose secret is being entered again, in place (K3).
   const [editingSecret, setEditingSecret] = useState<string | null>(null)
+  useEffect(() => {
+    onEditingChange?.(editingSecret !== null)
+  }, [editingSecret, onEditingChange])
   const credentialsHydrated = useStore((s) => s.credentialsHydrated)
   const secretStoreError = useStore((s) => s.secretStoreError)
 
@@ -162,133 +166,135 @@ export function SourceManager() {
     return null
   }
 
+  const confirmDialog = (
+    <ConfirmDialog
+      isOpen={pendingRemoval !== null}
+      title={text.removeConfirmTitle}
+      confirmLabel={strings.common.delete}
+      destructive
+      onCancel={() => setPendingRemoval(null)}
+      onConfirm={() => {
+        const source = pendingRemoval
+        setPendingRemoval(null)
+        if (source) void handleRemove(source)
+      }}
+    >
+      <p>
+        <span className="font-medium text-surface-100">{pendingRemoval?.name}</span>
+        {text.removeConfirmBody}
+      </p>
+    </ConfirmDialog>
+  )
+
+  // No sources: the add step below says what to do. A failed wipe of the
+  // last source's sign-in is still reported.
   if (sources.length === 0) {
-    return (
-      <div className="text-center py-8 text-surface-500">
-        {removalError && <p className="mb-2 text-xs text-red-400" role="alert">{removalError}</p>}
-        <p>{text.empty}</p>
-        <p className="text-sm mt-1">{text.emptyHint}</p>
-      </div>
-    )
+    return removalError ? <FieldError>{removalError}</FieldError> : null
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium text-surface-400 mb-1">{text.heading}</h3>
-      {removalError && (
-        <p className="text-xs text-red-400" role="alert">{removalError}</p>
-      )}
-      {sources.map((source) => {
-        const connected = isConnected(source.id, source.type)
-        const isRefreshing = refreshingIds.has(source.id)
-        const offerSecret = secretEntryOffered(source)
-        const status = statusText(source, connected)
+    <SettingsGroup title={text.heading} aside={text.count(sources.length)}>
+      {removalError && <FieldError>{removalError}</FieldError>}
+      <ul className="flex flex-col gap-2">
+        {sources.map((source) => {
+          const isActive = source.id === activeSourceId
+          const connected = isConnected(source.id, source.type)
+          const isRefreshing = refreshingIds.has(source.id)
+          const offerSecret = secretEntryOffered(source)
+          const status = statusText(source, connected)
+          const problem = refreshError[source.id] ?? sourceErrors[source.id]?.message
 
-        return (
-          <div key={source.id}>
-            <div
-              className={`flex items-center justify-between rounded-lg border p-3 transition-colors ${
-                source.id === activeSourceId
-                  ? 'border-accent bg-accent/5'
-                  : 'border-surface-800 hover:border-surface-700 bg-surface-900'
-              }`}
-            >
-              <button
-                type="button"
-                className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                onClick={() => setActiveSource(source.id)}
-                aria-current={source.id === activeSourceId ? 'true' : undefined}
-              >
-                {source.id === activeSourceId && (
-                  <Check size={16} className="text-accent shrink-0" aria-hidden="true" />
-                )}
-                <div className="flex items-center gap-2">
-                  {connected ? (
-                    <Wifi size={14} className="text-green-400 shrink-0" aria-label={text.connected} />
-                  ) : (
-                    <WifiOff size={14} className="text-surface-500 shrink-0" aria-label={text.disconnected} />
-                  )}
-                  <div>
-                    <p className="text-sm font-medium">{source.name}</p>
-                    <p className="text-xs text-surface-500">
+          return (
+            <li key={source.id} className="flex min-w-0 flex-col rounded-card bg-raised p-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                {/* Choosing the source in use: the one in use is filled with sky. */}
+                <button
+                  type="button"
+                  className={`flex min-h-[60px] min-w-[min(100%,260px)] flex-1 items-center gap-4 rounded-[14px] px-4 py-2.5 text-left transition-colors ${
+                    isActive ? 'bg-sky text-ink' : 'text-white hover:bg-surface-800'
+                  }`}
+                  onClick={() => setActiveSource(source.id)}
+                  aria-current={isActive ? 'true' : undefined}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`flex size-4 shrink-0 items-center justify-center rounded-full ${isActive ? 'bg-ink' : ''}`}
+                  >
+                    <span className={`size-2.5 rounded-full ${connected ? 'bg-mint' : 'bg-surface-600'}`} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-base font-bold">{source.name}</span>
+                    <span className={`block truncate text-sm ${isActive ? 'text-ink/75' : 'text-surface-400'}`}>
                       {SOURCE_TYPE_LABELS[source.type]}
+                      {' · '}
+                      {connected ? text.connected : text.disconnected}
                       {status && text.statusSuffix(status)}
-                    </p>
-                    {(refreshError[source.id] ?? sourceErrors[source.id]?.message) && (
-                      <p className="text-xs text-red-400 mt-0.5" role="alert">
-                        {refreshError[source.id] ?? sourceErrors[source.id]?.message}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </button>
-              <div className="flex items-center gap-1">
-                {offerSecret && editingSecret !== source.id && (
-                  <Button variant="secondary" size="sm" onClick={() => setEditingSecret(source.id)}>
-                    {source.type === 'xtream' ? text.enterCredentials : text.enterAddress}
-                  </Button>
-                )}
-                {source.type === 'm3u_file' && sourceErrors[source.id]?.kind === 'file' && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
+                    </span>
+                  </span>
+                  <span
+                    className={`shrink-0 text-sm max-sm:hidden ${isActive ? 'font-bold' : 'font-medium text-surface-500'}`}
+                  >
+                    {isActive ? text.inUse : text.useThis}
+                  </span>
+                </button>
+                <div className="flex shrink-0 items-center gap-2 pr-1">
+                  {offerSecret && editingSecret !== source.id && (
+                    <button type="button" className={ACTION.secondary} onClick={() => setEditingSecret(source.id)}>
+                      {source.type === 'xtream' ? text.enterCredentials : text.enterAddress}
+                    </button>
+                  )}
+                  {source.type === 'm3u_file' && sourceErrors[source.id]?.kind === 'file' && (
+                    <button
+                      type="button"
+                      className={ACTION.secondary}
+                      disabled={isRefreshing}
+                      onClick={() => {
+                        void handleRefresh(source.id)
+                      }}
+                    >
+                      {text.repickFile}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={ACTION.icon}
                     disabled={isRefreshing}
                     onClick={() => {
                       void handleRefresh(source.id)
                     }}
+                    aria-label={text.refresh(source.name)}
+                    title={strings.common.refresh}
                   >
-                    {text.repickFile}
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={isRefreshing}
-                  onClick={() => {
-                    void handleRefresh(source.id)
-                  }}
-                  aria-label={text.refresh(source.name)}
-                  title={strings.common.refresh}
-                >
-                  {isRefreshing ? (
-                    <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-                  ) : (
-                    <RefreshCw size={14} aria-hidden="true" />
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setPendingRemoval(source)}
-                  aria-label={text.remove(source.name)}
-                  title={strings.common.delete}
-                >
-                  <Trash2 size={14} className="text-red-400" aria-hidden="true" />
-                </Button>
+                    {isRefreshing ? (
+                      <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+                    ) : (
+                      <RefreshCw size={18} aria-hidden="true" />
+                    )}
+                  </button>
+                  {/* Removing is apart from the rest, in coral, and asks first. */}
+                  <span aria-hidden="true" className="mx-1 h-6 w-0.5 rounded-full bg-ground" />
+                  <button
+                    type="button"
+                    className={ACTION.iconDanger}
+                    onClick={() => setPendingRemoval(source)}
+                    aria-label={text.remove(source.name)}
+                    title={strings.common.delete}
+                  >
+                    <Trash2 size={18} aria-hidden="true" />
+                  </button>
+                </div>
               </div>
-            </div>
-            {editingSecret === source.id && <SourceSecretForm source={source} onDone={() => setEditingSecret(null)} />}
-          </div>
-        )
-      })}
-
-      <ConfirmDialog
-        isOpen={pendingRemoval !== null}
-        title={text.removeConfirmTitle}
-        confirmLabel={strings.common.delete}
-        destructive
-        onCancel={() => setPendingRemoval(null)}
-        onConfirm={() => {
-          const source = pendingRemoval
-          setPendingRemoval(null)
-          if (source) void handleRemove(source)
-        }}
-      >
-        <p>
-          <span className="font-medium text-surface-100">{pendingRemoval?.name}</span>
-          {text.removeConfirmBody}
-        </p>
-      </ConfirmDialog>
-    </div>
+              {problem && (
+                <div className="px-4 pb-2 pt-2.5">
+                  <FieldError>{problem}</FieldError>
+                </div>
+              )}
+              {editingSecret === source.id && <SourceSecretForm source={source} onDone={() => setEditingSecret(null)} />}
+            </li>
+          )
+        })}
+      </ul>
+      {confirmDialog}
+    </SettingsGroup>
   )
 }

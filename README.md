@@ -25,8 +25,8 @@ Xtream Codes ve M3U kaynaklarıyla çalışır. Oynatma çekirdeği olarak MPV'y
     <td width="50%"><img src="docs/images/02-canli-tv.png" alt="Canlı TV"></td>
   </tr>
   <tr>
-    <td><b>Ana sayfa</b> — kaynaklarındaki içeriğe tek ekrandan erişim</td>
-    <td><b>Canlı TV</b> — kategoriler, kalite bilgisi, favoriler</td>
+    <td><b>Ana sayfa</b> — kaldığın yer, bölümler ve son eklenenler tek ekranda</td>
+    <td><b>Canlı TV</b> — kategoriler, şimdi yayında olan ve kalan süre, favoriler</td>
   </tr>
   <tr>
     <td><img src="docs/images/03-oynatici.png" alt="Oynatıcı"></td>
@@ -36,9 +36,17 @@ Xtream Codes ve M3U kaynaklarıyla çalışır. Oynatma çekirdeği olarak MPV'y
     <td><b>Oynatıcı</b> — MPV tabanlı, pencereye gömülü oynatma</td>
     <td><b>Ayarlar</b> — oynatma, ses ve altyazı tercihleri</td>
   </tr>
+  <tr>
+    <td><img src="docs/images/05-yayin-akisi.png" alt="Yayın Akışı"></td>
+    <td><img src="docs/images/06-filmler.png" alt="Filmler"></td>
+  </tr>
+  <tr>
+    <td><b>Yayın Akışı</b> — tüm kanalların programı tek zaman çizelgesinde</td>
+    <td><b>Filmler</b> — kategoriler ve afişleriyle film kataloğu</td>
+  </tr>
 </table>
 
-> Ekran görüntülerindeki tüm kanal adları ve görüntüler tanıtım amacıyla üretilmiştir. Gerçek bir yayın, kanal veya sağlayıcı içermez.
+> Ekran görüntülerindeki tüm kanal adları, film ve dizi adları, programlar ve görüntüler tanıtım amacıyla üretilmiştir. Gerçek bir yayın, kanal, yapım veya sağlayıcı içermez. Görüntüler `npm run shots` ile sahte sağlayıcının tanıtım kataloğundan yeniden üretilir.
 
 ---
 
@@ -225,6 +233,7 @@ npm run test:e2e       # Uçtan uca testler: derlenmiş uygulama, gerçek mpv, s
 npm run test:e2e:packaged  # build:unpack sonrası paket duman testi (ikililer, paket içeriği, boyut)
 npm run perf:baseline  # Açılış ve oynatma sürelerinin taban ölçümü (docs/olcumler/)
 npm run perf:mock      # Sahte Xtream/M3U sağlayıcıyı elle denemek için başlat
+npm run shots          # README ekran görüntülerini tanıtım kataloğundan yeniden üret (docs/images/)
 npm run build          # Production build (typecheck dahil)
 npm run build:unpack   # Paketlenmiş ama kurulum dosyası üretmeden derle
 npm run build:win      # Windows kurulum dosyası

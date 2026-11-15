@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect, useId } from 'react'
-import { SlidersHorizontal } from 'lucide-react'
+import { SlidersIcon } from '@/components/ui/icons'
 import { useStore } from '@/store'
 import { DEFAULT_PLAYBACK_TUNING } from '@/store/player-slice'
 import { strings } from '@/strings'
+import { DockPill } from './DockPill'
+import { PlayerRange } from './PlayerRange'
+import { CONTROL_SIZE, MENU_HEADING, choicePill, useDockLayout } from './player-ui'
 
 const text = strings.player.tuning
 
@@ -27,6 +30,7 @@ export function PlaybackTuningSelector() {
   const resetPlaybackTuning = useStore((s) => s.resetPlaybackTuning)
   const currentChannel = useStore((s) => s.currentChannel)
   const subtitleTracks = useStore((s) => s.subtitleTracks)
+  const { size, tone } = useDockLayout()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const menuId = useId()
@@ -50,136 +54,129 @@ export function PlaybackTuningSelector() {
     playbackTuning.speed === DEFAULT_PLAYBACK_TUNING.speed &&
     playbackTuning.aspectRatio === DEFAULT_PLAYBACK_TUNING.aspectRatio
 
+  // What the pill says it is set to: each correction away from its default.
+  const changes: string[] = []
+  if (playbackTuning.speed !== DEFAULT_PLAYBACK_TUNING.speed) changes.push(text.speedValue(playbackTuning.speed))
+  if (playbackTuning.aspectRatio !== DEFAULT_PLAYBACK_TUNING.aspectRatio) changes.push(playbackTuning.aspectRatio)
+  if (playbackTuning.audioDelay !== DEFAULT_PLAYBACK_TUNING.audioDelay) changes.push(text.audioDelayValue(formatDelay(playbackTuning.audioDelay)))
+  if (playbackTuning.subDelay !== DEFAULT_PLAYBACK_TUNING.subDelay) changes.push(text.subtitleDelayValue(formatDelay(playbackTuning.subDelay)))
+
   return (
     <div ref={ref} className="relative">
-      <button
-        type="button"
+      <DockPill
+        icon={<SlidersIcon size={CONTROL_SIZE[size].icon} />}
+        label={text.pillLabel}
+        value={isDefault ? text.unchanged : changes.join(' · ')}
+        active={open || !isDefault}
         onClick={() => setOpen(!open)}
-        className={`rounded-lg p-2 transition-colors duration-normal ${
-          isDefault ? 'hover:bg-white/10' : 'bg-white/20'
-        }`}
         title={text.title}
         aria-label={text.label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-      >
-        <SlidersHorizontal size={18} />
-      </button>
+      />
 
       {open && (
         <div
           id={menuId}
-          className="absolute bottom-full right-0 mb-2 max-h-[calc(100vh-5rem)] w-72 overflow-y-auto rounded-lg border border-surface-700 bg-surface-900 p-3 shadow-lg"
+          className="absolute bottom-full right-0 z-dropdown mb-3 max-h-[calc(100vh-12rem)] w-80 overflow-y-auto rounded-tile bg-raised p-2 text-white"
           role="menu"
           aria-label={text.title}
         >
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-surface-500">{text.title}</p>
+          <div className="flex items-center justify-between gap-2 pr-1">
+            <p className={MENU_HEADING}>{text.title}</p>
             <button
               type="button"
               onClick={resetPlaybackTuning}
               disabled={isDefault}
-              className="rounded px-2 py-0.5 text-xs text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+              className="h-10 shrink-0 rounded-full border-2 border-white/50 px-4 text-[14px] font-bold text-white transition-colors hover:border-white disabled:cursor-default disabled:opacity-40 disabled:hover:border-white/50"
             >
               {strings.common.reset}
             </button>
           </div>
 
-          <div className="mt-3">
-            <div className="flex items-center justify-between">
-              <label htmlFor={`${menuId}-audio-delay`} className="text-sm text-surface-300">
-                {text.audioDelay}
-              </label>
-              <span className="text-xs tabular-nums text-surface-400">
-                {formatDelay(playbackTuning.audioDelay)}
-              </span>
-            </div>
-            <input
-              id={`${menuId}-audio-delay`}
-              type="range"
-              min={-2}
-              max={2}
-              step={0.05}
-              value={playbackTuning.audioDelay}
-              onChange={(e) => setPlaybackTuning({ audioDelay: parseFloat(e.target.value) })}
-              className="mt-1 w-full cursor-pointer"
-            />
-            <p className="text-xs leading-4 text-surface-500">
-              {text.audioDelayHint}
-            </p>
-          </div>
-
-          {subtitleTracks.length > 0 && (
-            <div className="mt-3">
-              <div className="flex items-center justify-between">
-                <label htmlFor={`${menuId}-sub-delay`} className="text-sm text-surface-300">
-                  {text.subtitleDelay}
+          <div className="mt-1 space-y-2">
+            <div className="rounded-card bg-ground px-4 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor={`${menuId}-audio-delay`} className="text-[15px] font-bold">
+                  {text.audioDelay}
                 </label>
-                <span className="text-xs tabular-nums text-surface-400">
-                  {formatDelay(playbackTuning.subDelay)}
+                <span className="text-[14px] font-bold tabular-nums text-sun">
+                  {formatDelay(playbackTuning.audioDelay)}
                 </span>
               </div>
-              <input
-                id={`${menuId}-sub-delay`}
-                type="range"
-                min={-5}
-                max={5}
-                step={0.1}
-                value={playbackTuning.subDelay}
-                onChange={(e) => setPlaybackTuning({ subDelay: parseFloat(e.target.value) })}
-                className="mt-1 w-full cursor-pointer"
+              <PlayerRange
+                id={`${menuId}-audio-delay`}
+                min={-2}
+                max={2}
+                step={0.05}
+                value={playbackTuning.audioDelay}
+                onChange={(e) => setPlaybackTuning({ audioDelay: parseFloat(e.target.value) })}
+                className="mt-1 w-full"
               />
+              <p className="text-[14px] leading-5 text-surface-500">{text.audioDelayHint}</p>
             </div>
-          )}
 
-          {!isLive && (
-            <div className="mt-3">
-              <p className="text-sm text-surface-300">{text.speed}</p>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {SPEED_OPTIONS.map((speed) => (
+            {subtitleTracks.length > 0 && (
+              <div className="rounded-card bg-ground px-4 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor={`${menuId}-sub-delay`} className="text-[15px] font-bold">
+                    {text.subtitleDelay}
+                  </label>
+                  <span className="text-[14px] font-bold tabular-nums text-sun">
+                    {formatDelay(playbackTuning.subDelay)}
+                  </span>
+                </div>
+                <PlayerRange
+                  id={`${menuId}-sub-delay`}
+                  min={-5}
+                  max={5}
+                  step={0.1}
+                  value={playbackTuning.subDelay}
+                  onChange={(e) => setPlaybackTuning({ subDelay: parseFloat(e.target.value) })}
+                  className="mt-1 w-full"
+                />
+              </div>
+            )}
+
+            {!isLive && (
+              <div className="rounded-card bg-ground px-4 py-3">
+                <p className="text-[15px] font-bold">{text.speed}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {SPEED_OPTIONS.map((speed) => (
+                    <button
+                      key={speed}
+                      type="button"
+                      onClick={() => setPlaybackTuning({ speed })}
+                      className={choicePill(playbackTuning.speed === speed, tone)}
+                      aria-pressed={playbackTuning.speed === speed}
+                    >
+                      {text.speedValue(speed)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-card bg-ground px-4 py-3">
+              <p className="text-[15px] font-bold">{text.aspect}</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {ASPECT_OPTIONS.map((option) => (
                   <button
-                    key={speed}
+                    key={option.id}
                     type="button"
-                    onClick={() => setPlaybackTuning({ speed })}
-                    className={`rounded-md px-2 py-1 text-xs transition-colors ${
-                      playbackTuning.speed === speed
-                        ? 'border border-accent/45 bg-accent/15 text-accent'
-                        : 'border border-surface-700 text-surface-300 hover:bg-surface-800'
-                    }`}
-                    aria-pressed={playbackTuning.speed === speed}
+                    onClick={() => setPlaybackTuning({ aspectRatio: option.id })}
+                    className={choicePill(playbackTuning.aspectRatio === option.id, tone)}
+                    aria-pressed={playbackTuning.aspectRatio === option.id}
                   >
-                    {speed}x
+                    {option.label}
                   </button>
                 ))}
               </div>
             </div>
-          )}
-
-          <div className="mt-3">
-            <p className="text-sm text-surface-300">{text.aspect}</p>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {ASPECT_OPTIONS.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => setPlaybackTuning({ aspectRatio: option.id })}
-                  className={`rounded-md px-2 py-1 text-xs transition-colors ${
-                    playbackTuning.aspectRatio === option.id
-                      ? 'border border-accent/45 bg-accent/15 text-accent'
-                      : 'border border-surface-700 text-surface-300 hover:bg-surface-800'
-                  }`}
-                  aria-pressed={playbackTuning.aspectRatio === option.id}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
           </div>
 
-          <p className="mt-3 border-t border-surface-800 pt-2 text-xs leading-4 text-surface-500">
-            {text.scopeHint}
-          </p>
+          <p className="px-3 pb-2 pt-3 text-[14px] leading-5 text-surface-500">{text.scopeHint}</p>
         </div>
       )}
     </div>

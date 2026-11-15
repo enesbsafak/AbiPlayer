@@ -1,6 +1,8 @@
 import { useMemo, useRef, useEffect, useCallback, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { X, Play, Radio, ChevronDown, Folder } from 'lucide-react'
+import { ChevronDown, Folder } from 'lucide-react'
+import { CloseIcon, LiveIcon } from '@/components/ui/icons'
+import type { Tone } from '@/components/layout/sections'
 import { useStore } from '@/store'
 import { selectedCategoryFor } from '@/store/playlist-slice'
 import { isPlayableChannel, targetFromChannel } from '@/services/playback'
@@ -8,17 +10,23 @@ import { mpvSetVideoMargin } from '@/services/platform'
 import { ensureFullSync } from '@/services/background-sync'
 import { normalizeImageSrc } from '@/services/image-url'
 import { positionInList } from '@/hooks/useAdjacentChannels'
+import { formatClockTime, useMinuteClock } from '@/hooks/useMinuteClock'
 import { useVisibleCatalogCategories, useVisibleCatalogItems, type CatalogType } from '@/catalog'
 import { mediaKey } from '../../../../shared/playback'
 import { ClampText } from '@/components/ui'
 import type { Channel } from '@/types/playlist'
 import { strings } from '@/strings'
+import { filledClasses, menuRow, playerTone } from './player-ui'
+import { onAirFor, useSourceGuide } from './player-guide'
 
 const text = strings.player.sidebar
 
-const SIDEBAR_WIDTH = 288
-/** One row: 32 px artwork plus padding. */
-const ROW_HEIGHT = 44
+/** Also the right margin mpv keeps the picture out of while the list is open. */
+export const SIDEBAR_WIDTH = 288
+/** The gap under each row. */
+const ROW_GAP = 4
+/** One row: 52 px plus the gap under it. */
+const ROW_HEIGHT = 52 + ROW_GAP
 /** The list stays mounted this long after closing, for the slide-out. */
 const UNMOUNT_DELAY_MS = 300
 
@@ -98,7 +106,7 @@ export function PlayerSidebar() {
   return (
     <div
       data-player-sidebar
-      className={`absolute top-0 bottom-0 right-0 z-sidebar flex flex-col transition-transform duration-normal ease-out ${
+      className={`absolute top-0 bottom-0 right-0 z-sidebar flex flex-col text-white transition-transform duration-normal ease-out ${
         isPlayerSidebarOpen ? 'translate-x-0' : 'translate-x-full'
       }`}
       style={{ width: SIDEBAR_WIDTH }}
@@ -106,18 +114,16 @@ export function PlayerSidebar() {
       onMouseMove={(e) => e.stopPropagation()}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/8">
-        <span className="text-label font-semibold text-surface-400 uppercase tracking-wider">
-          {typeLabel}
-        </span>
+      <div className="flex items-center justify-between gap-3 pb-2 pl-5 pr-3 pt-3">
+        <h2 className="font-title truncate text-[26px] leading-[1.15]">{typeLabel}</h2>
         <button
           type="button"
           onClick={() => setPlayerSidebarOpen(false)}
-          className="rounded p-1 text-surface-400 hover:text-white hover:bg-white/8 transition-colors duration-normal"
+          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-raised text-white transition-colors duration-normal hover:bg-surface-800"
           aria-label={text.close}
           title={text.closeTitle}
         >
-          <X size={14} />
+          <CloseIcon size={18} />
         </button>
       </div>
 
@@ -146,7 +152,11 @@ interface SidebarBodyProps {
 
 function SidebarBody({ sourceId, type, currentChannel, isOpen, selectedCategoryId, onSelectCategory }: SidebarBodyProps) {
   const playChannel = useStore((s) => s.playChannel)
-  const currentMediaKey = useStore((s) => s.currentPlayback?.mediaKey ?? null)
+  const currentPlayback = useStore((s) => s.currentPlayback)
+  const currentMediaKey = currentPlayback?.mediaKey ?? null
+  const tone = playerTone(currentPlayback, currentChannel)
+  const guide = useSourceGuide(type === 'live' ? sourceId : null)
+  const now = useMinuteClock()
   const [isCategoryOpen, setIsCategoryOpen] = useState(false)
   const categoryDropdownRef = useRef<HTMLDivElement>(null)
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
@@ -221,42 +231,46 @@ function SidebarBody({ sourceId, type, currentChannel, isOpen, selectedCategoryI
     <>
       {/* Category selector */}
       {availableCategories.length > 1 && (
-        <div ref={categoryDropdownRef} className="relative border-b border-white/6">
+        <div ref={categoryDropdownRef} className="relative px-3 pb-2">
           <button
             type="button"
             onClick={() => setIsCategoryOpen(!isCategoryOpen)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/4 transition-colors"
+            aria-expanded={isCategoryOpen}
+            title={text.category}
+            className={`flex h-11 w-full items-center gap-2.5 rounded-full pl-4 pr-3.5 text-left transition-colors ${
+              isCategoryOpen ? filledClasses(tone) : 'bg-raised text-white hover:bg-surface-800'
+            }`}
           >
-            <Folder size={12} className="text-surface-500 shrink-0" />
-            <span className="flex-1 text-xs text-surface-200 truncate">{activeCategoryLabel}</span>
-            <span className="text-caption text-surface-600 tabular-nums mr-1">{channels.length}</span>
+            <Folder size={16} strokeWidth={2.4} aria-hidden="true" className="shrink-0" />
+            <span className="min-w-0 flex-1 truncate text-[15px] font-bold">{activeCategoryLabel}</span>
+            <span className={`text-[13px] font-medium tabular-nums ${isCategoryOpen ? 'text-ink' : 'text-surface-500'}`}>
+              {channels.length}
+            </span>
             <ChevronDown
-              size={12}
-              className={`text-surface-500 transition-transform ${isCategoryOpen ? 'rotate-180' : ''}`}
+              size={16}
+              strokeWidth={2.6}
+              aria-hidden="true"
+              className={`shrink-0 transition-transform ${isCategoryOpen ? 'rotate-180' : ''}`}
             />
           </button>
 
           {isCategoryOpen && (
-            <div className="absolute left-0 right-0 top-full z-dropdown max-h-64 overflow-y-auto border-b border-white/8 bg-surface-950">
+            <div className="absolute inset-x-3 top-full z-dropdown max-h-[min(24rem,60vh)] space-y-1 overflow-y-auto rounded-card bg-raised p-1.5">
               <button
                 type="button"
                 onClick={() => handleCategorySelect(null)}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
-                  !selectedCategoryId ? 'text-accent bg-accent/8' : 'text-surface-300 hover:bg-white/4'
-                }`}
+                className={menuRow(!selectedCategoryId, tone)}
               >
-                {strings.catalog.types[type].all}
+                <span className="truncate">{strings.catalog.types[type].all}</span>
               </button>
               {availableCategories.map((cat) => (
                 <button
                   key={cat.id}
                   type="button"
                   onClick={() => handleCategorySelect(cat.id)}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors truncate ${
-                    selectedCategoryId === cat.id ? 'text-accent bg-accent/8' : 'text-surface-300 hover:bg-white/4'
-                  }`}
+                  className={menuRow(selectedCategoryId === cat.id, tone)}
                 >
-                  {cat.name}
+                  <span className="truncate">{cat.name}</span>
                 </button>
               ))}
             </div>
@@ -265,10 +279,11 @@ function SidebarBody({ sourceId, type, currentChannel, isOpen, selectedCategoryI
       )}
 
       {/* Channel list */}
-      <div ref={setScrollElement} className="flex-1 overflow-y-auto">
+      <div ref={setScrollElement} className="flex-1 overflow-y-auto px-3 pb-3">
         {channels.length === 0 ? (
-          <div className="py-8 text-center text-xs text-surface-600">
-            {text.empty}
+          <div className="px-3 py-8 text-center">
+            <p className="text-[15px] font-bold">{text.empty}</p>
+            {availableCategories.length > 1 && <p className="mt-1 text-[14px] text-surface-500">{text.emptyHint}</p>}
           </div>
         ) : (
           <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
@@ -277,38 +292,19 @@ function SidebarBody({ sourceId, type, currentChannel, isOpen, selectedCategoryI
               if (!ch) return null
               // The id narrows it to one row cheaply; the media key decides.
               const isActive = ch.id === currentChannel.id && isPlayingItem(currentMediaKey, ch)
+              const onAir = type === 'live' ? onAirFor(guide, ch, now).now : null
               return (
-                <button
+                <SidebarRow
                   key={row.key}
-                  type="button"
-                  onClick={() => handleSelect(ch)}
-                  aria-current={isActive || undefined}
-                  className={`absolute left-0 top-0 w-full flex items-center gap-2.5 px-3 text-left transition-colors ${
-                    isActive
-                      ? 'bg-accent/10 border-l-2 border-accent'
-                      : 'border-l-2 border-transparent hover:bg-white/5'
-                  }`}
-                  style={{ height: ROW_HEIGHT, transform: `translateY(${row.start}px)` }}
-                >
-                  <div className="relative flex-shrink-0 size-8 rounded overflow-hidden bg-white/5 flex items-center justify-center">
-                    <SidebarThumb src={ch.logo || ch.coverUrl} />
-                    {isActive && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-                        <Play size={10} fill="white" color="white" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <ClampText
-                      as="p"
-                      lines={1}
-                      titleText={ch.name}
-                      className={`text-label ${isActive ? 'font-semibold text-accent' : 'font-medium text-surface-200'}`}
-                    >
-                      {ch.name}
-                    </ClampText>
-                  </div>
-                </button>
+                  channel={ch}
+                  number={type === 'live' ? positionInList(visibleChannels, ch.id) + 1 : null}
+                  programme={onAir?.title ?? null}
+                  ends={onAir ? formatClockTime(onAir.end) : null}
+                  isActive={isActive}
+                  tone={tone}
+                  top={row.start}
+                  onSelect={handleSelect}
+                />
               )
             })}
           </div>
@@ -318,8 +314,61 @@ function SidebarBody({ sourceId, type, currentChannel, isOpen, selectedCategoryI
   )
 }
 
+interface SidebarRowProps {
+  channel: Channel
+  /** Live: its place in the list shown (the dock's coral tile shows the same). */
+  number: number | null
+  /** Live with a guide: what is on now, and when it ends. */
+  programme: string | null
+  ends: string | null
+  isActive: boolean
+  tone: Tone
+  top: number
+  onSelect: (channel: Channel) => void
+}
+
+/** One item: what is playing is filled with its section colour, ink on it. */
+function SidebarRow({ channel, number, programme, ends, isActive, tone, top, onSelect }: SidebarRowProps) {
+  const sub = isActive ? 'text-ink' : 'text-surface-500'
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(channel)}
+      aria-current={isActive || undefined}
+      className={`absolute left-0 top-0 flex w-full items-center gap-2.5 rounded-card pl-1.5 pr-3.5 text-left transition-colors ${
+        isActive ? filledClasses(tone) : 'text-white hover:bg-raised'
+      }`}
+      style={{ height: ROW_HEIGHT - ROW_GAP, transform: `translateY(${top}px)` }}
+    >
+      {number !== null && number > 0 ? (
+        <span
+          className={`font-title w-[38px] shrink-0 text-center tabular-nums ${number >= 1000 ? 'text-[15px]' : number >= 100 ? 'text-[18px]' : 'text-[22px]'}`}
+        >
+          {number}
+        </span>
+      ) : (
+        // Films and series get their poster upright; a channel's logo is square.
+        <span
+          className={`flex shrink-0 items-center justify-center overflow-hidden bg-raised ${
+            channel.type === 'live' ? 'size-10 rounded-[12px]' : 'h-11 w-[30px] rounded-[8px]'
+          }`}
+        >
+          <SidebarThumb src={channel.logo || channel.coverUrl} />
+        </span>
+      )}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <ClampText as="span" lines={1} titleText={channel.name} className="text-[15px] font-bold leading-5">
+          {channel.name}
+        </ClampText>
+        {programme && <span className={`truncate text-[13px] leading-[18px] ${sub}`}>{programme}</span>}
+      </span>
+      {ends && <span className={`shrink-0 text-[13px] font-medium tabular-nums ${sub}`}>{ends}</span>}
+    </button>
+  )
+}
+
 /**
- * A 32 px thumbnail: a plain lazily decoded image without the poster
+ * A small thumbnail: a plain lazily decoded image without the poster
  * component's observers, timers and shimmer. Providers publish one artwork
  * URL per item, so there is no smaller file to ask for; virtualization keeps
  * the number of rows (and requests) to what is on screen.
@@ -327,13 +376,13 @@ function SidebarBody({ sourceId, type, currentChannel, isOpen, selectedCategoryI
 function SidebarThumb({ src }: { src?: string }) {
   const normalized = normalizeImageSrc(src)
   const [failed, setFailed] = useState<string | null>(null)
-  if (!normalized || failed === normalized) return <Radio size={12} className="text-surface-600" />
+  if (!normalized || failed === normalized) return <LiveIcon size={18} className="text-surface-600" />
   return (
     <img
       src={normalized}
       alt=""
-      width={32}
-      height={32}
+      width={40}
+      height={40}
       loading="lazy"
       decoding="async"
       draggable={false}

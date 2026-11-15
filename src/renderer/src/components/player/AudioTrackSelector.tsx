@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useId } from 'react'
 import { Languages } from 'lucide-react'
 import { useStore } from '@/store'
 import { strings } from '@/strings'
+import { DockPill } from './DockPill'
+import { CONTROL_SIZE, MENU_HEADING, MENU_PANEL, menuRow, useDockLayout } from './player-ui'
 
 const text = strings.player.audio
 
@@ -9,6 +11,7 @@ export function AudioTrackSelector() {
   const audioTracks = useStore((s) => s.audioTracks)
   const currentAudioTrack = useStore((s) => s.currentAudioTrack)
   const setCurrentAudioTrack = useStore((s) => s.setCurrentAudioTrack)
+  const { size, tone } = useDockLayout()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const menuId = useId()
@@ -23,40 +26,44 @@ export function AudioTrackSelector() {
 
   if (audioTracks.length <= 1) return null
 
+  const trackName = (index: number) => {
+    const track = audioTracks[index]
+    return track?.name || track?.lang || text.fallback(index + 1)
+  }
+  const currentIndex = audioTracks.findIndex((track) => track.id === currentAudioTrack)
+
   return (
     <div ref={ref} className="relative">
-      <button
-        type="button"
+      <DockPill
+        icon={<Languages size={CONTROL_SIZE[size].icon} strokeWidth={2.4} aria-hidden="true" />}
+        label={text.title}
+        value={currentIndex >= 0 ? trackName(currentIndex) : text.unknown}
+        active={open}
         onClick={() => setOpen(!open)}
-        className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal"
         title={text.title}
         aria-label={text.label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-      >
-        <Languages size={18} />
-      </button>
+      />
       {open && (
         <ul
           id={menuId}
           // Capped + scrollable: this opens upward and multi-audio IPTV streams
           // can list more tracks than fit above the control bar.
-          className="absolute bottom-full right-0 mb-2 max-h-[calc(100vh-5rem)] w-48 list-none overflow-y-auto rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-lg"
+          className={`${MENU_PANEL} w-64 list-none space-y-1`}
           aria-label={text.heading}
         >
-          <li className="px-3 py-1.5 text-xs font-medium text-surface-500">{text.heading}</li>
+          <li className={MENU_HEADING}>{text.heading}</li>
           {audioTracks.map((track, index) => (
             <li key={track.id}>
               <button
                 type="button"
                 onClick={() => { setCurrentAudioTrack(track.id); setOpen(false) }}
-                className={`flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-800 transition-colors duration-normal ${
-                  track.id === currentAudioTrack ? 'text-accent' : 'text-surface-200'
-                }`}
+                className={menuRow(track.id === currentAudioTrack, tone)}
                 aria-current={track.id === currentAudioTrack ? 'true' : undefined}
               >
-                {track.name || track.lang || text.fallback(index + 1)}
+                <span className="truncate">{trackName(index)}</span>
               </button>
             </li>
           ))}

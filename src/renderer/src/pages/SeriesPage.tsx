@@ -9,6 +9,7 @@ import { strings } from '@/strings'
 import type { EpisodePlaybackRequest } from '@/types/player'
 
 const TYPE_TEXT = strings.catalog.types.series
+const TONE_OF_PAGE = 'sky'
 
 const LABELS: CatalogPageLabels = {
   all: TYPE_TEXT.all,
@@ -56,6 +57,7 @@ export default function SeriesPage() {
     <CatalogPage
       page={page}
       labels={LABELS}
+      tone={TONE_OF_PAGE}
       layout={POSTER_GRID_LAYOUT}
       renderCard={renderPosterCard}
       onOpen={handleOpen}
@@ -66,12 +68,14 @@ export default function SeriesPage() {
               label: strings.catalog.detail.seriesLabel,
               content: (
                 <SeriesDetail
+                  key={seriesId}
                   seriesId={seriesId}
                   sourceId={detail.sourceId}
                   initialSeasonNumber={detail.season}
                   onBack={closeDetail}
                   onSeasonChange={handleSeasonChange}
                   onPlayEpisode={handlePlayEpisode}
+                  onOpenSeries={handleOpen}
                 />
               )
             }

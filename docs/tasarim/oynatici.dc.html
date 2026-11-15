@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Canlı renk: Oynatıcı</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&amp;family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#FFFFFF;text-decoration:none}a:hover{color:#FFFFFF}
+button{font:inherit}
+</style>
+</helmet>
+<div style="position: relative; display: flex; flex-direction: column; gap: 20px; min-height: 800px; padding: 20px 24px 16px; box-sizing: border-box; background: #0B0910; color: #FFFFFF; color-scheme: dark; font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif; font-size: 16px; line-height: 1.35; overflow: hidden">
+
+<img src="{{sel.image}}" alt="" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover">
+<div aria-hidden="true" style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; background: rgba(11, 9, 16, 0.28)"></div>
+
+<h1 style="position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%)">Oynatıcı</h1>
+
+<header style="position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<a href="R-Canli.dc.html" style="display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 22px 0 18px; box-sizing: border-box; border-radius: 26px; background: rgba(21, 18, 28, 0.94); color: #FFFFFF; font-weight: 700">
+<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H6M11 6l-6 6 6 6"></path></svg>
+Kanallara dön
+</a>
+<div style="flex: 1"></div>
+<div aria-label="Yayın bilgisi" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<sc-for list="{{badges}}" as="b" hint-placeholder-count="4">
+<div style="display: flex; align-items: center; height: 36px; padding: 0 14px; box-sizing: border-box; border-radius: 18px; background: {{b.bg}}; color: {{b.fg}}; font-size: 15px; font-weight: 700; white-space: nowrap">{{b.label}}</div>
+</sc-for>
+</div>
+<div style="display: flex; gap: 8px; margin-left: 8px">
+<button type="button" aria-label="Simge durumuna küçült" style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px; background: #2A2433; color: #FFFFFF; cursor: pointer">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M6 12h12"></path></svg>
+</button>
+<button type="button" aria-label="Ekranı kapla" style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px; background: #2A2433; color: #FFFFFF; cursor: pointer">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><rect x="6" y="6" width="12" height="12" rx="3.5"></rect></svg>
+</button>
+<button type="button" aria-label="Kapat" style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px; background: #2A2433; color: #FFFFFF; cursor: pointer">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+</button>
+</div>
+</header>
+
+<div style="position: relative; display: flex; align-items: flex-end; gap: 20px; flex: 1; min-height: 0">
+
+<div style="display: flex; align-items: center; justify-content: center; flex: 1; align-self: stretch; min-width: 0">
+<sc-if value="{{paused}}" hint-placeholder-val="{{false}}">
+<div role="status" style="display: flex; align-items: center; gap: 12px; max-width: 100%; min-height: 60px; padding: 10px 26px 10px 20px; box-sizing: border-box; border-radius: 30px; background: rgba(21, 18, 28, 0.94); font-size: 17px; font-weight: 500">
+<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="#FFC83D"><rect x="6" y="5" width="4.5" height="14" rx="1.5"></rect><rect x="13.5" y="5" width="4.5" height="14" rx="1.5"></rect></svg>
+Duraklatıldı. Devam etmek için Boşluk tuşuna bas.
+</div>
+</sc-if>
+</div>
+
+<sc-if value="{{listOpen}}" hint-placeholder-val="{{false}}">
+<section aria-labelledby="liste-baslik" style="display: flex; flex-direction: column; gap: 4px; width: 380px; max-width: 100%; flex: none; padding: 12px; box-sizing: border-box; border-radius: 28px; background: rgba(21, 18, 28, 0.94)">
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; padding-left: 10px">
+<h2 id="liste-baslik" style="margin: 0; font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif; font-size: 26px; font-weight: 800; line-height: 1; letter-spacing: -0.03em">Kanal listesi</h2>
+<button type="button" onClick="{{closePanel}}" aria-label="Kanal listesini kapat" style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px; background: #2A2433; color: #FFFFFF; cursor: pointer">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+</button>
+</div>
+<sc-for list="{{rows}}" as="ch" hint-placeholder-count="6">
+<button type="button" onClick="{{ch.select}}" aria-pressed="{{ch.pressed}}" style="display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px 0 6px; border: 0; border-radius: 20px; background: {{ch.bg}}; color: {{ch.fg}}; text-align: left; cursor: pointer">
+<span style="width: 38px; flex: none; font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif; font-size: 24px; font-weight: 800; line-height: 1; letter-spacing: -0.03em; text-align: center">{{ch.number}}</span>
+<span style="display: flex; flex-direction: column; flex: 1; min-width: 0">
+<span style="font-size: 16px; font-weight: 700; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ch.name}}</span>
+<span style="font-size: 15px; line-height: 1.3; color: {{ch.sub}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ch.program}}</span>
+</span>
+<span style="font-size: 15px; font-weight: 500; color: {{ch.sub}}; white-space: nowrap; font-variant-numeric: tabular-nums">{{ch.end}}</span>
+</button>
+</sc-for>
+</section>
+</sc-if>
+
+<sc-if value="{{pictureOpen}}" hint-placeholder-val="{{false}}">
+<section aria-labelledby="goruntu-baslik" style="display: flex; flex-direction: column; gap: 14px; width: 680px; max-width: 100%; flex: none; padding: 18px 20px 20px; box-sizing: border-box; border-radius: 28px; background: rgba(21, 18, 28, 0.94)">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<h2 id="goruntu-baslik" style="margin: 0; font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif; font-size: 26px; font-weight: 800; line-height: 1; letter-spacing: -0.03em">Görüntü</h2>
+<button type="button" onClick="{{closePanel}}" aria-label="Görüntü ayarlarını kapat" style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px; background: #2A2433; color: #FFFFFF; cursor: pointer">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 14px">
+<div style="display: flex; flex-direction: column; gap: 10px; flex: 1 1 260px; min-width: 0">
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; border-radius: 20px; background: #0B0910; font-size: 15px">
+<div style="display: flex; justify-content: space-between; gap: 12px"><span style="color: rgba(255, 255, 255, 0.72)">Yayın</span><span style="font-weight: 700; text-align: right">{{sel.streamInfo}}</span></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><span style="color: rgba(255, 255, 255, 0.72)">Ekranın</span><span style="font-weight: 700; text-align: right">HDR açık</span></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><span style="color: rgba(255, 255, 255, 0.72)">Şu an</span><span style="font-weight: 700; text-align: right; color: #FFC83D">{{hdrStatus}}</span></div>
+</div>
+<button type="button" role="switch" aria-checked="{{deintChecked}}" onClick="{{toggleDeint}}" style="display: flex; align-items: center; gap: 14px; padding: 12px 16px; border: 0; border-radius: 20px; background: #0B0910; color: #FFFFFF; text-align: left; cursor: pointer">
+<span style="display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0">
+<span style="font-size: 16px; font-weight: 700">Tarama çizgilerini düzelt</span>
+<span style="font-size: 15px; color: rgba(255, 255, 255, 0.72)">Hareketli sahnelerde tarak gibi çizgiler görüyorsan açık kalsın.</span>
+</span>
+<span aria-hidden="true" style="display: flex; align-items: center; justify-content: {{deintAlign}}; width: 52px; height: 30px; flex: none; padding: 0 4px; box-sizing: border-box; border-radius: 15px; background: {{deintTrack}}"><span style="width: 22px; height: 22px; border-radius: 11px; background: {{deintKnob}}"></span></span>
+</button>
+</div>
+<div role="radiogroup" aria-label="HDR gösterimi" style="display: flex; flex-direction: column; gap: 8px; flex: 1 1 260px; min-width: 0">
+<sc-for list="{{hdrOptions}}" as="opt" hint-placeholder-count="2">
+<button type="button" role="radio" aria-checked="{{opt.checked}}" onClick="{{opt.select}}" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border: 0; border-radius: 20px; background: {{opt.bg}}; color: #FFFFFF; text-align: left; cursor: pointer">
+<span aria-hidden="true" style="display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex: none; margin-top: 1px; box-sizing: border-box; border-radius: 11px; border: 2.4px solid {{opt.ring}}"><span style="width: 10px; height: 10px; border-radius: 5px; background: {{opt.dot}}"></span></span>
+<span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span style="font-size: 16px; font-weight: 700">{{opt.label}}</span>
+<span style="font-size: 15px; color: rgba(255, 255, 255, 0.72)">{{opt.help}}</span>
+</span>
+</button>
+</sc-for>
+</div>
+</div>
+</section>
+</sc-if>
+
+</div>
+
+<section aria-label="Oynatma" style="position: relative; display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 12px; border-radius: 28px; background: rgba(21, 18, 28, 0.94)">
+
+<div style="display: flex; align-items: center; gap: 18px">
+<div style="display: flex; align-items: center; justify-content: center; width: 72px; height: 72px; flex: none; border-radius: 22px; background: #FF6B4A; color: #17131F; font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif; font-size: 44px; font-weight: 800; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums">{{sel.number}}</div>
+<div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0">
+<div style="display: flex; align-items: center; gap: 10px">
+<div style="font-size: 17px; font-weight: 700; white-space: nowrap">{{sel.name}}</div>
+<div style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px 0 9px; box-sizing: border-box; border-radius: 13px; background: #FF6B4A; color: #17131F; font-size: 14px; font-weight: 700"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 4px; background: #17131F"></span>Canlı</div>
+</div>
+<div style="font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif; font-size: 40px; font-weight: 800; line-height: 1.1; letter-spacing: -0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{sel.program}}</div>
+<div style="display: flex; align-items: center; gap: 12px; margin-top: 2px; font-size: 15px; font-variant-numeric: tabular-nums">
+<div style="font-weight: 700">{{sel.start}}</div>
+<div role="img" aria-label="{{sel.progressLabel}}" style="flex: 1; max-width: 460px; height: 12px; border-radius: 6px; background: rgba(255, 255, 255, 0.2); overflow: hidden"><div style="width: {{sel.progress}}; height: 100%; border-radius: 6px; background: #FF6B4A"></div></div>
+<div style="font-weight: 700">{{sel.end}}</div>
+<div style="color: rgba(255, 255, 255, 0.72); white-space: nowrap">{{sel.left}}</div>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; width: 240px; flex: none; padding: 14px 18px; box-sizing: border-box; border-radius: 20px; background: #2A2433">
+<div style="font-size: 14px; font-weight: 500; color: rgba(255, 255, 255, 0.72); font-variant-numeric: tabular-nums">Sırada · {{sel.end}}</div>
+<div style="font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{sel.next}}</div>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<button type="button" onClick="{{prev}}" style="display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 20px 0 14px; border: 0; border-radius: 26px; background: #2A2433; color: #FFFFFF; font-size: 15px; font-weight: 700; cursor: pointer">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"></path></svg>
+Önceki kanal
+</button>
+<button type="button" onClick="{{togglePause}}" aria-label="{{pauseLabel}}" style="display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; margin: 0 4px; padding: 0; border: 0; border-radius: 32px; background: #FFFFFF; color: #17131F; cursor: pointer">
+<sc-if value="{{paused}}" hint-placeholder-val="{{false}}">
+<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M7.5 4.5v15l12-7.5z"></path></svg>
+</sc-if>
+<sc-if value="{{playing}}" hint-placeholder-val="{{true}}">
+<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4.5" height="14" rx="1.5"></rect><rect x="13.5" y="5" width="4.5" height="14" rx="1.5"></rect></svg>
+</sc-if>
+</button>
+<button type="button" onClick="{{next}}" style="display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 20px 0 14px; border: 0; border-radius: 26px; background: #2A2433; color: #FFFFFF; font-size: 15px; font-weight: 700; cursor: pointer">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+Sonraki kanal
+</button>
+<label style="display: flex; align-items: center; gap: 10px; height: 52px; margin-left: 8px; color: #FFFFFF">
+<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h3.5l4.5 4V6l-4.5 4zM16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"></path></svg>
+<span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%)">Ses düzeyi</span>
+<input type="range" min="0" max="100" value="70" style="width: 100px; accent-color: #FFC83D">
+</label>
+<div style="flex: 1"></div>
+<button type="button" style="display: flex; flex-direction: column; justify-content: center; height: 52px; padding: 0 18px; border: 0; border-radius: 26px; background: #2A2433; color: #FFFFFF; text-align: left; cursor: pointer">
+<span style="font-size: 13px; font-weight: 500; line-height: 1.2; color: rgba(255, 255, 255, 0.72)">Ses dili</span>
+<span style="font-size: 15px; font-weight: 700; line-height: 1.25">Türkçe</span>
+</button>
+<button type="button" style="display: flex; flex-direction: column; justify-content: center; height: 52px; padding: 0 18px; border: 0; border-radius: 26px; background: #2A2433; color: #FFFFFF; text-align: left; cursor: pointer">
+<span style="font-size: 13px; font-weight: 500; line-height: 1.2; color: rgba(255, 255, 255, 0.72)">Altyazı</span>
+<span style="font-size: 15px; font-weight: 700; line-height: 1.25">Kapalı</span>
+</button>
+<button type="button" onClick="{{togglePicture}}" aria-expanded="{{pictureExpanded}}" style="display: flex; flex-direction: column; justify-content: center; height: 52px; padding: 0 18px; border: 0; border-radius: 26px; background: {{pictureBg}}; color: {{pictureFg}}; text-align: left; cursor: pointer">
+<span style="font-size: 13px; font-weight: 500; line-height: 1.2; color: {{pictureSub}}">Görüntü</span>
+<span style="font-size: 15px; font-weight: 700; line-height: 1.25; white-space: nowrap">{{sel.pictureShort}}</span>
+</button>
+<button type="button" onClick="{{toggleList}}" aria-expanded="{{listExpanded}}" style="display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 20px 0 16px; border: 0; border-radius: 26px; background: {{listBg}}; color: {{listFg}}; font-size: 15px; font-weight: 700; cursor: pointer">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>
+Kanal listesi
+</button>
+<button type="button" aria-label="Tam ekran" style="display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; padding: 0; border: 0; border-radius: 26px; background: #2A2433; color: #FFFFFF; cursor: pointer">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg>
+</button>
+</div>
+
+<footer aria-label="Klavye ipuçları" style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 0 4px; font-size: 14px; color: rgba(255, 255, 255, 0.72)">
+<div style="display: flex; align-items: center; gap: 8px; white-space: nowrap"><kbd style="display: flex; align-items: center; height: 28px; padding: 0 10px; box-sizing: border-box; border-radius: 10px; background: #2A2433; border-bottom: 3px solid #0B0910; color: #FFFFFF; font: inherit; font-size: 13px; font-weight: 700">Boşluk</kbd>duraklat</div>
+<div style="display: flex; align-items: center; gap: 8px; white-space: nowrap"><kbd style="display: flex; align-items: center; height: 28px; padding: 0 10px; box-sizing: border-box; border-radius: 10px; background: #2A2433; border-bottom: 3px solid #0B0910; color: #FFFFFF; font: inherit; font-size: 13px; font-weight: 700">Yukarı / Aşağı</kbd>kanal değiştir</div>
+<div style="display: flex; align-items: center; gap: 8px; white-space: nowrap"><kbd style="display: flex; align-items: center; height: 28px; padding: 0 10px; box-sizing: border-box; border-radius: 10px; background: #2A2433; border-bottom: 3px solid #0B0910; color: #FFFFFF; font: inherit; font-size: 13px; font-weight: 700">L</kbd>kanal listesi</div>
+<div style="display: flex; align-items: center; gap: 8px; white-space: nowrap"><kbd style="display: flex; align-items: center; height: 28px; padding: 0 10px; box-sizing: border-box; border-radius: 10px; background: #2A2433; border-bottom: 3px solid #0B0910; color: #FFFFFF; font: inherit; font-size: 13px; font-weight: 700">F</kbd>tam ekran</div>
+<div style="display: flex; align-items: center; gap: 8px; white-space: nowrap"><kbd style="display: flex; align-items: center; height: 28px; padding: 0 10px; box-sizing: border-box; border-radius: 10px; background: #2A2433; border-bottom: 3px solid #0B0910; color: #FFFFFF; font: inherit; font-size: 13px; font-weight: 700">Esc</kbd>kanallara dön</div>
+<div style="flex: 1"></div>
+<div style="white-space: nowrap">Fareyi oynatmazsan bu panel 3 saniyede gizlenir</div>
+</footer>
+
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { current: 3, paused: false, panel: 'none', hdrMode: 'auto', deint: true };
+}
+renderVals() {
+const coral = '#FF6B4A';
+const ink = '#17131F';
+const raised = '#2A2433';
+const soft = 'rgba(255, 255, 255, 0.72)';
+const data = [
+{ number: 1, name: 'Ulusal 1', program: 'Sessiz Liman', start: '20:00', end: '21:00', pct: 70, left: '18 dk kaldı', next: 'Ana Haber', image: '/_blob/467bb3f24ed72e589c6e8532a578b8b5', res: '1080p', fps: '50 fps', hdr: false },
+{ number: 2, name: 'Kanal 2', program: 'Büyük Macera Yarışı', start: '20:00', end: '22:15', pct: 31, left: '1 sa 33 dk kaldı', next: 'Kıyı (dizi)', image: '/_blob/db7f3448d2fd877d1763ef777c52165e', res: '1080p', fps: '50 fps', hdr: false },
+{ number: 3, name: 'Haber 24', program: 'Deniz ve Hava Raporu', start: '20:30', end: '21:00', pct: 40, left: '18 dk kaldı', next: 'Gündem Özel', image: '/_blob/876d687534ddf472f5cbb8da07c1cf47', res: '1080p', fps: '25 fps', hdr: false },
+{ number: 4, name: 'Spor Arena', program: 'Maç Önü', start: '20:15', end: '21:30', pct: 35, left: '48 dk kaldı', next: 'Canlı Karşılaşma', image: '/_blob/94a6666d8a962a23cdc3e5404f1bed92', res: '4K', fps: '50 fps', hdr: true },
+{ number: 5, name: 'Spor Arena 2', program: 'Ralli Özetleri', start: '20:00', end: '21:00', pct: 70, left: '18 dk kaldı', next: 'Motor Sporları Gündemi', image: '/_blob/f48faace90c621f0c9bfa310b8333db4', res: '1080p', fps: '50 fps', hdr: false },
+{ number: 6, name: 'Belgesel', program: 'Uzak Kıyılar', start: '20:00', end: '20:50', pct: 84, left: '8 dk kaldı', next: 'Okyanusun Derinleri', image: '/_blob/876d687534ddf472f5cbb8da07c1cf47', res: '4K', fps: '25 fps', hdr: true }
+];
+const count = data.length;
+const index = this.state.current;
+const sel = data[index] ?? data[0];
+const panel = this.state.panel;
+const hdrMode = this.state.hdrMode;
+const deint = this.state.deint;
+const plain = { bg: '#15121C', fg: '#FFFFFF' };
+const badges = [{ label: sel.res, ...plain }];
+if (sel.hdr) badges.push({ label: 'HDR10', bg: '#FFC83D', fg: ink });
+badges.push({ label: sel.fps, ...plain });
+badges.push({ label: 'Donanım', ...plain });
+const hdrStatus = !sel.hdr
+? 'Bu yayın HDR değil'
+: hdrMode === 'auto'
+? 'HDR olduğu gibi gösteriliyor'
+: 'Renkler ekrana uyarlanıyor';
+const option = (id, label, help) => {
+const on = hdrMode === id;
+return {
+label,
+help,
+checked: on ? 'true' : 'false',
+bg: on ? raised : 'transparent',
+ring: on ? '#FFC83D' : soft,
+dot: on ? '#FFC83D' : 'transparent',
+select: () => this.setState({ hdrMode: id })
+};
+};
+const listOn = panel === 'list';
+const pictureOn = panel === 'picture';
+return {
+badges,
+hdrStatus,
+hdrOptions: [
+option('auto', 'Otomatik (önerilen)', 'Ekranın HDR ise olduğu gibi gösterir, değilse renkleri ekranına uyarlar.'),
+option('tonemap', 'Her zaman ekrana uyarla', 'HDR yayınlar soluk ya da fazla parlak görünüyorsa bunu seç.')
+],
+deintChecked: deint ? 'true' : 'false',
+deintTrack: deint ? '#5BE0B3' : 'rgba(255, 255, 255, 0.24)',
+deintKnob: deint ? ink : '#FFFFFF',
+deintAlign: deint ? 'flex-end' : 'flex-start',
+toggleDeint: () => this.setState({ deint: !deint }),
+rows: data.map((ch, i) => {
+const active = i === index;
+return {
+...ch,
+bg: active ? coral : 'transparent',
+fg: active ? ink : '#FFFFFF',
+sub: active ? ink : soft,
+pressed: active ? 'true' : 'false',
+select: () => this.setState({ current: i })
+};
+}),
+sel: {
+...sel,
+progress: sel.pct + '%',
+progressLabel: 'Programın yüzde ' + sel.pct + ' kadarı geçti',
+streamInfo: sel.res + (sel.hdr ? ' · HDR10' : ' · SDR') + ' · ' + sel.fps,
+pictureShort: sel.res + (sel.hdr ? ' · HDR' : '')
+},
+paused: this.state.paused,
+playing: !this.state.paused,
+pauseLabel: this.state.paused ? 'Oynat' : 'Duraklat',
+listOpen: listOn,
+pictureOpen: pictureOn,
+listExpanded: listOn ? 'true' : 'false',
+pictureExpanded: pictureOn ? 'true' : 'false',
+listBg: listOn ? coral : raised,
+listFg: listOn ? ink : '#FFFFFF',
+pictureBg: pictureOn ? coral : raised,
+pictureFg: pictureOn ? ink : '#FFFFFF',
+pictureSub: pictureOn ? ink : soft,
+toggleList: () => this.setState({ panel: listOn ? 'none' : 'list' }),
+togglePicture: () => this.setState({ panel: pictureOn ? 'none' : 'picture' }),
+closePanel: () => this.setState({ panel: 'none' }),
+prev: () => this.setState({ current: (index - 1 + count) % count }),
+next: () => this.setState({ current: (index + 1) % count }),
+togglePause: () => this.setState({ paused: !this.state.paused })
+};
+}
+}
+</script>
+</body>
+</html>

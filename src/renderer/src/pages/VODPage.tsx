@@ -10,6 +10,7 @@ import type { Channel } from '@/types/playlist'
 import { strings } from '@/strings'
 
 const TYPE_TEXT = strings.catalog.types.vod
+const TONE_OF_PAGE = 'mint'
 
 const LABELS: CatalogPageLabels = {
   all: TYPE_TEXT.all,
@@ -58,11 +59,12 @@ export default function VODPage() {
     <CatalogPage
       page={page}
       labels={LABELS}
+      tone={TONE_OF_PAGE}
       layout={POSTER_GRID_LAYOUT}
       renderCard={renderPosterCard}
       onOpen={handleOpen}
       empty={<PosterGridEmpty />}
-      detail={item ? { label: item.name, content: <VODDetail item={item} onBack={closeDetail} onPlay={handlePlay} /> } : null}
+      detail={item ? { label: item.name, content: <VODDetail key={item.id} item={item} onBack={closeDetail} onPlay={handlePlay} onOpen={handleOpen} /> } : null}
     />
   )
 }

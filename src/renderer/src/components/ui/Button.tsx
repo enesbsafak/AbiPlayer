@@ -5,17 +5,22 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: 'sm' | 'md' | 'lg'
 }
 
-const BUTTON_BASE = 'inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950 disabled:pointer-events-none disabled:opacity-50'
+// "Canlı renk": pills. The primary action is white with ink text (one per
+// screen), the secondary a transparent pill with a white edge. Focus is the
+// global sun ring (styles/globals.css).
+// Every variant has the 2 px edge (most a hidden one), so they line up.
+const BUTTON_BASE = 'inline-flex items-center justify-center rounded-full border-2 transition-colors disabled:pointer-events-none disabled:opacity-50'
 const BUTTON_VARIANTS = {
-  primary: 'bg-accent text-white hover:bg-accent-600',
-  secondary: 'border border-surface-700 bg-surface-900 text-surface-200 hover:bg-surface-800 hover:text-surface-50',
-  ghost: 'text-surface-400 hover:bg-surface-800 hover:text-surface-50',
-  danger: 'bg-red-600 text-white hover:bg-red-700'
+  primary: 'border-white bg-white font-bold text-ink hover:border-surface-300 hover:bg-surface-300',
+  secondary: 'border-white/50 bg-transparent font-medium text-white hover:border-white',
+  ghost: 'border-transparent font-medium text-surface-400 hover:bg-surface-800 hover:text-white',
+  // Destructive: coral, the language's warm warning colour, with ink on it.
+  danger: 'border-coral bg-coral font-bold text-ink hover:border-[#FF8466] hover:bg-[#FF8466]'
 } as const
 const BUTTON_SIZES = {
-  sm: 'gap-1.5 px-3 py-1.5 text-xs',
-  md: 'gap-2 px-4 py-2 text-sm',
-  lg: 'gap-2.5 px-5 py-2.5 text-sm'
+  sm: 'gap-1.5 px-4 py-2 text-xs',
+  md: 'gap-2 px-5 py-2.5 text-sm',
+  lg: 'gap-2.5 px-7 py-3.5 text-base'
 } as const
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(

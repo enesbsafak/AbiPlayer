@@ -9,25 +9,62 @@ export const player = {
     noPrevious: 'Önceki içerik yok',
     next: (name: string) => `Sonraki: ${name}`,
     noNext: 'Sonraki içerik yok',
+    /** Visible beside the icon where the dock has room; the accessible name says which item. */
+    previousShort: 'Önceki',
+    nextShort: 'Sonraki',
     play: 'Oynat',
     pause: 'Duraklat',
-    playPauseTitle: 'Oynat/Duraklat',
+    playPauseTitle: 'Oynat/Duraklat (Boşluk)',
     seekBack: '10 saniye geri sar',
     seekForward: '10 saniye ileri sar',
     jumpToLive: 'Canlıya dön',
     atLive: 'Canlı yayındasın',
-    liveBadge: 'CANLI',
-    unmute: 'Sesi Aç',
-    mute: 'Sesi Kapat',
+    liveBadge: 'Canlı',
+    unmute: 'Sesi aç',
+    mute: 'Sesi kapat',
     volume: 'Ses seviyesi',
     progress: 'Oynatma ilerlemesi'
   },
 
+  /** The dock at the bottom of the player and the row above it. */
+  dock: {
+    label: 'Oynatma',
+    streamInfo: 'Yayın bilgisi',
+    /** Time left of a film or episode: "12:34 kaldı". */
+    timeLeft: (time: string) => `${time} kaldı`,
+    /** Time left of the programme on air, in whole minutes. */
+    minutesLeft: (minutes: number) => {
+      if (minutes < 60) return `${minutes} dk kaldı`
+      const hours = Math.floor(minutes / 60)
+      const rest = minutes % 60
+      return rest === 0 ? `${hours} sa kaldı` : `${hours} sa ${rest} dk kaldı`
+    },
+    programmeProgress: (percent: number) => `Programın yüzde ${percent} kadarı geçti`,
+    /** Over what is next in the guide: "Sırada · 21:00". */
+    upNext: (time: string) => `Sırada · ${time}`,
+    hintsLabel: 'Klavye ipuçları',
+    hints: {
+      spaceKey: 'Boşluk',
+      pause: 'duraklat',
+      seekKeys: 'Sol / Sağ',
+      seek: '10 saniye sar',
+      volumeKeys: 'Yukarı / Aşağı',
+      volume: 'ses',
+      listKey: 'L',
+      list: 'liste',
+      fullscreenKey: 'F',
+      fullscreen: 'tam ekran',
+      backKey: 'Esc',
+      back: 'geri dön',
+      autoHide: 'Fareyi oynatmazsan bu panel 3 saniyede gizlenir'
+    }
+  },
+
   actions: {
-    pictureInPicture: 'Resim İçinde Resim',
-    listTitle: 'Kanal Listesi (L)',
-    listLabel: 'Kanal Listesi',
-    fullscreenTitle: 'Tam Ekran (F)',
+    pictureInPicture: 'Resim içinde resim',
+    listTitle: 'Kanal listesi (L)',
+    listLabel: 'Kanal listesi',
+    fullscreenTitle: 'Tam ekran (F)',
     enterFullscreen: 'Tam ekran',
     exitFullscreen: 'Tam ekrandan çık',
     leaveTitle: 'Geri dön (Esc)',
@@ -42,7 +79,7 @@ export const player = {
     sourceLevel: 'Kaynak',
     title: 'Görüntü kalitesi',
     label: 'Görüntü kalitesi seç',
-    heading: 'Görüntü Kalitesi',
+    heading: 'Görüntü kalitesi',
     fallback: 'Kalite',
     auto: (active: string) => `Oto ${active}`
   },
@@ -50,7 +87,9 @@ export const player = {
   audio: {
     title: 'Ses kanalı',
     label: 'Ses kanalı seç',
-    heading: 'Ses Kanalı',
+    heading: 'Ses kanalı',
+    /** The pill's value while the engine has not said which track it plays. */
+    unknown: 'Varsayılan',
     /** Same as the player modules name an unlabelled track. */
     fallback: (index: number) => `Ses ${index}`
   },
@@ -61,7 +100,7 @@ export const player = {
     heading: 'Altyazı',
     off: 'Kapalı',
     fallback: (id: string | number) => `Altyazı ${id}`,
-    style: 'Altyazı Stili',
+    style: 'Altyazı stili',
     fontSize: 'Yazı boyutu',
     fontSizeLabel: 'Altyazı yazı boyutu',
     color: 'Renk',
@@ -80,10 +119,16 @@ export const player = {
   },
 
   tuning: {
-    title: 'Senkron ve Görüntü',
+    title: 'Senkron ve görüntü',
     label: 'Senkron ve görüntü ayarları',
+    /** The pill: its small label, and its value when nothing is changed. */
+    pillLabel: 'Senkron',
+    unchanged: 'Varsayılan',
+    speedValue: (speed: number) => `${speed}x`,
+    audioDelayValue: (delay: string) => `Ses ${delay}`,
+    subtitleDelayValue: (delay: string) => `Altyazı ${delay}`,
     audioDelay: 'Ses gecikmesi',
-    audioDelayHint: 'Ses görüntüden önce geliyorsa sağa kaydırın.',
+    audioDelayHint: 'Ses görüntüden önce geliyorsa sağa kaydır.',
     subtitleDelay: 'Altyazı gecikmesi',
     speed: 'Oynatma hızı',
     aspect: 'En-boy oranı',
@@ -113,7 +158,9 @@ export const player = {
     close: 'Kanal listesini kapat',
     closeTitle: 'Kapat (L)',
     all: 'Tümü',
-    empty: 'Bu kategoride içerik yok'
+    empty: 'Bu kategoride içerik yok',
+    emptyHint: 'Yukarıdan başka bir kategori seç.',
+    category: 'Kategori seç'
   },
 
   mini: {

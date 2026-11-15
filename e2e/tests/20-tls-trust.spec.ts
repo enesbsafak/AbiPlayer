@@ -58,7 +58,7 @@ test.describe('TLS sertifika politikası', () => {
     await openRoute(page, '/vod')
     await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Kayıp Şehir')
     await cardButton(page, KNOWN.film).click()
-    await page.getByRole('button', { name: 'Filmi Oynat' }).click()
+    await page.getByRole('button', { name: 'İzle', exact: true }).click()
     await expect(page).toHaveURL(/#\/player/)
     await waitForMpvProgress(page, { pathIncludes: FILM_PATH, advanceBy: 2, timeout: 45_000 })
     await app.shot('film-playing')
@@ -195,7 +195,7 @@ test.describe('TLS: süresi dolmuş sertifika', () => {
     await openRoute(page, '/vod')
     await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Kayıp Şehir')
     await cardButton(page, KNOWN.film).click()
-    await page.getByRole('button', { name: 'Filmi Oynat' }).click()
+    await page.getByRole('button', { name: 'İzle', exact: true }).click()
     await waitForMpvProgress(page, { pathIncludes: FILM_PATH, advanceBy: 2, timeout: 45_000 })
 
     const report = await closeApp(app)

@@ -1,14 +1,30 @@
 import { useState } from 'react'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Spinner } from '@/components/ui/Spinner'
+import { Loader2 } from 'lucide-react'
+import { ACTION, FieldError, TextField } from '@/components/settings/controls'
 import { useStore } from '@/store'
 import { toUserMessage } from '@/services/user-error'
 import type { PlaylistSource } from '@/types/playlist'
 import { strings } from '@/strings'
 import { normalizeSecretInput, saveSourceSecret } from './source-secret'
 
-const { fields, secretForm: text } = strings.sources
+const { fields, fieldHelp, validation, secretForm: text } = strings.sources
+
+type Field = 'url' | 'credentials'
+
+/** Which field a check of `normalizeSecretInput` is about, so it is shown beside it. */
+function fieldOf(message: string): Field | null {
+  if (message === validation.emptyCredentials) return 'credentials'
+  if (
+    message === validation.emptyServerUrl ||
+    message === validation.emptyPlaylistUrl ||
+    message === validation.invalidServerUrl ||
+    message === validation.invalidPlaylistUrl ||
+    message === validation.httpOnly
+  ) {
+    return 'url'
+  }
+  return null
+}
 
 /**
  * Enters the secret of an existing source again, in place: the source keeps
@@ -41,54 +57,61 @@ export function SourceSecretForm({ source, onDone }: { source: PlaylistSource; o
     }
   }
 
+  const errorField = error ? fieldOf(error) : null
   const idPrefix = `secret-${source.id}`
   return (
     <form
+      noValidate
       onSubmit={(event) => void handleSubmit(event)}
-      className="mt-2 flex flex-col gap-3 rounded-lg border border-surface-800 bg-surface-950 p-3"
+      className="mx-2 mb-2 mt-2 flex flex-col gap-4 rounded-[14px] bg-ground p-4"
       aria-label={text.label(source.name)}
     >
-      <p className="text-xs text-surface-400">
-        {text.hint}
-      </p>
-      <Input
+      <p className="text-sm text-surface-300">{text.hint}</p>
+      <TextField
         id={`${idPrefix}-url`}
         label={isXtream ? fields.serverUrl : fields.playlistUrl}
+        help={isXtream ? fieldHelp.serverUrl : fieldHelp.playlistUrl}
+        error={errorField === 'url' ? error : null}
         value={url}
         onChange={(event) => setUrl(event.target.value)}
+        spellCheck={false}
         required
       />
       {isXtream && (
-        <>
-          <Input
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField
             id={`${idPrefix}-user`}
             label={fields.username}
             value={username}
             onChange={(event) => setUsername(event.target.value)}
+            spellCheck={false}
             required
           />
-          <Input
+          <TextField
             id={`${idPrefix}-pass`}
             label={fields.password}
             type="password"
+            error={errorField === 'credentials' ? error : null}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             required
           />
-        </>
+        </div>
       )}
-      {error && (
-        <p className="text-xs text-red-400" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={saving}>
-          {saving ? <><Spinner size={14} /> {text.saving}</> : text.save}
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onDone} disabled={saving}>
+      {error && errorField === null && <FieldError>{error}</FieldError>}
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={saving} className={ACTION.primary}>
+          {saving ? (
+            <>
+              <Loader2 size={20} className="animate-spin" aria-hidden="true" /> {text.saving}
+            </>
+          ) : (
+            text.save
+          )}
+        </button>
+        <button type="button" onClick={onDone} disabled={saving} className={ACTION.secondary}>
           {strings.common.cancel}
-        </Button>
+        </button>
       </div>
     </form>
   )

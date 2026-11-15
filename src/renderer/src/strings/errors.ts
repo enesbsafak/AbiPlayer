@@ -4,19 +4,27 @@ import { settingsPath } from './settings'
 export const errors = {
   /** What `toUserMessage` says for each kind of failure. */
   kinds: {
-    network: 'Sunucuya ulaşılamadı. İnternet bağlantınızı ve sunucu adresini kontrol edin.',
-    timeout: 'Sunucu zamanında yanıt vermedi. Biraz sonra tekrar deneyin.',
-    cancelled: 'İstek tamamlanmadan durduruldu. Tekrar deneyin.',
+    network: 'Sunucuya ulaşılamadı. İnternet bağlantını ve sunucu adresini kontrol et.',
+    timeout: 'Sunucu zamanında yanıt vermedi. Biraz sonra tekrar dene.',
+    cancelled: 'İstek tamamlanmadan durduruldu. Tekrar dene.',
     auth: 'Kullanıcı adı veya şifre kabul edilmedi.',
     badResponse: 'Sunucudan beklenmeyen bir yanıt geldi.',
     certificate:
-      'Sunucunun güvenlik sertifikası doğrulanamadı ya da daha önce güvendiğiniz sertifikadan farklı. ' +
-      `Açılan onay penceresinden ya da ${settingsPath('sources')} → Sunucu sertifikaları bölümünden bu sunucuya güvenebilirsiniz.`,
+      'Sunucunun güvenlik sertifikası doğrulanamadı ya da daha önce güvendiğin sertifikadan farklı. ' +
+      `Açılan onay penceresinden ya da ${settingsPath('sources')} → Sunucu sertifikaları bölümünden bu sunucuya güvenebilirsin.`,
     generic: 'Beklenmeyen bir hata oluştu.',
     httpRefused: (status: number | null) =>
       status !== null ? `Sunucu isteği reddetti (HTTP ${status}).` : 'Sunucu isteği reddetti.',
     tooLarge: (limit: string | null) =>
       limit ? `Liste veya dosya çok büyük (en fazla ${limit}).` : 'Liste veya dosya çok büyük.'
+  },
+
+  /** The error screens: what to do next, under what happened. */
+  screens: {
+    pageHint: 'Tekrar dene; düzelmezse ana sayfaya dönüp oradan devam et.',
+    homeHint: 'Tekrar dene; düzelmezse kaynağını ayarlardan kontrol et ya da kaldır.',
+    notFoundHint: 'Ana sayfaya dönüp oradan devam et.',
+    appHint: 'Tekrar dene. Sorun sürerse uygulamayı kapatıp yeniden aç.'
   },
 
   tmdb: {

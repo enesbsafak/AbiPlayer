@@ -1,21 +1,20 @@
 import { useMemo, useState } from 'react'
-import { Eye, EyeOff } from 'lucide-react'
 import { useStore } from '@/store'
-import { Button } from '@/components/ui/Button'
 import { Dropdown } from '@/components/ui/Dropdown'
-import { Input } from '@/components/ui/Input'
 import { normalizeSearchText } from '@/services/text-normalize'
 import { useCatalogCategories, useVisibleCatalogCategories } from '@/catalog'
 import { strings } from '@/strings'
+import { ACTION, INPUT_CLASS, PillChoice, SettingRow, SettingsCard, SettingsGroup, Switch, type ChoiceOption } from './controls'
 
 const text = strings.settings.catalog
 
 type ContentType = 'live' | 'vod' | 'series'
 
-const TYPE_TABS: Array<{ id: ContentType; label: string }> = [
-  { id: 'live', label: strings.catalog.types.live.section },
-  { id: 'vod', label: strings.catalog.types.vod.section },
-  { id: 'series', label: strings.catalog.types.series.section }
+/** Each type is filled with the colour of its section when chosen. */
+const TYPE_TABS: Array<ChoiceOption<ContentType>> = [
+  { id: 'live', label: strings.catalog.types.live.section, tone: 'coral' },
+  { id: 'vod', label: strings.catalog.types.vod.section, tone: 'mint' },
+  { id: 'series', label: strings.catalog.types.series.section, tone: 'sky' }
 ]
 
 export function CategoryVisibility() {
@@ -61,25 +60,21 @@ export function CategoryVisibility() {
 
   if (sources.length === 0) {
     return (
-      <p className="rounded-lg border border-surface-800 bg-surface-900 px-4 py-3 text-sm text-surface-400">
-        {text.noSources}
-      </p>
+      <SettingsGroup title={text.visibility}>
+        <p className="rounded-card bg-raised px-5 py-4 text-[15px] text-surface-300">{text.noSources}</p>
+      </SettingsGroup>
     )
   }
 
   return (
-      <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
-        <p className="text-sm font-medium text-surface-200">{text.visibility}</p>
-        <p className="mt-1 text-sm text-surface-400">
-          {text.visibilityHint}
-        </p>
-
-        <div className="mt-4 flex flex-col gap-3">
-          {sources.length > 1 && (
-            <div>
-              <p id="category-source-label" className="text-sm text-surface-400 mb-2">
-                {text.source}
-              </p>
+    <SettingsGroup title={text.visibility}>
+      <p className="-mt-1 text-sm text-surface-400">{text.visibilityHint}</p>
+      <SettingsCard>
+        {sources.length > 1 && (
+          <SettingRow
+            label={text.source}
+            labelId="category-source-label"
+            control={
               <Dropdown
                 id="category-source"
                 labelledBy="category-source-label"
@@ -87,93 +82,83 @@ export function CategoryVisibility() {
                 value={effectiveSourceId ?? undefined}
                 onSelect={(id) => setSelectedSourceId(id)}
                 placeholder={text.sourcePlaceholder}
+                className="w-[280px] max-w-full"
               />
-            </div>
-          )}
+            }
+          />
+        )}
+        <SettingRow
+          label={text.type}
+          labelId="category-type-label"
+          control={
+            <PillChoice<ContentType>
+              labelledBy="category-type-label"
+              options={TYPE_TABS}
+              value={selectedType}
+              onChange={setSelectedType}
+            />
+          }
+        />
 
-          <div className="flex flex-wrap gap-2">
-            {TYPE_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setSelectedType(tab.id)}
-                className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-                  selectedType === tab.id
-                    ? 'border border-accent/45 bg-accent/15 text-accent'
-                    : 'border border-surface-700 text-surface-400 hover:bg-surface-800 hover:text-surface-200'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          <Input
+        <div className="flex min-w-0 flex-col gap-3 px-5 py-4">
+          <input
             id="category-filter"
             type="search"
             value={filterQuery}
             onChange={(e) => setFilterQuery(e.target.value)}
             placeholder={text.filterPlaceholder}
             aria-label={text.filterLabel}
+            className={INPUT_CLASS}
           />
-        </div>
 
-        <div className="mt-4 max-h-80 overflow-y-auto rounded-lg border border-surface-800">
-          {visibleList.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-surface-500">
-              {scopedCategories.length > 0 ? text.noMatch : text.noCategories}
-            </p>
-          ) : (
-            <ul className="divide-y divide-surface-800">
-              {visibleList.map((category) => {
-                const isHidden = hiddenCategoryIds.has(category.id)
-                return (
-                  <li key={category.id}>
-                    <label className="flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors hover:bg-surface-800/50">
-                      <input
-                        type="checkbox"
-                        checked={!isHidden}
-                        onChange={() => toggleCategoryHidden(category.id)}
-                        className="rounded border-surface-700 bg-surface-900 text-accent focus:ring-accent"
-                      />
-                      <span
-                        className={`min-w-0 flex-1 truncate text-sm ${
-                          isHidden ? 'text-surface-500 line-through' : 'text-surface-200'
-                        }`}
-                        title={category.name}
-                      >
-                        {category.name}
-                      </span>
-                      {category.isAdult && (
-                        <span className="shrink-0 rounded bg-surface-800 px-1.5 py-0.5 text-xs text-surface-400">
-                          {text.adultBadge}
+          <div className="max-h-[420px] overflow-y-auto rounded-2xl bg-ground">
+            {visibleList.length === 0 ? (
+              <p className="px-4 py-8 text-center text-[15px] text-surface-400">
+                {scopedCategories.length > 0 ? text.noMatch : text.noCategories}
+              </p>
+            ) : (
+              <ul className="flex flex-col p-1.5">
+                {visibleList.map((category) => {
+                  const isHidden = hiddenCategoryIds.has(category.id)
+                  return (
+                    <li key={category.id}>
+                      <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-[14px] px-3 py-1.5 transition-colors hover:bg-raised">
+                        <span
+                          className={`min-w-0 flex-1 truncate text-[15px] ${isHidden ? 'text-surface-500 line-through' : 'text-white'}`}
+                          title={category.name}
+                        >
+                          {category.name}
                         </span>
-                      )}
-                      {isHidden ? (
-                        <EyeOff size={14} className="shrink-0 text-surface-500" aria-label={text.hidden} />
-                      ) : (
-                        <Eye size={14} className="shrink-0 text-surface-600" aria-label={text.visible} />
-                      )}
-                    </label>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </div>
+                        {category.isAdult && (
+                          <span className="shrink-0 rounded-full bg-raised px-2.5 py-0.5 text-xs font-bold text-surface-300">
+                            {text.adultBadge}
+                          </span>
+                        )}
+                        <span className="w-14 shrink-0 text-right text-xs font-medium text-surface-500">
+                          {isHidden ? text.hidden : text.visible}
+                        </span>
+                        <Switch checked={!isHidden} onChange={() => toggleCategoryHidden(category.id)} />
+                      </label>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button
-            variant="secondary"
-            disabled={hiddenCountForSource === 0}
-            onClick={() => effectiveSourceId && showAllCategories(effectiveSourceId)}
-          >
-            {text.showAllHidden}
-          </Button>
-          <span className="text-xs text-surface-500">
-            {text.hiddenCount(hiddenCountForSource)}
-          </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className={ACTION.secondary}
+              disabled={hiddenCountForSource === 0}
+              onClick={() => effectiveSourceId && showAllCategories(effectiveSourceId)}
+            >
+              {text.showAllHidden}
+            </button>
+            <span className="text-sm text-surface-400">{text.hiddenCount(hiddenCountForSource)}</span>
+          </div>
         </div>
-      </div>
+      </SettingsCard>
+    </SettingsGroup>
   )
 }

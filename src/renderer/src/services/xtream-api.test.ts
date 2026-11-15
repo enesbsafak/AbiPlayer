@@ -347,7 +347,7 @@ describe('xtream-api request layer', () => {
 
     expect(error.kind).toBe('network')
     expect(error.retryable).toBe(true)
-    expect(error.message).toBe('Sunucuya bağlanılamadı. İnternet bağlantısını ve sunucu adresini kontrol edin.')
+    expect(error.message).toBe('Sunucuya bağlanılamadı. İnternet bağlantını ve sunucu adresini kontrol et.')
   })
 
   it('names the host of a failed request, so a refused certificate can be recognised (C2c)', async () => {

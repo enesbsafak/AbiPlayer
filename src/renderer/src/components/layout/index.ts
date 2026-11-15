@@ -1,5 +1,4 @@
 export { AppShell } from './AppShell'
 export { ErrorBoundary } from './ErrorBoundary'
-export { TitleBar } from './TitleBar'
-export { Sidebar } from './Sidebar'
-export { Header } from './Header'
+export { HomeTopBar, InnerTopBar } from './TopBar'
+export { WindowControls } from './WindowControls'

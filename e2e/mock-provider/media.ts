@@ -164,6 +164,42 @@ export async function ensureMedia(cacheRoot: string): Promise<MediaSet> {
   return describe(dir)
 }
 
+/** The live part of a media folder: live.ts and its HLS segments. */
+export function liveMediaIn(dir: string): Pick<MediaSet, 'liveTs' | 'hlsSegments'> {
+  const { liveTs, hlsSegments } = describe(dir)
+  return { liveTs, hlsSegments }
+}
+
+/** The demo's live clip: as long as live.ts, but 1920 × 1080 (plain black, so it stays small). */
+export function demoLiveDir(cacheRoot: string): string {
+  return join(cacheRoot, `demo-live-1080-v${RECIPE.version}`)
+}
+
+/** Makes the demo's live clip and its HLS segments once; the README screenshots play them. */
+export async function ensureDemoLive(cacheRoot: string): Promise<string> {
+  const dir = demoLiveDir(cacheRoot)
+  if (existsSync(join(dir, 'complete.json'))) return dir
+  rmSync(dir, { recursive: true, force: true })
+  mkdirSync(join(dir, 'hls'), { recursive: true })
+  const ffmpeg = ffmpegPath()
+  await run(ffmpeg, [
+    '-hide_banner', '-y',
+    '-f', 'lavfi', '-i', `color=c=black:size=1920x1080:rate=25:duration=${LIVE_SECONDS}`,
+    '-t', String(LIVE_SECONDS), '-f', 'lavfi', '-i', SILENCE,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+    '-g', '50', '-keyint_min', '50', '-sc_threshold', '0', '-force_key_frames', `expr:gte(t,n_forced*${SEGMENT_SECONDS})`,
+    '-c:a', 'aac', '-b:a', '96k', '-ac', '2',
+    '-f', 'mpegts', 'live.ts'
+  ], dir)
+  await run(ffmpeg, [
+    '-hide_banner', '-y', '-i', 'live.ts', '-c', 'copy', '-map', '0',
+    '-f', 'hls', '-hls_time', String(SEGMENT_SECONDS), '-hls_list_size', '0',
+    '-hls_segment_filename', join('hls', 'seg%03d.ts'), join('hls', 'index.m3u8')
+  ], dir)
+  writeFileSync(join(dir, 'complete.json'), '{}')
+  return dir
+}
+
 export function readMedia(set: MediaSet) {
   return {
     liveTs: readFileSync(set.liveTs),

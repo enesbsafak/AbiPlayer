@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { KeyRound, X } from 'lucide-react'
 import { useStore } from '@/store'
-import { Button } from '@/components/ui/Button'
+import { ACTION } from '@/components/settings/controls'
 import { secureCredentialService, type SecureCredentialsLossNotice } from '@/services/secure-credentials'
 import { strings } from '@/strings'
 
@@ -55,7 +55,8 @@ export function CredentialNotice() {
   if (!showLoss && !migrationError && !showStoreError) return null
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-12 z-50 flex flex-col items-center gap-2 px-4">
+    // Below the top bar (two rows below 1280 px on inner screens), over the page.
+    <div className="pointer-events-none fixed inset-x-0 top-[140px] z-50 xl:top-[88px] flex flex-col items-center gap-2 px-4">
       {showLoss && loss && (
         <NoticeCard
           title={CREDENTIAL_LOSS_TITLE}
@@ -97,21 +98,23 @@ function NoticeCard({
   return (
     <div
       role="alert"
-      className="pointer-events-auto flex w-full max-w-2xl items-start gap-3 rounded-lg border border-amber-500/40 bg-surface-900 p-4 text-sm shadow-lg"
+      className="pointer-events-auto flex w-full max-w-2xl items-start gap-4 rounded-card bg-surface-800 p-5 text-[15px]"
     >
-      <KeyRound size={18} className="mt-0.5 shrink-0 text-amber-400" aria-hidden="true" />
-      <div className="flex-1">
-        <p className="font-medium text-white">{title}</p>
+      <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-full bg-sun text-ink">
+        <KeyRound size={20} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-base font-bold text-white">{title}</p>
         <p className="mt-1 text-surface-300">{message}</p>
         {action && (
-          <Button variant="secondary" size="sm" className="mt-3" onClick={action.onClick}>
+          <button type="button" className={`${ACTION.secondary} mt-4`} onClick={action.onClick}>
             {action.label}
-          </Button>
+          </button>
         )}
       </div>
-      <Button variant="ghost" size="sm" onClick={onDismiss} aria-label={strings.common.dismissNotice}>
-        <X size={14} />
-      </Button>
+      <button type="button" className={ACTION.icon} onClick={onDismiss} aria-label={strings.common.dismissNotice}>
+        <X size={18} aria-hidden="true" />
+      </button>
     </div>
   )
 }

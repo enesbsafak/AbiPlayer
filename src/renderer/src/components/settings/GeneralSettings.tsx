@@ -1,17 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useStore } from '@/store'
 import {
   clampEpgRefreshInterval,
   MAX_EPG_REFRESH_MINUTES,
   MIN_EPG_REFRESH_MINUTES
 } from '@/store/settings-slice'
-import { Button } from '@/components/ui/Button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { Dropdown } from '@/components/ui/Dropdown'
-import { Input } from '@/components/ui/Input'
 import { toUserMessage } from '@/services/user-error'
 import { strings } from '@/strings'
 import { saveTmdbApiKey } from './tmdb-api-key'
+import { ACTION, FieldError, INPUT_CLASS, PillChoice, SettingRow, SettingsCard, SettingsGroup } from './controls'
 
 const text = strings.settings.general
 
@@ -42,22 +40,31 @@ export function EpgRefreshIntervalInput() {
   }
 
   return (
-    <Input
-      id="epg-refresh"
+    <SettingRow
       label={text.epgInterval}
-      type="number"
-      min={MIN_EPG_REFRESH_MINUTES}
-      max={MAX_EPG_REFRESH_MINUTES}
-      step={1}
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault()
-          commit()
-        }
-      }}
+      htmlFor="epg-refresh"
+      help={text.epgIntervalHint(MIN_EPG_REFRESH_MINUTES, MAX_EPG_REFRESH_MINUTES)}
+      helpId="epg-refresh-help"
+      control={
+        <input
+          id="epg-refresh"
+          type="number"
+          min={MIN_EPG_REFRESH_MINUTES}
+          max={MAX_EPG_REFRESH_MINUTES}
+          step={1}
+          value={draft}
+          aria-describedby="epg-refresh-help"
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commit()
+            }
+          }}
+          className={`${INPUT_CLASS} !w-[120px] text-center font-bold tabular-nums`}
+        />
+      }
     />
   )
 }
@@ -88,12 +95,12 @@ export function TmdbApiKeyInput() {
   }
 
   return (
-    <>
-      <Input
+    <SettingRow label={text.tmdbKey} htmlFor="tmdb-api-key" help={text.tmdbKeyHint} helpId="tmdb-api-key-help">
+      <input
         id="tmdb-api-key"
-        label={text.tmdbKey}
         type="password"
         value={draft}
+        aria-describedby="tmdb-api-key-help"
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => void commit()}
         onKeyDown={(e) => {
@@ -103,16 +110,19 @@ export function TmdbApiKeyInput() {
           }
         }}
         placeholder={text.tmdbKeyPlaceholder}
+        autoComplete="off"
+        className={INPUT_CLASS}
       />
-      <p className="mt-1 text-xs text-surface-500">
-        {text.tmdbKeyHint}
-      </p>
-      {status && (
-        <p className={`mt-1 text-xs ${status.kind === 'error' ? 'text-red-400' : 'text-surface-400'}`} role={status.kind === 'error' ? 'alert' : 'status'}>
-          {status.message}
-        </p>
-      )}
-    </>
+      {status &&
+        (status.kind === 'error' ? (
+          <FieldError>{status.message}</FieldError>
+        ) : (
+          <p role="status" className="flex items-center gap-2 px-1 text-sm text-surface-300">
+            {status.kind === 'saved' && <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-mint" />}
+            {status.message}
+          </p>
+        ))}
+    </SettingRow>
   )
 }
 
@@ -122,80 +132,95 @@ export function GeneralSettings() {
   const resetSettings = useStore((s) => s.resetSettings)
   const watchProgressCount = useStore((s) => s.watchProgress.length)
   const clearWatchProgress = useStore((s) => s.clearWatchProgress)
-  const [confirmingReset, setConfirmingReset] = useState(false)
+  const [confirming, setConfirming] = useState<'reset' | 'history' | null>(null)
+  const timeFormatLabelId = useId()
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
-        <p id="epg-time-format-label" className="mb-2 text-sm text-surface-400">
-          {text.timeFormat}
-        </p>
-        <Dropdown
-          id="epg-time-format"
-          labelledBy="epg-time-format-label"
-          items={[
-            { id: '24h', label: text.timeFormat24 },
-            { id: '12h', label: text.timeFormat12 }
-          ]}
-          value={epgTimeFormat}
-          onSelect={(id) => updateSettings({ epgTimeFormat: id as '12h' | '24h' })}
-          placeholder={text.timeFormatPlaceholder}
-        />
-      </div>
+    <div className="flex flex-col gap-8">
+      <SettingsGroup title={text.timeGroup}>
+        <SettingsCard>
+          <SettingRow
+            label={text.timeFormat}
+            labelId={timeFormatLabelId}
+            help={text.timeFormatHint}
+            control={
+              <PillChoice<'24h' | '12h'>
+                labelledBy={timeFormatLabelId}
+                options={[
+                  { id: '24h', label: text.timeFormat24 },
+                  { id: '12h', label: text.timeFormat12 }
+                ]}
+                value={epgTimeFormat}
+                onChange={(id) => updateSettings({ epgTimeFormat: id })}
+              />
+            }
+          />
+          <EpgRefreshIntervalInput />
+        </SettingsCard>
+      </SettingsGroup>
 
-      <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
-        <EpgRefreshIntervalInput />
-        <p className="mt-1 text-xs text-surface-500">
-          {text.epgIntervalHint(MIN_EPG_REFRESH_MINUTES, MAX_EPG_REFRESH_MINUTES)}
-        </p>
-      </div>
+      <SettingsGroup title={text.tmdbGroup}>
+        <SettingsCard>
+          <TmdbApiKeyInput />
+        </SettingsCard>
+      </SettingsGroup>
 
-      <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
-        <TmdbApiKeyInput />
-      </div>
-
-      <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
-        <p className="text-sm font-medium text-surface-200">{text.history}</p>
-        <p className="mt-1 text-xs text-surface-500">
-          {text.historyCount(watchProgressCount)}
-        </p>
-        <Button
-          variant="secondary"
-          className="mt-3"
-          onClick={clearWatchProgress}
-          disabled={watchProgressCount === 0}
-        >
-          {text.clearHistory}
-        </Button>
-      </div>
-
-      <div className="rounded-lg border border-red-500/25 bg-surface-900 p-5">
-        <p className="text-sm font-medium text-surface-200">{text.resetAll}</p>
-        <p className="mt-1 text-xs text-surface-500">
-          {text.resetAllHint}
-        </p>
-        <Button variant="danger" className="mt-3" onClick={() => setConfirmingReset(true)}>
-          {text.resetAll}
-        </Button>
-      </div>
+      {/* Apart from the rest, in coral; each asks first. */}
+      <SettingsGroup title={text.dangerGroup} tone="coral">
+        <SettingsCard>
+          <SettingRow
+            label={text.history}
+            help={text.historyCount(watchProgressCount)}
+            control={
+              <button
+                type="button"
+                className={ACTION.danger}
+                onClick={() => setConfirming('history')}
+                disabled={watchProgressCount === 0}
+              >
+                {text.clearHistory}
+              </button>
+            }
+          />
+          <SettingRow
+            label={text.resetAll}
+            help={text.resetAllHint}
+            control={
+              <button type="button" className={ACTION.danger} onClick={() => setConfirming('reset')}>
+                {text.resetAll}
+              </button>
+            }
+          />
+        </SettingsCard>
+      </SettingsGroup>
 
       <ConfirmDialog
-        isOpen={confirmingReset}
+        isOpen={confirming === 'history'}
+        title={text.clearHistoryConfirmTitle}
+        confirmLabel={text.clearHistoryConfirm}
+        destructive
+        onCancel={() => setConfirming(null)}
+        onConfirm={() => {
+          clearWatchProgress()
+          setConfirming(null)
+        }}
+      >
+        <p>{text.clearHistoryConfirmBody(watchProgressCount)}</p>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        isOpen={confirming === 'reset'}
         title={text.resetConfirmTitle}
         confirmLabel={strings.common.reset}
         destructive
-        onCancel={() => setConfirmingReset(false)}
+        onCancel={() => setConfirming(null)}
         onConfirm={() => {
           resetSettings()
-          setConfirmingReset(false)
+          setConfirming(null)
         }}
       >
-        <p>
-          {text.resetConfirmBody}
-        </p>
-        <p className="mt-2 text-surface-400">
-          {text.resetConfirmKept}
-        </p>
+        <p>{text.resetConfirmBody}</p>
+        <p className="mt-2 text-surface-400">{text.resetConfirmKept}</p>
       </ConfirmDialog>
     </div>
   )

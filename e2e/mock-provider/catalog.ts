@@ -33,6 +33,8 @@ export interface CategoryRecord extends JsonObject {
 
 export interface Catalog {
   size: CatalogSize
+  /** The made-up catalog of e2e/mock-provider/demo.ts, for screenshots. */
+  demo?: boolean
   liveCategories: CategoryRecord[]
   vodCategories: CategoryRecord[]
   seriesCategories: CategoryRecord[]

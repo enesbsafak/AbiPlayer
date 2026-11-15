@@ -1,17 +1,18 @@
 import { useReducer } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Satellite } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Spinner } from '@/components/ui/Spinner'
+import { Loader2, Lock } from 'lucide-react'
+import { ACTION, FieldError, TextField } from '@/components/settings/controls'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
 import { secureCredentialService } from '@/services/secure-credentials'
-import { toUserMessage } from '@/services/user-error'
 import type { PlaylistSource } from '@/types/playlist'
 import { strings } from '@/strings'
+import { FieldProblem, placeError } from './field-errors'
 
-const { fields, validation, xtream: text } = strings.sources
+const { fields, fieldHelp, validation, xtream: text } = strings.sources
+
+type Field = 'url' | 'username' | 'password'
+type FieldErrors = Partial<Record<Field, string>>
 
 interface LoginState {
   url: string
@@ -19,13 +20,16 @@ interface LoginState {
   password: string
   name: string
   loading: boolean
+  /** A failure that concerns no single field. */
   error: string
+  fieldErrors: FieldErrors
 }
 
 type LoginAction =
-  | { type: 'setField'; field: 'url' | 'username' | 'password' | 'name'; value: string }
+  | { type: 'setField'; field: Field | 'name'; value: string }
+  | { type: 'invalid'; fieldErrors: FieldErrors }
   | { type: 'submitStart' }
-  | { type: 'submitError'; message: string }
+  | { type: 'submitError'; field: Field | null; message: string }
   | { type: 'submitDone' }
   | { type: 'clearForm' }
 
@@ -35,17 +39,25 @@ const initialLoginState: LoginState = {
   password: '',
   name: '',
   loading: false,
-  error: ''
+  error: '',
+  fieldErrors: {}
 }
 
 function loginReducer(state: LoginState, action: LoginAction): LoginState {
   switch (action.type) {
-    case 'setField':
-      return { ...state, [action.field]: action.value }
+    case 'setField': {
+      // Editing a field clears what was said about it.
+      if (action.field === 'name' || !state.fieldErrors[action.field]) return { ...state, [action.field]: action.value }
+      const fieldErrors = { ...state.fieldErrors }
+      delete fieldErrors[action.field]
+      return { ...state, [action.field]: action.value, fieldErrors }
+    }
+    case 'invalid':
+      return { ...state, error: '', fieldErrors: action.fieldErrors }
     case 'submitStart':
-      return { ...state, loading: true, error: '' }
+      return { ...state, loading: true, error: '', fieldErrors: {} }
     case 'submitError':
-      return { ...state, error: action.message }
+      return action.field ? { ...state, fieldErrors: { [action.field]: action.message } } : { ...state, error: action.message }
     case 'submitDone':
       return { ...state, loading: false }
     case 'clearForm':
@@ -55,9 +67,20 @@ function loginReducer(state: LoginState, action: LoginAction): LoginState {
   }
 }
 
-export function LoginForm() {
+/** The line above an add-source action: where what is typed is kept. */
+export function CredentialReassurance({ children }: { children: string }) {
+  return (
+    <p className="flex items-start gap-3 rounded-card bg-ground px-4 py-3 text-sm text-surface-300">
+      <Lock size={18} className="mt-px shrink-0 text-mint" aria-hidden="true" />
+      <span>{children}</span>
+    </p>
+  )
+}
+
+/** `subdued`: another form on the screen holds the one primary action. */
+export function LoginForm({ subdued = false }: { subdued?: boolean } = {}) {
   const navigate = useNavigate()
-  const [{ url, username, password, name, loading, error }, dispatch] = useReducer(loginReducer, initialLoginState)
+  const [{ url, username, password, name, loading, error, fieldErrors }, dispatch] = useReducer(loginReducer, initialLoginState)
 
   const addSource = useStore((s) => s.addSource)
   const setActiveSource = useStore((s) => s.setActiveSource)
@@ -65,7 +88,6 @@ export function LoginForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    dispatch({ type: 'submitStart' })
 
     // Pasted credentials often carry a trailing space or newline, which the
     // server then rejects as a wrong password.
@@ -73,11 +95,19 @@ export function LoginForm() {
     const trimmedPassword = password.trim()
     const trimmedName = name.trim()
 
-    try {
-      if (!trimmedUsername || !trimmedPassword) {
-        throw new Error(validation.emptyCredentials)
-      }
+    // Every empty field is named at once, beside itself.
+    const missing: FieldErrors = {}
+    if (!url.trim()) missing.url = validation.emptyServerUrl
+    if (!trimmedUsername) missing.username = validation.emptyUsername
+    if (!trimmedPassword) missing.password = validation.emptyPassword
+    if (Object.keys(missing).length > 0) {
+      dispatch({ type: 'invalid', fieldErrors: missing })
+      return
+    }
 
+    dispatch({ type: 'submitStart' })
+
+    try {
       // Add http:// if no protocol specified (most IPTV servers use HTTP)
       let normalizedUrl = url.trim().replace(/\/+$/, '')
       if (!/^https?:\/\//i.test(normalizedUrl)) {
@@ -88,11 +118,11 @@ export function LoginForm() {
       try {
         parsedUrl = new URL(normalizedUrl)
       } catch {
-        throw new Error(validation.invalidServerUrl)
+        throw new FieldProblem('url', validation.invalidServerUrl)
       }
 
       if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-        throw new Error(validation.httpOnlyServer)
+        throw new FieldProblem('url', validation.httpOnlyServer)
       }
       normalizedUrl = parsedUrl.toString().replace(/\/+$/, '')
 
@@ -101,14 +131,14 @@ export function LoginForm() {
         (s) => s.type === 'xtream' && s.url === normalizedUrl && s.username === trimmedUsername
       )
       if (existing) {
-        throw new Error(validation.duplicateXtream(existing.name))
+        throw new FieldProblem('url', validation.duplicateXtream(existing.name))
       }
 
       const creds = { url: normalizedUrl, username: trimmedUsername, password: trimmedPassword }
       const auth = await xtreamApi.authenticate(creds)
 
       if (auth.user_info.auth !== 1) {
-        throw new Error(validation.authFailed)
+        throw new FieldProblem('password', validation.credentialsRefused)
       }
 
       const hostname = parsedUrl.host
@@ -135,34 +165,76 @@ export function LoginForm() {
       // Navigate to home to see channels
       void navigate('/')
     } catch (err) {
-      dispatch({ type: 'submitError', message: toUserMessage(err, text.connectFailed) })
+      const placed = placeError(err, text.connectFailed, { address: 'url', password: true })
+      dispatch({ type: 'submitError', field: placed.field === 'file' ? null : placed.field, message: placed.message })
     } finally {
       dispatch({ type: 'submitDone' })
     }
   }
 
   return (
-    <form onSubmit={(event) => void handleSubmit(event)} className="flex flex-col gap-4">
-      <div className="flex items-center gap-3 mb-2">
-        <div className="flex size-10 items-center justify-center rounded-lg bg-accent/10">
-          <Satellite className="text-accent" size={20} />
-        </div>
-        <div>
-          <h3 className="font-semibold">{text.title}</h3>
-          <p className="text-xs text-surface-400">{text.subtitle}</p>
-        </div>
+    <form noValidate onSubmit={(event) => void handleSubmit(event)} aria-label={text.title} className="flex flex-col gap-5">
+      <TextField
+        id="xtream-url"
+        label={fields.serverUrl}
+        help={fieldHelp.serverUrl}
+        error={fieldErrors.url}
+        placeholder={text.urlPlaceholder}
+        value={url}
+        onChange={(e) => dispatch({ type: 'setField', field: 'url', value: e.target.value })}
+        inputMode="url"
+        autoComplete="off"
+        spellCheck={false}
+        required
+      />
+      <div className="grid gap-5 sm:grid-cols-2">
+        <TextField
+          id="xtream-user"
+          label={fields.username}
+          help={fieldHelp.username}
+          error={fieldErrors.username}
+          placeholder={text.usernamePlaceholder}
+          value={username}
+          onChange={(e) => dispatch({ type: 'setField', field: 'username', value: e.target.value })}
+          autoComplete="off"
+          spellCheck={false}
+          required
+        />
+        <TextField
+          id="xtream-pass"
+          label={fields.password}
+          help={fieldHelp.password}
+          error={fieldErrors.password}
+          type="password"
+          placeholder={text.passwordPlaceholder}
+          value={password}
+          onChange={(e) => dispatch({ type: 'setField', field: 'password', value: e.target.value })}
+          autoComplete="off"
+          required
+        />
       </div>
+      <TextField
+        id="xtream-name"
+        label={fields.displayName}
+        help={fieldHelp.xtreamName}
+        placeholder={text.namePlaceholder}
+        value={name}
+        onChange={(e) => dispatch({ type: 'setField', field: 'name', value: e.target.value })}
+      />
 
-      <Input id="xtream-name" label={fields.displayName} placeholder={text.namePlaceholder} value={name} onChange={(e) => dispatch({ type: 'setField', field: 'name', value: e.target.value })} />
-      <Input id="xtream-url" label={fields.serverUrl} placeholder={text.urlPlaceholder} value={url} onChange={(e) => dispatch({ type: 'setField', field: 'url', value: e.target.value })} required />
-      <Input id="xtream-user" label={fields.username} placeholder={text.usernamePlaceholder} value={username} onChange={(e) => dispatch({ type: 'setField', field: 'username', value: e.target.value })} required />
-      <Input id="xtream-pass" label={fields.password} type="password" placeholder={text.passwordPlaceholder} value={password} onChange={(e) => dispatch({ type: 'setField', field: 'password', value: e.target.value })} required />
+      {error && <FieldError>{error}</FieldError>}
 
-      {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
+      <CredentialReassurance>{strings.sources.add.reassurance}</CredentialReassurance>
 
-      <Button type="submit" disabled={loading} className="mt-2">
-        {loading ? <><Spinner size={16} /> {text.connecting}</> : text.connect}
-      </Button>
+      <button type="submit" disabled={loading} className={`${subdued ? ACTION.secondary : ACTION.primary} self-start`}>
+        {loading ? (
+          <>
+            <Loader2 size={20} className="animate-spin" aria-hidden="true" /> {text.connecting}
+          </>
+        ) : (
+          text.connect
+        )}
+      </button>
     </form>
   )
 }

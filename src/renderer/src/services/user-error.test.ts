@@ -93,7 +93,7 @@ describe('certificate errors (F3-01)', () => {
   it('recognises Chromium, mpv, ffmpeg and the app’s own certificate failures', () => {
     for (const message of [
       'net::ERR_CERT_AUTHORITY_INVALID',
-      "Error invoking remote method 'mpv-open': Error: Sunucunun güvenlik sertifikası, güvendiğiniz sertifikadan farklı.",
+      "Error invoking remote method 'mpv-open': Error: Sunucunun güvenlik sertifikası, güvendiğin sertifikadan farklı.",
       '[tls @ 0000] Peer certificate failed verification',
       'SSL peer certificate or SSH remote key was not OK'
     ]) {

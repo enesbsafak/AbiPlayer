@@ -74,7 +74,7 @@ describe('PlaylistImport (C2c follow-up)', () => {
     renderForm()
 
     fireEvent.change(screen.getByLabelText(strings.sources.fields.playlistUrl), { target: { value: 'http://panel.test/get.php?u=1' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Listeyi İçe Aktar' }))
+    fireEvent.click(screen.getByRole('button', { name: strings.sources.m3u.import }))
 
     await waitFor(() => expect(useStore.getState().sources).toHaveLength(1))
     const source = onlySource()
@@ -92,7 +92,7 @@ describe('PlaylistImport (C2c follow-up)', () => {
     renderForm()
 
     fireEvent.change(screen.getByLabelText(strings.sources.fields.playlistUrl), { target: { value: 'http://panel.test/get.php?u=1' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Listeyi İçe Aktar' }))
+    fireEvent.click(screen.getByRole('button', { name: strings.sources.m3u.import }))
 
     expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringMatching(/Güvenli depo yazılamadı/))
     expect(useStore.getState().sources).toEqual([])
@@ -103,8 +103,8 @@ describe('PlaylistImport (C2c follow-up)', () => {
     platform.pickAndReadFile.mockResolvedValue({ path: 'C:\\listeler\\a.m3u', content: PLAYLIST })
     renderForm()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Dosya' }))
-    fireEvent.click(screen.getByRole('button', { name: /Dosya Seç/ }))
+    fireEvent.click(screen.getByRole('radio', { name: strings.sources.m3u.modeFile }))
+    fireEvent.click(screen.getByRole('button', { name: strings.sources.m3u.pickFile }))
 
     await waitFor(() => expect(useStore.getState().sources).toHaveLength(1))
     const source = onlySource()

@@ -36,10 +36,11 @@ export class ErrorBoundary extends Component<Props, State> {
         fullScreen
         title={strings.shell.errors.unexpectedTitle}
         message={toUserMessage(this.state.error, strings.shell.errors.appStopped)}
+        hint={strings.errors.screens.appHint}
         detail={this.state.error?.message || undefined}
         actions={
           <button type="button" onClick={this.handleReload} className={ERROR_ACTION_CLASS}>
-            <RotateCcw size={16} aria-hidden="true" />
+            <RotateCcw size={18} aria-hidden="true" />
             {strings.common.retry}
           </button>
         }

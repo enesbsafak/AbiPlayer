@@ -61,7 +61,7 @@ test.describe('paketlenmiş uygulama', () => {
     await openRoute(page, '/vod')
     await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Çift Dilli')
     await cardButton(page, KNOWN.dualAudioFilm).click()
-    await page.getByRole('button', { name: 'Filmi Oynat' }).click()
+    await page.getByRole('button', { name: 'İzle', exact: true }).click()
     await waitForMpvProgress(page, { pathIncludes: '/100002.mkv', advanceBy: 1, timeout: 45_000 })
 
     const filmUrl = `${mock.url}/movie/${mock.username}/${mock.password}/100002.mkv`

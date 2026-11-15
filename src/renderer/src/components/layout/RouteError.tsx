@@ -5,15 +5,19 @@ import { toUserMessage } from '@/services/user-error'
 import { strings } from '@/strings'
 import { ERROR_ACTION_CLASS, ERROR_SECONDARY_ACTION_CLASS, ErrorScreen } from './ErrorScreen'
 
-function describeRouteError(error: unknown): { message: string; detail?: string } {
+const text = strings.shell.errors
+const screens = strings.errors.screens
+
+function describeRouteError(error: unknown): { message: string; detail?: string; notFound: boolean } {
   if (isRouteErrorResponse(error)) {
     return {
-      message: error.status === 404 ? strings.shell.errors.pageNotFound : strings.shell.errors.pageFailed,
-      detail: `${error.status} ${error.statusText}`
+      message: error.status === 404 ? text.pageNotFound : text.pageFailed,
+      detail: `${error.status} ${error.statusText}`,
+      notFound: error.status === 404
     }
   }
   const detail = error instanceof Error ? error.message : undefined
-  return { message: toUserMessage(error, strings.shell.errors.unexpected), detail }
+  return { message: toUserMessage(error, text.unexpected), detail, notFound: false }
 }
 
 interface RouteErrorProps {
@@ -26,25 +30,47 @@ interface RouteErrorProps {
  * the ErrorBoundary that wraps RouterProvider — without this the user would
  * land on the router's untranslated default screen with no way back.
  *
- * Child routes get the inline variant, so a page that throws leaves the title
- * bar, sidebar and window controls in place.
+ * Child routes get the inline variant, so a page that throws leaves the top
+ * bar and window controls in place.
  */
 export function RouteError({ fullScreen = false }: RouteErrorProps) {
   const error = useRouteError()
   const navigate = useNavigate()
   const location = useLocation()
-  const { message, detail } = describeRouteError(error)
+  const { message, detail, notFound } = describeRouteError(error)
   const onHome = location.pathname === '/'
 
   useEffect(() => {
     console.error('RouteError caught:', error)
   }, [error])
 
+  const goHome = (className: string) => (
+    <button type="button" onClick={() => void navigate('/', { replace: true })} className={className}>
+      <Home size={18} aria-hidden="true" />
+      {text.goHome}
+    </button>
+  )
+
+  // A page that does not exist cannot be retried: the way home is the action.
+  if (notFound && !onHome) {
+    return (
+      <ErrorScreen
+        fullScreen={fullScreen}
+        title={text.pageTitle}
+        message={message}
+        hint={screens.notFoundHint}
+        detail={detail}
+        actions={goHome(ERROR_ACTION_CLASS)}
+      />
+    )
+  }
+
   return (
     <ErrorScreen
       fullScreen={fullScreen}
-      title={strings.shell.errors.pageTitle}
+      title={text.pageTitle}
       message={message}
+      hint={onHome ? screens.homeHint : screens.pageHint}
       detail={detail}
       actions={
         <>
@@ -61,7 +87,7 @@ export function RouteError({ fullScreen = false }: RouteErrorProps) {
             }
             className={ERROR_ACTION_CLASS}
           >
-            <RotateCcw size={16} aria-hidden="true" />
+            <RotateCcw size={18} aria-hidden="true" />
             {strings.common.retry}
           </button>
           {onHome ? (
@@ -72,18 +98,11 @@ export function RouteError({ fullScreen = false }: RouteErrorProps) {
               onClick={() => void navigate('/settings', { replace: true })}
               className={ERROR_SECONDARY_ACTION_CLASS}
             >
-              <Settings size={16} aria-hidden="true" />
-              {strings.shell.errors.goToSettings}
+              <Settings size={18} aria-hidden="true" />
+              {text.goToSettings}
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={() => void navigate('/', { replace: true })}
-              className={ERROR_SECONDARY_ACTION_CLASS}
-            >
-              <Home size={16} aria-hidden="true" />
-              {strings.shell.errors.goHome}
-            </button>
+            goHome(ERROR_SECONDARY_ACTION_CLASS)
           )}
         </>
       }

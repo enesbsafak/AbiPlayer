@@ -1,12 +1,14 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Maximize2, X } from 'lucide-react'
+import { Maximize2 } from 'lucide-react'
+import { CloseIcon } from '@/components/ui/icons'
 import { useStore } from '@/store'
 import { isMpvHoldingPlayback, useMpvPlayer, type MpvPlayerOptions } from '@/hooks/useMpvPlayer'
 import { useKeepDisplayAwake } from '@/hooks/useKeepDisplayAwake'
 import { mpvSetVideoRect } from '@/services/platform'
 import type { CornerRect } from '@/player/corner-rect'
 import { strings } from '@/strings'
+import { OVER_VIDEO } from './player-ui'
 
 const text = strings.player.corner
 
@@ -52,12 +54,18 @@ export default function CornerPlayer({ rect }: { rect: CornerRect }) {
     <section
       aria-label={text.label}
       data-corner-player
-      className="no-drag fixed z-overlay overflow-hidden rounded-md ring-1 ring-surface-700"
+      // Square corners and an edge in the raised colour: mpv draws the picture
+      // as a plain rectangle under this box, so a rounded box would leave its
+      // corners showing outside the edge.
+      className="no-drag fixed z-overlay overflow-hidden ring-2 ring-raised"
       style={{ left, top, width, height }}
     >
-      <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 bg-gradient-to-b from-black/70 to-transparent px-2 pb-4 pt-1.5">
-        <p className="min-w-0 truncate text-xs font-medium text-white">{currentChannel.name}</p>
-        <div className="flex shrink-0 items-center gap-1">
+      {/* Flat chips over the picture, no shade: a name and two round buttons. */}
+      <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2">
+        <p className={`min-w-0 truncate rounded-full px-3 py-1.5 text-[13px] font-bold text-white ${OVER_VIDEO}`}>
+          {currentChannel.name}
+        </p>
+        <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="button"
             onClick={() => {
@@ -66,9 +74,9 @@ export default function CornerPlayer({ rect }: { rect: CornerRect }) {
             }}
             aria-label={text.expand}
             title={text.expandTitle}
-            className="rounded p-1 text-white/80 transition-colors hover:bg-white/15 hover:text-white"
+            className={`flex size-9 items-center justify-center rounded-full text-white transition-colors hover:bg-raised ${OVER_VIDEO}`}
           >
-            <Maximize2 size={14} />
+            <Maximize2 size={16} strokeWidth={2.6} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -79,14 +87,16 @@ export default function CornerPlayer({ rect }: { rect: CornerRect }) {
             }}
             aria-label={text.stop}
             title={text.stopTitle}
-            className="rounded p-1 text-white/80 transition-colors hover:bg-white/15 hover:text-white"
+            className={`flex size-9 items-center justify-center rounded-full text-white transition-colors hover:bg-raised ${OVER_VIDEO}`}
           >
-            <X size={14} />
+            <CloseIcon size={16} />
           </button>
         </div>
       </div>
       {playerError && (
-        <p className="absolute inset-x-0 bottom-0 bg-black/70 px-2 py-1 text-xs text-red-300">{playerError}</p>
+        <p className={`absolute inset-x-2 bottom-2 rounded-[14px] px-3 py-2 text-[13px] font-medium text-white ${OVER_VIDEO}`}>
+          {playerError}
+        </p>
       )}
     </section>
   )

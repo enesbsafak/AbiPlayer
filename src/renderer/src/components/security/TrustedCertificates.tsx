@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ShieldAlert, ShieldCheck } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
+import { ACTION, FieldError, SettingsGroup } from '@/components/settings/controls'
 import { useStore } from '@/store'
 import {
   onUntrustedCertificate,
@@ -60,79 +60,71 @@ export function TrustedCertificates() {
   if (trusted.length === 0 && waiting.length === 0) return null
 
   return (
-    <section
-      className="rounded-lg border border-surface-800 bg-surface-900 p-5"
-      aria-labelledby="trusted-certificates-title"
-    >
-      <h3 id="trusted-certificates-title" className="font-semibold">
-        {text.title}
-      </h3>
-      <p className="mt-1 text-xs text-surface-400">
-        {text.hint}
-      </p>
+    <SettingsGroup title={text.title}>
+      <p className="-mt-1 text-sm text-surface-400">{text.hint}</p>
 
       {waiting.length > 0 && (
-        <ul className="mt-4 flex flex-col gap-2" aria-label={text.waitingList}>
+        <ul className="flex flex-col gap-2" aria-label={text.waitingList}>
           {waiting.map((notice) => (
             <li
               key={`${endpointLabel(notice.host, notice.port)}|${notice.fingerprint256}`}
-              className="flex items-center justify-between gap-3 rounded-md border border-amber-900/60 bg-amber-950/20 px-3 py-2"
+              className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-card bg-raised py-3 pl-4 pr-3"
             >
-              <div className="flex min-w-0 items-start gap-2">
-                <ShieldAlert size={16} className="mt-0.5 shrink-0 text-amber-400" aria-hidden />
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sun text-ink">
+                  <ShieldAlert size={18} />
+                </span>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{endpointLabel(notice.host, notice.port)}</p>
-                  <p className="text-xs text-surface-400">
+                  <p className="truncate text-base font-bold">{endpointLabel(notice.host, notice.port)}</p>
+                  <p className="text-sm text-surface-400">
                     {notice.changed ? text.changed : ''}
                     {describeProblems(notice).join(' ')}
                   </p>
                 </div>
               </div>
-              <Button size="sm" variant="secondary" onClick={() => requestTrustPrompt(notice)}>
+              <button type="button" className={ACTION.secondary} onClick={() => requestTrustPrompt(notice)}>
                 {text.review}
-              </Button>
+              </button>
             </li>
           ))}
         </ul>
       )}
 
       {trusted.length > 0 && (
-        <ul className="mt-4 flex flex-col gap-2" aria-label={text.trustedList}>
+        <ul className="flex flex-col gap-2" aria-label={text.trustedList}>
           {trusted.map((pin) => (
             <li
               key={endpointLabel(pin.host, pin.port)}
-              className="flex items-center justify-between gap-3 rounded-md border border-surface-800 px-3 py-2"
+              className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-card bg-raised py-3 pl-4 pr-3"
             >
-              <div className="flex min-w-0 items-start gap-2">
-                <ShieldCheck size={16} className="mt-0.5 shrink-0 text-emerald-400" aria-hidden />
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-full bg-mint text-ink">
+                  <ShieldCheck size={18} />
+                </span>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{endpointLabel(pin.host, pin.port)}</p>
-                  <p className="truncate font-mono text-xs text-surface-500" title={pin.fingerprint256}>
+                  <p className="truncate text-base font-bold">{endpointLabel(pin.host, pin.port)}</p>
+                  <p className="truncate font-mono text-[13px] text-surface-400" title={pin.fingerprint256}>
                     {shortFingerprint(pin.fingerprint256)}…
                   </p>
-                  <p className="text-xs text-surface-500">
+                  <p className="text-sm text-surface-400">
                     {text.validity(formatCertificateDate(pin.validFrom), formatCertificateDate(pin.validTo))}
                   </p>
                 </div>
               </div>
-              <Button
-                size="sm"
-                variant="secondary"
+              <button
+                type="button"
+                className={ACTION.secondary}
                 onClick={() => void revoke(pin)}
                 aria-label={text.revokeFor(endpointLabel(pin.host, pin.port))}
               >
                 {text.revoke}
-              </Button>
+              </button>
             </li>
           ))}
         </ul>
       )}
 
-      {error && (
-        <p className="mt-3 text-sm text-red-400" role="alert">
-          {error}
-        </p>
-      )}
-    </section>
+      {error && <FieldError>{error}</FieldError>}
+    </SettingsGroup>
   )
 }

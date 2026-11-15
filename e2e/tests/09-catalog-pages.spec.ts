@@ -68,19 +68,19 @@ test.describe('katalog sayfaları', () => {
 
     // Open and close with the keyboard: the grid stayed mounted underneath.
     await page.getByRole('button', { name: cardName, exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Filmi Oynat' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'İzle', exact: true })).toBeVisible()
     await expect(grid(page, 'Filmler')).toBeHidden()
     expect(await focusIsInDetail(page, filmName), 'focus moved into the detail').toBe(true)
     await app.shot('film-detail-overlay')
     await page.keyboard.press('Escape')
-    await expect(page.getByRole('button', { name: 'Filmi Oynat' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'İzle', exact: true })).toHaveCount(0)
     await expect.poll(async () => Math.abs((await gridScrollTop(page, 'Filmler')) - top)).toBeLessThan(2)
     await expect.poll(() => focusedName(page)).toBe(cardName)
     const cardTop = await cardOffsetInView(page, 'Filmler', cardName)
 
     // Play from the detail and come back from the player: same detail, then the same place.
     await page.getByRole('button', { name: cardName, exact: true }).click()
-    await page.getByRole('button', { name: 'Filmi Oynat' }).click()
+    await page.getByRole('button', { name: 'İzle', exact: true }).click()
     await expect(page).toHaveURL(/#\/player/)
     await leavePlayer(page)
     await expect(page).toHaveURL(/#\/vod/)

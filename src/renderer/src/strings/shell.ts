@@ -1,7 +1,9 @@
-/** The frame around every page: navigation, title bar, header and error screens. */
+/** The frame around every page: the top bars, window controls and error screens. */
 export const shell = {
   nav: {
     label: 'Ana gezinme',
+    /** The section switcher of the inner screens' top bar. */
+    sections: 'Bölümler',
     home: 'Ana Sayfa',
     live: 'Canlı TV',
     vod: 'Filmler',
@@ -9,7 +11,6 @@ export const shell = {
     epg: 'Yayın Akışı',
     favorites: 'Favoriler',
     search: 'Ara',
-    support: 'Destek',
     settings: 'Ayarlar'
   },
 
@@ -20,7 +21,12 @@ export const shell = {
   },
 
   header: {
-    searchShortcut: 'Ctrl+K'
+    searchShortcut: 'Ctrl+K',
+    searchPlaceholder: 'Kanal, film veya dizi ara',
+    /** The home bar's search field; Enter opens the search screen with it. */
+    searchLabel: 'Kanal, film veya dizi ara (Enter ile aramaya geç)',
+    /** The inner bar's search button. */
+    openSearch: 'Arama ekranını aç'
   },
 
   window: {
@@ -51,7 +57,7 @@ export const shell = {
     unexpectedTitle: 'Beklenmeyen bir hata oluştu',
     appStopped: 'Uygulama beklenmedik şekilde durdu.',
     pageTitle: 'Sayfa yüklenemedi',
-    pageNotFound: 'Aradığınız sayfa bulunamadı.',
+    pageNotFound: 'Aradığın sayfa bulunamadı.',
     pageFailed: 'Sayfa açılamadı.',
     unexpected: 'Beklenmeyen bir hata oluştu.',
     goToSettings: 'Ayarlara Git',

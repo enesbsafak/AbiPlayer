@@ -7,6 +7,7 @@ import {
   cardButton,
   expectHomeWithContent,
   mpvState,
+  continueTile,
   openRoute,
   playLiveChannel,
   waitForMpvProgress
@@ -97,7 +98,7 @@ test.describe('M3U kaynağı', () => {
     await openRoute(page, '/vod')
     await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Kayıp Şehir')
     await cardButton(page, KNOWN.film).click()
-    await page.getByRole('button', { name: 'Filmi Oynat' }).click()
+    await page.getByRole('button', { name: 'İzle', exact: true }).click()
     await expect(page).toHaveURL(/#\/player/)
     await waitForMpvProgress(page, { pathIncludes: FILM_PATH, advanceBy: 1, timeout: 45_000 })
     await page.evaluate((seconds) => window.electron!.mpvSeekTo(seconds), SEEK_TO)
@@ -110,8 +111,8 @@ test.describe('M3U kaynağı', () => {
     await closeApp(first)
 
     const second = await launch({ label: 'second' })
-    await expect(second.page.getByRole('heading', { name: 'Devam Et' })).toBeVisible({ timeout: 30_000 })
-    await second.page.getByRole('button', { name: `${KNOWN.film} — kaldığın yerden devam et`, exact: true }).click()
+    await expect(continueTile(second.page)).toBeVisible({ timeout: 30_000 })
+    await continueTile(second.page).getByRole('button', { name: `${KNOWN.film} — kaldığın yerden devam et`, exact: true }).click()
     await expect(second.page).toHaveURL(/#\/player/, { timeout: 30_000 })
     await waitForMpvProgress(second.page, { pathIncludes: FILM_PATH, advanceBy: 1, timeout: 45_000 })
     await expect

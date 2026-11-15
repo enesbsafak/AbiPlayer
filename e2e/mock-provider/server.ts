@@ -18,7 +18,8 @@ import {
   type CatalogSize,
   type Json
 } from './catalog.ts'
-import type { MediaSet } from './media.ts'
+import { DEMO_ASSETS_DIR, demoGuide, demoLogoSvg, demoSeriesInfo, demoVodInfo, generateDemoCatalog } from './demo.ts'
+import { liveMediaIn, type MediaSet } from './media.ts'
 import { artworkPng } from './png.ts'
 import { generateSelfSignedCertificate, type GeneratedCertificate } from '../../src/main/tls/testing/self-signed.ts'
 import { itemAt } from '../../src/shared/checked.ts'
@@ -84,6 +85,10 @@ export interface MockOptions extends Partial<MockConfig> {
    * 127.0.0.1 and localhost; or pass the certificate to serve.
    */
   tls?: boolean | GeneratedCertificate
+  /** The small made-up catalog of demo.ts, with its posters, logos and guide (README screenshots). */
+  demo?: boolean
+  /** A folder with another live clip of the same length, live.ts and hls/ (the demo's full-HD one). */
+  liveDir?: string
 }
 
 export interface RequestRecord {
@@ -160,7 +165,7 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
     liveBurstSeconds: options.liveBurstSeconds ?? 1
   }
   const size = typeof options.size === 'object' ? options.size : CATALOG_PRESETS[options.size ?? 'small']
-  const media = options.media
+  const media = options.liveDir ? { ...options.media, ...liveMediaIn(options.liveDir) } : options.media
   const sockets = new Set<Socket>()
   const timers = new Set<ReturnType<typeof setTimeout>>()
   const failureUses = new Map<FailureRule, number>()
@@ -380,13 +385,15 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
         body = byCategory('series', current.series, current.seriesCategoryOf)
         break
       case 'get_series_info': {
-        const info = seriesInfo(current, Number(params.get('series_id')), baseUrl)
+        const seriesId = Number(params.get('series_id'))
+        const info = current.demo ? demoSeriesInfo(current, seriesId) : seriesInfo(current, seriesId, baseUrl)
         // Panels return an empty list, not a 404, for an unknown id.
         body = Buffer.from(JSON.stringify(info ?? []))
         break
       }
       case 'get_vod_info': {
-        const info = vodInfo(current, Number(params.get('vod_id')), baseUrl)
+        const vodId = Number(params.get('vod_id'))
+        const info = current.demo ? demoVodInfo(current, vodId) : vodInfo(current, vodId, baseUrl)
         body = Buffer.from(JSON.stringify(info ?? []))
         break
       }
@@ -441,6 +448,16 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
     const hour = 3600_000
     const firstHour = Math.floor(now / hour) * hour - 2 * hour
     const out = ['<?xml version="1.0" encoding="UTF-8"?>', '<tv generator-info-name="abi-mock">']
+    if (catalog.demo) {
+      for (const item of catalog.live) {
+        out.push(`<channel id="${escapeXml(String(item.epg_channel_id))}"><display-name>${escapeXml(String(item.name))}</display-name></channel>`)
+      }
+      for (const programme of demoGuide(now)) {
+        out.push(`<programme start="${xmltvTime(programme.start)}" stop="${xmltvTime(programme.stop)}" channel="${programme.channel}"><title lang="tr">${escapeXml(programme.title)}</title><desc lang="tr">${escapeXml(programme.desc)}</desc></programme>`)
+      }
+      out.push('</tv>')
+      return out.join('\n')
+    }
     const withEpg = catalog.live.filter((item) => typeof item.epg_channel_id === 'string' && item.epg_channel_id)
     for (const item of withEpg) {
       out.push(`<channel id="${escapeXml(String(item.epg_channel_id))}"><display-name>${escapeXml(String(item.name))}</display-name><icon src="${escapeXml(String(item.stream_icon ?? ''))}"/></channel>`)
@@ -632,6 +649,8 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
     const positional = /^\/(live|movie|series)\/([^/]+)\/([^/]+)\/([^/.]+)\.([A-Za-z0-9]+)$/.exec(path)
     const segment = /^\/hls\/([^/]+)\/(\d+)\.ts$/.exec(path)
     const image = /^\/img\/(logo|poster|backdrop)\/(\d+)\.png$/.exec(path)
+    const demoImage = /^\/img\/demo\/([a-z0-9-]+\.jpg)$/.exec(path)
+    const demoLogo = /^\/img\/demo-logo\/(\d+)\.svg$/.exec(path)
 
     try {
       if (path === '/player_api.php') {
@@ -700,6 +719,18 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
         headers(res, 'image/png')
         record.status = 200
         send(res, png, record)
+      } else if (demoImage || demoLogo) {
+        record.route = 'img'
+        const svg = demoLogo ? demoLogoSvg(Number(demoLogo[1])) : null
+        if (demoLogo && !svg) {
+          res.statusCode = 404
+          record.status = 404
+          res.end()
+          return
+        }
+        headers(res, svg ? 'image/svg+xml' : 'image/jpeg')
+        record.status = 200
+        send(res, svg ? Buffer.from(svg) : file(join(DEMO_ASSETS_DIR, itemAt(demoImage ?? [], 1))), record)
       } else {
         record.route = 'not-found'
         res.statusCode = 404
@@ -738,7 +769,7 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
   })
   const address = server.address() as AddressInfo
   baseUrl = `${certificate ? 'https' : 'http'}://${options.host ?? '127.0.0.1'}:${address.port}`
-  catalog = generateCatalog(size, baseUrl, options.seed)
+  catalog = options.demo ? generateDemoCatalog(baseUrl) : generateCatalog(size, baseUrl, options.seed)
 
   const provider: MockProvider = {
     url: baseUrl,

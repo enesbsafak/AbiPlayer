@@ -1,8 +1,7 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
-import { TitleBar } from './TitleBar'
-import { Sidebar } from './Sidebar'
-import { Header } from './Header'
+import { HomeTopBar, InnerTopBar } from './TopBar'
+import { screenFor } from './sections'
 import { MiniPlayer } from '@/components/player/MiniPlayer'
 import { clipPathOutside, useCornerRect } from '@/player/corner-rect'
 import { CertificateTrustHost } from '@/components/security/CertificateTrustHost'
@@ -27,6 +26,7 @@ export function AppShell() {
   const isPlaybackSuspended = useStore((s) => s.isPlaybackSuspended)
   const playbackEngine = useStore((s) => s.playbackEngine)
   const isPlayerRoute = routeLocation.pathname === '/player'
+  const isHomeRoute = routeLocation.pathname === '/'
   // Experimental corner player (setting off by default; mpv only).
   const isCornerPlayback = useStore((s) => s.isCornerPlayback && s.currentPlayback !== null)
   const showCornerPlayer = isCornerPlayback && !isPlayerRoute
@@ -72,19 +72,17 @@ export function AppShell() {
   return (
     <>
       <div
-        className="flex h-screen flex-col overflow-hidden bg-surface-950 text-surface-50"
+        className="flex h-screen flex-col overflow-hidden bg-ground text-white"
         style={showCornerPlayer ? { clipPath: clipPathOutside(cornerRect) } : undefined}
       >
-        <TitleBar />
-        <div className="flex flex-1 overflow-hidden">
-          <Sidebar />
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <Header />
-            <main className="relative flex-1 overflow-y-auto p-4">
-              <Outlet />
-            </main>
-          </div>
-        </div>
+        {/* No sidebar: home is a launcher with its own bar, every other
+            screen has the inner bar with the way back and the section switcher. */}
+        {isHomeRoute ? <HomeTopBar /> : <InnerTopBar screen={screenFor(routeLocation.pathname)} />}
+        {/* Inner pages bring 12 px of their own padding (p-3); together the
+            content sits on the bars' 24 px gutter and 20 px below them. */}
+        <main className={`relative min-h-0 flex-1 overflow-y-auto ${isHomeRoute ? 'px-6 pb-4 pt-5 short:pb-3 short:pt-4' : 'px-3 pb-1 pt-2'}`}>
+          <Outlet />
+        </main>
         {currentChannel && !showCornerPlayer && (isMiniPlayer || isPlaybackSuspended) && <MiniPlayer />}
         <CertificateTrustHost />
         <CredentialNotice />

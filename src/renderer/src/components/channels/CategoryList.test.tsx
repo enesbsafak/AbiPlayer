@@ -25,6 +25,6 @@ describe('CategoryList', () => {
 
     render(<CategoryList type="live" sourceId="s1" selectedCategoryId={null} onSelect={() => undefined} allLabel="Tüm Kanallar" />)
 
-    expect(screen.getByText(`1 kategori gizli. Ayarlar → ${settingsTabLabel('catalog')} bölümünden geri getirebilirsiniz.`)).toBeTruthy()
+    expect(screen.getByText(`1 kategori gizli. Ayarlar → ${settingsTabLabel('catalog')} bölümünden geri getirebilirsin.`)).toBeTruthy()
   })
 })

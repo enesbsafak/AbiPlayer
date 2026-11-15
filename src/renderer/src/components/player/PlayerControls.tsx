@@ -1,13 +1,16 @@
 import { useNavigate } from 'react-router-dom'
-import { type RefObject } from 'react'
+import { useMemo, useState, type RefObject } from 'react'
+import { ArrowLeftIcon } from '@/components/ui/icons'
 import { useStore } from '@/store'
 import { PlayerActionControls } from './PlayerActionControls'
 import { PlayerTransportControls } from './PlayerTransportControls'
+import { LiveBanner, MediaBanner } from './PlayerBanner'
+import { SIDEBAR_WIDTH } from './PlayerSidebar'
+import { DockLayoutContext, OVER_VIDEO, dockSizeFor, playerTone, useElementWidth } from './player-ui'
 import { navigateToPlayerReturnTarget } from '@/services/player-navigation'
-import { useSeekScrubber } from '@/hooks/useSeekScrubber'
+import { AUTO_VIDEO_QUALITY_ID, inferContentQualityLabel } from '@/services/quality'
 import {
   mpvSeek,
-  mpvSeekTo,
   mpvJumpToLive,
   mpvSetFullscreen,
   mpvSetMute as mpvSetMuteCommand,
@@ -18,73 +21,65 @@ import {
 import { toUserMessage } from '@/services/user-error'
 import { strings } from '@/strings'
 
+export { formatTime } from './player-ui'
+
+const text = strings.player
+const dockText = strings.player.dock
+
 interface PlayerControlsProps {
   videoRef: RefObject<HTMLVideoElement | null>
   onToggleFullscreen: () => void
 }
 
-interface ProgressScrubberProps {
-  currentTime: number
-  duration: number
-  playbackEngine: string
-  video: HTMLVideoElement | null
+/** The dock is centred and stops growing past this: about 1.2 × its designed width. */
+const COLUMN = 'pointer-events-auto mx-auto w-full max-w-[1480px]'
+
+/**
+ * The stream's resolution, as the renderer knows it: the quality the engine
+ * plays (or the one picked), else the label the item's name carries (what
+ * the cards' quality badge shows). Nothing when neither says anything.
+ */
+function useStreamBadge(): string | null {
+  const currentChannel = useStore((s) => s.currentChannel)
+  const options = useStore((s) => s.videoQualityOptions)
+  const current = useStore((s) => s.currentVideoQuality)
+  const active = useStore((s) => s.activeVideoQuality)
+  const playing = options.find((option) => option.id === (current === AUTO_VIDEO_QUALITY_ID ? active : current))
+  if (playing?.height) return playing.shortLabel
+  return inferContentQualityLabel(currentChannel)
 }
 
-export function formatTime(s: number) {
-  if (!isFinite(s)) return '--:--'
-  const totalSeconds = Math.max(0, Math.floor(s))
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-  if (hours > 0) return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`
-}
-
-const PROGRESS_TRACK_COLOR = '#7c6af7'
-const PROGRESS_BACK_COLOR = '#3f3f46'
-
-function ProgressScrubber({
-  currentTime,
-  duration,
-  playbackEngine,
-  video
-}: ProgressScrubberProps) {
-  const scrubber = useSeekScrubber(currentTime, (t) => {
-    if (playbackEngine === 'mpv') {
-      void mpvSeekTo(t).catch(() => undefined)
-    } else if (video) {
-      video.currentTime = t
-    }
-  })
-  const shownTime = scrubber.value
-  const progress = duration > 0 ? (shownTime / duration) * 100 : 0
-  const remainingTime = Math.max(0, duration - shownTime)
-
+function KeyHint({ keys, children }: { keys: string; children: string }) {
   return (
-    <div className="mb-3 flex items-center gap-3">
-      <span className="text-xs text-surface-200 tabular-nums">{formatTime(shownTime)}</span>
-      <input
-        type="range"
-        min={0}
-        max={duration}
-        value={shownTime}
-        onChange={(e) => scrubber.update(parseFloat(e.target.value))}
-        onPointerUp={scrubber.commit}
-        onPointerCancel={scrubber.commit}
-        onKeyUp={scrubber.commit}
-        onBlur={scrubber.commit}
-        className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-surface-600 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent"
-        style={{ background: `linear-gradient(to right, ${PROGRESS_TRACK_COLOR} ${progress}%, ${PROGRESS_BACK_COLOR} ${progress}%)` }}
-        aria-label={strings.player.transport.progress}
-        aria-valuemin={0}
-        aria-valuemax={Math.round(duration)}
-        aria-valuenow={Math.round(shownTime)}
-      />
-      <span className="text-xs text-surface-200 tabular-nums">{formatTime(duration)}</span>
-      <span className="min-w-[70px] text-right text-xs text-surface-300 tabular-nums">
-        -{formatTime(remainingTime)}
-      </span>
+    <div className="flex items-center gap-2 whitespace-nowrap">
+      <kbd className="flex h-7 items-center rounded-[10px] border-b-[3px] border-deep bg-raised px-2.5 font-sans text-[13px] font-bold text-white">
+        {keys}
+      </kbd>
+      {children}
     </div>
+  )
+}
+
+/**
+ * Only in tall windows: below that the picture needs the room more than the
+ * reminder. Every key listed is one the player's shortcut handler serves.
+ */
+function KeyboardHints({ isLive, autoHides }: { isLive: boolean; autoHides: boolean }) {
+  const hints = dockText.hints
+  return (
+    <footer
+      aria-label={dockText.hintsLabel}
+      className="hidden flex-wrap items-center gap-x-3.5 gap-y-2 px-1 text-[14px] text-surface-500 [@media(min-height:1000px)]:flex"
+    >
+      <KeyHint keys={hints.spaceKey}>{hints.pause}</KeyHint>
+      {!isLive && <KeyHint keys={hints.seekKeys}>{hints.seek}</KeyHint>}
+      <KeyHint keys={hints.volumeKeys}>{hints.volume}</KeyHint>
+      <KeyHint keys={hints.listKey}>{hints.list}</KeyHint>
+      <KeyHint keys={hints.fullscreenKey}>{hints.fullscreen}</KeyHint>
+      <KeyHint keys={hints.backKey}>{hints.back}</KeyHint>
+      <div className="flex-1" />
+      {autoHides && <p className="whitespace-nowrap">{hints.autoHide}</p>}
+    </footer>
   )
 }
 
@@ -93,18 +88,37 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
   // Select individually — a bare `useStore()` re-renders these controls on
   // every store write, and playback pushes time updates several times a second.
   const isPaused = useStore((s) => s.isPaused)
-  const currentTime = useStore((s) => s.currentTime)
   const duration = useStore((s) => s.duration)
   const isMuted = useStore((s) => s.isMuted)
   const isFullscreen = useStore((s) => s.isFullscreen)
   const currentChannel = useStore((s) => s.currentChannel)
+  const currentPlayback = useStore((s) => s.currentPlayback)
   const playbackEngine = useStore((s) => s.playbackEngine)
   const playerReturnTarget = useStore((s) => s.playerReturnTarget)
+  const isPlayerSidebarOpen = useStore((s) => s.isPlayerSidebarOpen)
   const setVolume = useStore((s) => s.setVolume)
   const setMuted = useStore((s) => s.setMuted)
   const setPiP = useStore((s) => s.setPiP)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
   const setPlayerError = useStore((s) => s.setPlayerError)
+  const badge = useStreamBadge()
+  // Which pickers draw themselves (each hides when there is nothing to pick).
+  const hasAudioPicker = useStore((s) => s.audioTracks.length > 1)
+  const hasQualityPicker = useStore((s) => s.videoQualityOptions.length > 0)
+
+  const [dock, setDock] = useState<HTMLElement | null>(null)
+  // The dock's padding is 16 px a side (12 in a short window): its inner width, rounded down.
+  const dockInnerWidth = Math.max(0, useElementWidth(dock) - 32)
+  const isLive = currentChannel?.type === 'live'
+  const isMpv = playbackEngine === 'mpv'
+  const size = dockSizeFor(dockInnerWidth, {
+    seeks: !isLive,
+    // Subtitles are always there; tuning only on mpv.
+    pickers: 1 + (hasAudioPicker ? 1 : 0) + (hasQualityPicker ? 1 : 0) + (isMpv ? 1 : 0),
+    pip: !isMpv
+  })
+  const tone = playerTone(currentPlayback, currentChannel)
+  const layout = useMemo(() => ({ size, tone }), [size, tone])
 
   const video = videoRef.current
 
@@ -198,8 +212,6 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
     navigateBackToOrigin()
   }
 
-  const isLive = currentChannel?.type === 'live'
-
   const jumpToLive = () => {
     if (playbackEngine === 'mpv') {
       jumpMpvToLive()
@@ -216,35 +228,66 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
   }
 
   return (
-    <div
-      data-player-controls
-      className="bg-gradient-to-t from-black/90 via-black/60 to-transparent px-4 pb-4 pt-12"
-      onDoubleClick={(event) => event.stopPropagation()}
-    >
-      {!isLive && duration > 0 && (
-        <ProgressScrubber
-          currentTime={currentTime}
-          duration={duration}
-          playbackEngine={playbackEngine}
-          video={video}
-        />
-      )}
+    <DockLayoutContext.Provider value={layout}>
+      {/*
+        Clicks between the two bands fall through to the picture (double-click
+        for fullscreen). With the channel list open the column stops at its
+        edge, so the dock stays whole beside it.
+      */}
+      <div
+        className="pointer-events-none absolute inset-y-0 left-0 flex flex-col justify-between gap-3 p-4 short:p-3"
+        style={{ right: isPlayerSidebarOpen ? SIDEBAR_WIDTH : 0 }}
+      >
+        {/* The top row spans the window: the way back stays at its top left at any size. */}
+        <div data-player-controls className="flex w-full items-start gap-3" onDoubleClick={(event) => event.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => void leavePlayer()}
+            className={`pointer-events-auto flex h-[52px] shrink-0 items-center gap-2.5 rounded-full pl-[18px] pr-[22px] text-[16px] font-bold text-white transition-colors hover:bg-raised ${OVER_VIDEO}`}
+            title={text.actions.leaveTitle}
+          >
+            <ArrowLeftIcon size={22} />
+            {text.actions.leaveLabel}
+          </button>
+          <div className="flex-1" />
+          {badge && (
+            <div role="group" aria-label={dockText.streamInfo} className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
+              <span
+                className={`flex h-9 items-center whitespace-nowrap rounded-full px-3.5 text-[15px] font-bold text-white ${OVER_VIDEO}`}
+                title={strings.common.qualityTitle(badge)}
+              >
+                {badge}
+              </span>
+            </div>
+          )}
+        </div>
 
-      <div className="flex items-center justify-between">
-        <PlayerTransportControls
-          onSeek={seek}
-          onTogglePlay={togglePlay}
-          onJumpToLive={jumpToLive}
-          onToggleMute={toggleMute}
-          onVolumeChange={handleVolumeChange}
-        />
+        <section
+          ref={setDock}
+          data-player-controls
+          aria-label={dockText.label}
+          className={`${COLUMN} flex flex-col gap-3 rounded-tile p-4 pb-3.5 short:gap-2.5 short:p-3 ${OVER_VIDEO}`}
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
+          {isLive ? <LiveBanner onJumpToLive={jumpToLive} /> : <MediaBanner video={video} />}
 
-        <PlayerActionControls
-          onLeave={() => void leavePlayer()}
-          onTogglePiP={() => void togglePiP()}
-          onToggleFullscreen={onToggleFullscreen}
-        />
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+            <PlayerTransportControls
+              onSeek={seek}
+              onTogglePlay={togglePlay}
+              onToggleMute={toggleMute}
+              onVolumeChange={handleVolumeChange}
+            />
+            <div className="min-w-0 flex-1" />
+            <PlayerActionControls
+              onTogglePiP={() => void togglePiP()}
+              onToggleFullscreen={onToggleFullscreen}
+            />
+          </div>
+
+          <KeyboardHints isLive={isLive} autoHides={!isPlayerSidebarOpen} />
+        </section>
       </div>
-    </div>
+    </DockLayoutContext.Provider>
   )
 }

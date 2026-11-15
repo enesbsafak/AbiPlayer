@@ -1,42 +1,41 @@
 import type { Config } from 'tailwindcss'
+import plugin from 'tailwindcss/plugin'
+import { palette, surfaceScale } from './src/renderer/src/theme/palette'
 
 const config: Config = {
   content: ['./src/renderer/src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
-        surface: {
-          50: '#fafafa',
-          100: '#f4f4f5',
-          200: '#e4e4e7',
-          300: '#d4d4d8',
-          400: '#a1a1aa',
-          500: '#71717a',
-          600: '#52525b',
-          700: '#3f3f46',
-          800: '#27272a',
-          900: '#18181b',
-          950: '#09090b'
-        },
+        // "Canlı renk" (docs/tasarim): see src/renderer/src/theme/palette.ts.
+        ground: palette.ground,
+        raised: palette.raised,
+        deep: palette.deep,
+        ink: palette.ink,
+        coral: palette.coral,
+        sun: palette.sun,
+        mint: palette.mint,
+        sky: palette.sky,
+        surface: surfaceScale,
+        // The old violet accent, remapped: highlights, progress, selected
+        // items and focus rings are sun now. Pages still written against
+        // `accent` pick it up without being rewritten.
         accent: {
-          DEFAULT: '#7c6af7',
-          50: '#f3f1fe',
-          100: '#e9e5fd',
-          200: '#d5ccfc',
-          300: '#b8a9f9',
-          400: '#9d84f8',
-          500: '#7c6af7',
-          600: '#6247ef',
-          700: '#4f35d4',
-          800: '#3e2aaa',
-          900: '#342488'
+          DEFAULT: palette.sun,
+          600: '#F0B526'
         },
+        // "Connected / on".
         signal: {
-          DEFAULT: '#2dd4bf',
-          400: '#2dd4bf',
-          500: '#14b8a6',
-          600: '#0d9488'
+          DEFAULT: palette.mint,
+          400: palette.mint,
+          500: '#3FCF9E',
+          600: '#2BB386'
         }
+      },
+      borderRadius: {
+        // Tiles 28, rows and cards 20, posters 20, pills fully round.
+        tile: '28px',
+        card: '20px'
       },
       fontSize: {
         caption: ['10px', { lineHeight: '14px' }],
@@ -44,7 +43,8 @@ const config: Config = {
         'body-sm': ['13px', { lineHeight: '20px' }]
       },
       fontFamily: {
-        sans: ['"Inter Variable"', 'Inter', 'system-ui', 'sans-serif']
+        sans: ['"DM Sans Variable"', '"DM Sans"', '"Segoe UI"', 'system-ui', 'sans-serif'],
+        display: ['"Bricolage Grotesque Variable"', '"Bricolage Grotesque"', '"DM Sans Variable"', 'sans-serif']
       },
       zIndex: {
         'loading': '20',
@@ -56,7 +56,13 @@ const config: Config = {
       }
     }
   },
-  plugins: []
+  plugins: [
+    // `short:` for a short window (the smallest is 900 × 600): the home
+    // screen's tiles and posters shrink so it still fits without scrolling. A
+    // variant rather than a raw screen: a raw screen would switch off the
+    // max-* screen variants the top bars use.
+    plugin(({ addVariant }) => addVariant('short', '@media (max-height: 720px)'))
+  ]
 }
 
 export default config

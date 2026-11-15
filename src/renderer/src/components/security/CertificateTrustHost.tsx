@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ShieldAlert } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { FieldError } from '@/components/settings/controls'
 import { useStore } from '@/store'
 import {
   onUntrustedCertificate,
@@ -163,29 +164,34 @@ export function CertificateTrustHost() {
       onConfirm={() => void handleConfirm()}
       onCancel={handleCancel}
     >
-      <div className="flex flex-col gap-3">
-        <p className="flex items-start gap-2">
-          <ShieldAlert size={18} className="mt-0.5 shrink-0 text-amber-400" aria-hidden />
-          <span>
-            <strong className="text-surface-50">{endpointLabel(notice.host, notice.port)}</strong>
+      <div className="flex flex-col gap-4 text-[15px] text-surface-300">
+        {/* What happened, then why it matters, then the facts to compare. */}
+        <p className="flex items-start gap-3">
+          <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sun text-ink">
+            <ShieldAlert size={18} />
+          </span>
+          <span className="pt-1.5">
+            <strong className="text-white">{endpointLabel(notice.host, notice.port)}</strong>
             {name ? text.ownerSuffix(name) : ''}
             {text.unverifiedBody}
           </span>
         </p>
         {notice.changed && (
-          <p className="text-amber-300">
-            {text.changedWarning}
+          <p className="flex items-start gap-3 font-medium text-white">
+            <span aria-hidden="true" className="mt-[7px] size-2.5 shrink-0 rounded-full bg-coral" />
+            <span>{text.changedWarning}</span>
           </p>
         )}
-        <ul className="list-disc pl-5">
+        <ul className="flex flex-col gap-1.5">
           {describeProblems(notice).map((line) => (
-            <li key={line}>{line}</li>
+            <li key={line} className="flex items-start gap-3">
+              <span aria-hidden="true" className="mt-[8px] size-1.5 shrink-0 rounded-full bg-surface-500" />
+              <span>{line}</span>
+            </li>
           ))}
         </ul>
-        <p>
-          {text.explanation}
-        </p>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md bg-surface-950 p-3 text-xs">
+        <p>{text.explanation}</p>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-2xl bg-deep p-4 text-[13px]">
           <dt className="text-surface-500">{text.fingerprint}</dt>
           <dd className="break-all font-mono text-surface-300">{notice.fingerprint256}</dd>
           <dt className="text-surface-500">{text.issuer}</dt>
@@ -195,12 +201,8 @@ export function CertificateTrustHost() {
             {formatCertificateDate(notice.validFrom)} – {formatCertificateDate(notice.validTo)}
           </dd>
         </dl>
-        <p className="text-xs text-surface-500">{text.manageHint}</p>
-        {error && (
-          <p className="text-sm text-red-400" role="alert">
-            {error}
-          </p>
-        )}
+        <p className="text-sm text-surface-400">{text.manageHint}</p>
+        {error && <FieldError>{error}</FieldError>}
       </div>
     </ConfirmDialog>
   )

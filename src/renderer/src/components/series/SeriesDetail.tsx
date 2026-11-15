@@ -1,5 +1,5 @@
 import { useState, useReducer, useEffect, useRef } from 'react'
-import { Play, ArrowLeft } from 'lucide-react'
+import { Play } from 'lucide-react'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
 import {
@@ -8,15 +8,18 @@ import {
   resolveTmdbSeasonEpisodes,
   resolveTmdbTvDetails
 } from '@/services/tmdb-api'
-import { LazyImage } from '@/components/ui/LazyImage'
 import { Button } from '@/components/ui/Button'
+import { PlayIcon } from '@/components/ui/icons'
 import { FavoriteToggle } from '@/components/ui/FavoriteToggle'
 import { QualityBadge } from '@/components/ui/QualityBadge'
 import { Spinner } from '@/components/ui/Spinner'
 import { inferContentQualityLabel } from '@/services/quality'
 import { toUserMessage } from '@/services/user-error'
 import { useCatalogItem, xtreamItemId } from '@/catalog'
-import type { SeriesDetail as SeriesDetailType } from '@/types/playlist'
+import type { Channel, EpisodeInfo, SeriesDetail as SeriesDetailType } from '@/types/playlist'
+import { BackPill, DETAIL_PRIMARY, DetailPoster, DetailTitle, FactPill, MoreInCategory, WatchLine } from '@/components/vod/DetailParts'
+import { episodeKey, watchShareOf } from '@/components/vod/watch-share'
+import type { WatchProgressEntry } from '@/services/watch-progress'
 import type { EpisodePlaybackRequest } from '@/types/player'
 import { strings } from '@/strings'
 
@@ -33,6 +36,8 @@ interface SeriesDetailProps {
   onSeasonChange?: (seasonNumber: number) => void
   /** The episode to play, identified by its own id rather than by a URL. */
   onPlayEpisode: (episode: EpisodePlaybackRequest) => void
+  /** Opens another series' detail, from the row under the episodes. */
+  onOpenSeries?: (series: Channel) => void
 }
 
 type SeasonRaw = { season_number?: number; name?: string; episode_count?: number; cover?: string }
@@ -430,6 +435,7 @@ export function SeriesDetail({
   sourceId,
   initialSeasonNumber,
   onBack,
+  onOpenSeries,
   onSeasonChange,
   onPlayEpisode
 }: SeriesDetailProps) {
@@ -448,22 +454,20 @@ export function SeriesDetail({
   const isSeriesFavorite = useStore((s) => s.favoriteIds.has(seriesItemId))
   const favoriteChannelId = seriesItem || isSeriesFavorite ? seriesItemId : null
 
+  const watchProgress = useStore((s) => s.watchProgress)
+
   if (loading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>
   if (!detail) {
     return (
-      <div className="flex flex-col gap-4 py-12">
-        <Button variant="ghost" size="sm" onClick={onBack} className="self-start">
-          <ArrowLeft size={16} /> {strings.common.back}
-        </Button>
-        <div className="rounded-lg border border-red-500/35 bg-red-500/10 px-4 py-6 text-center text-red-200">
-          <p className="text-sm font-medium">
-            {loadError || text.seriesLoadFailed}
-          </p>
-          <div className="mt-3 flex items-center justify-center gap-2">
-            <Button size="sm" variant="secondary" onClick={retry}>
+      <div className="flex flex-col gap-6">
+        <BackPill onBack={onBack} />
+        <div role="alert" className="flex flex-col items-center gap-4 rounded-tile bg-raised px-8 py-12 text-center">
+          <p className="font-title text-[28px]">{loadError || text.seriesLoadFailed}</p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Button variant="primary" onClick={retry}>
               {strings.common.retry}
             </Button>
-            <Button size="sm" variant="ghost" onClick={onBack}>
+            <Button variant="secondary" onClick={onBack}>
               {strings.common.goBack}
             </Button>
           </div>
@@ -473,94 +477,159 @@ export function SeriesDetail({
   }
 
   const episodes = detail.episodes[selectedSeason] || []
+  // The history of this series' episodes, by the media key the player keys
+  // them with: progress on each row, and where "Devam et" picks up.
+  const progressOf = (episode: EpisodeInfo): WatchProgressEntry | null => {
+    const episodeId = parseEpisodeId(episode.id)
+    if (episodeId === null) return null
+    const key = episodeKey(sourceId, episodeId)
+    return watchProgress.find((entry) => entry.key === key) ?? null
+  }
+  const allEpisodes = detail.seasons.flatMap((season) => detail.episodes[season.seasonNumber] ?? [])
+  let resumeEpisode: EpisodeInfo | null = null
+  let resumedAt = -1
+  for (const episode of allEpisodes) {
+    const entry = progressOf(episode)
+    if (entry && entry.updatedAt > resumedAt) {
+      resumeEpisode = episode
+      resumedAt = entry.updatedAt
+    }
+  }
+  const firstEpisode = (detail.episodes[detail.seasons[0]?.seasonNumber ?? selectedSeason] ?? episodes)[0] ?? null
+  const primaryEpisode = resumeEpisode ?? firstEpisode
+
+  const play = (ep: EpisodeInfo) => {
+    const episodeId = parseEpisodeId(ep.id)
+    if (episodeId === null) return
+    onPlayEpisode({
+      sourceId,
+      seriesId,
+      season: ep.season,
+      episodeNum: ep.episodeNum,
+      episodeId,
+      containerExtension: ep.containerExtension,
+      title: text.episodeTitle(detail.name, ep.season, ep.episodeNum, ep.title),
+      ...(ep.coverUrl ? { coverUrl: ep.coverUrl } : {}),
+      fallbackStreamUrl: ep.streamUrl
+    })
+  }
+  const genres = detail.genre ? detail.genre.split(',').map((genre) => genre.trim()).filter(Boolean) : []
 
   return (
-    <div className="flex flex-col gap-6">
-      <Button variant="ghost" size="sm" onClick={onBack} className="self-start">
-        <ArrowLeft size={16} /> {strings.common.back}
-      </Button>
+    // Centred past 1600 px, like the film detail; the episodes fill the width in columns.
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-8">
+      <BackPill onBack={onBack} />
 
-      <div className="flex flex-col md:flex-row gap-6">
-        <div className="shrink-0 w-48">
-          <LazyImage src={detail.cover} alt={detail.name} className="aspect-[2/3] w-full rounded-lg" eager />
-        </div>
-        <div className="flex flex-col gap-2">
-          <h1 className="text-2xl font-bold">{detail.name}</h1>
-          {detail.genre && <p className="text-sm text-accent">{detail.genre}</p>}
-          {detail.plot && <p className="text-sm text-surface-400 leading-relaxed max-w-2xl">{detail.plot}</p>}
-          <div className="flex gap-4 text-xs text-surface-500 mt-2">
-            {detail.rating && <span>{text.rating(detail.rating)}</span>}
-            {detail.director && <span>{text.director(detail.director)}</span>}
-            {detail.releaseDate && <span>{detail.releaseDate}</span>}
+      <div className="flex gap-8 max-md:flex-col">
+        <DetailPoster src={detail.cover} />
+        <div className="flex min-w-0 max-w-[820px] flex-1 flex-col gap-4 min-[1800px]:max-w-[960px]">
+          <DetailTitle>{detail.name}</DetailTitle>
+          <div className="flex flex-wrap gap-2">
+            {detail.rating && <FactPill>{text.rating(detail.rating)}</FactPill>}
+            {detail.releaseDate && <FactPill>{detail.releaseDate}</FactPill>}
+            {genres.map((genre) => (
+              <FactPill key={genre}>{genre}</FactPill>
+            ))}
           </div>
-          {favoriteChannelId && (
-            <FavoriteToggle channelId={favoriteChannelId} item={seriesItem} variant="button" className="mt-3 self-start" />
+          {detail.plot && <p className="max-w-[68ch] text-base leading-relaxed text-surface-300 min-[1800px]:text-lg">{detail.plot}</p>}
+          {detail.director && <p className="text-[15px] text-surface-400">{text.director(detail.director)}</p>}
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            {primaryEpisode && (
+              <button
+                type="button"
+                onClick={() => play(primaryEpisode)}
+                aria-describedby="series-primary-episode"
+                className={DETAIL_PRIMARY}
+              >
+                <PlayIcon size={22} />
+                {resumeEpisode ? text.resume : text.playFilm}
+              </button>
+            )}
+            {favoriteChannelId && (
+              <FavoriteToggle channelId={favoriteChannelId} item={seriesItem} variant="button" className="h-[60px]" />
+            )}
+          </div>
+          {primaryEpisode && (
+            <p id="series-primary-episode" className="text-[15px] text-surface-400">
+              {text.playEpisodeLabel(primaryEpisode.season, primaryEpisode.episodeNum)}
+              {primaryEpisode.title ? ` · ${primaryEpisode.title}` : ''}
+            </p>
           )}
         </div>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        {detail.seasons.map((s) => (
-          <Button
-            key={s.seasonNumber}
-            variant={s.seasonNumber === selectedSeason ? 'primary' : 'secondary'}
-            size="sm"
-            onClick={() => {
-              setSelectedSeason(s.seasonNumber)
-              onSeasonChange?.(s.seasonNumber)
-            }}
-          >
-            {s.name || text.season(s.seasonNumber)}
-          </Button>
-        ))}
-      </div>
+      <section aria-labelledby="series-seasons" className="flex flex-col gap-3">
+        <div className="flex h-7 items-center gap-3">
+          <span aria-hidden="true" className="size-3 shrink-0 rounded-[4px] bg-sky" />
+          <h2 id="series-seasons" className="font-title text-[23px] leading-[1.2]">
+            {text.seasons}
+          </h2>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {detail.seasons.map((s) => {
+            const selected = s.seasonNumber === selectedSeason
+            return (
+              <button
+                key={s.seasonNumber}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => {
+                  setSelectedSeason(s.seasonNumber)
+                  onSeasonChange?.(s.seasonNumber)
+                }}
+                className={`flex h-11 items-center rounded-full px-5 text-base ${
+                  selected ? 'bg-sky font-bold text-ink' : 'bg-raised font-medium text-white hover:bg-surface-800'
+                }`}
+              >
+                {s.name || text.season(s.seasonNumber)}
+              </button>
+            )
+          })}
+        </div>
+      </section>
 
-      <div className="flex flex-col gap-2">
-        {episodes.map((ep) => (
-          (() => {
+      <section aria-labelledby="series-episodes" className="flex flex-col gap-3">
+        <div className="flex h-7 items-center gap-3">
+          <span aria-hidden="true" className="size-3 shrink-0 rounded-[4px] bg-sky" />
+          <h2 id="series-episodes" className="font-title text-[23px] leading-[1.2]">
+            {text.episodes}
+          </h2>
+          <span className="text-[15px] font-bold tabular-nums text-surface-500">{episodes.length}</span>
+        </div>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,560px),1fr))] gap-2.5">
+          {episodes.map((ep) => {
             const qualityLabel = inferContentQualityLabel(ep)
-
+            const share = watchShareOf(progressOf(ep))
             return (
               <button
                 key={ep.id}
                 type="button"
-                className="flex w-full items-center gap-4 rounded-lg border border-surface-800 bg-surface-900 p-3 text-left hover:border-surface-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                onClick={() => {
-                  const episodeId = parseEpisodeId(ep.id)
-                  if (episodeId === null) return
-                  onPlayEpisode({
-                    sourceId,
-                    seriesId,
-                    season: ep.season,
-                    episodeNum: ep.episodeNum,
-                    episodeId,
-                    containerExtension: ep.containerExtension,
-                    title: text.episodeTitle(detail.name, ep.season, ep.episodeNum, ep.title),
-                    ...(ep.coverUrl ? { coverUrl: ep.coverUrl } : {}),
-                    fallbackStreamUrl: ep.streamUrl
-                  })
-                }}
+                className="flex min-h-[72px] w-full items-center gap-4 rounded-card bg-raised py-3 pl-3 pr-5 text-left transition-colors hover:bg-surface-800"
+                onClick={() => play(ep)}
               >
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-800">
-                  <Play size={16} className="text-accent" fill="currentColor" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="min-w-0 text-sm font-medium truncate">
-                      {text.episode(ep.episodeNum, ep.title)}
-                    </p>
-                    {qualityLabel && (
-                      <QualityBadge label={qualityLabel} className="shrink-0" />
-                    )}
-                  </div>
-                  {ep.plot && <p className="text-xs text-surface-500 truncate">{ep.plot}</p>}
-                </div>
-                {ep.duration && <span className="text-xs text-surface-500 shrink-0">{ep.duration}</span>}
+                <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-sky text-ink">
+                  <Play size={18} fill="currentColor" aria-hidden="true" />
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col gap-1">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="min-w-0 truncate text-[17px] font-bold">{text.episode(ep.episodeNum, ep.title)}</span>
+                    {qualityLabel && <QualityBadge label={qualityLabel} className="shrink-0" />}
+                  </span>
+                  {ep.plot && <span className="truncate text-[15px] text-surface-400">{ep.plot}</span>}
+                  {share && (
+                    <span className="mt-1 block max-w-[320px]">
+                      <WatchLine share={share} label={text.watched(share.percent)} />
+                    </span>
+                  )}
+                </span>
+                {ep.duration && <span className="shrink-0 text-[15px] font-bold tabular-nums text-surface-400">{ep.duration}</span>}
               </button>
             )
-          })()
-        ))}
-      </div>
+          })}
+        </div>
+      </section>
+
+      {seriesItem && onOpenSeries && <MoreInCategory item={seriesItem} onOpen={onOpenSeries} />}
     </div>
   )
 }

@@ -3,7 +3,9 @@ import { KNOWN } from '../mock-provider/catalog.ts'
 import { addXtreamSource, anyCard, expectHomeWithContent, openRoute, playLiveChannel, waitForMpvProgress } from '../support/flows.ts'
 import { observe } from '../support/known-bugs.ts'
 
-const loginError = (page: import('@playwright/test').Page) => page.locator('form p.text-red-400')
+// Shown beside the field it concerns (the password, the server address), or
+// above the action when it concerns none.
+const loginError = (page: import('@playwright/test').Page) => page.locator('form').getByRole('alert')
 
 test.describe('sağlayıcı hataları', () => {
   test('yanlış şifre girişte reddedilir ve kaynak eklenmez', async ({ launch, mock }) => {
@@ -119,7 +121,7 @@ test.describe('sağlayıcı hataları', () => {
         await expect(reconnect).toBeVisible({ timeout: 100 })
         await page.waitForTimeout(250)
       }
-      const finalMessage = (await page.locator('[data-player-container] p.text-red-400').innerText()).trim()
+      const finalMessage = (await page.locator('[data-player-container] [data-player-error-message]').innerText()).trim()
       observe(`F1-05 dead channel: final message "${finalMessage}", playlist requests ${mock.stats().counts['live-hls'] ?? 0}`)
 
       // The provider recovers. Nothing reloads by itself any more...

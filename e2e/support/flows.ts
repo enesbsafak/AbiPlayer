@@ -5,24 +5,57 @@ import { expect, type Page } from '@playwright/test'
 import type { MockProvider } from '../mock-provider/server.ts'
 import type { MpvStateSnapshot } from '../../src/shared/types/electron-ipc.ts'
 
-export async function openRoute(page: Page, route: '/' | '/live' | '/vod' | '/series' | '/search' | '/settings' | '/favorites' | '/epg'): Promise<void> {
-  const names: Record<string, string> = {
-    '/': 'Ana Sayfa',
-    '/live': 'Canlı TV',
-    '/vod': 'Filmler',
-    '/series': 'Diziler',
-    '/epg': 'Yayın Akışı',
-    '/favorites': 'Favoriler',
-    '/search': 'Ara'
-  }
-  if (route === '/settings') {
-    await page.evaluate(() => {
-      window.location.hash = '#/settings'
-    })
+type Route = '/' | '/live' | '/vod' | '/series' | '/search' | '/settings' | '/favorites' | '/epg'
+
+/** The four sections: home tiles and the inner bar's switcher, by these names. */
+const SECTION_NAMES: Partial<Record<Route, string>> = {
+  '/live': 'Canlı TV',
+  '/vod': 'Filmler',
+  '/series': 'Diziler',
+  '/epg': 'Yayın Akışı'
+}
+
+// A cold start sits on index.html with no hash until something navigates.
+const HOME_URL = /(#\/|index\.html(\?[^#]*)?)$/
+
+function isHome(page: Page): boolean {
+  return HOME_URL.test(page.url())
+}
+
+/**
+ * Goes to a screen the way a viewer does. There is no sidebar: home is a
+ * launcher (section tiles; Favoriler and Ayarlar in its bar; a search field),
+ * and every other screen has a bar with "Ana Sayfa", a section switcher and a
+ * search button.
+ */
+export async function openRoute(page: Page, route: Route): Promise<void> {
+  const bar = page.getByRole('banner')
+  const section = SECTION_NAMES[route]
+  if (route === '/') {
+    if (!isHome(page)) await bar.getByRole('link', { name: 'Ana Sayfa', exact: true }).click()
+  } else if (section) {
+    if (isHome(page)) {
+      await page
+        .getByRole('navigation', { name: 'Ana gezinme' })
+        // The tile's name is its title and its line ("Canlı TV 128 kanal");
+        // no \b: "Akışı" ends in a letter a JS word boundary does not know.
+        .getByRole('link', { name: new RegExp(`^${section}( |$)`) })
+        .click()
+    } else {
+      await bar.getByRole('navigation', { name: 'Bölümler' }).getByRole('link', { name: section, exact: true }).click()
+    }
+  } else if (route === '/search') {
+    if (isHome(page)) await bar.getByRole('searchbox').press('Enter')
+    else await bar.getByRole('link', { name: 'Arama ekranını aç', exact: true }).click()
   } else {
-    await page.locator('aside').getByRole('link', { name: names[route], exact: true }).click()
+    // Favoriler and Ayarlar are in the home bar.
+    if (!isHome(page)) {
+      await bar.getByRole('link', { name: 'Ana Sayfa', exact: true }).click()
+      await expect(page).toHaveURL(HOME_URL)
+    }
+    await bar.getByRole('link', { name: route === '/favorites' ? 'Favoriler' : 'Ayarlar', exact: true }).click()
   }
-  await expect(page).toHaveURL(new RegExp(`#${route === '/' ? '/$' : route}`))
+  await expect(page).toHaveURL(route === '/' ? HOME_URL : new RegExp(`#${route}`))
 }
 
 /** From a fresh profile: welcome screen, "Kaynak Ekle", the Xtream form. */
@@ -37,21 +70,35 @@ export async function addXtreamSource(page: Page, mock: MockProvider, options: {
   await page.locator('#xtream-url').fill(mock.url)
   await page.locator('#xtream-user').fill(mock.username)
   await page.locator('#xtream-pass').fill(options.password ?? mock.password)
-  await page.getByRole('button', { name: 'Bağlan', exact: true }).click()
+  await page.getByRole('button', { name: 'Bağlan ve yüklemeye başla', exact: true }).click()
 }
 
+/** Settings → Kaynaklar: the "M3U listem var" choice, then its address. */
 export async function addM3uSource(page: Page, url: string, name?: string): Promise<void> {
   await openRoute(page, '/settings')
+  await page.getByRole('button', { name: /^M3U listem var/ }).click()
   if (name) await page.locator('#m3u-name').fill(name)
   await page.locator('#m3u-url').fill(url)
-  await page.getByRole('button', { name: 'Listeyi İçe Aktar' }).click()
+  await page.getByRole('button', { name: 'Listeyi yükle', exact: true }).click()
 }
 
-/** The dashboard is showing catalog rows (not the welcome, loading or error panel). */
+/**
+ * Home is showing the source's content, not the welcome, loading or error
+ * state: the Canlı TV tile names what the live list holds.
+ */
 export async function expectHomeWithContent(page: Page, timeout = 60_000): Promise<void> {
-  // A cold start sits on index.html with no hash until something navigates.
-  await expect(page).toHaveURL(/(#\/|index\.html(\?[^#]*)?)$/, { timeout })
-  await expect(page.getByRole('heading', { name: 'Canlı TV' })).toBeVisible({ timeout })
+  await expect(page).toHaveURL(HOME_URL, { timeout })
+  await expect(liveTile(page)).toHaveAccessibleName(/^Canlı TV (\d[\d.]* kanal|Şimdi: )/, { timeout })
+}
+
+/** Home's Canlı TV tile. */
+export function liveTile(page: Page) {
+  return page.getByRole('navigation', { name: 'Ana gezinme' }).getByRole('link', { name: /^Canlı TV\b/ })
+}
+
+/** Home's large tile when it offers to pick up where the viewer left off. */
+export function continueTile(page: Page) {
+  return page.getByRole('region', { name: 'Kaldığın yerden', exact: true })
 }
 
 export function cardButton(page: Page, name: string) {

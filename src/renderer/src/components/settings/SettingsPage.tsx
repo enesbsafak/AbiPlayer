@@ -67,12 +67,16 @@ function isTabId(value: string | null): value is SettingsTabId {
 }
 
 /**
- * Tabbed settings shell.
+ * Tabbed settings ("Canlı renk": settings wear sky).
  *
- * This used to be one 579-line scroll where a single "Oynatıcı" section carried
- * thirteen unrelated controls — subtitle colours next to hardware decoding next
- * to a TMDB API key. Each tab now holds one subject, so nothing needs scrolling
- * past to be found.
+ * The tabs are a column of pills beside a centred column of content, the
+ * chosen one filled with sky; in a window narrower than 1024 px they are a
+ * row of pills above it. The content keeps a readable line length (at most
+ * 820 px, 900 px from 1800 px up), and the pair is centred as one, so a wide
+ * window leaves even margins on both sides rather than rows stretched across
+ * it or a dead band on one side.
+ *
+ * Each tab holds one subject, so nothing needs scrolling past to be found.
  */
 export function SettingsContent() {
   // The URL owns the active tab so deep links like /settings?tab=support land on
@@ -83,11 +87,10 @@ export function SettingsContent() {
   const active = strings.settings.tabs[activeTab]
 
   return (
-    <div className="flex flex-col gap-5 lg:flex-row lg:gap-6">
-      {/* Horizontal strip on narrow windows, sidebar from lg up. */}
+    <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-6 pb-10 lg:flex-row lg:items-start lg:gap-10 min-[1800px]:max-w-[1210px]">
       <nav
         aria-label={strings.settings.tabsLabel}
-        className="flex shrink-0 gap-1 overflow-x-auto lg:w-52 lg:flex-col lg:overflow-visible"
+        className="flex shrink-0 flex-wrap gap-2 lg:sticky lg:top-2 lg:w-[220px] lg:flex-col min-[1800px]:w-[250px]"
       >
         {TABS.map((tab) => {
           const Icon = tab.icon
@@ -98,24 +101,22 @@ export function SettingsContent() {
               type="button"
               onClick={() => setSearchParams({ tab: tab.id }, { replace: true })}
               aria-current={isActive ? 'page' : undefined}
-              className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
-                isActive
-                  ? 'border border-accent/45 bg-accent/15 text-accent'
-                  : 'border border-transparent text-surface-400 hover:bg-surface-900 hover:text-surface-200'
+              className={`flex h-11 shrink-0 items-center gap-3 whitespace-nowrap rounded-full px-[18px] text-[15px] transition-colors lg:h-[52px] lg:px-5 lg:text-base ${
+                isActive ? 'bg-sky font-bold text-ink' : 'bg-raised font-medium text-white hover:bg-surface-800'
               }`}
             >
-              <Icon size={16} className="shrink-0" />
-              <span className="whitespace-nowrap">{tab.label}</span>
+              <Icon size={20} className="shrink-0 max-lg:hidden" aria-hidden="true" />
+              {tab.label}
             </button>
           )
         })}
       </nav>
 
-      <div className="min-w-0 flex-1 max-w-3xl">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold">{active.label}</h2>
-          <p className="mt-0.5 text-sm text-surface-500">{active.description}</p>
-        </div>
+      <div className="flex min-w-0 max-w-[820px] flex-1 flex-col gap-8 min-[1800px]:max-w-[900px]">
+        <header className="flex flex-col gap-2">
+          <h2 className="font-title text-[30px] leading-[1.15] lg:text-[34px]">{active.label}</h2>
+          <p className="text-base text-surface-400">{active.description}</p>
+        </header>
 
         {renderTab(activeTab)}
       </div>

@@ -42,21 +42,21 @@ export function Modal({ isOpen, onClose, title, children, className = '' }: Moda
         onClose()
       }}
     >
-      <div className={`relative w-full max-w-lg rounded-lg border border-surface-800 bg-surface-900 shadow-2xl ${className}`}>
+      <div className={`relative w-full max-w-lg rounded-tile border-2 border-surface-700 bg-raised ${className}`}>
         {title && (
-          <div className="flex items-center justify-between border-b border-surface-800 px-6 py-4">
-            <h2 id={titleId} className="text-base font-semibold text-surface-50">{title}</h2>
+          <div className="flex items-center justify-between gap-4 px-7 pt-6">
+            <h2 id={titleId} className="font-title text-[26px] leading-[1.1] text-white">{title}</h2>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-50"
+              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-ground text-white transition-colors hover:bg-surface-800"
               aria-label={strings.common.close}
             >
               <X size={18} />
             </button>
           </div>
         )}
-        <div className="p-6">{children}</div>
+        <div className="px-7 pb-7 pt-5">{children}</div>
       </div>
     </dialog>,
     document.body

@@ -17,6 +17,8 @@ export interface CardGridLayout {
   estimateCardHeight: (cardWidth: number) => number
   /** Lists up to this length render without virtualization. */
   virtualizeAbove: number
+  /** Fewest columns, however narrow (default 2; 1 for a list of rows). */
+  minColumns?: number
 }
 
 export interface CardRenderProps<T> {
@@ -203,7 +205,7 @@ export function VirtualCardGrid<T extends Channel>({
       ref={setContainer}
       role="group"
       aria-label={ariaLabel}
-      className="rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      className="rounded-card outline-none focus-visible:ring-2 focus-visible:ring-sun/60"
       {...roving.containerProps}
     >
       {virtualized ? (

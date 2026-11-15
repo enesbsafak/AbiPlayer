@@ -127,7 +127,7 @@ describe('interface text dictionary', () => {
 
   it('points at settings tabs by the names they are shown with', () => {
     expect(strings.catalog.categories.hiddenHint(1)).toBe(
-      `1 kategori gizli. Ayarlar → ${strings.settings.tabs.catalog.label} bölümünden geri getirebilirsiniz.`
+      `1 kategori gizli. Ayarlar → ${strings.settings.tabs.catalog.label} bölümünden geri getirebilirsin.`
     )
     expect(strings.security.trust.manageHint).toContain(`Ayarlar → ${strings.settings.tabs.sources.label}`)
     expect(strings.sources.credentials.lossMessage(null)).toContain(`Ayarlar → ${strings.settings.tabs.sources.label}`)

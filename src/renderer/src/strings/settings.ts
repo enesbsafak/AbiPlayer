@@ -1,16 +1,13 @@
 import { formatCount } from './common'
 
 const tabs = {
-  sources: { label: 'Kaynaklar', description: 'Xtream ve M3U kaynaklarınızı yönetin' },
-  playback: {
-    label: 'Oynatma',
-    description: 'Dublaj dili, canlı yayın biçimi, donanım hızlandırma ve doğrudan ses aktarımı'
-  },
-  subtitles: { label: 'Altyazı', description: 'Altyazı dili ve görünümü' },
-  catalog: { label: 'Katalog', description: 'Hangi kategorilerin listelerde görüneceği' },
-  general: { label: 'Genel', description: 'Saat, yayın akışı, TMDB ve sıfırlama' },
-  updates: { label: 'Güncelleme', description: 'Sürüm bilgisi ve güncelleme kontrolü' },
-  support: { label: 'Destek', description: 'Projeye katkı, geri bildirim ve sürüm notları' }
+  sources: { label: 'Kaynaklar', description: 'İzlediğin listeleri buradan ekle, değiştir ve yönet.' },
+  playback: { label: 'Oynatma', description: 'Ses dili, canlı yayın biçimi ve oynatıcının nasıl çalıştığı.' },
+  subtitles: { label: 'Altyazı', description: 'Hangi dilde altyazı açılacağı ve nasıl görüneceği.' },
+  catalog: { label: 'Katalog', description: 'Listelerde hangi kategorilerin ve içeriklerin görüneceği.' },
+  general: { label: 'Genel', description: 'Saat, yayın akışı, film bilgileri ve sıfırlama.' },
+  updates: { label: 'Güncelleme', description: 'Hangi sürümü kullandığın ve yeni sürüm olup olmadığı.' },
+  support: { label: 'Destek', description: 'Projeye katkı, geri bildirim ve sürüm notları.' }
 }
 
 export type SettingsTabKey = keyof typeof tabs
@@ -26,59 +23,60 @@ export const settings = {
   tabs,
 
   playback: {
-    audioLanguage: 'Tercih Edilen Dublaj Dili',
+    audioGroup: 'Ses',
+    videoGroup: 'Görüntü ve yayın',
+    audioLanguage: 'Tercih edilen dublaj dili',
     audioLanguagePlaceholder: 'Tercih edilen dublaj dili',
     audioLanguageAuto: 'Otomatik (yayın varsayılanı)',
     audioLanguageHint: 'Yayında bu dilde bir ses kanalı varsa kendiliğinden seçilir.',
     liveFormat: 'Canlı yayın biçimi',
     liveFormatHint:
-      'Xtream canlı kanallarının mpv ile hangi biçimde isteneceği. Hesabın izin vermediği biçim ' +
-      'istenmez. HLS ya da MPEG-TS seçiliyken o biçimde açılmayan kanal bir kez diğer biçimle ' +
-      'denenir. Yedek oynatıcı (mpv yokken) her zaman HLS kullanır.',
-    liveFormatAuto: 'Otomatik (hesap izin veriyorsa HLS)',
+      'Kanallar açılmıyor ya da takılıyorsa diğer biçimi dene. Açılmayan kanal bir kez diğer biçimle denenir; ' +
+      'yedek oynatıcı her zaman HLS kullanır.',
+    liveFormatAuto: 'Otomatik (izin varsa HLS)',
     liveFormatHls: 'HLS',
     liveFormatTs: 'MPEG-TS',
     hardwareDecoding: 'Donanım hızlandırmalı video çözme',
-    hardwareDecodingHint:
-      'Video çözmeyi ekran kartına devreder; işlemci kullanımını belirgin şekilde düşürür. ' +
-      'Görüntü siyah geliyor veya takılıyorsa kapatın.',
+    hardwareDecodingHint: 'İşi ekran kartına verir, işlemciyi rahatlatır. Görüntü siyah geliyor ya da takılıyorsa kapat.',
     passthrough: 'Doğrudan ses aktarımı (passthrough: AC3 / DTS / E-AC3 / TrueHD)',
-    passthroughHint:
-      'Sesi çözmeden doğrudan ses sisteminize gönderir. Yalnızca bu biçimleri kendisi ' +
-      'çözebilen bir amfi veya ses sistemi bağlıysa işe yarar.',
+    passthroughHint: 'Sesi çözmeden amfine gönderir. Yalnızca bu biçimleri kendisi çözebilen bir ses sistemi bağlıysa aç.',
     passthroughActive: 'Şu anki yayında etkin.',
     passthroughInactive:
-      'Şu anki yayında kullanılmıyor; ses normal şekilde çalınıyor. Cihazınız bu biçimi desteklemiyorsa veya yayın bu biçimlerde değilse beklenen durumdur.',
+      'Şu anki yayında kullanılmıyor; ses normal şekilde çalınıyor. Cihazın bu biçimi desteklemiyorsa veya yayın bu biçimlerde değilse beklenen durumdur.',
     cornerPlayer: 'Oynatıcıdan çıkınca köşede oynatmaya devam et (deneysel)',
-    cornerPlayerHint:
-      'Gezinirken yayın pencerenin sağ alt köşesinde küçük olarak sürer. Yalnızca mpv ile ' +
-      'çalışır; kapalıyken oynatıcıdan çıkmak yayını duraklatır.'
+    cornerPlayerHint: 'Gezinirken yayın pencerenin sağ alt köşesinde sürer. Yalnızca mpv ile çalışır; kapalıyken yayın duraklar.'
   },
 
   subtitles: {
-    language: 'Tercih Edilen Altyazı Dili',
+    languageGroup: 'Dil',
+    language: 'Tercih edilen altyazı dili',
     languagePlaceholder: 'Tercih edilen altyazı dili',
     languageOff: 'Varsayılan kapalı',
     languageAuto: 'Otomatik (ilk uygun)',
     languageHint: 'Yayında bu dilde altyazı varsa kendiliğinden açılır.',
     appearance: 'Görünüm',
-    fontSize: 'Yazı Boyutu',
-    color: 'Yazı Rengi',
-    backgroundOpacity: 'Arka Plan Opaklığı',
+    fontSize: 'Yazı boyutu',
+    fontSizeHint: 'Altyazının ekrandaki büyüklüğü.',
+    fontSizeValue: (px: number) => `${px} px`,
+    color: 'Yazı rengi',
+    colorHint: 'Altyazı harflerinin rengi.',
+    backgroundOpacity: 'Arka plan opaklığı',
+    backgroundOpacityHint: 'Yazının arkasındaki koyu şeridin ne kadar kapalı olacağı.',
+    opacityValue: (percent: number) => `%${percent}`,
     preview: 'Ön izleme',
     previewText: 'Bu bir altyazı ön izlemesidir.'
   },
 
   catalog: {
+    contentGroup: 'İçerik',
     adultContent: 'Yetişkin içeriği göster',
-    adultContentHint:
-      'Kapalıyken yetişkin içerik olarak tanınan kanallar, filmler, diziler ve kategoriler ' +
-      'listelerde, aramada ve ana sayfada görünmez. Açıkken listelerin sonunda gösterilir.',
-    noSources: 'Kategori yönetimi için önce bir kaynak ekleyin.',
-    visibility: 'Kategori Görünürlüğü',
-    visibilityHint: 'Gizlediğiniz kategoriler listelerden tamamen çıkar; içindeki kanallar, filmler ve diziler de görünmez.',
+    adultContentHint: 'Kapalıyken yetişkin içerik listelerde, aramada ve ana sayfada görünmez; açıkken listelerin sonunda yer alır.',
+    noSources: 'Kategori yönetimi için önce bir kaynak ekle.',
+    visibility: 'Kategori görünürlüğü',
+    visibilityHint: 'Kapattığın kategori, içindeki kanallar, filmler ve dizilerle birlikte listelerden çıkar.',
     source: 'Kaynak',
     sourcePlaceholder: 'Kaynak seç',
+    type: 'Tür',
     filterPlaceholder: 'Kategori ara...',
     filterLabel: 'Kategori ara',
     noMatch: 'Aramayla eşleşen kategori yok.',
@@ -91,34 +89,41 @@ export const settings = {
   },
 
   general: {
-    timeFormat: 'Saat Biçimi',
+    timeGroup: 'Saat ve yayın akışı',
+    timeFormat: 'Saat biçimi',
+    timeFormatHint: 'Yayın akışında saatlerin nasıl yazılacağı.',
     timeFormatPlaceholder: 'Saat biçimi',
-    timeFormat24: '24 Saat',
-    timeFormat12: '12 Saat',
-    epgInterval: 'Yayın Akışı Yenileme Aralığı (dakika)',
-    epgIntervalHint: (min: number, max: number) => `${min} ile ${max} dakika arasında bir değer girin.`,
-    tmdbKey: 'TMDB API Anahtarı (opsiyonel)',
-    tmdbKeyPlaceholder: 'TMDB v3 anahtarını veya v4 erişim jetonunu (bearer token) girin',
+    timeFormat24: '24 saat',
+    timeFormat12: '12 saat',
+    epgInterval: 'Yayın akışı yenileme aralığı (dakika)',
+    epgIntervalHint: (min: number, max: number) => `Yayın akışı bu kadar dakikada bir yenilenir; ${min} ile ${max} arasında bir değer gir.`,
+    tmdbGroup: 'Film ve dizi bilgileri',
+    tmdbKey: 'TMDB API anahtarı (isteğe bağlı)',
+    tmdbKeyPlaceholder: 'TMDB v3 anahtarı veya v4 erişim jetonu',
     tmdbKeyHint:
-      'Film ve dizi ayrıntılarını ve bölüm adlarını zenginleştirmek için kullanılır. Kaynak şifreleriyle birlikte ' +
-      'şifreli olarak saklanır.',
+      'Film ve dizi ayrıntılarını ve bölüm adlarını zenginleştirir. themoviedb.org hesabının ayarlarında bulunur; ' +
+      'şifreli olarak yalnızca bu bilgisayarda saklanır.',
     tmdbKeySaved: 'Anahtar güvenli depoya kaydedildi.',
     tmdbKeySaveFailed: (reason: string) => `Anahtar kaydedilemedi: ${reason}`,
     tmdbKeyInvalid: 'Geçersiz TMDB anahtarı: boşluk ya da özel karakter içermemeli.',
-    history: 'İzleme Geçmişi',
+    dangerGroup: 'Temizleme ve sıfırlama',
+    history: 'İzleme geçmişi',
     historyCount: (count: number) =>
-      count > 0 ? `${formatCount(count)} içerik için kaldığınız yer kayıtlı.` : 'Kaldığınız yer kaydedilen bir içerik yok.',
-    clearHistory: 'İzleme Geçmişini Temizle',
-    resetAll: 'Tüm Ayarları Sıfırla',
-    resetAllHint:
-      'Ayarlar varsayılana döner. Kaynaklarınız, favorileriniz, gizlediğiniz kategoriler ve ' +
-      'TMDB anahtarınız etkilenmez.',
+      count > 0 ? `${formatCount(count)} içerik için kaldığın yer kayıtlı.` : 'Kaldığın yer kaydedilen bir içerik yok.',
+    clearHistory: 'Geçmişi temizle',
+    clearHistoryConfirmTitle: 'İzleme geçmişi temizlensin mi?',
+    clearHistoryConfirmBody: (count: number) =>
+      `${formatCount(count)} içerik için kaydedilen kaldığın yer silinecek. Bu işlem geri alınamaz.`,
+    clearHistoryConfirm: 'Temizle',
+    resetAll: 'Tüm ayarları sıfırla',
+    resetAllHint: 'Ayarlar varsayılana döner. Kaynakların, favorilerin, gizlediğin kategoriler ve TMDB anahtarın korunur.',
     resetConfirmTitle: 'Ayarlar sıfırlansın mı?',
     resetConfirmBody: 'Oynatma, altyazı, yayın akışı ve saat ayarları varsayılan değerlerine döner. Bu işlem geri alınamaz.',
-    resetConfirmKept: 'TMDB anahtarınız, kaynaklarınız, favorileriniz ve gizlediğiniz kategoriler korunur.'
+    resetConfirmKept: 'TMDB anahtarın, kaynakların, favorilerin ve gizlediğin kategoriler korunur.'
   },
 
   updates: {
+    group: 'Sürüm',
     neverChecked: 'Henüz kontrol edilmedi',
     status: {
       unsupported: 'Bu ortamda otomatik güncelleme desteklenmiyor',
@@ -126,17 +131,18 @@ export const settings = {
       checking: 'Güncellemeler kontrol ediliyor...',
       available: 'Yeni sürüm bulundu, indirme başlatıldı',
       downloading: 'Güncelleme indiriliyor...',
-      downloaded: 'Güncelleme indirildi, kurulum için yeniden başlatın',
+      downloaded: 'Güncelleme indirildi, kurulum için yeniden başlat',
       notAvailable: 'Uygulama güncel',
       error: 'Güncelleme kontrolünde hata oluştu',
       unknown: 'Güncelleme durumu alınıyor...'
     },
     version: (current: string | undefined) => `Sürüm ${current ?? '...'}`,
+    downloadProgress: 'İndirme ilerlemesi',
     percent: (fraction: number) => `%${Math.round(fraction * 100)}`,
     perSecond: (size: string) => `${size}/sn`,
     lastChecked: (when: string) => `Son kontrol: ${when}`,
     checking: 'Kontrol ediliyor...',
-    check: 'Güncellemeleri Kontrol Et',
+    check: 'Güncellemeleri kontrol et',
     restarting: 'Yeniden başlatılıyor...',
     restartAndInstall: 'Yeniden Başlat ve Kur',
     checkFailed: 'Güncellemeler kontrol edilemedi.',
@@ -151,9 +157,9 @@ export const settings = {
     openOnGithub: "GitHub'da aç",
     viewOnGithub: "GitHub'da görüntüle",
     installedVersion: 'Kurulu sürüm',
-    supportTitle: 'Projeyi destekleyin',
+    supportTitle: 'Projeyi destekle',
     supportText: (appName: string) =>
-      `${appName} ücretsiz ve açık kaynak. GitHub'da yıldız vermeniz projenin daha çok kişiye ulaşmasına yardımcı olur.`,
+      `${appName} ücretsiz ve açık kaynak. GitHub'da yıldız vermen projenin daha çok kişiye ulaşmasına yardımcı olur.`,
     star: "GitHub'da yıldız ver",
     reportIssue: 'Hata bildir veya öneri gönder',
     releaseNotes: 'Sürüm notları',

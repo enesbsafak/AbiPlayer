@@ -89,7 +89,7 @@ describe('SourceManager refresh', () => {
 
     expect(await screen.findByRole('alert')).toHaveProperty(
       'textContent',
-      'Sunucuya ulaşılamadı. İnternet bağlantınızı ve sunucu adresini kontrol edin.'
+      'Sunucuya ulaşılamadı. İnternet bağlantını ve sunucu adresini kontrol et.'
     )
     expect(liveIds('a')).toEqual(['a1'])
     expect(liveIds('b')).toEqual(['b1'])
@@ -139,7 +139,7 @@ describe('SourceManager refresh', () => {
     })
 
     // Dropped, and the user is told the refresh did not take.
-    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringMatching(/Tekrar deneyin/))
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringMatching(/Tekrar dene./))
     expect(liveIds('a')).toEqual([])
     expect(catalog.getStatus('a', 'live')).toBeNull()
   })

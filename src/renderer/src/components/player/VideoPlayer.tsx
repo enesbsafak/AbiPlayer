@@ -6,10 +6,12 @@ import { shouldKeepPlayingInCorner } from '@/store/player-slice'
 import { useKeepDisplayAwake } from '@/hooks/useKeepDisplayAwake'
 import { useResumePlayback } from '@/hooks/useResumePlayback'
 import { PlayerControls, formatTime } from './PlayerControls'
-import { PlayerSidebar } from './PlayerSidebar'
+import { PlayerSidebar, SIDEBAR_WIDTH } from './PlayerSidebar'
 import { SubtitleOverlay } from './SubtitleOverlay'
+import { OVER_VIDEO } from './player-ui'
 import { Spinner } from '@/components/ui/Spinner'
-import { AlertCircle, Info, RefreshCw, RotateCcw, X } from 'lucide-react'
+import { CloseIcon } from '@/components/ui/icons'
+import { AlertCircle, Info, RefreshCw, RotateCcw } from 'lucide-react'
 import { mpvIsAvailable, mpvSetFullscreen, windowSetFullscreen } from '@/services/platform'
 import { GENERATED_CAPTIONS_TRACK_LABEL, GENERATED_CAPTIONS_TRACK_LANGUAGE } from '@/constants/captions'
 import type { SubtitleCue } from '@/types/player'
@@ -229,66 +231,82 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
         </video>
       )}
 
+      {/* Over the picture (mpv draws it in a native layer underneath), only
+          flat, nearly opaque surfaces: no blur, shade or gradient. */}
       {showLoadingOverlay && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-          <Spinner size={48} />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className={`flex size-24 items-center justify-center rounded-full ${OVER_VIDEO}`}>
+            <Spinner size={44} />
+          </div>
         </div>
       )}
 
       {playerError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 gap-3">
-          <AlertCircle size={48} className="text-red-400" />
-          <p className="text-sm text-red-400 text-center max-w-md">{playerError}</p>
-          {currentChannel && (
-            <button
-              type="button"
-              onClick={() => useStore.getState().reloadPlayback()}
-              className="mt-2 flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20 transition-colors"
-            >
-              <RefreshCw size={14} />
-              {strings.player.reconnect}
-            </button>
-          )}
+        <div className="absolute inset-0 flex items-center justify-center bg-deep/80 p-6">
+          <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-tile bg-ground px-8 pb-7 pt-8 text-center">
+            <span className="flex size-14 items-center justify-center rounded-[18px] bg-coral text-ink">
+              <AlertCircle size={30} strokeWidth={2.6} aria-hidden="true" />
+            </span>
+            <p data-player-error-message className="text-[16px] font-medium leading-6 text-white">
+              {playerError}
+            </p>
+            {currentChannel && (
+              <button
+                type="button"
+                onClick={() => useStore.getState().reloadPlayback()}
+                className="mt-1 flex h-[52px] items-center gap-2.5 rounded-full bg-white px-6 text-[16px] font-bold text-ink transition-colors hover:bg-surface-300"
+              >
+                <RefreshCw size={18} strokeWidth={2.6} aria-hidden="true" />
+                {strings.player.reconnect}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      <div className="absolute left-1/2 top-6 flex -translate-x-1/2 flex-col items-center gap-2">
+      {/* Below the top row of the controls, centred over the picture (left of the list when it is open). */}
+      <div
+        className="pointer-events-none absolute left-4 top-[84px] flex flex-col items-center gap-2 short:top-[76px]"
+        style={{ right: (isPlayerSidebarOpen ? SIDEBAR_WIDTH : 0) + 16 }}
+      >
         {resumedFrom !== null && (
-          <div className="flex items-center gap-3 rounded-lg border border-surface-700 bg-surface-950/95 px-4 py-2.5 text-sm text-surface-200 shadow-lg">
+          <div className={`pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-[30px] py-2 pl-5 pr-2 text-[16px] font-medium text-white ${OVER_VIDEO}`}>
             <span>{strings.player.resumedFrom(formatTime(resumedFrom))}</span>
-            <button
-              type="button"
-              onClick={restartFromStart}
-              className="flex items-center gap-1.5 rounded-md border border-surface-700 px-2.5 py-1 text-xs text-surface-300 transition-colors hover:border-surface-600 hover:text-surface-50"
-            >
-              <RotateCcw size={13} />
-              {strings.player.restartFromStart}
-            </button>
-            <button
-              type="button"
-              onClick={dismissResumeNotice}
-              aria-label={strings.common.dismissNotice}
-              className="text-surface-500 transition-colors hover:text-surface-200"
-            >
-              <X size={14} />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={restartFromStart}
+                className="flex h-11 items-center gap-2 rounded-full border-2 border-white/50 px-4 text-[15px] font-bold transition-colors hover:border-white"
+              >
+                <RotateCcw size={16} strokeWidth={2.6} aria-hidden="true" />
+                {strings.player.restartFromStart}
+              </button>
+              <button
+                type="button"
+                onClick={dismissResumeNotice}
+                aria-label={strings.common.dismissNotice}
+                className="flex size-11 items-center justify-center rounded-full bg-raised transition-colors hover:bg-surface-800"
+              >
+                <CloseIcon size={16} />
+              </button>
+            </div>
           </div>
         )}
 
         {playerNotice && (
           <div
             role="status"
-            className="flex items-center gap-3 rounded-lg border border-surface-700 bg-surface-950/95 px-4 py-2.5 text-sm text-surface-200 shadow-lg"
+            className={`pointer-events-auto flex max-w-full items-center gap-3 rounded-[30px] py-2 pl-5 pr-2 text-[16px] font-medium text-white ${OVER_VIDEO}`}
           >
-            <Info size={14} className="shrink-0 text-surface-400" aria-hidden="true" />
-            <span>{playerNotice}</span>
+            <Info size={20} strokeWidth={2.6} className="shrink-0 text-sun" aria-hidden="true" />
+            <span className="min-w-0">{playerNotice}</span>
             <button
               type="button"
               onClick={() => useStore.getState().setPlayerNotice(null)}
               aria-label={strings.common.dismissNotice}
-              className="text-surface-500 transition-colors hover:text-surface-200"
+              className="flex size-11 shrink-0 items-center justify-center rounded-full bg-raised transition-colors hover:bg-surface-800"
             >
-              <X size={14} />
+              <CloseIcon size={16} />
             </button>
           </div>
         )}
@@ -298,7 +316,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
 
       <PlayerSidebar />
 
-      <div className={`absolute inset-x-0 bottom-0 transition-opacity duration-300 ${showControls || isPlayerSidebarOpen ? 'opacity-100' : 'opacity-0'}`}>
+      <div className={`pointer-events-none absolute inset-0 transition-opacity duration-300 ${showControls || isPlayerSidebarOpen ? 'opacity-100' : 'opacity-0'}`}>
         <PlayerControls
           videoRef={videoRef}
           onToggleFullscreen={toggleFullscreenDetached}

@@ -55,17 +55,31 @@ export const catalog = {
     categoryListFailed: 'Kategori listesi alınamadı.',
     categoryLoading: 'Seçili kategori yükleniyor...',
     contentSyncFailed: 'İçerik senkronizasyonu başarısız oldu.',
-    checkSourceSettings: ' Kaynak bilgilerini Ayarlar bölümünden kontrol edin.'
+    checkSourceSettings: ' Kaynak bilgilerini Ayarlar bölümünden kontrol et.'
+  },
+
+  /** Canlı TV: the channel rows and the panel of the channel in focus. */
+  live: {
+    panelLabel: 'Seçili kanal',
+    watch: 'Bu kanalı izle',
+    next: 'Sırada',
+    range: (start: string, end: string) => `${start} – ${end}`,
+    programmeShare: (percent: number) => `Programın yüzde ${percent} kadarı geçti`,
+    /** No guide in memory for the source (it is loaded on the Yayın Akışı screen). */
+    noGuide: 'Program bilgisi yok. Yayın akışı yüklendiğinde burada görünür.',
+    hint: 'Ok tuşlarıyla kanallar arasında gez, Enter ile izle.'
   },
 
   categories: {
     label: 'Kategoriler',
+    /** A category pill's item count, read after its name. */
+    count: (count: number) => `${formatCount(count)} öğe`,
     hide: (name: string) => `${name} kategorisini gizle`,
     hideTitle: 'Bu kategoriyi gizle',
     loading: 'Kategoriler yükleniyor...',
     loadFailed: 'Kategoriler yüklenemedi',
     hiddenHint: (count: number) =>
-      `${formatCount(count)} kategori gizli. ${settingsPath('catalog')} bölümünden geri getirebilirsiniz.`
+      `${formatCount(count)} kategori gizli. ${settingsPath('catalog')} bölümünden geri getirebilirsin.`
   },
 
   cards: {
@@ -75,7 +89,7 @@ export const catalog = {
     filmFallbackGroup: 'Film',
     seriesFallbackGroup: 'Dizi',
     noChannels: 'Kanal bulunamadı',
-    noChannelsHint: 'Farklı bir kategori seçmeyi veya kaynak eklemeyi deneyin',
+    noChannelsHint: 'Farklı bir kategori seçmeyi ya da kaynak eklemeyi dene',
     noContent: 'İçerik bulunamadı',
     contentGrid: 'İçerikler'
   },
@@ -86,14 +100,23 @@ export const catalog = {
     results: 'Arama sonuçları',
     found: (query: string, total: number) => `"${query}" için ${formatCount(total)} sonuç bulundu`,
     capped: (shown: number) => ` (ilk ${formatCount(shown)} gösteriliyor)`,
-    idleTitle: 'Tüm kaynaklarda arama yapın',
-    idleHint: (minLength: number) => `Başlamak için en az ${minLength} karakter yazın`
+    idleTitle: 'Tüm kaynaklarda ara',
+    idleHint: (minLength: number) => `Başlamak için en az ${minLength} karakter yaz`
   },
 
   favorites: {
     title: 'Favoriler',
     empty: 'Henüz favori yok',
-    emptyHint: 'Kanal, film ve dizilerdeki yıldıza basarak favorilere ekleyin'
+    emptyHint: 'Kanal, film ve dizilerdeki yıldıza basarak favorilere ekle',
+    browseLive: 'Kanallara göz at'
+  },
+
+  /** Headings of the grouped lists on Favoriler and Arama, with their counts. */
+  groups: {
+    live: 'Kanallar',
+    vod: 'Filmler',
+    series: 'Diziler',
+    count: (count: number) => formatCount(count)
   },
 
   home: {
@@ -119,36 +142,123 @@ export const catalog = {
     /** `labels`: the types that failed, comma-separated. */
     partialFailure: (labels: string, reasons: string) => `${labels} yüklenemedi. ${reasons}`,
     autoRetry: 'Bağlantı otomatik olarak yeniden denenecek.',
-    hubLabel: 'Yayın Merkezi',
-    readyCount: (count: number) => `Canlı yayın, film ve dizilerde toplam ${formatCount(count)} içerik hazır.`,
+    /** The home screen's visually hidden page title. */
+    pageTitle: 'Ana Sayfa',
     syncLoading: (done: number, total: number, typeLabel: string) => `${done}/${total} — ${typeLabel} yükleniyor`,
-    syncDone: (done: number, total: number) => `${done}/${total} tamamlandı`,
-    viewAll: 'Tümünü Gör',
     rowLoading: (title: string) => `${title} yükleniyor`,
-    continueWatching: 'Devam Et',
+
+    /** The large tile: the most recent unfinished film or episode. */
+    continueWatching: 'Kaldığın yerden',
+    resumeAction: 'Devam et',
     resume: (name: string) => `${name} — kaldığın yerden devam et`,
+    restartAction: 'Baştan başlat',
+    restart: (name: string) => `${name} — baştan başlat`,
     removeFromList: (name: string) => `${name} içeriğini listeden kaldır`,
     removeFromListTitle: 'Listeden kaldır',
+    watchedShare: (percent: number) => `Yüzde ${percent} kadarı izlendi`,
+    kindFilm: 'Film',
+    kindEpisode: 'Dizi',
+    duration: (minutes: number) => {
+      if (minutes < 60) return `${minutes} dk`
+      const hours = Math.floor(minutes / 60)
+      const rest = minutes % 60
+      return rest === 0 ? `${hours} sa` : `${hours} sa ${rest} dk`
+    },
     remaining: (minutes: number) => {
       if (minutes < 1) return 'Az kaldı'
       if (minutes < 60) return `${minutes} dk kaldı`
       const hours = Math.floor(minutes / 60)
       const rest = minutes % 60
       return rest === 0 ? `${hours} sa kaldı` : `${hours} sa ${rest} dk kaldı`
+    },
+
+    /** The large tile when nothing is unfinished: the newest film. */
+    newestBadge: 'Yeni eklenen',
+    firstInListBadge: 'Listeden bir film',
+    playAction: 'İzle',
+    browseFilms: 'Filmlere göz at',
+    /** …and when there is no film either. */
+    idleBadge: 'Hazır',
+    idleTitle: 'İzlemeye hazır',
+    idleHint: 'Yarım kalan bir şey yok. Bir kanal aç ya da yayın akışına bak.',
+    openLive: 'Canlı TV’yi aç',
+
+    /** One line of what each destination tile holds. */
+    tiles: {
+      liveNow: (title: string, channel: string) => `Şimdi: ${title} · ${channel}`,
+      liveCount: (count: number) => `${formatCount(count)} kanal`,
+      guideNext: (time: string, title: string, channel: string) => `${time} ${title} · ${channel}`,
+      /** Turkish counts take the singular noun: "1.204 kanalın", never a plural. */
+      guideCount: (count: number) => `${formatCount(count)} kanalın yayın akışı var`,
+      guideIdle: 'Şimdi ve sıradaki yayınlar',
+      vodNewest: (name: string) => `Yeni: ${name}`,
+      vodCount: (count: number) => `${formatCount(count)} film`,
+      seriesNewest: (name: string) => `Son güncellenen: ${name}`,
+      seriesCount: (count: number) => `${formatCount(count)} dizi`,
+      loading: 'Yükleniyor…',
+      noSource: 'Önce bir kaynak ekle',
+      waiting: 'Kaynak bekleniyor',
+      empty: (noun: string) => `Bu kaynakta ${noun} yok`
+    },
+
+    /** The rows under the tiles, shown as the window's height allows. */
+    viewAll: 'Tümünü gör',
+    newestFilms: 'Son eklenen filmler',
+    /** The same row for a list that carries no dates (M3U): its first films, not its newest. */
+    listFilms: 'Listedeki filmler',
+    newestSeries: 'Son güncellenen diziler',
+    listSeries: 'Listedeki diziler',
+    favoritesRow: 'Favorilerin',
+    continueRow: 'İzlemeye devam et',
+    channelsRow: 'Canlı kanallar',
+
+    /** The channel panel a wide window adds beside the tiles. */
+    channels: {
+      title: 'Kanallar',
+      favoriteHint: 'Bir kanalın yıldızına basınca burada en üstte görünür.',
+      openLive: 'Canlı TV’yi aç',
+      now: (title: string) => `Şimdi: ${title}`
+    },
+
+    /** The active source, bottom right. */
+    source: {
+      connected: (name: string) => `${name} bağlı`,
+      ready: (name: string) => `${name} hazır`,
+      connecting: (name: string) => `${name} bağlanıyor`,
+      failed: (name: string) => `${name}: bağlantı yok`,
+      offline: (name: string) => `${name}: çevrimdışı kopya`
+    },
+
+    /** Keyboard hints, bottom right. */
+    keys: {
+      label: 'Klavye kısayolları',
+      arrows: 'Ok tuşları',
+      arrowsAction: 'gez',
+      enter: 'Enter',
+      enterAction: 'aç',
+      searchAction: 'ara'
     }
   },
 
   detail: {
-    playFilm: 'Filmi Oynat',
+    playFilm: 'İzle',
+    resume: 'Devam et',
+    watched: (percent: number) => `Yüzde ${percent} kadarı izlendi`,
+    seasons: 'Sezonlar',
+    episodes: 'Bölümler',
+    /** The series' primary action: the episode it starts. */
+    playEpisodeLabel: (season: number, episode: number) => `${season}. sezon ${episode}. bölüm`,
     director: (name: string) => `Yönetmen: ${name}`,
     cast: (names: string) => `Oyuncular: ${names}`,
     releaseDate: (date: string) => `Yayın Tarihi: ${date}`,
     rating: (value: string) => `Puan: ${value}`,
     minutes: (minutes: number) => `${minutes} dk`,
     seriesLabel: 'Dizi ayrıntısı',
+    /** The row of other titles from the same category, under a detail. */
+    moreInCategory: 'Aynı kategoriden',
     seriesLoadFailed: 'Dizi ayrıntıları yüklenemedi.',
     seriesNoCredentials: 'Bu kaynak için Xtream giriş bilgileri bulunamadı',
-    seriesCredentialsPending: 'Giriş bilgileri hazırlanıyor, lütfen bekleyin...',
+    seriesCredentialsPending: 'Giriş bilgileri hazırlanıyor, biraz bekle…',
     season: (number: number) => `Sezon ${number}`,
     episode: (number: number, title: string) => `E${number}. ${title}`,
     /** The player's title for an episode. */

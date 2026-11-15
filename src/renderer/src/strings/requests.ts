@@ -12,19 +12,19 @@ export const requests = {
 
   worker: {
     jobCancelled: 'İş iptal edildi',
-    interrupted: 'Katalog işlemi yarıda kaldı. Tekrar deneyin.',
+    interrupted: 'Katalog işlemi yarıda kaldı. Tekrar dene.',
     closed: 'Katalog işlemleri durduruldu.'
   },
 
   xtream: {
     authRejected: 'Kimlik doğrulama başarısız oldu: sunucu kullanıcı adını veya şifreyi reddetti',
     authHttp: (status: number, sample: string) =>
-      `Kimlik doğrulama başarısız oldu (HTTP ${status}). Kullanıcı adını, şifreyi ve hesap durumunu kontrol edin.${sample ? ` (${sample})` : ''}`,
+      `Kimlik doğrulama başarısız oldu (HTTP ${status}). Kullanıcı adını, şifreyi ve hesap durumunu kontrol et.${sample ? ` (${sample})` : ''}`,
     http: (status: number, sample: string) => `Sunucu hata döndürdü (HTTP ${status})${sample ? ` (${sample})` : ''}`,
     notJson: (sample: string) => `Geçersiz sunucu yanıtı. JSON bekleniyordu: ${sample || 'boş gövde'}`,
     headersTimeout: (seconds: number) => `İstek zaman aşımına uğradı: sunucu ${seconds} saniye içinde yanıt vermedi`,
     bodyTimeout: (seconds: number) => `İstek zaman aşımına uğradı: sunucudan ${seconds} saniyedir veri gelmiyor`,
-    unreachable: 'Sunucuya bağlanılamadı. İnternet bağlantısını ve sunucu adresini kontrol edin.',
+    unreachable: 'Sunucuya bağlanılamadı. İnternet bağlantını ve sunucu adresini kontrol et.',
     /** What each Xtream list is called in `missingList`. */
     listNames: { category: 'kategori', live: 'kanal', vod: 'film', series: 'dizi' },
     missingList: (name: string) => `Beklenmeyen sunucu yanıtı: ${name} listesi gelmedi`,
@@ -34,7 +34,7 @@ export const requests = {
   },
 
   playlist: {
-    unreachable: 'Oynatma listesi sunucusuna bağlanılamadı. İnternet bağlantısını ve adresi kontrol edin.',
+    unreachable: 'Oynatma listesi sunucusuna bağlanılamadı. İnternet bağlantını ve adresi kontrol et.',
     httpOnly: 'Yalnızca HTTP/HTTPS oynatma listesi adresleri destekleniyor',
     downloadFailed: (status: number) => `M3U listesi indirilemedi (HTTP ${status})`,
     timeout: 'M3U listesi indirilirken zaman aşımı oluştu'

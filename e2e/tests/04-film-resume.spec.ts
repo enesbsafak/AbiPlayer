@@ -6,6 +6,7 @@ import {
   addXtreamSource,
   cardButton,
   closeMiniPlayer,
+  continueTile,
   expectHomeWithContent,
   expectSuspendedMiniPlayer,
   leavePlayer,
@@ -53,7 +54,7 @@ async function watchFilmMidway(page: Page, mock: MockProvider): Promise<void> {
   await openRoute(page, '/vod')
   await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Kayıp Şehir')
   await cardButton(page, KNOWN.film).click()
-  await page.getByRole('button', { name: 'Filmi Oynat' }).click()
+  await page.getByRole('button', { name: 'İzle', exact: true }).click()
   await expect(page).toHaveURL(/#\/player/)
   await waitForMpvProgress(page, { pathIncludes: FILM_PATH, advanceBy: 1, timeout: 45_000 })
 
@@ -133,15 +134,17 @@ test.describe('film ve kaldığı yerden devam', () => {
     expect(lowestAfterExpand!).toBeGreaterThanOrEqual(savedAtSuspend!)
     await app.shot('after-expand')
 
-    // Close it from the card, then come back through the dashboard's "Devam Et" row.
+    // Close it from the card, then come back through home's "Kaldığın yerden" tile.
     await leavePlayer(page)
     await expectSuspendedMiniPlayer(page, 'vod')
     await closeMiniPlayer(page)
     const savedBeforeContinue = await filmProgress(page)
     expect(savedBeforeContinue!).toBeGreaterThanOrEqual(savedAtSuspend!)
     await openRoute(page, '/')
-    await expect(page.getByRole('heading', { name: 'Devam Et' })).toBeVisible()
-    await page.getByRole('button', { name: `${KNOWN.film} — kaldığın yerden devam et`, exact: true }).click()
+    await expect(continueTile(page)).toBeVisible()
+    await expect(continueTile(page).getByRole('heading', { name: KNOWN.film, exact: true })).toBeVisible()
+    await app.shot('home-continue-tile')
+    await continueTile(page).getByRole('button', { name: `${KNOWN.film} — kaldığın yerden devam et`, exact: true }).click()
     await expect(page).toHaveURL(/#\/player/)
     const continuedAt = await expectResumedNear(page, savedBeforeContinue!)
     observe(`"Devam Et": saved ${savedBeforeContinue}s, resumed at ${Math.round(continuedAt)}s`)

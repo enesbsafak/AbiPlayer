@@ -4,14 +4,15 @@ import { ChannelCard } from './ChannelCard'
 import type { Channel } from '@/types/playlist'
 import { strings } from '@/strings'
 
-/** 16:9 artwork plus two title lines and the group line. */
+/** 16:9 artwork, a 10 px gap, two title lines and the group line. */
 export const CHANNEL_GRID_LAYOUT: CardGridLayout = {
-  minCardWidth: 178,
-  maxColumns: 10,
-  gap: 14,
-  gapClass: 'gap-3.5',
-  rowGapClass: 'pb-3.5',
-  estimateCardHeight: (cardWidth) => cardWidth * (9 / 16) + 76,
+  minCardWidth: 190,
+  maxColumns: 14,
+  gap: 20,
+  gapClass: 'gap-5',
+  rowGapClass: 'pb-5',
+  // Exact (fixed two-line title box); the row gap matches `gap`.
+  estimateCardHeight: (cardWidth) => cardWidth * (9 / 16) + 10 + 40 + 2 + 18,
   virtualizeAbove: 120
 }
 
@@ -29,9 +30,9 @@ export function renderChannelCard({ item, onOpen, eagerImage, focusProps, second
 
 export function ChannelGridEmpty() {
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-surface-400">
-      <p className="text-lg">{strings.catalog.cards.noChannels}</p>
-      <p className="text-sm mt-1">{strings.catalog.cards.noChannelsHint}</p>
+    <div className="flex flex-col items-center justify-center gap-2 rounded-tile bg-raised px-8 py-16 text-center">
+      <p className="font-title text-[28px]">{strings.catalog.cards.noChannels}</p>
+      <p className="max-w-md text-base text-surface-400">{strings.catalog.cards.noChannelsHint}</p>
     </div>
   )
 }

@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom'
-import { X, Pause, Play } from 'lucide-react'
+import { TONE } from '@/components/layout/sections'
+import { CloseIcon, PlayIcon } from '@/components/ui/icons'
 import { useStore } from '@/store'
 import { strings } from '@/strings'
+import { filledClasses, playerTone } from './player-ui'
 
 const text = strings.player.mini
 
@@ -13,6 +15,7 @@ const text = strings.player.mini
 export function MiniPlayer() {
   const navigate = useNavigate()
   const currentChannel = useStore((s) => s.currentChannel)
+  const currentPlayback = useStore((s) => s.currentPlayback)
   const clearPlayerReturnTarget = useStore((s) => s.clearPlayerReturnTarget)
   const stopPlayback = useStore((s) => s.stopPlayback)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
@@ -20,6 +23,7 @@ export function MiniPlayer() {
   if (!currentChannel) return null
 
   const isLive = currentChannel.type === 'live'
+  const tone = playerTone(currentPlayback, currentChannel)
 
   const handleResume = () => {
     setMiniPlayer(false)
@@ -27,20 +31,31 @@ export function MiniPlayer() {
   }
 
   return (
-    <section className="fixed bottom-4 right-4 z-overlay flex items-center gap-3 rounded-lg border border-surface-800 bg-surface-900 p-3 shadow-lg" aria-label={text.label}>
-      <Pause size={14} className="shrink-0 text-surface-500" aria-hidden="true" />
-      <div className="min-w-0">
-        <p className="max-w-[200px] truncate text-sm font-medium text-surface-200">{currentChannel.name}</p>
-        <p className="text-xs text-surface-500">{text.paused}</p>
+    <section
+      className="fixed bottom-4 right-4 z-overlay flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-card bg-raised p-2.5"
+      aria-label={text.label}
+    >
+      {/* A paused mark in the item's section colour: nothing is playing here. */}
+      <span aria-hidden="true" className={`flex size-11 shrink-0 items-center justify-center rounded-[14px] bg-ground ${TONE[tone].text}`}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" focusable="false">
+          <rect x="6" y="5" width="4.5" height="14" rx="1.5" />
+          <rect x="13.5" y="5" width="4.5" height="14" rx="1.5" />
+        </svg>
+      </span>
+      <div className="min-w-0 pr-1">
+        <p className="max-w-[220px] truncate text-[15px] font-bold text-white" title={currentChannel.name}>
+          {currentChannel.name}
+        </p>
+        <p className="text-[13px] text-surface-500">{text.paused}</p>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1.5">
         <button
           type="button"
           onClick={handleResume}
-          className="flex items-center gap-1.5 rounded-md bg-accent/15 px-2.5 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/25"
+          className={`flex h-11 items-center gap-2 rounded-full pl-3.5 pr-[18px] text-[15px] font-bold transition-opacity hover:opacity-90 ${filledClasses(tone)}`}
           aria-label={isLive ? text.backToLive : text.resume}
         >
-          <Play size={12} aria-hidden="true" />
+          <PlayIcon size={16} />
           {text.continue}
         </button>
         <button
@@ -50,10 +65,11 @@ export function MiniPlayer() {
             stopPlayback()
             clearPlayerReturnTarget()
           }}
-          className="rounded-md p-1.5 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200"
+          className="flex size-11 items-center justify-center rounded-full text-white transition-colors hover:bg-surface-800"
           aria-label={text.stop}
+          title={text.stop}
         >
-          <X size={14} />
+          <CloseIcon size={18} />
         </button>
       </div>
     </section>

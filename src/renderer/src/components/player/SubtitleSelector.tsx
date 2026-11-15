@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
-import { Subtitles, Upload } from 'lucide-react'
+import { Captions, Upload } from 'lucide-react'
 import { useStore } from '@/store'
 import { useExternalSubtitleLoader } from '@/hooks/useExternalSubtitleLoader'
 import { strings } from '@/strings'
+import { DockPill } from './DockPill'
+import { PlayerRange } from './PlayerRange'
+import { CONTROL_SIZE, MENU_HEADING, menuRow, useDockLayout } from './player-ui'
 
 const text = strings.player.subtitles
 
@@ -25,6 +28,7 @@ export function SubtitleSelector() {
   const subtitleColor = useStore((s) => s.settings.subtitleColor)
   const subtitleBackground = useStore((s) => s.settings.subtitleBackground)
   const updateSettings = useStore((s) => s.updateSettings)
+  const { size, tone } = useDockLayout()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const subtitleOpacity = parseSubtitleBackgroundOpacity(subtitleBackground)
@@ -55,19 +59,26 @@ export function SubtitleSelector() {
     setOpen(false)
   }
 
+  const currentTrack = currentSubtitleTrack
+    ? subtitleTracks.find((track) => String(track.id) === currentSubtitleTrack)
+    : undefined
+  const value = !currentSubtitleTrack
+    ? text.off
+    : currentTrack?.name || currentTrack?.lang || text.fallback(currentSubtitleTrack)
+
   return (
     <div ref={ref} className="relative">
-      <button
-        type="button"
+      <DockPill
+        icon={<Captions size={CONTROL_SIZE[size].icon} strokeWidth={2.4} aria-hidden="true" />}
+        label={text.title}
+        value={value}
+        active={open}
         onClick={() => setOpen(!open)}
-        className={`rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal ${currentSubtitleTrack ? 'text-accent' : ''}`}
         title={text.title}
         aria-label={text.label}
         aria-haspopup="true"
         aria-expanded={open}
-      >
-        <Subtitles size={18} />
-      </button>
+      />
       {/*
         The panel opens upward from the control bar, so it must be capped to the
         space above it. Streams routinely carry 15+ subtitle tracks and the
@@ -76,85 +87,76 @@ export function SubtitleSelector() {
         style controls stay pinned so they are always in reach.
       */}
       {open && (
-        <div className="absolute bottom-full right-0 mb-2 flex max-h-[calc(100vh-5rem)] w-64 flex-col rounded-lg border border-surface-700 bg-surface-900 shadow-lg">
-          <div className="min-h-0 flex-1 overflow-y-auto py-1">
-            <p className="px-3 py-1.5 text-xs font-medium text-surface-500">{text.heading}</p>
-            <button
-              type="button"
-              onClick={handleOff}
-              className={`flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-800 transition-colors ${
-                !currentSubtitleTrack ? 'text-accent' : 'text-surface-200'
-              }`}
-            >
-              {text.off}
+        <div className="absolute bottom-full right-0 z-dropdown mb-3 flex max-h-[calc(100vh-12rem)] w-80 flex-col gap-2 rounded-tile bg-raised p-2 text-white">
+          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+            <p className={MENU_HEADING}>{text.heading}</p>
+            <button type="button" onClick={handleOff} className={menuRow(!currentSubtitleTrack, tone)}>
+              <span className="truncate">{text.off}</span>
             </button>
             {subtitleTracks.map((track) => (
               <button
                 key={track.id}
                 type="button"
                 onClick={() => { selectSubtitleTrack(String(track.id)); setOpen(false) }}
-                className={`flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-800 transition-colors ${
-                  String(track.id) === currentSubtitleTrack ? 'text-accent' : 'text-surface-200'
-                }`}
+                className={menuRow(String(track.id) === currentSubtitleTrack, tone)}
               >
-                {track.name || track.lang || text.fallback(track.id)}
+                <span className="truncate">{track.name || track.lang || text.fallback(track.id)}</span>
               </button>
             ))}
           </div>
-          <div className="shrink-0 border-t border-surface-700 px-3 py-2">
-            <p className="text-label font-medium text-surface-500">
-              {text.style}
-            </p>
-            <div className="mt-2 flex items-center justify-between text-xs text-surface-400">
-              <span>{text.fontSize}</span>
-              <span>{subtitleFontSize}px</span>
-            </div>
-            <input
-              type="range"
-              min={16}
-              max={48}
-              step={2}
-              value={subtitleFontSize}
-              aria-label={text.fontSizeLabel}
-              onChange={(e) =>
-                updateSettings({ subtitleFontSize: Number.parseInt(e.target.value, 10) || 24 })
-              }
-              className="mt-1 w-full"
-            />
 
-            <div className="mt-2 grid grid-cols-[1fr_auto] items-center gap-2">
-              <div className="flex items-center justify-between text-xs text-surface-400">
-                <span>{text.color}</span>
+          <div className="shrink-0 space-y-2.5 rounded-card bg-ground px-4 py-3">
+            <p className="text-[15px] font-bold">{text.style}</p>
+            <div>
+              <div className="flex items-center justify-between text-[14px]">
+                <span className="text-surface-500">{text.fontSize}</span>
+                <span className="font-bold tabular-nums">{subtitleFontSize}px</span>
               </div>
+              <PlayerRange
+                min={16}
+                max={48}
+                step={2}
+                value={subtitleFontSize}
+                aria-label={text.fontSizeLabel}
+                onChange={(e) =>
+                  updateSettings({ subtitleFontSize: Number.parseInt(e.target.value, 10) || 24 })
+                }
+                className="w-full"
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-2 text-[14px]">
+              <span className="text-surface-500">{text.color}</span>
               <input
                 type="color"
                 value={subtitleColor}
                 aria-label={text.colorLabel}
                 onChange={(e) => updateSettings({ subtitleColor: e.target.value })}
-                className="h-7 w-10 cursor-pointer rounded border border-surface-600 bg-surface-800 p-0.5"
+                className="h-9 w-14 cursor-pointer rounded-full border-0 bg-raised p-1 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0"
               />
             </div>
 
-            <div className="mt-2 flex items-center justify-between text-xs text-surface-400">
-              <span>{text.background}</span>
-              <span>{subtitleOpacity}%</span>
+            <div>
+              <div className="flex items-center justify-between text-[14px]">
+                <span className="text-surface-500">{text.background}</span>
+                <span className="font-bold tabular-nums">{subtitleOpacity}%</span>
+              </div>
+              <PlayerRange
+                min={0}
+                max={100}
+                step={5}
+                value={subtitleOpacity}
+                aria-label={text.backgroundLabel}
+                onChange={(e) => {
+                  const opacity = Number.parseInt(e.target.value, 10)
+                  const alpha = Math.max(0, Math.min(100, opacity)) / 100
+                  updateSettings({ subtitleBackground: `rgba(0,0,0,${alpha.toFixed(2)})` })
+                }}
+                className="w-full"
+              />
             </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={subtitleOpacity}
-              aria-label={text.backgroundLabel}
-              onChange={(e) => {
-                const opacity = Number.parseInt(e.target.value, 10)
-                const alpha = Math.max(0, Math.min(100, opacity)) / 100
-                updateSettings({ subtitleBackground: `rgba(0,0,0,${alpha.toFixed(2)})` })
-              }}
-              className="mt-1 w-full"
-            />
 
-            <div className="mt-2 rounded border border-surface-700 bg-black/70 px-2 py-1 text-center">
+            <div className="rounded-[14px] bg-deep px-2 py-2 text-center">
               <span
                 className="rounded px-2 py-0.5"
                 style={{
@@ -168,16 +170,16 @@ export function SubtitleSelector() {
             </div>
           </div>
 
-          <div className="shrink-0 border-t border-surface-700 px-3 py-1">
+          <div className="shrink-0">
             <button
               type="button"
               onClick={() => void handleLoadExternal()}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-300 hover:bg-surface-800 transition-colors"
+              className="flex min-h-12 w-full items-center gap-2.5 rounded-full px-4 text-[15px] font-bold text-white transition-colors hover:bg-surface-800"
             >
-              <Upload size={14} /> {text.loadExternal}
+              <Upload size={18} strokeWidth={2.4} aria-hidden="true" /> {text.loadExternal}
             </button>
             {externalLoader.error && (
-              <p role="alert" className="px-3 pb-2 text-xs text-red-400">
+              <p role="alert" className="px-4 pb-2 text-[14px] text-coral">
                 {externalLoader.error}
               </p>
             )}

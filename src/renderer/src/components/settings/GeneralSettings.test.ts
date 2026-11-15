@@ -64,14 +64,14 @@ describe('EPG refresh interval', () => {
   })
 })
 
-describe('Tüm Ayarları Sıfırla', () => {
+describe('reset all settings', () => {
   it('asks first and keeps the TMDB key', () => {
     useStore.getState().updateSettings({ tmdbApiKey: 'anahtar', subtitleFontSize: 40 })
     render(createElement(GeneralSettings))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Tüm Ayarları Sıfırla' }))
+    fireEvent.click(screen.getByRole('button', { name: strings.settings.general.resetAll }))
     expect(useStore.getState().settings.subtitleFontSize).toBe(40)
-    expect(screen.getByText(/TMDB anahtarınız, kaynaklarınız/)).toBeTruthy()
+    expect(screen.getByText(/TMDB anahtarın, kaynakların/)).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Sıfırla' }))
     expect(useStore.getState().settings.subtitleFontSize).toBe(DEFAULT_SETTINGS.subtitleFontSize)

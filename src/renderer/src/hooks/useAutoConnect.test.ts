@@ -143,7 +143,7 @@ describe('connectSource', () => {
     )
     const error = await connectSource(fileSource, { ...deps(), readFile }).catch((caught: unknown) => caught)
     expect(error).toBeInstanceOf(SourceConnectError)
-    expect(error).toMatchObject({ kind: 'file', message: 'Dosya bulunamadı: a.m3u Dosyayı yeniden seçin.' })
+    expect(error).toMatchObject({ kind: 'file', message: 'Dosya bulunamadı: a.m3u Dosyayı yeniden seç.' })
   })
 
   it('rejects an account the panel refuses as an auth failure', async () => {
@@ -197,16 +197,16 @@ describe('connectSource', () => {
   })
 
   it('says once, in one sentence, why a file of the old version must be picked again (K7)', () => {
-    const notPicked = new Error("Error invoking remote method 'read-picked-file': Error: Bu dosyayı okuma izni yok. Dosyayı yeniden seçin.")
+    const notPicked = new Error("Error invoking remote method 'read-picked-file': Error: Bu dosyayı okuma izni yok. Dosyayı yeniden seç.")
     const message = fileReadFailureMessage(notPicked, null)
-    expect(message.match(/seçin/g)).toHaveLength(1)
+    expect(message.match(/yeniden seç/g)).toHaveLength(1)
     expect(message.match(/\./g)).toHaveLength(1)
     expect(message).toMatch(/Dosyayı Yeniden Seç/)
     const withCopy = fileReadFailureMessage(notPicked, Date.UTC(2026, 10, 14, 18, 30))
-    expect(withCopy).toMatch(/seçin; o zamana kadar dosyanın .+ tarihinde okunan kopyası gösteriliyor\.$/)
-    expect(withCopy.match(/seçin/g)).toHaveLength(1)
+    expect(withCopy).toMatch(/seç; o zamana kadar dosyanın .+ tarihinde okunan kopyası gösteriliyor\.$/)
+    expect(withCopy.match(/yeniden seç/g)).toHaveLength(1)
     // Other failures keep their own reason and ask once.
-    expect(fileReadFailureMessage(new Error('Dosya bulunamadı: a.m3u'), null)).toBe('Dosya bulunamadı: a.m3u Dosyayı yeniden seçin.')
+    expect(fileReadFailureMessage(new Error('Dosya bulunamadı: a.m3u'), null)).toBe('Dosya bulunamadı: a.m3u Dosyayı yeniden seç.')
   })
 })
 
@@ -318,7 +318,7 @@ describe('useAutoConnect', () => {
     vi.mocked(readPickedFile).mockRejectedValueOnce(new Error('Dosya bulunamadı: a.m3u'))
     renderHook(() => useAutoConnect())
     await vi.waitFor(() => expect(useStore.getState().sourceErrors.mf).toMatchObject({ kind: 'file', retryAt: null }))
-    expect(useStore.getState().sourceErrors.mf?.message).toMatch(/yeniden seçin/)
+    expect(useStore.getState().sourceErrors.mf?.message).toMatch(/yeniden seç/)
   })
 })
 

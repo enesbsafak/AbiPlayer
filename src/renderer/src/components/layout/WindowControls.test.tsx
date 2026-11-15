@@ -24,7 +24,7 @@ vi.mock('@/services/platform', async (importOriginal) => {
   }
 })
 
-import { maximizeButtonText, useWindowMaximized } from './TitleBar'
+import { maximizeButtonText, useWindowMaximized } from './WindowControls'
 
 function emit(state: WindowStateInfo) {
   act(() => {
@@ -32,7 +32,7 @@ function emit(state: WindowStateInfo) {
   })
 }
 
-describe('title bar maximize state (F1-39)', () => {
+describe('window controls maximize state (F1-39)', () => {
   afterEach(() => {
     cleanup()
     bridge.listeners.clear()

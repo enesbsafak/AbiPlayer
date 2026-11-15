@@ -304,7 +304,7 @@ async function playbackRuns(link: LinkProfile, runs: number): Promise<PlaybackSa
             await openRoute(page, '/vod')
             await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Kayıp Şehir')
             await cardButton(page, KNOWN.film).click()
-            const playButton = page.getByRole('button', { name: 'Filmi Oynat' })
+            const playButton = page.getByRole('button', { name: 'İzle', exact: true })
             await playButton.waitFor()
             samples.push(await clickAndTime(app, 'Film açılışı (MP4)', link.name, '/100001.mp4', () => playButton.click()))
           }

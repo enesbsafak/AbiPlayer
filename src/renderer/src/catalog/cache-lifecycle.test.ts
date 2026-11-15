@@ -85,7 +85,7 @@ describe('cache read of a secret that arrives late (K3)', () => {
 describe('reloadSourceCatalog (K1)', () => {
   it('fails when what it fetched was dropped while the source still exists', async () => {
     ingest.ingestM3uUrl.mockResolvedValue(outcome('stale'))
-    await expect(reloadSourceCatalog('mu')).rejects.toThrow(/Tekrar deneyin/)
+    await expect(reloadSourceCatalog('mu')).rejects.toThrow(/Tekrar dene./)
 
     useStore.setState({ sources: [xtream] })
     await expect(reloadSourceCatalog('mu')).resolves.toBeUndefined()

@@ -61,3 +61,10 @@ nsis:
   # `true` creates the shortcut on the first install only; `always` brought a
   # shortcut the user had deleted back on every update.
   createDesktopShortcut: true
+  # build/installerSidebar.bmp and build/installerHeader.bmp (made by
+  # `npm run make:icons`) are NOT wired here on purpose: `oneClick` is unset
+  # (default true), and installerSidebar, uninstallerSidebar and
+  # installerHeader are "assisted installer only" options that a one-click
+  # installer ignores. If `oneClick: false` is ever set, add
+  # installerSidebar / uninstallerSidebar: build/installerSidebar.bmp and
+  # installerHeader: build/installerHeader.bmp.

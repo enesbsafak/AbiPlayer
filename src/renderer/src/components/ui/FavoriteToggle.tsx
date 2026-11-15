@@ -40,9 +40,9 @@ export function FavoriteToggle({ channelId, item, itemName, variant = 'icon', cl
         type="button"
         onClick={() => toggleFavorite(channelId, item)}
         tabIndex={tabIndex}
-        className={`inline-flex items-center gap-2 rounded-lg border border-surface-700 bg-surface-900 px-4 py-2 text-sm font-medium text-surface-200 transition-colors hover:bg-surface-800 hover:text-surface-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${className}`}
+        className={`inline-flex h-[52px] items-center gap-2.5 rounded-full border-2 border-white/50 bg-transparent px-6 text-base font-medium text-white transition-colors hover:border-white ${className}`}
       >
-        <Star size={16} className={isFavorite ? 'fill-amber-400 text-amber-400' : ''} aria-hidden="true" />
+        <Star size={20} strokeWidth={2.4} className={isFavorite ? 'fill-sun text-sun' : ''} aria-hidden="true" />
         {isFavorite ? text.removeFromFavoritesButton : text.addToFavoritesButton}
       </button>
     )
@@ -55,9 +55,10 @@ export function FavoriteToggle({ channelId, item, itemName, variant = 'icon', cl
       tabIndex={tabIndex}
       aria-label={label}
       title={action}
-      className={`shrink-0 rounded-md p-1.5 text-surface-500 transition-colors hover:bg-surface-800 hover:text-surface-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${className}`}
+      // Round, 40 px; `className` sets its ground (on a coloured row: ink).
+      className={`flex size-10 shrink-0 items-center justify-center rounded-full transition-colors ${className || 'text-surface-400 hover:bg-surface-800 hover:text-white'}`}
     >
-      <Star size={14} className={isFavorite ? 'fill-amber-400 text-amber-400' : ''} aria-hidden="true" />
+      <Star size={19} strokeWidth={2.4} className={isFavorite ? 'fill-sun text-sun' : ''} aria-hidden="true" />
     </button>
   )
 }

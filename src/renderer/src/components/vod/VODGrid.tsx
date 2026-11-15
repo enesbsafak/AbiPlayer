@@ -5,17 +5,21 @@ import type { Channel } from '@/types/playlist'
 import { strings } from '@/strings'
 
 /**
- * 2:3 poster plus two title lines, the group / year line and the border;
- * rows are measured after render. Most rows hold a two-line title, and an
- * estimate that matches spares the virtualizer a re-layout per measured row.
+ * 2:3 poster, a 10 px gap, two title lines and the meta line; rows are
+ * measured after render. A narrow minimum and a generous column cap keep the
+ * posters near one size: a wider window gets more columns, not bigger posters.
  */
 export const POSTER_GRID_LAYOUT: CardGridLayout = {
-  minCardWidth: 168,
-  maxColumns: 9,
-  gap: 16,
-  gapClass: 'gap-4',
-  rowGapClass: 'pb-4',
-  estimateCardHeight: (cardWidth) => cardWidth * 1.5 + 86,
+  minCardWidth: 150,
+  maxColumns: 16,
+  gap: 20,
+  gapClass: 'gap-5',
+  rowGapClass: 'pb-5',
+  // Exact, not a guess: every card has the same height for its width (the
+  // title box always holds two lines), so rows the virtualizer has not
+  // measured sit exactly where measured ones will, and a restored scroll
+  // position lands on the same card. The row gap matches `gap`.
+  estimateCardHeight: (cardWidth) => cardWidth * 1.5 + 10 + 40 + 2 + 18,
   virtualizeAbove: 80
 }
 
@@ -33,8 +37,9 @@ export function renderPosterCard({ item, onOpen, eagerImage, focusProps, seconda
 
 export function PosterGridEmpty() {
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-surface-400">
-      <p className="text-lg">{strings.catalog.cards.noContent}</p>
+    <div className="flex flex-col items-center justify-center gap-2 rounded-tile bg-raised px-8 py-16 text-center">
+      <p className="font-title text-[28px]">{strings.catalog.cards.noContent}</p>
+      <p className="max-w-md text-base text-surface-400">{strings.catalog.cards.noChannelsHint}</p>
     </div>
   )
 }

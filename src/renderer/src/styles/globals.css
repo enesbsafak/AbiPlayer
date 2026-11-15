@@ -15,7 +15,7 @@
 
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgba(113, 113, 122, 0.4) transparent;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
   }
 
   *::-webkit-scrollbar {
@@ -28,30 +28,40 @@
   }
 
   *::-webkit-scrollbar-thumb {
-    background-color: rgba(113, 113, 122, 0.4);
+    background-color: rgba(255, 255, 255, 0.22);
     border-radius: 999px;
   }
 
   *::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(161, 161, 170, 0.5);
+    background-color: rgba(255, 255, 255, 0.36);
   }
 
   body {
     overflow: hidden;
     user-select: none;
-    font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
-    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
-    font-variation-settings: 'wght' 400;
-    color: #fafafa;
-    background-color: #09090b;
+    font-family: theme('fontFamily.sans');
+    line-height: 1.35;
+    color: theme('colors.surface.50');
+    background-color: theme('colors.ground');
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     font-variant-numeric: tabular-nums;
   }
 
   ::selection {
-    background: rgba(124, 106, 247, 0.35);
-    color: #fff;
+    background: theme('colors.sun');
+    color: theme('colors.ink');
+  }
+
+  /*
+   * Keyboard focus: a thick sun ring standing off the control, so it reads on
+   * the ground, on a raised pill, on white and on every section colour alike.
+   * Controls that draw their own focus ring (focus-visible:outline-none plus a
+   * ring) keep theirs.
+   */
+  :focus-visible {
+    outline: 3px solid theme('colors.sun');
+    outline-offset: 3px;
   }
 
   html.mpv-native-surface,
@@ -65,7 +75,7 @@
 
   /* Player sidebar must stay opaque and interactive above MPV native surface */
   [data-player-sidebar] {
-    background: #18181b !important;
+    background: theme('colors.ground') !important;
     -webkit-app-region: no-drag;
   }
 
@@ -84,20 +94,92 @@
     -webkit-app-region: no-drag;
   }
 
+  /* Bricolage Grotesque 800: titles, big labels, channel numbers. */
+  .font-title {
+    font-family: theme('fontFamily.display');
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.03em;
+  }
+
+  /* A flat pulse, not a sweep: the design has no gradients. */
   .poster-shimmer {
-    background-image: linear-gradient(
-      110deg,
-      rgba(255, 255, 255, 0.04) 8%,
-      rgba(255, 255, 255, 0.08) 18%,
-      rgba(255, 255, 255, 0.04) 33%
-    );
-    background-size: 200% 100%;
-    animation: posterShimmer 1.4s linear infinite;
+    animation: posterPulse 1.4s ease-in-out infinite;
   }
 }
 
-@keyframes posterShimmer {
-  to {
-    background-position-x: -200%;
+@keyframes posterPulse {
+  0%,
+  100% {
+    background-color: theme('colors.surface.800');
+  }
+  50% {
+    background-color: theme('colors.surface.700');
+  }
+}
+
+/*
+ * The bubbles of the home destination tiles (the gradient experiment, see
+ * HomeTiles): soft translucent circles drifting slowly. Transform and
+ * opacity only; nothing moves when the system asks for reduced motion.
+ */
+@keyframes bubbleDriftA {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-6%, 5%, 0);
+  }
+}
+
+@keyframes bubbleDriftB {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(7%, -6%, 0);
+  }
+}
+
+@layer components {
+  .tile-bubble {
+    position: absolute;
+    border-radius: 9999px;
+    pointer-events: none;
+    will-change: transform;
+  }
+
+  .tile-bubble-a {
+    animation: bubbleDriftA 14s ease-in-out infinite;
+  }
+
+  .tile-bubble-b {
+    animation: bubbleDriftB 18s ease-in-out infinite;
+  }
+
+  /* Hover and keyboard focus on the tile: the bubbles swell and lift a little. */
+  .tile-bubble-host {
+    transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 700ms ease;
+  }
+
+  .group:hover .tile-bubble-host,
+  .group:focus-visible .tile-bubble-host {
+    transform: scale(1.12) translate3d(0, -4%, 0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tile-bubble-a,
+    .tile-bubble-b {
+      animation: none;
+    }
+
+    .tile-bubble-host,
+    .group:hover .tile-bubble-host,
+    .group:focus-visible .tile-bubble-host {
+      transition: none;
+      transform: none;
+    }
   }
 }

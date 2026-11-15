@@ -964,7 +964,7 @@ describe('MpvController per-load file options (F3-01)', () => {
 
     await expect(
       controller.jumpToLive(async () => {
-        throw new Error('Sunucunun güvenlik sertifikası, güvendiğiniz sertifikadan farklı.')
+        throw new Error('Sunucunun güvenlik sertifikası, güvendiğin sertifikadan farklı.')
       })
     ).rejects.toThrow('sertifika')
     expect(fake.commands('loadfile')).toHaveLength(loads)

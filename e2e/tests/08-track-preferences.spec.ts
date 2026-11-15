@@ -23,7 +23,7 @@ test.describe('parça tercihleri mpv ile', () => {
     await openRoute(page, '/vod')
     await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Çift Dilli')
     await cardButton(page, KNOWN.dualAudioFilm).click()
-    await page.getByRole('button', { name: 'Filmi Oynat' }).click()
+    await page.getByRole('button', { name: 'İzle', exact: true }).click()
     await expect(page).toHaveURL(/#\/player/)
     const { last } = await waitForMpvProgress(page, { pathIncludes: DUAL_PATH, advanceBy: 1, timeout: 45_000 })
 

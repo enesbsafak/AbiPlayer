@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createPartialize, useStore, type AppStore } from '@/store'
 import { secureCredentialService } from '@/services/secure-credentials'
 import { DEFAULT_SETTINGS } from '@/types/settings'
+import { strings } from '@/strings'
 import { TmdbApiKeyInput } from './GeneralSettings'
 import { saveTmdbApiKey } from './tmdb-api-key'
 
@@ -35,7 +36,7 @@ describe('TMDB key (K10)', () => {
   it('is saved from the settings field on blur', async () => {
     const setTmdbApiKey = vi.spyOn(secureCredentialService, 'setTmdbApiKey').mockResolvedValue()
     render(createElement(TmdbApiKeyInput))
-    const input = screen.getByLabelText('TMDB API Anahtarı (opsiyonel)')
+    const input = screen.getByLabelText(strings.settings.general.tmdbKey)
 
     fireEvent.change(input, { target: { value: 'abcdef0123' } })
     // Typing alone stores nothing.

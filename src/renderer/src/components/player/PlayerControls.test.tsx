@@ -11,7 +11,7 @@ vi.mock('@/services/platform', async (importOriginal) => {
     mpvJumpToLive: vi.fn(() =>
       Promise.reject(
         new Error(
-          "Error invoking remote method 'mpv-jump-to-live': CertificateTrustError: Sunucunun güvenlik sertifikası, güvendiğiniz sertifikadan farklı. Yeniden onaylamadan bağlanılmıyor."
+          "Error invoking remote method 'mpv-jump-to-live': CertificateTrustError: Sunucunun güvenlik sertifikası, güvendiğin sertifikadan farklı. Yeniden onaylamadan bağlanılmıyor."
         )
       )
     ),

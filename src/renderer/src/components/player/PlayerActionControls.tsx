@@ -1,26 +1,25 @@
-import { ArrowLeft, List, Maximize, Minimize, PictureInPicture2 } from 'lucide-react'
+import { List, Maximize, Minimize, PictureInPicture2 } from 'lucide-react'
 import { useStore } from '@/store'
 import { AudioTrackSelector } from './AudioTrackSelector'
 import { PlaybackTuningSelector } from './PlaybackTuningSelector'
 import { QualitySelector } from './QualitySelector'
 import { SubtitleSelector } from './SubtitleSelector'
+import { CONTROL_SIZE, filledClasses, roundButton, useDockLayout } from './player-ui'
 import { strings } from '@/strings'
 
 const text = strings.player.actions
 
-const ICON_BUTTON = 'rounded-lg p-2 transition-colors duration-normal hover:bg-white/10'
-
 interface PlayerActionControlsProps {
-  /** All three need the video element / fullscreen coordination the parent owns. */
-  onLeave: () => void
+  /** Both need the video element / fullscreen coordination the parent owns. */
   onTogglePiP: () => void
   onToggleFullscreen: () => void
 }
 
 /**
- * Right-hand cluster: track/quality pickers and window-level actions — leaving
- * the player, the channel list and fullscreen. Reads its own state from the
- * store, like the selectors it renders.
+ * Right-hand cluster of the dock's controls row: the track, quality and
+ * tuning pickers (each a pill saying what it is set to), the channel list and
+ * fullscreen. Reads its own state from the store, like the selectors it
+ * renders. The way back is the labelled pill at the top left of the player.
  *
  * There is deliberately no "stop and exit" button. It used to sit next to the
  * back arrow looking like a second way out, while actually doing something
@@ -28,21 +27,19 @@ interface PlayerActionControlsProps {
  * could not convey. Stopping now lives on the mini player, where it reads as
  * "close this".
  */
-export function PlayerActionControls({
-  onLeave,
-  onTogglePiP,
-  onToggleFullscreen
-}: PlayerActionControlsProps) {
+export function PlayerActionControls({ onTogglePiP, onToggleFullscreen }: PlayerActionControlsProps) {
   const playbackEngine = useStore((s) => s.playbackEngine)
   const isFullscreen = useStore((s) => s.isFullscreen)
   const isPlayerSidebarOpen = useStore((s) => s.isPlayerSidebarOpen)
   const onToggleSidebar = useStore((s) => s.togglePlayerSidebar)
+  const { size, tone } = useDockLayout()
+  const icon = CONTROL_SIZE[size].icon
 
   return (
-    <div className="flex items-center gap-1">
-      <QualitySelector />
+    <div className="flex flex-wrap items-center justify-end gap-2">
       <AudioTrackSelector />
       <SubtitleSelector />
+      <QualitySelector />
       <PlaybackTuningSelector />
 
       {/* MPV renders into its own native surface, which PiP cannot capture. */}
@@ -50,45 +47,44 @@ export function PlayerActionControls({
         <button
           type="button"
           onClick={onTogglePiP}
-          className={ICON_BUTTON}
+          className={roundButton(size)}
           title={text.pictureInPicture}
           aria-label={text.pictureInPicture}
         >
-          <PictureInPicture2 size={18} />
+          <PictureInPicture2 size={icon} strokeWidth={2.4} aria-hidden="true" />
         </button>
       )}
 
       <button
         type="button"
         onClick={onToggleSidebar}
-        className={`rounded-lg p-2 transition-colors duration-normal ${
-          isPlayerSidebarOpen ? 'bg-white/20' : 'hover:bg-white/10'
-        }`}
+        className={
+          size === 'l'
+            ? `flex ${CONTROL_SIZE[size].height} shrink-0 items-center gap-2 rounded-full pl-4 pr-5 text-[15px] font-bold transition-colors ${
+                isPlayerSidebarOpen ? filledClasses(tone) : 'bg-raised text-white hover:bg-surface-800'
+              }`
+            : roundButton(size, isPlayerSidebarOpen ? tone : undefined)
+        }
         title={text.listTitle}
         aria-label={text.listLabel}
         aria-pressed={isPlayerSidebarOpen}
       >
-        <List size={18} />
+        <List size={icon} strokeWidth={2.8} aria-hidden="true" />
+        {size === 'l' && <span>{text.listLabel}</span>}
       </button>
 
       <button
         type="button"
         onClick={onToggleFullscreen}
-        className={ICON_BUTTON}
+        className={roundButton(size)}
         title={text.fullscreenTitle}
         aria-label={isFullscreen ? text.exitFullscreen : text.enterFullscreen}
       >
-        {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
-      </button>
-
-      <button
-        type="button"
-        onClick={onLeave}
-        className={ICON_BUTTON}
-        title={text.leaveTitle}
-        aria-label={text.leaveLabel}
-      >
-        <ArrowLeft size={18} />
+        {isFullscreen ? (
+          <Minimize size={icon} strokeWidth={2.6} aria-hidden="true" />
+        ) : (
+          <Maximize size={icon} strokeWidth={2.6} aria-hidden="true" />
+        )}
       </button>
     </div>
   )

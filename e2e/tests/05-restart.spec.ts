@@ -41,7 +41,7 @@ test.describe('yeniden başlatma', () => {
     // A slower provider, as real panels are: the catalog takes a moment to arrive.
     mock.update({ latencyMs: 1500 })
     const second = await launch({ label: 'second' })
-    await expect(second.page.locator('aside')).toBeVisible()
+    await expect(second.page.getByRole('banner')).toBeVisible()
     await openRoute(second.page, '/favorites')
     await second.shot('favorites-right-after-restart')
     await expect(cardButton(second.page, KNOWN.liveChannels[0])).toBeVisible({ timeout: 1000 })

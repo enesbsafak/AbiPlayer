@@ -128,14 +128,14 @@ export function Dropdown({ items, value, onSelect, placeholder = strings.common.
         type="button"
         onClick={() => (open ? closeMenu(false) : openMenu(selectedIndex >= 0 ? selectedIndex : 0))}
         onKeyDown={handleTriggerKeyDown}
-        className="flex w-full items-center justify-between rounded-lg border border-surface-700 bg-surface-900 px-3 py-2 text-sm text-surface-50 transition-colors hover:border-surface-600"
+        className="flex h-12 w-full items-center justify-between rounded-full border-2 border-surface-700 bg-ground px-5 text-base text-white transition-colors hover:border-surface-600"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         aria-labelledby={buttonLabelledBy}
       >
-        <span className={selected ? '' : 'text-surface-500'}>{selected?.label || placeholder}</span>
-        <ChevronDown size={16} className={`ml-2 text-surface-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <span className={`min-w-0 truncate text-left ${selected ? '' : 'text-surface-500'}`}>{selected?.label || placeholder}</span>
+        <ChevronDown size={16} className={`ml-2 shrink-0 text-surface-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <ul
@@ -143,7 +143,7 @@ export function Dropdown({ items, value, onSelect, placeholder = strings.common.
           role="menu"
           aria-labelledby={buttonId}
           onKeyDown={handleMenuKeyDown}
-          className="absolute z-dropdown mt-1 max-h-60 w-full list-none overflow-y-auto rounded-lg border border-surface-800 bg-surface-900 py-1 shadow-lg"
+          className="absolute z-dropdown mt-2 max-h-72 w-full list-none overflow-y-auto rounded-card border-2 border-surface-700 bg-raised p-1.5"
         >
           {items.map((item, index) => (
             <li key={item.id} role="none">
@@ -156,7 +156,7 @@ export function Dropdown({ items, value, onSelect, placeholder = strings.common.
                 aria-checked={item.id === value}
                 tabIndex={index === activeIndex ? 0 : -1}
                 onClick={() => pick(item.id)}
-                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-800 focus:bg-surface-800 focus:outline-none ${item.id === value ? 'text-accent' : 'text-surface-300'}`}
+                className={`flex min-h-11 w-full items-center gap-2 rounded-full px-4 py-2 text-left text-base transition-colors focus:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-sun ${item.id === value ? 'bg-white font-bold text-ink' : 'text-white hover:bg-surface-800 focus:bg-surface-800'}`}
               >
                 {item.icon}
                 {item.label}

@@ -1,6 +1,7 @@
 import { useStore } from '@/store'
 import { strings } from '@/strings'
 import { CategoryVisibility } from './CategoryVisibility'
+import { SettingRow, SettingsCard, SettingsGroup, Switch } from './controls'
 
 const text = strings.settings.catalog
 
@@ -9,26 +10,30 @@ export function AdultContentSetting() {
   const updateSettings = useStore((s) => s.updateSettings)
 
   return (
-    <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
-      <label className="flex cursor-pointer items-center gap-2">
-        <input
-          type="checkbox"
-          checked={showAdultContent}
-          onChange={(e) => updateSettings({ showAdultContent: e.target.checked })}
-          className="rounded border-surface-700 bg-surface-900 text-accent focus:ring-accent"
+    <SettingsGroup title={text.contentGroup}>
+      <SettingsCard>
+        <SettingRow
+          label={text.adultContent}
+          htmlFor="show-adult-content"
+          help={text.adultContentHint}
+          helpId="show-adult-content-help"
+          control={
+            <Switch
+              id="show-adult-content"
+              checked={showAdultContent}
+              onChange={(checked) => updateSettings({ showAdultContent: checked })}
+              describedBy="show-adult-content-help"
+            />
+          }
         />
-        <span className="text-sm text-surface-300">{text.adultContent}</span>
-      </label>
-      <p className="mt-1 text-xs text-surface-500">
-        {text.adultContentHint}
-      </p>
-    </div>
+      </SettingsCard>
+    </SettingsGroup>
   )
 }
 
 export function CatalogSettings() {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <AdultContentSetting />
       <CategoryVisibility />
     </div>

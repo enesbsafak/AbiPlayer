@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Play, ArrowLeft, Clock, Star } from 'lucide-react'
+import { Clock, Star } from 'lucide-react'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
 import {
@@ -7,14 +7,15 @@ import {
   resolveTmdbLanguage,
   resolveTmdbMovieDetails
 } from '@/services/tmdb-api'
-import { LazyImage } from '@/components/ui/LazyImage'
-import { Button } from '@/components/ui/Button'
 import { FavoriteToggle } from '@/components/ui/FavoriteToggle'
+import { PlayIcon } from '@/components/ui/icons'
 import { QualityBadge } from '@/components/ui/QualityBadge'
 import { Spinner } from '@/components/ui/Spinner'
 import { inferContentQualityLabel } from '@/services/quality'
 import type { Channel } from '@/types/playlist'
 import { strings } from '@/strings'
+import { BackPill, DETAIL_PRIMARY, DetailPoster, DetailTitle, FactPill, MoreInCategory, WatchLine } from './DetailParts'
+import { useItemProgress, watchShareOf } from './watch-share'
 
 const text = strings.catalog.detail
 
@@ -25,6 +26,8 @@ interface VODDetailProps {
   item: Channel
   onBack: () => void
   onPlay: (item: Channel) => void
+  /** Opens another film's detail, from the row under this one. */
+  onOpen: (item: Channel) => void
 }
 
 interface VODInfo {
@@ -40,8 +43,9 @@ interface VODInfo {
   cover: string
 }
 
-export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
+export function VODDetail({ item, onBack, onPlay, onOpen }: VODDetailProps) {
   const [info, setInfo] = useState<VODInfo | null>(null)
+  const share = watchShareOf(useItemProgress(item))
   const [loading, setLoading] = useState(true)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const tmdbApiKeySetting = useStore((s) => s.settings.tmdbApiKey)
@@ -150,63 +154,62 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
   const detail = info!
   const qualityLabel = inferContentQualityLabel(item)
 
+  const genres = detail.genre ? detail.genre.split(',').map((genre) => genre.trim()).filter(Boolean) : []
+
+  // The poster whole beside the text; the one primary action plays the film,
+  // resuming it where it was left (the player does that) when it was started.
   return (
-    <div className="flex flex-col gap-6">
-      <Button variant="ghost" size="sm" onClick={onBack} className="self-start">
-        <ArrowLeft size={16} /> {strings.common.back}
-      </Button>
+    // Centred past 1600 px: one item does not stretch across a very wide window.
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-8">
+      <BackPill onBack={onBack} />
 
-      <div className="flex flex-col md:flex-row gap-6">
-        <div className="shrink-0 w-48">
-          <LazyImage src={detail.cover} alt={detail.name} className="aspect-[2/3] w-full rounded-lg" eager />
-        </div>
-        <div className="flex flex-col gap-3">
-          <h1 className="text-2xl font-bold">{detail.name}</h1>
+      <div className="flex gap-8 max-md:flex-col">
+        <DetailPoster src={detail.cover} />
+        <div className="flex min-w-0 max-w-[820px] flex-1 flex-col gap-4 min-[1800px]:max-w-[960px]">
+          <DetailTitle>{detail.name}</DetailTitle>
 
-          <div className="flex flex-wrap gap-3 text-xs text-surface-400">
+          <div className="flex flex-wrap gap-2">
             {qualityLabel && <QualityBadge label={qualityLabel} />}
             {detail.rating && (
-              <span className="flex items-center gap-1">
-                <Star size={12} className="fill-yellow-400 text-yellow-400" />
+              <FactPill>
+                <Star size={14} className="fill-sun text-sun" aria-hidden="true" />
                 {detail.rating}
-              </span>
+              </FactPill>
             )}
-            {detail.year && <span>{detail.year}</span>}
+            {detail.year && <FactPill>{detail.year}</FactPill>}
             {detail.duration && (
-              <span className="flex items-center gap-1">
-                <Clock size={12} /> {detail.duration}
-              </span>
+              <FactPill>
+                <Clock size={14} aria-hidden="true" /> {detail.duration}
+              </FactPill>
             )}
+            {genres.map((genre) => (
+              <FactPill key={genre}>{genre}</FactPill>
+            ))}
           </div>
 
-          {detail.genre && (
-            <div className="flex flex-wrap gap-1.5">
-              {detail.genre.split(',').map((g) => (
-                <span key={g.trim()} className="rounded border border-surface-700 bg-surface-900 px-2 py-0.5 text-xs text-surface-400">
-                  {g.trim()}
-                </span>
-              ))}
+          {share && <WatchLine share={share} label={text.watched(share.percent)} />}
+
+          {detail.plot && <p className="max-w-[68ch] text-base leading-relaxed text-surface-300 min-[1800px]:text-lg">{detail.plot}</p>}
+
+          {(detail.director || detail.cast || detail.releaseDate) && (
+            <div className="flex flex-col gap-1 text-[15px] text-surface-400">
+              {detail.director && <span>{text.director(detail.director)}</span>}
+              {detail.cast && <span>{text.cast(detail.cast)}</span>}
+              {detail.releaseDate && <span>{text.releaseDate(detail.releaseDate)}</span>}
             </div>
           )}
 
-          {detail.plot && (
-            <p className="text-sm text-surface-400 leading-relaxed max-w-2xl">{detail.plot}</p>
-          )}
-
-          <div className="flex flex-col gap-1 text-xs text-surface-500 mt-1">
-            {detail.director && <span>{text.director(detail.director)}</span>}
-            {detail.cast && <span>{text.cast(detail.cast)}</span>}
-            {detail.releaseDate && <span>{text.releaseDate(detail.releaseDate)}</span>}
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Button onClick={() => onPlay(item)}>
-              <Play size={16} fill="currentColor" /> {text.playFilm}
-            </Button>
-            <FavoriteToggle channelId={item.id} item={item} variant="button" />
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <button type="button" onClick={() => onPlay(item)} className={DETAIL_PRIMARY}>
+              <PlayIcon size={22} />
+              {share ? text.resume : text.playFilm}
+            </button>
+            <FavoriteToggle channelId={item.id} item={item} variant="button" className="h-[60px]" />
           </div>
         </div>
       </div>
+
+      <MoreInCategory item={item} onOpen={onOpen} />
     </div>
   )
 }

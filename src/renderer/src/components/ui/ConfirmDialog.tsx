@@ -9,7 +9,7 @@ interface ConfirmDialogProps {
   children: ReactNode
   confirmLabel: string
   cancelLabel?: string
-  /** Red confirm button for actions that remove or reset something. */
+  /** Coral confirm button for actions that remove or reset something. */
   destructive?: boolean
   onConfirm: () => void
   onCancel: () => void
@@ -28,8 +28,8 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <Modal isOpen={isOpen} onClose={onCancel} title={title}>
-      <div className="text-sm text-surface-300">{children}</div>
-      <div className="mt-6 flex justify-end gap-2">
+      <div className="text-base leading-relaxed text-surface-300">{children}</div>
+      <div className="mt-7 flex flex-wrap justify-end gap-3">
         {/* Focus lands on the safe choice, so a stray Enter does not confirm. */}
         <Button variant="secondary" onClick={onCancel} data-autofocus>
           {cancelLabel}

@@ -46,7 +46,7 @@ test.describe('katalog gezintisi', () => {
     await expect(cardButton(page, KNOWN.dualAudioFilm)).toBeVisible()
     await app.shot('vod-search')
     await cardButton(page, KNOWN.dualAudioFilm).click()
-    await expect(page.getByRole('button', { name: 'Filmi Oynat' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'İzle', exact: true })).toBeVisible()
     await app.shot('vod-detail')
 
     // Series: open the detail, switch season.

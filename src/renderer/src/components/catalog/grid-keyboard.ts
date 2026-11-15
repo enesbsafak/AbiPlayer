@@ -68,10 +68,12 @@ export interface GridColumnLayout {
   minCardWidth: number
   maxColumns: number
   gap: number
+  /** Fewest columns, however narrow (default 2; 1 for a list of rows). */
+  minColumns?: number
 }
 
-/** Columns that fit `width`, at least two and at most `maxColumns`. */
+/** Columns that fit `width`, at least `minColumns` (two) and at most `maxColumns`. */
 export function gridColumns(width: number, layout: GridColumnLayout): number {
   const raw = Math.floor((width + layout.gap) / (layout.minCardWidth + layout.gap))
-  return Math.max(2, Math.min(layout.maxColumns, raw || 1))
+  return Math.max(layout.minColumns ?? 2, Math.min(layout.maxColumns, raw || 1))
 }

@@ -1,45 +1,45 @@
 import { useNavigate } from 'react-router-dom'
-import { Activity, Plus, RefreshCw, Tv, X } from 'lucide-react'
+import { AlertCircle, RefreshCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { APP_NAME, APP_VERSION_LABEL } from '@/constants/app-info'
 import { BOOTSTRAP_STAGES, type BootstrapStage } from '@/hooks/useHomeBootstrap'
 import { toUserMessage } from '@/services/user-error'
 import { strings } from '@/strings'
+import { FEATURE_TILE, PRIMARY_PILL, SECONDARY_PILL } from './home-ui'
 
 const text = strings.catalog.home
 
-function Panel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="h-full p-3">
-      <div className="flex h-full flex-col items-center justify-center gap-4 rounded-lg border border-surface-800 bg-surface-900 px-6 text-center">
-        {children}
-      </div>
-    </div>
-  )
-}
+/*
+ * The states the large home tile takes before there is anything to watch:
+ * nothing configured yet, the source still loading, and the source failing.
+ * Each keeps the tile's place, so the destination tiles beside it stay put.
+ */
 
 /** Shown before any source has been added. */
 export function HomeWelcome() {
   const navigate = useNavigate()
 
   return (
-    <Panel>
-      <div className="flex flex-col items-center gap-4 text-center">
-        <div className="flex size-20 items-center justify-center border border-accent/40 bg-accent/15">
-          <Tv size={40} className="text-accent" />
-        </div>
-        <h1 className="text-2xl font-bold text-white">{text.welcome(APP_NAME)}</h1>
-        <p className="rounded-md border border-surface-700 bg-surface-900 px-2.5 py-1 text-xs font-medium text-surface-400">
+    <section aria-labelledby="home-welcome" className={`${FEATURE_TILE} flex flex-col justify-between gap-6 p-7 short:p-6`}>
+      <div aria-hidden="true" className="grid size-[72px] grid-cols-2 gap-2 short:size-14">
+        <span className="rounded-[14px] bg-coral" />
+        <span className="rounded-[14px] bg-sun" />
+        <span className="rounded-[14px] bg-mint" />
+        <span className="rounded-[14px] bg-sky" />
+      </div>
+      <div className="flex flex-col items-start gap-4">
+        <h2 id="home-welcome" className="font-title text-[clamp(32px,min(6.5vh,4.2vw),54px)] tracking-[-0.035em]">
+          {text.welcome(APP_NAME)}
+        </h2>
+        <p className="max-w-md text-lg text-surface-400">{text.welcomeHint}</p>
+        <p className="rounded-full bg-ground px-3.5 py-1.5 text-sm font-medium text-surface-500">
           {text.betaNotice(APP_VERSION_LABEL)}
         </p>
-        <p className="max-w-md text-surface-300">
-          {text.welcomeHint}
-        </p>
-        <Button size="lg" onClick={() => void navigate('/settings')}>
-          <Plus size={20} /> {strings.common.addSource}
-        </Button>
+        <button type="button" onClick={() => void navigate('/settings?tab=sources')} className={`${PRIMARY_PILL} mt-2`}>
+          {strings.common.addSource}
+        </button>
       </div>
-    </Panel>
+    </section>
   )
 }
 
@@ -56,11 +56,12 @@ export function HomeLoading({ isConnectingSources, stage, onRetry }: HomeLoading
   const value = isConnectingSources ? 0.15 : progress
 
   return (
-    <Panel>
-      <Activity size={20} className="animate-pulse text-accent" />
-      <p className="text-sm text-surface-300">{label}</p>
+    <section aria-labelledby="home-loading" className={`${FEATURE_TILE} flex flex-col justify-end gap-5 p-7 short:p-6`}>
+      <h2 id="home-loading" className="font-title text-[clamp(28px,min(5.5vh,3.6vw),44px)]">
+        {label}
+      </h2>
       <div
-        className="h-1.5 w-48 overflow-hidden rounded-full bg-surface-800"
+        className="h-3 w-full overflow-hidden rounded-md bg-white/20"
         role="progressbar"
         aria-label={label}
         aria-valuemin={0}
@@ -68,18 +69,18 @@ export function HomeLoading({ isConnectingSources, stage, onRetry }: HomeLoading
         aria-valuenow={Math.round(value * 100)}
       >
         <div
-          className="h-full rounded-full bg-accent transition-[width] duration-500"
+          className="h-full rounded-md bg-sun transition-[width] duration-500"
           style={{ width: `${Math.round(value * 100)}%` }}
         />
       </div>
-      <p className="text-xs text-surface-500">
+      <p className="text-base text-surface-400">
         {isConnectingSources ? text.waitingForServer : text.loadingPreview}
       </p>
-      <Button variant="ghost" size="sm" onClick={onRetry}>
-        <RefreshCw size={14} />
+      <button type="button" onClick={onRetry} className={`${SECONDARY_PILL} self-start`}>
+        <RefreshCw size={18} className="mr-2.5" aria-hidden="true" />
         {text.tooSlowRetry}
-      </Button>
-    </Panel>
+      </button>
+    </section>
   )
 }
 
@@ -94,20 +95,29 @@ export function HomeError({ message, onRetry, detail }: HomeErrorProps) {
   const navigate = useNavigate()
 
   return (
-    <Panel>
-      <p className="text-sm font-medium text-white">{text.connectFailed}</p>
-      <p className="max-w-xl text-sm text-red-300">{toUserMessage(message, text.connectFailedFallback)}</p>
-      {detail && <p className="text-xs text-surface-400">{detail}</p>}
-      <div className="flex items-center gap-2">
-        <Button onClick={onRetry}>
-          <RefreshCw size={16} />
+    <section
+      role="alert"
+      aria-labelledby="home-error"
+      className={`${FEATURE_TILE} flex flex-col justify-end gap-4 p-7 short:p-6`}
+    >
+      <span className="flex size-14 items-center justify-center rounded-full bg-coral text-ink">
+        <AlertCircle size={30} strokeWidth={2.4} aria-hidden="true" />
+      </span>
+      <h2 id="home-error" className="font-title text-[clamp(28px,min(5.5vh,3.6vw),44px)]">
+        {text.connectFailed}
+      </h2>
+      <p className="max-w-xl text-base text-surface-300">{toUserMessage(message, text.connectFailedFallback)}</p>
+      {detail && <p className="text-sm text-surface-500">{detail}</p>}
+      <div className="mt-2 flex flex-wrap gap-3">
+        <button type="button" onClick={onRetry} className={PRIMARY_PILL}>
+          <RefreshCw size={20} aria-hidden="true" />
           {strings.common.retry}
-        </Button>
-        <Button variant="secondary" onClick={() => void navigate('/settings')}>
+        </button>
+        <button type="button" onClick={() => void navigate('/settings?tab=sources')} className={SECONDARY_PILL}>
           {strings.common.sourceSettings}
-        </Button>
+        </button>
       </div>
-    </Panel>
+    </section>
   )
 }
 
@@ -118,28 +128,27 @@ interface HomeNoticeProps {
   onDismiss?: () => void
 }
 
-/** A one-line notice above the dashboard rows: what did not load, or what is still loading. */
+/** A one-line notice above the tiles: what did not load, or what is still loading. */
 export function HomeNotice({ message, tone = 'error', onRetry, onDismiss }: HomeNoticeProps) {
   return (
     <div
       role={tone === 'error' ? 'alert' : 'status'}
-      className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-2.5 text-sm ${
-        tone === 'error'
-          ? 'border-red-500/30 bg-red-500/10 text-red-200'
-          : 'border-surface-700 bg-surface-900 text-surface-300'
-      }`}
+      className="flex items-center justify-between gap-3 rounded-card bg-raised py-2 pl-5 pr-2 text-sm text-white"
     >
-      <p>{message}</p>
+      <p className="flex items-center gap-3">
+        <span aria-hidden="true" className={`size-2.5 shrink-0 rounded-full ${tone === 'error' ? 'bg-coral' : 'bg-sun'}`} />
+        {message}
+      </p>
       <div className="flex shrink-0 items-center gap-1">
         {onRetry && (
           <Button variant="ghost" size="sm" onClick={onRetry}>
-            <RefreshCw size={14} />
+            <RefreshCw size={14} aria-hidden="true" />
             {strings.common.retry}
           </Button>
         )}
         {onDismiss && (
           <Button variant="ghost" size="sm" onClick={onDismiss} aria-label={strings.common.dismissNotice}>
-            <X size={14} />
+            <X size={14} aria-hidden="true" />
           </Button>
         )}
       </div>

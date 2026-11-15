@@ -10,17 +10,17 @@ export const security = {
     ownerSuffix: (name: string) => ` (${name})`,
     unverifiedBody: ' kimliğini kanıtlayan güvenlik sertifikası doğrulanamadı.',
     changedWarning:
-      'Bu sunucu için daha önce güvendiğiniz sertifika değişti. Sağlayıcınız sertifikasını yenilemiş olabilir; ' +
-      'ama bu, bağlantınıza birinin araya girdiği anlamına da gelebilir.',
+      'Bu sunucu için daha önce güvendiğin sertifika değişti. Sağlayıcın sertifikasını yenilemiş olabilir; ' +
+      'ama bu, bağlantına birinin araya girdiği anlamına da gelebilir.',
     explanation:
-      'Güvenirseniz uygulama bu sunucuda yalnızca bu sertifikayı kabul eder; sertifika değişirse yeniden sorar. ' +
-      'Bağlantı şifreli kalır, ama sunucunun gerçekten sağlayıcınıza ait olduğu doğrulanamaz: aynı ağdaki biri ' +
-      'araya girerse kullanıcı adınızı ve şifrenizi görebilir. Bu sertifikayı beklemiyorsanız güvenmeyin.',
+      'Güvenirsen uygulama bu sunucuda yalnızca bu sertifikayı kabul eder; sertifika değişirse yeniden sorar. ' +
+      'Bağlantı şifreli kalır, ama sunucunun gerçekten sağlayıcına ait olduğu doğrulanamaz: aynı ağdaki biri ' +
+      'araya girerse kullanıcı adını ve şifreni görebilir. Bu sertifikayı beklemiyorsan güvenme.',
     fingerprint: 'Parmak izi (SHA-256)',
     issuer: 'Düzenleyen',
     validity: 'Geçerlilik',
     appOnly: 'Sertifika onayı yalnızca uygulamada yapılabilir',
-    manageHint: `Güvendiğiniz sunucuları ${settingsPath('sources')} bölümünden kaldırabilirsiniz.`
+    manageHint: `Güvendiğin sunucuları ${settingsPath('sources')} bölümünden kaldırabilirsin.`
   },
 
   problems: {

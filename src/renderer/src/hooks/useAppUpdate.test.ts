@@ -16,7 +16,7 @@ const store = vi.hoisted(() => ({ flushPersistedStore: vi.fn() }))
 vi.mock('@/store', () => store)
 
 import { useAppUpdate } from './useAppUpdate'
-import { describeCheckOutcome } from '@/components/layout/TitleBar'
+import { describeCheckOutcome } from '@/components/layout/UpdateBadge'
 import { strings } from '@/strings'
 
 function updateState(overrides: Partial<AppUpdateState> = {}): AppUpdateState {
@@ -59,7 +59,7 @@ describe('useAppUpdate', () => {
     expect(returned).toBeNull()
     expect(result.current.isChecking).toBe(false)
     expect(result.current.checkError).toBe(
-      'Sunucuya ulaşılamadı. İnternet bağlantınızı ve sunucu adresini kontrol edin.'
+      'Sunucuya ulaşılamadı. İnternet bağlantını ve sunucu adresini kontrol et.'
     )
   })
 

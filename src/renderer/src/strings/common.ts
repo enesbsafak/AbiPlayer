@@ -28,7 +28,7 @@ export const common = {
   sourceSettings: 'Kaynak Ayarları',
   live: 'Canlı',
   unknown: 'Bilinmiyor',
-  selectPlaceholder: 'Seçiniz...',
+  selectPlaceholder: 'Seç…',
   /** Accessible name of a dialog without a title. */
   dialog: 'Pencere',
   technicalDetail: 'Teknik ayrıntı',

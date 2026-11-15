@@ -1,9 +1,9 @@
 import { memo } from 'react'
-import { Play, Radio } from 'lucide-react'
+import { Radio } from 'lucide-react'
 import { LazyImage } from '@/components/ui/LazyImage'
 import { ClampText, QualityBadge } from '@/components/ui'
 import { FavoriteToggle } from '@/components/ui/FavoriteToggle'
-import { CARD_FOCUS_CLASS, type CardFocusProps } from '@/components/catalog/card-focus'
+import type { CardFocusProps } from '@/components/catalog/card-focus'
 import { inferContentQualityLabel } from '@/services/quality'
 import type { Channel } from '@/types/playlist'
 import { strings } from '@/strings'
@@ -16,6 +16,12 @@ interface ChannelCardProps extends CardFocusProps {
   eagerImage?: boolean
 }
 
+/**
+ * Any catalog item as a card: its artwork in a 16:9 raised box (logos whole,
+ * on the raised surface; pictures fill it), the name beneath. No frame. The
+ * pages use rows for channels and posters for films and series; this card
+ * is the generic grid's.
+ */
 export const ChannelCard = memo(function ChannelCard({
   channel,
   onPlay,
@@ -25,68 +31,59 @@ export const ChannelCard = memo(function ChannelCard({
 }: ChannelCardProps) {
   const artwork = channel.logo || channel.coverUrl
   const qualityLabel = inferContentQualityLabel(channel)
-  const groupLabel = channel.group || channel.categoryName || (channel.type === 'live' ? text.liveFallbackGroup : text.mediaFallbackGroup)
+  const isLive = channel.type === 'live'
+  const groupLabel = channel.group || channel.categoryName || (isLive ? text.liveFallbackGroup : text.mediaFallbackGroup)
 
   return (
-    <div
-      className={`group relative flex flex-col overflow-hidden rounded-lg border border-surface-800 bg-surface-900 transition-colors hover:border-surface-700 focus-within:border-surface-700 ${CARD_FOCUS_CLASS}`}
-    >
+    <div className="group relative flex flex-col">
       <button
         type="button"
-        className="flex w-full flex-1 flex-col text-left outline-none"
+        className="flex w-full flex-col gap-2.5 rounded-card text-left"
         onClick={() => onPlay(channel)}
         aria-label={strings.common.playItem(channel.name)}
         {...focusProps}
       >
-        <div className="relative flex aspect-video items-center justify-center bg-surface-800">
+        <span className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-card bg-raised">
           {artwork ? (
             <LazyImage
               src={artwork}
-              alt={channel.name}
-              className={channel.type === 'live' ? 'h-full w-full p-4' : 'h-full w-full'}
-              fit={channel.type === 'live' ? 'contain' : 'cover'}
+              alt=""
+              className={isLive ? 'h-full w-full p-5' : 'h-full w-full'}
+              fit={isLive ? 'contain' : 'cover'}
               eager={eagerImage}
             />
           ) : (
             <Radio size={28} className="text-surface-600" aria-hidden="true" />
           )}
-          <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40 group-focus-within:bg-black/40">
-            <Play
-              size={36}
-              className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-              fill="white"
-              color="white"
-              aria-hidden="true"
-            />
-          </div>
-          {channel.type === 'live' && (
-            <div className="absolute left-2 top-2 flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 text-caption font-medium text-white" aria-label={text.liveBadgeLabel}>
-              <span className="size-1.5 animate-pulse rounded-full bg-white" aria-hidden="true" />
+          {isLive && (
+            <span
+              className="absolute left-2.5 top-2.5 flex h-6 items-center gap-1.5 rounded-full bg-coral px-2.5 text-xs font-bold text-ink"
+              aria-label={text.liveBadgeLabel}
+            >
+              <span className="size-1.5 rounded-full bg-ink" aria-hidden="true" />
               {strings.common.live}
-            </div>
+            </span>
           )}
           {qualityLabel && (
-            <div className="absolute right-2 top-2">
+            <span className="absolute bottom-2.5 left-2.5">
               <QualityBadge label={qualityLabel} />
-            </div>
+            </span>
           )}
-        </div>
-        <div className="p-3 pr-12">
-          <ClampText as="p" lines={2} titleText={channel.name} className="text-body-sm font-medium text-surface-100">
+        </span>
+        <span className="flex min-w-0 flex-col gap-0.5 px-0.5">
+          <ClampText as="span" lines={2} titleText={channel.name} className="h-10 text-[15px] font-bold leading-5 text-white">
             {channel.name}
           </ClampText>
-          <ClampText
-            as="p"
-            lines={1}
-            titleText={groupLabel}
-            className="mt-0.5 text-label text-surface-500"
-          >
-            {groupLabel}
-          </ClampText>
-        </div>
+          <span className="h-[18px] truncate text-[13px] leading-[18px] text-surface-500">{groupLabel}</span>
+        </span>
       </button>
-      <div className="absolute bottom-3 right-3">
-        <FavoriteToggle channelId={channel.id} item={channel} tabIndex={secondaryTabIndex} />
+      <div className="absolute right-2 top-2">
+        <FavoriteToggle
+          channelId={channel.id}
+          item={channel}
+          tabIndex={secondaryTabIndex}
+          className="bg-ground/85 text-white hover:bg-ground"
+        />
       </div>
     </div>
   )

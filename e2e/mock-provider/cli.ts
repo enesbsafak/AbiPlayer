@@ -3,7 +3,8 @@
 //   node e2e/mock-provider/cli.ts --size medium --port 8089 --latency 80
 //
 // Options: --size small|medium|large, --port N, --latency MS,
-// --bandwidth BYTES_PER_SEC, --no-cors, --auth ok|wrong-credentials|auth-as-string|expired.
+// --bandwidth BYTES_PER_SEC, --no-cors, --auth ok|wrong-credentials|auth-as-string|expired,
+// --demo (the small made-up catalog the README screenshots use).
 
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
@@ -19,7 +20,8 @@ const { values } = parseArgs({
     latency: { type: 'string', default: '0' },
     bandwidth: { type: 'string' },
     'no-cors': { type: 'boolean', default: false },
-    auth: { type: 'string', default: 'ok' }
+    auth: { type: 'string', default: 'ok' },
+    demo: { type: 'boolean', default: false }
   }
 })
 
@@ -31,7 +33,8 @@ const provider = await startMockProvider({
   latencyMs: Number(values.latency),
   bandwidthBytesPerSec: values.bandwidth ? Number(values.bandwidth) : null,
   cors: !values['no-cors'],
-  auth: values.auth as AuthBehaviour
+  auth: values.auth as AuthBehaviour,
+  demo: values.demo
 })
 
 console.log(`Mock provider: ${provider.url}`)

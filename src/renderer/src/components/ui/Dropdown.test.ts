@@ -73,6 +73,6 @@ describe('Dropdown', () => {
 
   it('uses the Turkish placeholder', () => {
     render(createElement(Dropdown, { items: ITEMS, onSelect: () => {} }))
-    expect(screen.getByRole('button', { name: 'Seçiniz...' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Seç…' })).toBeTruthy()
   })
 })

@@ -18,9 +18,15 @@ test.describe('ilk açılış', () => {
     await expect(anyCard(page)).toBeVisible()
     await app.shot('home-content')
 
-    // The dashboard shows a film and a series row from the preview.
-    await expect(page.getByRole('heading', { name: 'Filmler' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Diziler' })).toBeVisible()
+    // Home is a launcher: the four section tiles, each naming what the
+    // preview brought, and the newest films under them.
+    const tiles = page.getByRole('navigation', { name: 'Ana gezinme' })
+    for (const section of ['Canlı TV', 'Yayın Akışı', 'Filmler', 'Diziler']) {
+      await expect(tiles.getByRole('heading', { name: section, exact: true })).toBeVisible()
+    }
+    await expect(tiles.getByRole('link', { name: /^Filmler (Yeni: |\d)/ })).toBeVisible()
+    await expect(tiles.getByRole('link', { name: /^Diziler (Son güncellenen: |\d)/ })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Son eklenen filmler', exact: true })).toBeVisible()
 
     const counts = mock.stats().counts
     expect(counts.auth).toBeGreaterThanOrEqual(1)
