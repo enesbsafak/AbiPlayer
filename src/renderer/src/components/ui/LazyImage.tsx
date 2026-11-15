@@ -24,6 +24,11 @@ const IMAGE_LOAD_TIMEOUT_MS = 10000
 const IMAGE_ERROR_CACHE_TTL_MS = 45_000
 const MAX_RETRY_COUNT = 2
 
+/** React 18 does not know `fetchPriority`; the lower-case attribute reaches the DOM unchanged. */
+function fetchPriorityAttribute(eager: boolean): { fetchpriority: 'high' | 'auto' } {
+  return { fetchpriority: eager ? 'high' : 'auto' }
+}
+
 function getCachedImageStatus(src?: string): Exclude<ImageStatus, 'idle' | 'loading'> | undefined {
   if (!src) return undefined
 
@@ -163,7 +168,7 @@ function LazyImageView({
           alt={alt}
           loading={eager ? 'eager' : 'lazy'}
           decoding="async"
-          {...({ fetchpriority: eager ? 'high' : 'auto' } as any)}
+          {...fetchPriorityAttribute(eager)}
           draggable={false}
           onLoad={handleLoad}
           onError={handleError}

@@ -108,11 +108,12 @@ describe('CertificateTrustHost', () => {
         streamUrl: 'https://panel.example:8443/live/u/p/1.m3u8'
       }
     } as never)
-    const reloadsBefore = useStore.getState().playbackReloadToken
     render(<CertificateTrustHost />)
     emit(notice({ context: 'playback' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Bu sunucuya güven' }))
-    await waitFor(() => expect(useStore.getState().playbackReloadToken).toBe(reloadsBefore + 1))
+    // A reload is a new playback intent: same target, new playback id.
+    await waitFor(() => expect(useStore.getState().currentPlayback?.playbackId).not.toBe('p1'))
+    expect(useStore.getState().currentPlayback?.mediaKey).toBe('live:s1:1')
   })
 
   it('stays silent for a host that is not one of the sources', () => {

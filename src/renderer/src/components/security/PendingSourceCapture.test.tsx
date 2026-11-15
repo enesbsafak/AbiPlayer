@@ -43,7 +43,7 @@ describe('PendingSourceCapture', () => {
 
     // Consent arrives while the first attempt is still loading: wait for it.
     act(() => {
-      expect(pendingSources()[0].resubmit()).toBe(true)
+      expect(pendingSources()[0]?.resubmit()).toBe(true)
     })
     expect(onSubmit).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByRole('button', { name: 'Bitti' }))
@@ -60,6 +60,6 @@ describe('PendingSourceCapture', () => {
     fireEvent.change(screen.getByLabelText('Sunucu URL'), { target: { value: 'https://panel.example' } })
     fireEvent.click(screen.getByRole('button', { name: 'Bağlan' }))
     fireEvent.change(screen.getByLabelText('Sunucu URL'), { target: { value: 'https://other.example' } })
-    expect(pendingSources()[0].resubmit()).toBe(false)
+    expect(pendingSources()[0]?.resubmit()).toBe(false)
   })
 })
