@@ -95,6 +95,11 @@ export interface EmbeddedSubtitleProbeTrack {
 export interface EmbeddedSubtitleExtractionResult {
   format: 'vtt'
   content: string
+  /**
+   * True when the time or size limit, or a failure part-way through, cut the
+   * extraction short: `content` holds only the cues read until then.
+   */
+  truncated?: boolean
 }
 
 export interface SecureXtreamCredentials {

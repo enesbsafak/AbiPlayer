@@ -1,32 +1,10 @@
 import type { XtreamCredentials } from '@/types/xtream'
+import type { SecureCredentialsLossNotice } from '../../../shared/ipc/contract'
+import { sanitizeCredentialMap } from '../../../shared/secure-credentials'
+
+export type { SecureCredentialsLossNotice }
 
 type CredentialMap = Record<string, XtreamCredentials>
-
-function isValidCredential(value: unknown): value is XtreamCredentials {
-  if (!value || typeof value !== 'object') return false
-  const cred = value as XtreamCredentials
-  return (
-    typeof cred.url === 'string' &&
-    /^https?:\/\//i.test(cred.url) &&
-    typeof cred.username === 'string' &&
-    cred.username.length > 0 &&
-    typeof cred.password === 'string' &&
-    cred.password.length > 0
-  )
-}
-
-function sanitizeCredentialMap(input: unknown): CredentialMap {
-  if (!input || typeof input !== 'object') return {}
-  const result: CredentialMap = {}
-
-  for (const [sourceId, value] of Object.entries(input as Record<string, unknown>)) {
-    if (typeof sourceId !== 'string' || sourceId.length === 0) continue
-    if (!isValidCredential(value)) continue
-    result[sourceId] = value
-  }
-
-  return result
-}
 
 export const secureCredentialService = {
   async getAll(): Promise<CredentialMap> {
@@ -43,5 +21,21 @@ export const secureCredentialService = {
   async delete(sourceId: string): Promise<void> {
     if (!window.electron?.deleteSecureCredential) return
     await window.electron.deleteSecureCredential(sourceId)
+  },
+
+  /**
+   * Non-null when main found the encrypted credential file unreadable during
+   * this run and moved it aside: every stored password is gone and the user
+   * must log in to those sources again.
+   */
+  async getLossNotice(): Promise<SecureCredentialsLossNotice | null> {
+    if (!window.electron?.getSecureCredentialsLoss) return null
+    return window.electron.getSecureCredentialsLoss()
+  },
+
+  /** Same notice, pushed the moment it happens. Returns an unsubscribe function. */
+  onLost(listener: (notice: SecureCredentialsLossNotice) => void): () => void {
+    if (!window.electron?.onSecureCredentialsLost) return () => undefined
+    return window.electron.onSecureCredentialsLost(listener)
   }
 }

@@ -1,84 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type {
-  AppUpdateState,
-  EmbeddedSubtitleExtractionResult,
-  EmbeddedSubtitleProbeTrack,
-  MpvPlaybackTuning,
-  MpvStateSnapshot,
-  MpvSubtitleStyle,
-  SecureXtreamCredentials
-} from '../shared/types/electron-ipc'
+import { buildElectronApi } from './build-api'
 
-type FileFilter = { name: string; extensions: string[] }
-type PickedFile = { path: string; content: string }
-
-const api = {
-  pickFileContent: (filters?: FileFilter[]) =>
-    ipcRenderer.invoke('pick-file-content', filters) as Promise<PickedFile | null>,
-  getSecureCredentials: () =>
-    ipcRenderer.invoke('secure-credentials-get-all') as Promise<Record<string, SecureXtreamCredentials>>,
-  setSecureCredential: (sourceId: string, credential: SecureXtreamCredentials) =>
-    ipcRenderer.invoke('secure-credentials-set', sourceId, credential) as Promise<void>,
-  deleteSecureCredential: (sourceId: string) =>
-    ipcRenderer.invoke('secure-credentials-delete', sourceId) as Promise<void>,
-  probeEmbeddedSubtitles: (streamUrl: string) =>
-    ipcRenderer.invoke('embedded-subtitles-probe', streamUrl) as Promise<EmbeddedSubtitleProbeTrack[]>,
-  extractEmbeddedSubtitle: (streamUrl: string, streamIndex: number) =>
-    ipcRenderer.invoke('embedded-subtitles-extract', streamUrl, streamIndex) as Promise<EmbeddedSubtitleExtractionResult | null>,
-  mpvIsAvailable: () => ipcRenderer.invoke('mpv-is-available') as Promise<boolean>,
-  mpvOpen: (streamUrl: string) => ipcRenderer.invoke('mpv-open', streamUrl) as Promise<void>,
-  mpvStop: () => ipcRenderer.invoke('mpv-stop') as Promise<void>,
-  mpvTogglePause: () => ipcRenderer.invoke('mpv-toggle-pause') as Promise<void>,
-  mpvSetPause: (paused: boolean) => ipcRenderer.invoke('mpv-set-pause', paused) as Promise<void>,
-  mpvSeek: (seconds: number) => ipcRenderer.invoke('mpv-seek', seconds) as Promise<void>,
-  mpvSeekTo: (seconds: number) => ipcRenderer.invoke('mpv-seek-to', seconds) as Promise<void>,
-  mpvJumpToLive: () => ipcRenderer.invoke('mpv-jump-to-live') as Promise<void>,
-  mpvSetVolume: (normalizedVolume: number) =>
-    ipcRenderer.invoke('mpv-set-volume', normalizedVolume) as Promise<void>,
-  mpvSetMute: (muted: boolean) => ipcRenderer.invoke('mpv-set-mute', muted) as Promise<void>,
-  mpvSetVideoTrack: (trackId: number | null) =>
-    ipcRenderer.invoke('mpv-set-video-track', trackId) as Promise<void>,
-  mpvSetAudioTrack: (trackId: number | null) =>
-    ipcRenderer.invoke('mpv-set-audio-track', trackId) as Promise<void>,
-  mpvSetSubtitleTrack: (trackId: number | null) =>
-    ipcRenderer.invoke('mpv-set-subtitle-track', trackId) as Promise<void>,
-  mpvAddSubtitleFile: (filePath: string) =>
-    ipcRenderer.invoke('mpv-add-subtitle-file', filePath) as Promise<number | null>,
-  mpvSetFullscreen: (fullscreen: boolean) =>
-    ipcRenderer.invoke('mpv-set-fullscreen', fullscreen) as Promise<void>,
-  mpvSetHardwareDecoding: (enabled: boolean) =>
-    ipcRenderer.invoke('mpv-set-hardware-decoding', enabled) as Promise<void>,
-  mpvSetAudioPassthrough: (enabled: boolean) =>
-    ipcRenderer.invoke('mpv-set-audio-passthrough', enabled) as Promise<void>,
-  mpvSetSubtitleStyle: (style: MpvSubtitleStyle) =>
-    ipcRenderer.invoke('mpv-set-subtitle-style', style) as Promise<void>,
-  mpvSetPlaybackTuning: (tuning: MpvPlaybackTuning) =>
-    ipcRenderer.invoke('mpv-set-playback-tuning', tuning) as Promise<void>,
-  mpvSetVideoMargin: (right: number) =>
-    ipcRenderer.invoke('mpv-set-video-margin', right) as Promise<void>,
-  mpvGetState: () => ipcRenderer.invoke('mpv-get-state') as Promise<MpvStateSnapshot>,
-  setPreventDisplaySleep: (prevented: boolean) =>
-    ipcRenderer.invoke('display-sleep-set-prevented', prevented) as Promise<void>,
-  windowMinimize: () => ipcRenderer.invoke('window-minimize'),
-  windowMaximize: () => ipcRenderer.invoke('window-maximize'),
-  windowClose: () => ipcRenderer.invoke('window-close'),
-  windowIsMaximized: () => ipcRenderer.invoke('window-is-maximized'),
-  windowSetFullscreen: (fullscreen: boolean) =>
-    ipcRenderer.invoke('window-set-fullscreen', fullscreen) as Promise<void>,
-  windowIsFullscreen: () => ipcRenderer.invoke('window-is-fullscreen') as Promise<boolean>,
-  getAppUpdateState: () => ipcRenderer.invoke('app-update-get-state') as Promise<AppUpdateState>,
-  checkForAppUpdates: () => ipcRenderer.invoke('app-update-check') as Promise<AppUpdateState>,
-  installAppUpdate: () => ipcRenderer.invoke('app-update-install') as Promise<boolean>,
-  getStoreBackup: () => ipcRenderer.invoke('store-backup-read') as Promise<string | null>,
-  deleteStoreBackup: () => ipcRenderer.invoke('store-backup-delete') as Promise<void>,
-  onAppUpdateStateChange: (listener: (state: AppUpdateState) => void) => {
-    const wrapped = (_event: Electron.IpcRendererEvent, state: AppUpdateState) => listener(state)
-    ipcRenderer.on('app-update-state', wrapped)
+const api = buildElectronApi({
+  invoke: (channel, args) => ipcRenderer.invoke(channel, ...args),
+  subscribe: (channel, listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => listener(payload)
+    ipcRenderer.on(channel, wrapped)
     return () => {
-      ipcRenderer.removeListener('app-update-state', wrapped)
+      ipcRenderer.removeListener(channel, wrapped)
     }
   }
-}
+})
 
 if (process.contextIsolated) {
   contextBridge.exposeInMainWorld('electron', api)

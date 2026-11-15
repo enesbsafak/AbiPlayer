@@ -7,39 +7,83 @@ import type {
   MpvSubtitleStyle,
   MpvTrackInfo
 } from '../../../shared/types/electron-ipc'
+import {
+  MEDIA_JOB_CANCELLED_MESSAGE,
+  type FileFilter,
+  type MediaJobOptions,
+  type PickedFile,
+  type WindowStateInfo
+} from '../../../shared/ipc/contract'
 
 export type {
   AppUpdateState,
   EmbeddedSubtitleExtractionResult,
   EmbeddedSubtitleProbeTrack,
+  FileFilter,
+  MediaJobOptions,
   MpvPlaybackTuning,
   MpvStateSnapshot,
   MpvSubtitleStyle,
-  MpvTrackInfo
+  MpvTrackInfo,
+  PickedFile,
+  WindowStateInfo
 }
 
 export function isElectron(): boolean {
   return typeof window !== 'undefined' && !!window.electron
 }
 
-export async function pickAndReadFile(
-  filters?: { name: string; extensions: string[] }[]
-): Promise<{ path: string; content: string } | null> {
+export async function pickAndReadFile(filters?: FileFilter[]): Promise<PickedFile | null> {
   if (!isElectron() || !window.electron?.pickFileContent) return null
   return window.electron.pickFileContent(filters)
 }
 
-export async function probeEmbeddedSubtitles(streamUrl: string): Promise<EmbeddedSubtitleProbeTrack[]> {
+/**
+ * Re-reads a file the user picked through `pickAndReadFile` earlier, also in a
+ * previous run. Main refuses any other path. Rejects when the file is gone,
+ * too large or not allowed; returns null outside Electron.
+ */
+export async function readPickedFile(filePath: string): Promise<PickedFile | null> {
+  if (!isElectron() || !window.electron?.readPickedFile) return null
+  return window.electron.readPickedFile(filePath)
+}
+
+/**
+ * Starting a probe or an extraction cancels the previous one this window
+ * started; the cancelled call rejects with an error that
+ * `isMediaJobCancelledError` recognises.
+ */
+export async function probeEmbeddedSubtitles(
+  streamUrl: string,
+  options?: MediaJobOptions
+): Promise<EmbeddedSubtitleProbeTrack[]> {
   if (!isElectron() || !window.electron?.probeEmbeddedSubtitles) return []
-  return window.electron.probeEmbeddedSubtitles(streamUrl)
+  return window.electron.probeEmbeddedSubtitles(streamUrl, options)
 }
 
 export async function extractEmbeddedSubtitle(
   streamUrl: string,
-  streamIndex: number
+  streamIndex: number,
+  options?: MediaJobOptions
 ): Promise<EmbeddedSubtitleExtractionResult | null> {
   if (!isElectron() || !window.electron?.extractEmbeddedSubtitle) return null
-  return window.electron.extractEmbeddedSubtitle(streamUrl, streamIndex)
+  return window.electron.extractEmbeddedSubtitle(streamUrl, streamIndex, options)
+}
+
+/** Cancels one probe/extraction by the `jobId` given in its options. Resolves true if it was running. */
+export async function cancelMediaJob(jobId: string): Promise<boolean> {
+  if (!isElectron() || !window.electron?.cancelMediaJob) return false
+  return window.electron.cancelMediaJob(jobId)
+}
+
+/** Cancels every probe/extraction this window started. */
+export async function cancelAllMediaJobs(): Promise<boolean> {
+  if (!isElectron() || !window.electron?.cancelMediaJob) return false
+  return window.electron.cancelMediaJob()
+}
+
+export function isMediaJobCancelledError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes(MEDIA_JOB_CANCELLED_MESSAGE)
 }
 
 export async function mpvIsAvailable(): Promise<boolean> {
@@ -172,6 +216,17 @@ export async function windowSetFullscreen(fullscreen: boolean): Promise<void> {
 export async function windowIsFullscreen(): Promise<boolean> {
   if (!isElectron() || !window.electron?.windowIsFullscreen) return false
   return window.electron.windowIsFullscreen()
+}
+
+export async function windowGetState(): Promise<WindowStateInfo | null> {
+  if (!isElectron() || !window.electron?.windowGetState) return null
+  return window.electron.windowGetState()
+}
+
+/** Fires on maximize, unmaximize and fullscreen changes. Returns an unsubscribe function, or null outside Electron. */
+export function onWindowStateChange(listener: (state: WindowStateInfo) => void): (() => void) | null {
+  if (!isElectron() || !window.electron?.onWindowStateChange) return null
+  return window.electron.onWindowStateChange(listener)
 }
 
 export async function getAppUpdateState(): Promise<AppUpdateState | null> {
