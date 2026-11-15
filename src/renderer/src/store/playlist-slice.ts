@@ -1,7 +1,16 @@
 import type { StateCreator } from 'zustand'
 import type { Channel, Category } from '@/types/playlist'
+import { catalog as defaultCatalog, type CatalogStore } from '@/catalog/catalog-store'
+import { categoryToRecord, toCatalogItem } from '@/catalog/convert'
+import type {
+  CatalogCategory,
+  CatalogItem,
+  CatalogStatus,
+  CatalogType,
+  SourceCatalogReplacement
+} from '@/catalog/types'
 
-type ContentType = 'live' | 'vod' | 'series'
+type ContentType = CatalogType
 
 export interface SyncProgress {
   /** Which type is currently being synced */
@@ -12,214 +21,205 @@ export interface SyncProgress {
   active: boolean
 }
 
+/** `catalogStatus[sourceId][type]`, mirrored from the catalog store on every change. */
+export type CatalogStatusMap = Record<string, Partial<Record<ContentType, CatalogStatus>>>
+
 export interface PlaylistSlice {
-  channels: Channel[]
-  categories: Category[]
-  /** Per-source, per-type hydration tracking: { [sourceId]: { live: true, vod: true } } */
-  hydratedSourceTypes: Record<string, Partial<Record<ContentType, true>>>
-  /** Legacy compat: true when ALL types for a source are hydrated */
-  hydratedSourceIds: Record<string, true>
+  /**
+   * Per-(source, type) catalog status: loaded, complete, syncing, error,
+   * version, count. The data itself lives in the catalog store
+   * (`@/catalog`); this mirror lets selectors and effects depend on it.
+   */
+  catalogStatus: CatalogStatusMap
   syncProgress: Record<string, SyncProgress>
-  syncErrors: Record<string, string>
   /** Categories the user chose to hide; their channels drop out of every list. */
   hiddenCategoryIds: Set<string>
   selectedCategoryId: string | null
-  selectedChannelId: string | null
-  channelFilter: ContentType
   isLoadingPlaylist: boolean
-  setChannels: (channels: Channel[]) => void
+  /**
+   * @deprecated Merges channels into the catalog as partial batches. Kept for
+   * callers that still hold parsed `Channel` lists; new code commits through
+   * `replaceSourceCatalog` or the catalog store.
+   */
   addChannels: (channels: Channel[]) => void
-  removeChannelsBySource: (sourceId: string) => void
-  setCategories: (categories: Category[]) => void
+  /** @deprecated Merges categories into the catalog; see `addChannels`. */
   addCategories: (categories: Category[]) => void
-  removeCategoriesBySource: (sourceId: string) => void
+  /**
+   * The one path for a source refresh: cancels the source's running syncs and
+   * swaps in the given complete lists, or (null) keeps the items on screen but
+   * marks them incomplete so the next visit re-syncs and replaces them. Hidden
+   * category choices are kept. Returns false, changing nothing, when
+   * `expectedRevision` is given and the source was removed or refreshed since.
+   */
+  replaceSourceCatalog: (
+    sourceId: string,
+    replacement: SourceCatalogReplacement | null,
+    expectedRevision?: number
+  ) => boolean
+  /** A deleted source: drops its catalog and status, cancels its syncs, forgets its hidden categories. */
+  removeSourceCatalog: (sourceId: string) => void
   setSelectedCategory: (id: string | null) => void
-  setSelectedChannel: (id: string | null) => void
-  setChannelFilter: (filter: ContentType) => void
-  markSourceTypeHydrated: (sourceId: string, type: ContentType) => void
-  markSourceHydrated: (sourceId: string, hydrated?: boolean) => void
-  isSourceTypeHydrated: (sourceId: string, type: ContentType) => boolean
   setSyncProgress: (sourceId: string, progress: SyncProgress | null) => void
-  setSyncError: (sourceId: string, error: string | null) => void
   toggleCategoryHidden: (categoryId: string) => void
   setHiddenCategories: (ids: string[]) => void
   /** Unhides every category, or only those belonging to one source. */
   showAllCategories: (sourceId?: string) => void
   setPlaylistLoading: (loading: boolean) => void
-  getFilteredChannels: () => Channel[]
-  getChannelById: (id: string) => Channel | undefined
-  getCategoriesByType: (type: ContentType) => Category[]
 }
 
-export const createPlaylistSlice: StateCreator<PlaylistSlice, [], [], PlaylistSlice> = (set, get) => ({
-  channels: [],
-  categories: [],
-  hydratedSourceTypes: {},
-  hydratedSourceIds: {},
-  syncProgress: {},
-  syncErrors: {},
-  hiddenCategoryIds: new Set<string>(),
-  selectedCategoryId: null,
-  selectedChannelId: null,
-  channelFilter: 'live',
-  isLoadingPlaylist: false,
+function withStatus(map: CatalogStatusMap, sourceId: string, type: ContentType, status: CatalogStatus | null): CatalogStatusMap {
+  const current = map[sourceId]
+  if ((current?.[type] ?? null) === status) return map
+  const nextSource = { ...current }
+  if (status) nextSource[type] = status
+  else delete nextSource[type]
+  const next = { ...map }
+  if (Object.keys(nextSource).length > 0) next[sourceId] = nextSource
+  else delete next[sourceId]
+  return next
+}
 
-  setChannels: (channels) => set({ channels }),
-  addChannels: (channels) =>
-    set((state) => {
-      if (channels.length === 0) return state
-      const existingIds = new Set(state.channels.map((c) => c.id))
-      const newChannels = channels.filter((c) => !existingIds.has(c.id))
-      if (newChannels.length === 0) return state
-      return { channels: [...state.channels, ...newChannels] }
-    }),
-  removeChannelsBySource: (sourceId) =>
-    set((state) => {
-      const nextHydratedSourceTypes = { ...state.hydratedSourceTypes }
-      delete nextHydratedSourceTypes[sourceId]
-      const nextHydratedSourceIds = { ...state.hydratedSourceIds }
-      delete nextHydratedSourceIds[sourceId]
+/** Category ids of a source: those in the catalog plus any with the source's id prefix. */
+function belongsToSource(catalog: CatalogStore, sourceId: string): (categoryId: string) => boolean {
+  const known = new Set<string>()
+  for (const type of ['live', 'vod', 'series'] as const) {
+    for (const category of catalog.getCategories(sourceId, type)) known.add(category.id)
+  }
+  // Every category id the converters produce starts with `<sourceId>_`, so
+  // hidden flags of categories not loaded this session are found too.
+  const prefix = `${sourceId}_`
+  return (categoryId) => known.has(categoryId) || categoryId.startsWith(prefix)
+}
 
-      return {
-        channels: state.channels.filter((c) => c.sourceId !== sourceId),
-        hydratedSourceTypes: nextHydratedSourceTypes,
-        hydratedSourceIds: nextHydratedSourceIds
-      }
-    }),
+function groupByPartition<T extends { sourceId: string; type: ContentType }>(list: readonly T[]): Map<string, T[]> {
+  const groups = new Map<string, T[]>()
+  for (const entry of list) {
+    const key = `${entry.type}\n${entry.sourceId}`
+    const group = groups.get(key)
+    if (group) group.push(entry)
+    else groups.set(key, [entry])
+  }
+  return groups
+}
 
-  setCategories: (categories) => set({ categories }),
-  addCategories: (categories) =>
-    set((state) => {
-      const existingIds = new Set(state.categories.map((c) => c.id))
-      const newCats = categories.filter((c) => !existingIds.has(c.id))
-      if (newCats.length === 0) return state
-      return { categories: [...state.categories, ...newCats] }
-    }),
-  removeCategoriesBySource: (sourceId) =>
-    set((state) => {
-      // Drop this source's hidden entries too, otherwise removing and re-adding
-      // a source resurrects hidden flags for ids the user no longer recognises
-      // (M3U category ids are name hashes, so they come back identical).
-      const nextHidden = new Set(state.hiddenCategoryIds)
-      for (const category of state.categories) {
-        if (category.sourceId === sourceId) nextHidden.delete(category.id)
-      }
+export function createPlaylistSliceFor(
+  catalog: CatalogStore
+): StateCreator<PlaylistSlice, [], [], PlaylistSlice> {
+  return (set) => {
+    catalog.subscribe(({ sourceId, type }) => {
+      set((state) => {
+        const next = withStatus(state.catalogStatus, sourceId, type, catalog.getStatus(sourceId, type))
+        return next === state.catalogStatus ? state : { catalogStatus: next }
+      })
+    })
 
-      return {
-        categories: state.categories.filter((c) => c.sourceId !== sourceId),
-        hiddenCategoryIds: nextHidden
-      }
-    }),
+    return {
+      catalogStatus: {},
+      syncProgress: {},
+      hiddenCategoryIds: new Set<string>(),
+      selectedCategoryId: null,
+      isLoadingPlaylist: false,
 
-  setSelectedCategory: (id) => set({ selectedCategoryId: id }),
-  setSelectedChannel: (id) => set({ selectedChannelId: id }),
-  setChannelFilter: (filter) =>
-    set((state) => {
-      if (state.channelFilter === filter) return state
-      return { channelFilter: filter, selectedCategoryId: null }
-    }),
+      addChannels: (channels) => {
+        for (const group of groupByPartition(channels).values()) {
+          const items: CatalogItem[] = group.map(toCatalogItem)
+          const token = catalog.beginGeneration(group[0].sourceId, group[0].type)
+          catalog.commit({ token, mode: 'partial', items })
+        }
+      },
 
-  markSourceTypeHydrated: (sourceId, type) =>
-    set((state) => {
-      const sourceTypes = { ...state.hydratedSourceTypes[sourceId], [type]: true as const }
-      const nextHydratedSourceTypes = { ...state.hydratedSourceTypes, [sourceId]: sourceTypes }
-      // Update legacy flag: all 3 types hydrated = fully hydrated
-      const allHydrated = sourceTypes.live && sourceTypes.vod && sourceTypes.series
-      const nextHydratedSourceIds = { ...state.hydratedSourceIds }
-      if (allHydrated) nextHydratedSourceIds[sourceId] = true
-      return { hydratedSourceTypes: nextHydratedSourceTypes, hydratedSourceIds: nextHydratedSourceIds }
-    }),
+      addCategories: (categories) => {
+        for (const group of groupByPartition(categories).values()) {
+          const { sourceId, type } = group[0]
+          const merged: CatalogCategory[] = [...catalog.getCategories(sourceId, type)]
+          const known = new Set(merged.map((category) => category.id))
+          for (const category of group) {
+            if (known.has(category.id)) continue
+            known.add(category.id)
+            merged.push(categoryToRecord(category))
+          }
+          const token = catalog.beginGeneration(sourceId, type)
+          catalog.commit({ token, mode: 'partial', categories: merged })
+        }
+      },
 
-  markSourceHydrated: (sourceId, hydrated = true) =>
-    set((state) => {
-      const nextHydratedSourceIds = { ...state.hydratedSourceIds }
-      const nextHydratedSourceTypes = { ...state.hydratedSourceTypes }
-      if (hydrated) {
-        nextHydratedSourceIds[sourceId] = true
-        nextHydratedSourceTypes[sourceId] = { live: true, vod: true, series: true }
-      } else {
-        delete nextHydratedSourceIds[sourceId]
-        delete nextHydratedSourceTypes[sourceId]
-      }
-      return { hydratedSourceIds: nextHydratedSourceIds, hydratedSourceTypes: nextHydratedSourceTypes }
-    }),
+      replaceSourceCatalog: (sourceId, replacement, expectedRevision) =>
+        catalog.replaceSource(sourceId, replacement, expectedRevision),
 
-  isSourceTypeHydrated: (sourceId, type) => {
-    return !!get().hydratedSourceTypes[sourceId]?.[type]
-  },
+      removeSourceCatalog: (sourceId) => {
+        // Read before the categories are dropped.
+        const isSourceCategory = belongsToSource(catalog, sourceId)
+        catalog.removeSource(sourceId)
+        set((state) => {
+          // Drop this source's hidden entries too, otherwise removing and
+          // re-adding a source resurrects hidden flags for ids the user no
+          // longer recognises (M3U category ids are name hashes).
+          let nextHidden: Set<string> | null = null
+          for (const id of state.hiddenCategoryIds) {
+            if (!isSourceCategory(id)) continue
+            nextHidden ??= new Set(state.hiddenCategoryIds)
+            nextHidden.delete(id)
+          }
+          const nextProgress = { ...state.syncProgress }
+          delete nextProgress[sourceId]
+          return {
+            syncProgress: nextProgress,
+            ...(nextHidden ? { hiddenCategoryIds: nextHidden } : {})
+          }
+        })
+      },
 
-  setSyncProgress: (sourceId, progress) =>
-    set((state) => {
-      const next = { ...state.syncProgress }
-      if (progress) {
-        next[sourceId] = progress
-      } else {
-        delete next[sourceId]
-      }
-      return { syncProgress: next }
-    }),
+      setSelectedCategory: (id) => set({ selectedCategoryId: id }),
 
-  setSyncError: (sourceId, error) =>
-    set((state) => {
-      const nextErrors = { ...state.syncErrors }
-      if (error) {
-        nextErrors[sourceId] = error
-      } else {
-        delete nextErrors[sourceId]
-      }
-      return { syncErrors: nextErrors }
-    }),
+      setSyncProgress: (sourceId, progress) =>
+        set((state) => {
+          const next = { ...state.syncProgress }
+          if (progress) {
+            next[sourceId] = progress
+          } else {
+            if (!(sourceId in next)) return state
+            delete next[sourceId]
+          }
+          return { syncProgress: next }
+        }),
 
-  toggleCategoryHidden: (categoryId) =>
-    set((state) => {
-      const next = new Set(state.hiddenCategoryIds)
-      if (next.has(categoryId)) {
-        next.delete(categoryId)
-        return { hiddenCategoryIds: next }
-      }
+      toggleCategoryHidden: (categoryId) =>
+        set((state) => {
+          const next = new Set(state.hiddenCategoryIds)
+          if (next.has(categoryId)) {
+            next.delete(categoryId)
+            return { hiddenCategoryIds: next }
+          }
 
-      next.add(categoryId)
-      // Hiding the category the user is currently browsing would leave them
-      // staring at an empty grid with no way back, so fall back to "all".
-      return state.selectedCategoryId === categoryId
-        ? { hiddenCategoryIds: next, selectedCategoryId: null }
-        : { hiddenCategoryIds: next }
-    }),
+          next.add(categoryId)
+          // Hiding the category the user is currently browsing would leave them
+          // staring at an empty grid with no way back, so fall back to "all".
+          return state.selectedCategoryId === categoryId
+            ? { hiddenCategoryIds: next, selectedCategoryId: null }
+            : { hiddenCategoryIds: next }
+        }),
 
-  setHiddenCategories: (ids) => set({ hiddenCategoryIds: new Set(ids) }),
+      setHiddenCategories: (ids) => set({ hiddenCategoryIds: new Set(ids) }),
 
-  showAllCategories: (sourceId) =>
-    set((state) => {
-      if (!sourceId) {
-        if (state.hiddenCategoryIds.size === 0) return state
-        return { hiddenCategoryIds: new Set<string>() }
-      }
+      showAllCategories: (sourceId) =>
+        set((state) => {
+          if (!sourceId) {
+            if (state.hiddenCategoryIds.size === 0) return state
+            return { hiddenCategoryIds: new Set<string>() }
+          }
 
-      const sourceCategoryIds = new Set<string>()
-      for (const category of state.categories) {
-        if (category.sourceId === sourceId) sourceCategoryIds.add(category.id)
-      }
+          const isSourceCategory = belongsToSource(catalog, sourceId)
+          const next = new Set<string>()
+          for (const id of state.hiddenCategoryIds) {
+            if (!isSourceCategory(id)) next.add(id)
+          }
+          if (next.size === state.hiddenCategoryIds.size) return state
+          return { hiddenCategoryIds: next }
+        }),
 
-      const next = new Set<string>()
-      for (const id of state.hiddenCategoryIds) {
-        if (!sourceCategoryIds.has(id)) next.add(id)
-      }
-      if (next.size === state.hiddenCategoryIds.size) return state
-      return { hiddenCategoryIds: next }
-    }),
-
-  setPlaylistLoading: (loading) => set({ isLoadingPlaylist: loading }),
-
-  getFilteredChannels: () => {
-    const { channels, selectedCategoryId, channelFilter } = get()
-    let filtered = channels.filter((c) => c.type === channelFilter)
-    if (selectedCategoryId) {
-      filtered = filtered.filter((c) => c.categoryId === selectedCategoryId)
+      setPlaylistLoading: (loading) => set({ isLoadingPlaylist: loading })
     }
-    return filtered
-  },
+  }
+}
 
-  getChannelById: (id) => get().channels.find((c) => c.id === id),
-
-  getCategoriesByType: (type) => get().categories.filter((c) => c.type === type)
-})
+export const createPlaylistSlice = createPlaylistSliceFor(defaultCatalog)

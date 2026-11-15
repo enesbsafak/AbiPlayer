@@ -11,6 +11,8 @@ const m3u = vi.hoisted(() => ({
 vi.mock('@/services/m3u-parser', () => m3u)
 
 import { useStore } from '@/store'
+import { catalog } from '@/catalog/catalog-store'
+import { m3uPlaylistToReplacement } from '@/catalog/convert'
 import { SourceManager } from './SourceManager'
 
 function source(id: string, name: string): PlaylistSource {
@@ -45,18 +47,30 @@ beforeAll(() => {
   }
 })
 
+function liveIds(sourceId: string): string[] {
+  return catalog.getItems(sourceId, 'live').map((item) => item.id)
+}
+
+function liveCategoryIds(sourceId: string): string[] {
+  return catalog.getCategories(sourceId, 'live').map((item) => item.id)
+}
+
 beforeEach(() => {
+  catalog.reset()
   useStore.setState({
     sources: [source('a', 'Liste A'), source('b', 'Liste B')],
     activeSourceId: 'a',
-    channels: [channel('a1', 'a'), channel('b1', 'b')],
-    categories: [category('ca', 'a')]
+    hiddenCategoryIds: new Set()
   })
+  const { replaceSourceCatalog } = useStore.getState()
+  replaceSourceCatalog('a', m3uPlaylistToReplacement({ channels: [channel('a1', 'a')], categories: [category('ca', 'a')] }))
+  replaceSourceCatalog('b', m3uPlaylistToReplacement({ channels: [channel('b1', 'b')], categories: [] }))
 })
 
 afterEach(() => {
   cleanup()
-  useStore.setState({ sources: [], activeSourceId: null, channels: [], categories: [] })
+  catalog.reset()
+  useStore.setState({ sources: [], activeSourceId: null, hiddenCategoryIds: new Set() })
 })
 
 describe('SourceManager refresh', () => {
@@ -70,9 +84,9 @@ describe('SourceManager refresh', () => {
       'textContent',
       'Sunucuya ulaşılamadı. İnternet bağlantınızı ve sunucu adresini kontrol edin.'
     )
-    const state = useStore.getState()
-    expect(state.channels.map((c) => c.id)).toEqual(['a1', 'b1'])
-    expect(state.categories.map((c) => c.id)).toEqual(['ca'])
+    expect(liveIds('a')).toEqual(['a1'])
+    expect(liveIds('b')).toEqual(['b1'])
+    expect(liveCategoryIds('a')).toEqual(['ca'])
   })
 
   it('swaps the catalog once the new one has arrived', async () => {
@@ -85,9 +99,41 @@ describe('SourceManager refresh', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Liste A kaynağını yenile' }))
 
     await waitFor(() => {
-      expect(useStore.getState().channels.map((c) => c.id).sort()).toEqual(['a2', 'b1'])
+      expect(liveIds('a')).toEqual(['a2'])
     })
-    expect(useStore.getState().categories.map((c) => c.id)).toEqual(['ca2'])
+    expect(liveIds('b')).toEqual(['b1'])
+    expect(liveCategoryIds('a')).toEqual(['ca2'])
+    expect(catalog.getStatus('a', 'live')).toMatchObject({ complete: true })
+  })
+
+  it('keeps the hidden categories of the refreshed source', async () => {
+    useStore.setState({ hiddenCategoryIds: new Set(['ca']) })
+    m3u.fetchAndParseM3U.mockResolvedValue({ channels: [channel('a2', 'a')], categories: [category('ca', 'a')] })
+    render(createElement(SourceManager))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Liste A kaynağını yenile' }))
+
+    await waitFor(() => expect(liveIds('a')).toEqual(['a2']))
+    expect(useStore.getState().hiddenCategoryIds).toEqual(new Set(['ca']))
+  })
+
+  it('drops a refresh that finishes after its source was deleted', async () => {
+    const pending = deferred<{ channels: Channel[]; categories: Category[] }>()
+    m3u.fetchAndParseM3U.mockReturnValue(pending.promise)
+    render(createElement(SourceManager))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Liste A kaynağını yenile' }))
+    // Deleted and added back under the same id while the download runs.
+    useStore.getState().removeSource('a')
+    useStore.getState().removeSourceCatalog('a')
+    useStore.getState().addSource(source('a', 'Liste A'))
+
+    await act(async () => {
+      pending.resolve({ channels: [channel('ghost', 'a')], categories: [] })
+    })
+
+    expect(liveIds('a')).toEqual([])
+    expect(catalog.getStatus('a', 'live')).toBeNull()
   })
 
   it('keeps the other spinner when one of two refreshes finishes', async () => {
@@ -137,6 +183,8 @@ describe('SourceManager removal', () => {
     await waitFor(() => {
       expect(useStore.getState().sources.map((s) => s.id)).toEqual(['b'])
     })
-    expect(useStore.getState().channels.map((c) => c.id)).toEqual(['b1'])
+    expect(liveIds('a')).toEqual([])
+    expect(catalog.getStatus('a', 'live')).toBeNull()
+    expect(liveIds('b')).toEqual(['b1'])
   })
 })

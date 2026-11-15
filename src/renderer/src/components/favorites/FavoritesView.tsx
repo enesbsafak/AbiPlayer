@@ -1,20 +1,14 @@
-import { useMemo } from 'react'
 import { Heart } from 'lucide-react'
-import { useStore } from '@/store'
 import { ChannelGrid } from '@/components/channels/ChannelGrid'
 import type { Channel } from '@/types/playlist'
+import { useFavoriteChannels } from './favorite-channels'
 
 interface FavoritesViewProps {
   onPlay: (channel: Channel) => void
 }
 
 export function FavoritesView({ onPlay }: FavoritesViewProps) {
-  const channels = useStore((s) => s.channels)
-  const favoriteIds = useStore((s) => s.favoriteIds)
-  const favorites = useMemo(
-    () => channels.filter((c) => favoriteIds.has(c.id)),
-    [channels, favoriteIds]
-  )
+  const favorites = useFavoriteChannels()
 
   if (favorites.length === 0) {
     return (

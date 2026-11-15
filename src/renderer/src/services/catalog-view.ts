@@ -13,19 +13,24 @@ export function buildCatalogRetainResetKey(
 
 export interface CatalogViewOptions {
   /** Categories the user hid; their channels are dropped entirely. */
-  hiddenCategoryIds: Set<string>
+  hiddenCategoryIds: ReadonlySet<string>
   /** Categories whose name reads as adult content — see collectAdultCategoryIds. */
-  adultCategoryIds: Set<string>
+  adultCategoryIds: ReadonlySet<string>
+  /**
+   * The `showAdultContent` setting. False drops adult content; true (and, for
+   * callers that predate the setting, undefined) lists it last.
+   */
+  showAdultContent?: boolean
 }
 
-function isAdultChannel(channel: Channel, adultCategoryIds: Set<string>): boolean {
+function isAdultChannel(channel: Channel, adultCategoryIds: ReadonlySet<string>): boolean {
   if (channel.isAdult) return true
   return !!channel.categoryId && adultCategoryIds.has(channel.categoryId)
 }
 
 /**
  * Apply the user's catalog preferences to a channel list: drop hidden
- * categories and push adult content to the end.
+ * categories, and drop adult content or push it to the end.
  *
  * Provider order is preserved otherwise. It carries real meaning — Turkish
  * providers list the national channels first — which an A-Z sort destroys by
@@ -36,16 +41,20 @@ function isAdultChannel(channel: Channel, adultCategoryIds: Set<string>): boolea
  * Both partitions keep their relative provider order, so this is a stable
  * partition rather than a sort.
  */
-export function applyCatalogView(channels: Channel[], options: CatalogViewOptions): Channel[] {
+export function applyCatalogView<T extends Channel>(channels: readonly T[], options: CatalogViewOptions): T[] {
   const { hiddenCategoryIds, adultCategoryIds } = options
+  const keepAdult = options.showAdultContent !== false
 
-  const clean: Channel[] = []
-  const adult: Channel[] = []
+  const clean: T[] = []
+  const adult: T[] = []
 
   for (const channel of channels) {
     if (channel.categoryId && hiddenCategoryIds.has(channel.categoryId)) continue
-    if (isAdultChannel(channel, adultCategoryIds)) adult.push(channel)
-    else clean.push(channel)
+    if (isAdultChannel(channel, adultCategoryIds)) {
+      if (keepAdult) adult.push(channel)
+    } else {
+      clean.push(channel)
+    }
   }
 
   if (adult.length === 0) return clean
@@ -53,28 +62,39 @@ export function applyCatalogView(channels: Channel[], options: CatalogViewOption
 }
 
 export interface CategoryViewOptions {
-  hiddenCategoryIds: Set<string>
+  hiddenCategoryIds: ReadonlySet<string>
   /**
    * Keep hidden categories in the result. Only the settings screen wants this —
-   * it has to list them to offer them back.
+   * it has to list them to offer them back. Adult categories are kept too.
    */
   includeHidden?: boolean
+  /** Same as in `CatalogViewOptions`. */
+  showAdultContent?: boolean
+}
+
+function isAdultCategory(category: Category): boolean {
+  const flagged = (category as { isAdult?: unknown }).isAdult
+  return typeof flagged === 'boolean' ? flagged : isAdultLabel(category.name)
 }
 
 /** Same rules as applyCatalogView, for the category sidebar. */
-export function applyCategoryView(
-  categories: Category[],
+export function applyCategoryView<T extends Category>(
+  categories: readonly T[],
   options: CategoryViewOptions
-): Category[] {
+): T[] {
   const { hiddenCategoryIds, includeHidden = false } = options
+  const keepAdult = includeHidden || options.showAdultContent !== false
 
-  const clean: Category[] = []
-  const adult: Category[] = []
+  const clean: T[] = []
+  const adult: T[] = []
 
   for (const category of categories) {
     if (!includeHidden && hiddenCategoryIds.has(category.id)) continue
-    if (isAdultLabel(category.name)) adult.push(category)
-    else clean.push(category)
+    if (isAdultCategory(category)) {
+      if (keepAdult) adult.push(category)
+    } else {
+      clean.push(category)
+    }
   }
 
   if (adult.length === 0) return clean

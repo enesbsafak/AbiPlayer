@@ -11,29 +11,16 @@ import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
-import { useCatalogView } from '@/hooks/useCatalogView'
-import { applyCatalogView, buildCatalogRetainResetKey } from '@/services/catalog-view'
+import { buildCatalogRetainResetKey } from '@/services/catalog-view'
 import { ensureStagedSync } from '@/services/background-sync'
-import { normalizeSearchText } from '@/services/text-normalize'
-
-const loadedLiveCategoryCache = new Set<string>()
-const loadedLivePreviewSourceCache = new Set<string>()
-const loadedLiveFullSourceCache = new Set<string>()
-const syncingLiveFullSourceCache = new Set<string>()
-
-function clearSourceCategoryCache(cache: Set<string>, sourceId: string) {
-  const prefix = `${sourceId}:`
-  for (const key of cache) {
-    if (key.startsWith(prefix)) cache.delete(key)
-  }
-}
-
-function clearSourceLiveCaches(sourceId: string) {
-  clearSourceCategoryCache(loadedLiveCategoryCache, sourceId)
-  loadedLivePreviewSourceCache.delete(sourceId)
-  loadedLiveFullSourceCache.delete(sourceId)
-  syncingLiveFullSourceCache.delete(sourceId)
-}
+import {
+  catalog,
+  filterBySearch,
+  useCatalogStatus,
+  useVisibleCatalogItems,
+  xtreamCategoriesToRecords,
+  xtreamLiveToRecords
+} from '@/catalog'
 
 interface LiveTVRouteState {
   restoreSearchQuery?: string
@@ -45,22 +32,19 @@ interface LoadStatus {
   error: string | null
   foregroundMessage: string | null
   isForegroundLoading: boolean
-  isBackgroundSyncing: boolean
 }
 
 type LoadStatusAction =
   | { type: 'foregroundStart'; message: string }
   | { type: 'foregroundEnd' }
   | { type: 'failed'; message: string }
-  | { type: 'backgroundSyncing'; value: boolean }
   | { type: 'stopLoading' }
   | { type: 'reset' }
 
 const initialLoadStatus: LoadStatus = {
   error: null,
   foregroundMessage: null,
-  isForegroundLoading: false,
-  isBackgroundSyncing: false
+  isForegroundLoading: false
 }
 
 function loadStatusReducer(state: LoadStatus, action: LoadStatusAction): LoadStatus {
@@ -71,10 +55,8 @@ function loadStatusReducer(state: LoadStatus, action: LoadStatusAction): LoadSta
       return { ...state, foregroundMessage: null, isForegroundLoading: false }
     case 'failed':
       return { ...state, error: action.message }
-    case 'backgroundSyncing':
-      return { ...state, isBackgroundSyncing: action.value }
     case 'stopLoading':
-      return { ...state, foregroundMessage: null, isForegroundLoading: false, isBackgroundSyncing: false }
+      return { ...state, foregroundMessage: null, isForegroundLoading: false }
     case 'reset':
       return initialLoadStatus
     default:
@@ -88,28 +70,24 @@ function useLiveTVPageContent() {
   const [searchQuery, setSearchQuery] = useState('')
   const [reloadToken, bumpReloadToken] = useReducer((value: number) => value + 1, 0)
   const [
-    { error: loadError, foregroundMessage: foregroundLoadingMessage, isForegroundLoading, isBackgroundSyncing },
+    { error: loadError, foregroundMessage: foregroundLoadingMessage, isForegroundLoading },
     dispatchLoad
   ] = useReducer(loadStatusReducer, initialLoadStatus)
-  const loadedCatsRef = useRef(loadedLiveCategoryCache)
   const previousSourceIdRef = useRef<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
-  const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
   const sources = useStore((s) => s.sources)
-  const hydratedSourceIds = useStore((s) => s.hydratedSourceIds)
-  const isSourceTypeHydrated = useStore((s) => s.isSourceTypeHydrated)
   const selectedCategoryId = useStore((s) => s.selectedCategoryId)
   const playChannel = useStore((s) => s.playChannel)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
-  const addChannels = useStore((s) => s.addChannels)
-  const addCategories = useStore((s) => s.addCategories)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const setSelectedCategory = useStore((s) => s.setSelectedCategory)
-  const categories = useStore((s) => s.categories)
   const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
-  const catalogView = useCatalogView()
+  const catalogStatus = useCatalogStatus(activeSourceId, 'live')
+  const isCatalogComplete = catalogStatus?.complete === true
+  const isBackgroundSyncing = catalogStatus?.syncing === true
+  const categoriesLoaded = catalogStatus?.categoriesLoaded === true
 
   const source = useMemo(
     () => sources.find((item) => item.id === activeSourceId) ?? null,
@@ -181,35 +159,20 @@ function useLiveTVPageContent() {
 
   useEffect(() => {
     if (!activeSourceId) return
-    const hasChannelsForSource = channels.some(
-      (channel) => channel.sourceId === activeSourceId && channel.type === 'live'
-    )
-    if (!hasChannelsForSource) clearSourceLiveCaches(activeSourceId)
-  }, [channels, activeSourceId])
-
-  useEffect(() => {
-    if (!activeSourceId) return
-    if (isSourceTypeHydrated(activeSourceId, 'live')) {
-      loadedLiveFullSourceCache.add(activeSourceId)
-      loadedLivePreviewSourceCache.add(activeSourceId)
-    }
-  }, [activeSourceId, hydratedSourceIds, isSourceTypeHydrated])
-
-  useEffect(() => {
-    if (!activeSourceId) return
     if (!source || source.type !== 'xtream') return
-    if (categories.some((c) => c.type === 'live' && c.sourceId === activeSourceId)) return
+    if (categoriesLoaded) return
 
     const creds = getXtreamCredentials(activeSourceId)
     if (!creds) return
 
     let cancelled = false
     const controller = new AbortController()
+    const token = catalog.beginGeneration(activeSourceId, 'live')
     const load = async () => {
       try {
         const cats = await xtreamApi.getLiveCategories(creds, { signal: controller.signal })
         if (cancelled) return
-        addCategories(xtreamApi.categoriesToApp(cats, activeSourceId, 'live'))
+        catalog.commit({ token, mode: 'partial', categories: xtreamCategoriesToRecords(cats, activeSourceId, 'live') })
       } catch (err) {
         if (cancelled) return
         console.error('Failed to load live categories:', err)
@@ -221,7 +184,7 @@ function useLiveTVPageContent() {
       cancelled = true
       controller.abort()
     }
-  }, [activeSourceId, source, categories, getXtreamCredentials, addCategories])
+  }, [activeSourceId, source, categoriesLoaded, getXtreamCredentials])
 
   useEffect(() => {
     if (!activeSourceId || !rawCategoryId) return
@@ -230,39 +193,31 @@ function useLiveTVPageContent() {
     const creds = getXtreamCredentials(activeSourceId)
     if (!creds) return
 
-    const cacheKey = `${activeSourceId}:${rawCategoryId}`
-    if (loadedCatsRef.current.has(cacheKey)) return
-
-    const hasCategoryInMemory = channels.some(
-      (channel) =>
-        channel.sourceId === activeSourceId &&
-        channel.type === 'live' &&
-        channel.categoryId === `${activeSourceId}_live_${rawCategoryId}`
-    )
-
-    if (hasCategoryInMemory) {
-      loadedCatsRef.current.add(cacheKey)
-      return
-    }
+    const categoryId = `${activeSourceId}_live_${rawCategoryId}`
+    // In memory as a whole: the complete list, or this category fetched before.
+    if (catalog.isCategoryLoaded(activeSourceId, 'live', categoryId)) return
 
     let cancelled = false
+    let foreground = false
     const controller = new AbortController()
+    const token = catalog.beginGeneration(activeSourceId, 'live')
     const load = async () => {
       dispatchLoad({ type: 'foregroundStart', message: 'Seçili kategori yükleniyor...' })
+      foreground = true
 
       try {
         const streams = await xtreamApi.getLiveStreams(creds, rawCategoryId, {
           signal: controller.signal
         })
         if (cancelled) return
-        addChannels(xtreamApi.liveStreamsToChannels(streams, creds, activeSourceId))
-        loadedCatsRef.current.add(cacheKey)
+        catalog.commit({ token, mode: 'partial', items: xtreamLiveToRecords(streams, activeSourceId), categoryId })
       } catch (err) {
         if (cancelled) return
         console.error('Failed to load live streams:', err)
         dispatchLoad({ type: 'failed', message: err instanceof Error ? err.message : 'Kanallar yüklenemedi' })
       } finally {
         if (!cancelled) {
+          foreground = false
           dispatchLoad({ type: 'foregroundEnd' })
         }
       }
@@ -272,17 +227,10 @@ function useLiveTVPageContent() {
     return () => {
       cancelled = true
       controller.abort()
+      // Ended here, before a following run can start a load of its own.
+      if (foreground) dispatchLoad({ type: 'foregroundEnd' })
     }
-  }, [
-    activeSourceId,
-    rawCategoryId,
-    source,
-    channels,
-    getXtreamCredentials,
-    addChannels,
-    isSourceTypeHydrated,
-    reloadToken
-  ])
+  }, [activeSourceId, rawCategoryId, source, getXtreamCredentials, reloadToken])
 
   useEffect(() => {
     if (!activeSourceId || rawCategoryId) return
@@ -292,29 +240,23 @@ function useLiveTVPageContent() {
     if (!creds) return
 
     let cancelled = false
+    let foreground = false
     const controller = new AbortController()
 
     const syncSource = async () => {
-      if (isSourceTypeHydrated(activeSourceId, 'live')) {
-        loadedLiveFullSourceCache.add(activeSourceId)
-        loadedLivePreviewSourceCache.add(activeSourceId)
-        return
-      }
+      if (catalog.getStatus(activeSourceId, 'live')?.complete) return
 
-      const hasSourceChannels = channels.some(
-        (channel) => channel.sourceId === activeSourceId && channel.type === 'live'
-      )
-
-      if (!loadedLivePreviewSourceCache.has(activeSourceId) && !hasSourceChannels) {
+      if (!catalog.getStatus(activeSourceId, 'live')?.loaded) {
         dispatchLoad({ type: 'foregroundStart', message: 'Kanallar hızlı ön izleme listesiyle açılıyor...' })
+        foreground = true
+        const token = catalog.beginGeneration(activeSourceId, 'live')
 
         try {
           const previewStreams = await xtreamApi.getLivePreviewStreams(creds, 500, {
             signal: controller.signal
           })
           if (cancelled) return
-          addChannels(xtreamApi.liveStreamsToChannels(previewStreams, creds, activeSourceId))
-          loadedLivePreviewSourceCache.add(activeSourceId)
+          catalog.commit({ token, mode: 'partial', items: xtreamLiveToRecords(previewStreams, activeSourceId) })
         } catch (err) {
           if (cancelled) return
           console.error('Failed to load live preview:', err)
@@ -322,72 +264,35 @@ function useLiveTVPageContent() {
           return
         } finally {
           if (!cancelled) {
+            foreground = false
             dispatchLoad({ type: 'foregroundEnd' })
           }
         }
-      } else if (hasSourceChannels) {
-        loadedLivePreviewSourceCache.add(activeSourceId)
       }
 
-      if (loadedLiveFullSourceCache.has(activeSourceId) || syncingLiveFullSourceCache.has(activeSourceId)) {
-        return
-      }
+      // Already running: started here before, on another page or by home.
+      if (catalog.getStatus(activeSourceId, 'live')?.syncing) return
 
       // Sync live first (priority), then vod+series sequentially in background
-      if (!cancelled) dispatchLoad({ type: 'backgroundSyncing', value: true })
-      syncingLiveFullSourceCache.add(activeSourceId)
       void ensureStagedSync(activeSourceId, 'live', creds)
-        .then(() => {
-          if (useStore.getState().isSourceTypeHydrated(activeSourceId, 'live')) {
-            loadedLiveFullSourceCache.add(activeSourceId)
-          }
-        })
-        .finally(() => {
-          syncingLiveFullSourceCache.delete(activeSourceId)
-          if (!cancelled) dispatchLoad({ type: 'backgroundSyncing', value: false })
-        })
-        .catch(() => undefined)
     }
 
     void syncSource()
     return () => {
       cancelled = true
       controller.abort()
+      if (foreground) dispatchLoad({ type: 'foregroundEnd' })
     }
-  }, [
-    activeSourceId,
-    rawCategoryId,
-    source,
-    channels,
-    hydratedSourceIds,
-    getXtreamCredentials,
-    addChannels,
-    isSourceTypeHydrated,
-    reloadToken
-  ])
+  }, [activeSourceId, rawCategoryId, source, isCatalogComplete, getXtreamCredentials, reloadToken])
 
-  const filtered = useMemo(() => {
-    let list = channels.filter((c) => c.type === 'live')
-
-    if (activeSourceId) {
-      list = list.filter((c) => c.sourceId === activeSourceId)
-    }
-    if (selectedCategoryId) {
-      list = list.filter((c) => c.categoryId === selectedCategoryId)
-    }
-    if (searchQuery) {
-      const q = normalizeSearchText(searchQuery)
-      list = list.filter((c) => normalizeSearchText(c.name).includes(q))
-    }
-
-    return applyCatalogView(list, catalogView)
-  }, [channels, activeSourceId, selectedCategoryId, searchQuery, catalogView])
+  const visibleChannels = useVisibleCatalogItems(activeSourceId, 'live', selectedCategoryId)
+  const filtered = useMemo(() => filterBySearch(visibleChannels, searchQuery), [visibleChannels, searchQuery])
   const displayedChannels = useRetainedListWhileLoading(filtered, isForegroundLoading, retainResetKey)
   const isPreviewMode =
     !rawCategoryId &&
     source?.type === 'xtream' &&
     !!activeSourceId &&
-    !loadedLiveFullSourceCache.has(activeSourceId)
+    !isCatalogComplete
   const showBlockingLoader = isForegroundLoading && displayedChannels.length === 0
   const showInlineLoader = isForegroundLoading && displayedChannels.length > 0
 
@@ -445,14 +350,6 @@ function useLiveTVPageContent() {
               size="sm"
               variant="secondary"
               onClick={() => {
-                if (activeSourceId) {
-                  clearSourceLiveCaches(activeSourceId)
-                } else {
-                  loadedCatsRef.current.clear()
-                  loadedLivePreviewSourceCache.clear()
-                  loadedLiveFullSourceCache.clear()
-                  syncingLiveFullSourceCache.clear()
-                }
                 dispatchLoad({ type: 'stopLoading' })
                 bumpReloadToken()
               }}

@@ -4,7 +4,7 @@ import { ChannelCard } from './ChannelCard'
 import type { Channel } from '@/types/playlist'
 
 interface ChannelGridProps {
-  channels: Channel[]
+  channels: readonly Channel[]
   onPlay: (channel: Channel) => void
 }
 

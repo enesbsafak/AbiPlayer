@@ -1,20 +1,17 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
-import { useStore } from '@/store'
 import { ChannelGrid } from '@/components/channels/ChannelGrid'
 import type { Channel } from '@/types/playlist'
-import { applyCatalogView } from '@/services/catalog-view'
-import { normalizeSearchText } from '@/services/text-normalize'
-import { useCatalogView } from '@/hooks/useCatalogView'
+import { useCatalogSearch } from '@/catalog'
 import { useOpenCatalogItem } from '@/hooks/useOpenCatalogItem'
+
+const MAX_RESULTS = 100
 
 export default function SearchPage() {
   const routeLocation = useLocation()
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
-  const channels = useStore((s) => s.channels)
-  const catalogView = useCatalogView()
   const openItem = useOpenCatalogItem()
 
   useEffect(() => {
@@ -32,18 +29,9 @@ export default function SearchPage() {
     )
   }, [routeLocation.hash, routeLocation.pathname, routeLocation.search, routeLocation.state, navigate])
 
-  const results = useMemo(() => {
-    if (!query || query.length < 2) return []
-    const q = normalizeSearchText(query)
-    const matches = channels.filter((c) =>
-      normalizeSearchText(c.name).includes(q) ||
-      (c.group ? normalizeSearchText(c.group).includes(q) : false) ||
-      (c.categoryName ? normalizeSearchText(c.categoryName).includes(q) : false)
-    )
-    // Order before capping, otherwise WHICH 100 results survive still depends
-    // on raw playlist order.
-    return applyCatalogView(matches, catalogView).slice(0, 100)
-  }, [query, channels, catalogView])
+  // Name and group, on the same view the lists show; clean matches before
+  // adult ones, then capped.
+  const results = useCatalogSearch(query.length >= 2 ? query : '', MAX_RESULTS)
 
   const handlePlay = useCallback(
     (channel: Channel) =>

@@ -20,6 +20,60 @@ export type PersistedRecord = Record<string, unknown>
  * - Validation of the final shape stays in `merge` (store/index.ts), which
  *   runs on every load whether or not a migration ran.
  */
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
+}
+
+/**
+ * Snapshots for favourites that have none, taken from watch-history entries of
+ * the same item (they hold its name, artwork and playback target). Shape is
+ * checked again by `sanitizeFavoriteSnapshot` when the state is merged.
+ */
+export function seedFavoriteSnapshots(favoriteIds: unknown, existing: unknown, watchProgress: unknown): unknown[] {
+  const kept = Array.isArray(existing) ? existing : []
+  if (!Array.isArray(favoriteIds) || !Array.isArray(watchProgress)) return kept
+
+  const covered = new Set<string>()
+  for (const snapshot of kept) {
+    const id = asRecord(snapshot)?.id
+    if (typeof id === 'string') covered.add(id)
+  }
+  const wanted = new Set<string>()
+  for (const id of favoriteIds) if (typeof id === 'string' && !covered.has(id)) wanted.add(id)
+  if (wanted.size === 0) return kept
+
+  const seeded: Record<string, unknown>[] = []
+  for (const raw of watchProgress) {
+    const entry = asRecord(raw)
+    const channel = asRecord(entry?.channel)
+    const target = asRecord(entry?.target)
+    if (!channel || !target || typeof channel.id !== 'string' || !wanted.has(channel.id)) continue
+
+    const snapshot: Record<string, unknown> = {
+      id: channel.id,
+      name: channel.name,
+      sourceId: channel.sourceId,
+      type: channel.type
+    }
+    for (const key of ['logo', 'coverUrl', 'categoryName'] as const) {
+      if (typeof channel[key] === 'string') snapshot[key] = channel[key]
+    }
+    if (target.kind === 'live') {
+      snapshot.streamId = target.streamId
+    } else if (target.kind === 'movie') {
+      snapshot.streamId = target.streamId
+      snapshot.containerExtension = target.containerExtension
+    } else if (target.kind === 'm3u' && typeof channel.streamUrl === 'string') {
+      snapshot.streamUrl = channel.streamUrl
+    } else {
+      continue
+    }
+    seeded.push(snapshot)
+    wanted.delete(channel.id)
+  }
+  return seeded.length > 0 ? [...kept, ...seeded] : kept
+}
+
 export interface PersistMigration {
   version: number
   name: string
@@ -36,6 +90,17 @@ export const PERSIST_MIGRATIONS: readonly PersistMigration[] = [
     migrate: (state) => ({
       ...state,
       watchProgress: migrateProgressEntriesToMediaKeys(state.watchProgress, state.sources)
+    })
+  },
+  {
+    // Favourites used to be bare ids, rendered only once their catalog was in
+    // memory. Each now carries a snapshot; favourites that were watched get
+    // theirs from the history entry, the rest when they are next toggled.
+    version: 2,
+    name: 'favorite-snapshots',
+    migrate: (state) => ({
+      ...state,
+      favoriteSnapshots: seedFavoriteSnapshots(state.favoriteIds, state.favoriteSnapshots, state.watchProgress)
     })
   }
 ]

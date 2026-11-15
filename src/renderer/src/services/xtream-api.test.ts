@@ -460,7 +460,12 @@ describe('xtream-api stream URLs', () => {
     )
   })
 
-  it('builds live channels in the requested format and keeps m3u8 as the default', () => {
+  it('builds live URLs in the requested format and keeps m3u8 as the default', () => {
+    expect(xtreamApi.buildLiveUrl(creds, 5)).toMatch(/\/5\.m3u8$/)
+    expect(xtreamApi.buildLiveUrl(creds, 5, 'ts')).toMatch(/\/5\.ts$/)
+  })
+
+  it('keeps credentials out of the catalog records (F4-02)', () => {
     const streams = [
       {
         num: 1, name: 'Kanal', stream_type: 'live', stream_id: 5, stream_icon: '', epg_channel_id: '',
@@ -468,9 +473,10 @@ describe('xtream-api stream URLs', () => {
         direct_source: '', tv_archive_duration: 0
       }
     ]
-    expect(xtreamApi.liveStreamsToChannels(streams, creds, 's')[0].streamUrl).toMatch(/\/5\.m3u8$/)
-    expect(xtreamApi.liveStreamsToChannels(streams, creds, 's', { liveFormat: 'ts' })[0].streamUrl).toMatch(
-      /\/5\.ts$/
+    const [record] = xtreamApi.liveStreamsToRecords(streams, 's')
+    expect(record).toMatchObject({ id: 's_live_5', streamId: 5, streamUrl: '' })
+    expect(JSON.stringify(xtreamApi.liveStreamsToChannels(streams, creds, 's', { liveFormat: 'ts' }))).not.toContain(
+      'ali'
     )
   })
 })

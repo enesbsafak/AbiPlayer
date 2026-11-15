@@ -3,9 +3,7 @@ import { RefreshCw, Search, X } from 'lucide-react'
 import { useStore } from '@/store'
 import { fetchAndParseEPG } from '@/services/epg-service'
 import { findCurrentProgram, getUpcomingPrograms, normalizeEpgChannelKey } from '@/services/epg-service'
-import { normalizeSearchText } from '@/services/text-normalize'
-import { applyCatalogView, applyCategoryView } from '@/services/catalog-view'
-import { useCatalogView } from '@/hooks/useCatalogView'
+import { matchesSearch, normalizeSearchKey, useVisibleCatalogCategories, useVisibleCatalogItems } from '@/catalog'
 import { xtreamApi } from '@/services/xtream-api'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
@@ -29,18 +27,17 @@ export default function EPGPage() {
   const epgSourceId = useStore((s) => s.epgSourceId)
   const epgLoading = useStore((s) => s.epgLoading)
   const epgError = useStore((s) => s.epgError)
-  const channels = useStore((s) => s.channels)
-  const categories = useStore((s) => s.categories)
   const activeSourceId = useStore((s) => s.activeSourceId)
   const sources = useStore((s) => s.sources)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const setEpgData = useStore((s) => s.setEpgData)
   const setEpgLoading = useStore((s) => s.setEpgLoading)
   const setEpgError = useStore((s) => s.setEpgError)
-  const catalogView = useCatalogView()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  const visibleCategories = useVisibleCatalogCategories(activeSourceId, 'live')
+  const visibleChannels = useVisibleCatalogItems(activeSourceId, 'live', selectedCategoryId)
   const sourceEpgData = activeSourceId && epgSourceId === activeSourceId ? epgData : null
 
   const refetchEPG = useCallback(async () => {
@@ -65,40 +62,24 @@ export default function EPGPage() {
   // Live categories for filter — skip separator/decorative entries
   const liveCategories = useMemo(
     () =>
-      applyCategoryView(
-        categories.filter((c) => {
-          if (c.type !== 'live') return false
-          if (activeSourceId && c.sourceId !== activeSourceId) return false
-          // Skip separator categories (e.g. "---", "***", "===", "~~~")
-          const cleaned = c.name.replace(/[-=*~_.#|/\\► ]/g, '').trim()
-          if (cleaned.length === 0) return false
-          return true
-        }),
-        { hiddenCategoryIds: catalogView.hiddenCategoryIds }
-      ),
-    [categories, activeSourceId, catalogView]
+      visibleCategories.filter((c) => {
+        // Skip separator categories (e.g. "---", "***", "===", "~~~")
+        const cleaned = c.name.replace(/[-=*~_.#|/\\► ]/g, '').trim()
+        return cleaned.length > 0
+      }),
+    [visibleCategories]
   )
 
   // Build channel EPG list — only channels that have EPG data
   const channelEpgList = useMemo<ChannelEPG[]>(() => {
     if (!sourceEpgData) return []
     const now = Date.now()
-    const normalizedQuery = searchQuery ? normalizeSearchText(searchQuery) : ''
+    const normalizedQuery = searchQuery ? normalizeSearchKey(searchQuery) : ''
     const list: ChannelEPG[] = []
 
-    const candidates = applyCatalogView(
-      channels.filter((channel) => {
-        if (channel.type !== 'live' || !channel.epgChannelId) return false
-        if (activeSourceId && channel.sourceId !== activeSourceId) return false
-        if (selectedCategoryId && channel.categoryId !== selectedCategoryId) return false
-        const text = normalizeSearchText(channel.name)
-        if (normalizedQuery && !text.includes(normalizedQuery)) return false
-        return true
-      }),
-      catalogView
-    )
-
-    for (const channel of candidates) {
+    for (const channel of visibleChannels) {
+      if (!channel.epgChannelId) continue
+      if (normalizedQuery && !matchesSearch(channel, normalizedQuery)) continue
       const key = normalizeEpgChannelKey(channel.epgChannelId)
       const programs = key ? sourceEpgData.programs[key] : undefined
       if (!programs || programs.length === 0) continue
@@ -112,7 +93,7 @@ export default function EPGPage() {
     }
 
     return list
-  }, [channels, sourceEpgData, activeSourceId, selectedCategoryId, searchQuery, catalogView])
+  }, [visibleChannels, sourceEpgData, searchQuery])
 
   return (
     <div className="flex h-full gap-3 p-3">

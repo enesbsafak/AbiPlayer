@@ -1,4 +1,4 @@
-import { useState, useReducer, useEffect, useMemo, useRef } from 'react'
+import { useState, useReducer, useEffect, useRef } from 'react'
 import { Play, ArrowLeft } from 'lucide-react'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
@@ -15,6 +15,7 @@ import { QualityBadge } from '@/components/ui/QualityBadge'
 import { Spinner } from '@/components/ui/Spinner'
 import { inferContentQualityLabel } from '@/services/quality'
 import { toUserMessage } from '@/services/user-error'
+import { useCatalogItem, xtreamItemId } from '@/catalog'
 import type { SeriesDetail as SeriesDetailType } from '@/types/playlist'
 import type { EpisodePlaybackRequest } from '@/types/player'
 
@@ -438,15 +439,12 @@ export function SeriesDetail({
     selectedSeason,
     setSelectedSeason
   } = useSeriesDetailData({ seriesId, sourceId, initialSeasonNumber })
-  const channels = useStore((s) => s.channels)
-  const favoriteChannelId = useMemo(
-    () =>
-      channels.find(
-        (channel) =>
-          channel.type === 'series' && channel.sourceId === sourceId && channel.seriesId === seriesId
-      )?.id ?? null,
-    [channels, seriesId, sourceId]
-  )
+  // Offered for a series whose list record is in memory (the favourite keeps a
+  // snapshot of it), and always for one that already is a favourite.
+  const seriesItemId = xtreamItemId(sourceId, 'series', seriesId)
+  const isSeriesInCatalog = useCatalogItem(seriesItemId) !== undefined
+  const isSeriesFavorite = useStore((s) => s.favoriteIds.has(seriesItemId))
+  const favoriteChannelId = isSeriesInCatalog || isSeriesFavorite ? seriesItemId : null
 
   if (loading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>
   if (!detail) {

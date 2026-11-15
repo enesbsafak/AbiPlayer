@@ -51,14 +51,15 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
       setInfo(null)
       const creds = getXtreamCredentials(item.sourceId)
       let tmdbId: string | undefined
+      // List records carry no detail text; it comes from get_vod_info below.
       let baseInfo: VODInfo = {
         name: item.name,
-        plot: item.plot || '',
-        cast: item.cast || '',
-        director: item.director || '',
-        genre: item.genre || '',
-        releaseDate: item.releaseDate || '',
-        duration: item.duration || '',
+        plot: '',
+        cast: '',
+        director: '',
+        genre: '',
+        releaseDate: '',
+        duration: '',
         rating: item.rating || '',
         year: item.year || '',
         cover: item.coverUrl || item.logo || ''
@@ -71,12 +72,12 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
           tmdbId = vodInfo.info?.tmdb_id
           baseInfo = {
             name: vodInfo.info?.name || item.name,
-            plot: vodInfo.info?.plot || item.plot || '',
-            cast: vodInfo.info?.cast || item.cast || '',
-            director: vodInfo.info?.director || item.director || '',
-            genre: vodInfo.info?.genre || item.genre || '',
-            releaseDate: vodInfo.info?.release_date || item.releaseDate || '',
-            duration: vodInfo.info?.duration || item.duration || '',
+            plot: vodInfo.info?.plot || '',
+            cast: vodInfo.info?.cast || '',
+            director: vodInfo.info?.director || '',
+            genre: vodInfo.info?.genre || '',
+            releaseDate: vodInfo.info?.release_date || '',
+            duration: vodInfo.info?.duration || '',
             rating: vodInfo.info?.rating || item.rating || '',
             year: vodInfo.info?.year || item.year || '',
             cover: vodInfo.info?.movie_image || item.coverUrl || item.logo || ''

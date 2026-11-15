@@ -6,10 +6,12 @@ import { HomeSection } from '@/components/home/HomeSection'
 import { ContinueWatchingSection } from '@/components/home/ContinueWatchingSection'
 import { HomeError, HomeLoading, HomeWelcome } from '@/components/home/HomeStates'
 import { useHomeBootstrap } from '@/hooks/useHomeBootstrap'
-import { useCatalogView } from '@/hooks/useCatalogView'
 import { useOpenCatalogItem, useOpenPlayback } from '@/hooks/useOpenCatalogItem'
 import type { Channel } from '@/types/playlist'
 import { buildHomeCatalog, HOME_MAX_OTHER } from '@/components/home/home-catalog'
+import { useFavoriteChannels } from '@/components/favorites/favorite-channels'
+import { catalog, useCatalogVersion, useVisibleCatalogItems } from '@/catalog'
+import type { CatalogStatusMap } from '@/store/playlist-slice'
 import {
   indexChannelsByLegacyKey,
   legacyIndexKey,
@@ -17,10 +19,15 @@ import {
   type ContinueWatchingItem
 } from '@/services/watch-progress'
 
+/** Items the source holds in every type, before any view rule. */
+function sourceItemCount(status: CatalogStatusMap, sourceId: string | null): number {
+  if (!sourceId) return 0
+  const types = status[sourceId]
+  return (types?.live?.count ?? 0) + (types?.vod?.count ?? 0) + (types?.series?.count ?? 0)
+}
+
 export default function HomePage() {
-  const channels = useStore((s) => s.channels)
   const sources = useStore((s) => s.sources)
-  const favoriteIds = useStore((s) => s.favoriteIds)
   const isLoading = useStore((s) => s.isLoading)
   const isLoadingPlaylist = useStore((s) => s.isLoadingPlaylist)
   const activeSourceId = useStore((s) => s.activeSourceId)
@@ -39,24 +46,20 @@ export default function HomePage() {
     [openPlayback]
   )
 
-  const catalogView = useCatalogView()
+  const visibleLive = useVisibleCatalogItems(activeSourceId, 'live')
+  const visibleVod = useVisibleCatalogItems(activeSourceId, 'vod')
+  const visibleSeries = useVisibleCatalogItems(activeSourceId, 'series')
+  const totalCount = useStore((s) => sourceItemCount(s.catalogStatus, activeSourceId))
 
   const { visibleCount, hasSourceContent, recentLive, recentVod, recentSeries } = useMemo(
-    () => buildHomeCatalog(channels, activeSourceId, catalogView),
-    [channels, activeSourceId, catalogView]
+    () => buildHomeCatalog({ live: visibleLive, vod: visibleVod, series: visibleSeries, totalCount }),
+    [visibleLive, visibleVod, visibleSeries, totalCount]
   )
 
   // Favourites are an explicit user pick rather than a catalog listing, so
   // category hiding deliberately does not apply to them. Like the Favoriler
   // page this row opens, it spans every source.
-  const favChannels = useMemo(() => {
-    const fav: Channel[] = []
-    for (const channel of channels) {
-      if (fav.length >= HOME_MAX_OTHER) break
-      if (favoriteIds.has(channel.id)) fav.push(channel)
-    }
-    return fav
-  }, [channels, favoriteIds])
+  const favChannels = useFavoriteChannels(HOME_MAX_OTHER)
 
   // Like favourites, this is the viewer's own history rather than a catalog
   // listing, so category hiding deliberately does not filter it.
@@ -77,10 +80,17 @@ export default function HomePage() {
     for (const entry of watchProgress) if (!entry.target) ids.add(entry.channel.sourceId)
     return ids
   }, [watchProgress])
-  const legacyIndex = useMemo(
-    () => indexChannelsByLegacyKey(channels, legacySourceIds),
-    [channels, legacySourceIds]
-  )
+  const catalogVersion = useCatalogVersion()
+  const legacyIndex = useMemo(() => {
+    void catalogVersion
+    if (legacySourceIds.size === 0) return new Map<string, Channel>()
+    let candidates: Channel[] = []
+    // Live entries never had a legacy key worth matching.
+    for (const sourceId of legacySourceIds) {
+      candidates = candidates.concat(catalog.getItems(sourceId, 'vod'), catalog.getItems(sourceId, 'series'))
+    }
+    return indexChannelsByLegacyKey(candidates, legacySourceIds)
+  }, [catalogVersion, legacySourceIds])
   const continueWatching = useMemo(
     () =>
       selectContinueWatching(watchProgress, {

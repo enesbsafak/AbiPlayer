@@ -1,4 +1,4 @@
-import { useState, useReducer, useCallback, useMemo, useEffect, useRef } from 'react'
+import { useReducer, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { CategoryList } from '@/components/channels/CategoryList'
@@ -12,29 +12,17 @@ import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
 import { isPlayableChannel } from '@/services/playback'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
-import { useCatalogView } from '@/hooks/useCatalogView'
-import { applyCatalogView, buildCatalogRetainResetKey } from '@/services/catalog-view'
+import { buildCatalogRetainResetKey } from '@/services/catalog-view'
 import { ensureStagedSync } from '@/services/background-sync'
-import { normalizeSearchText } from '@/services/text-normalize'
-
-const loadedVodCategoryCache = new Set<string>()
-const loadedVodPreviewSourceCache = new Set<string>()
-const loadedVodFullSourceCache = new Set<string>()
-const syncingVodFullSourceCache = new Set<string>()
-
-function clearSourceCategoryCache(cache: Set<string>, sourceId: string) {
-  const prefix = `${sourceId}:`
-  for (const key of cache) {
-    if (key.startsWith(prefix)) cache.delete(key)
-  }
-}
-
-function clearSourceVodCaches(sourceId: string) {
-  clearSourceCategoryCache(loadedVodCategoryCache, sourceId)
-  loadedVodPreviewSourceCache.delete(sourceId)
-  loadedVodFullSourceCache.delete(sourceId)
-  syncingVodFullSourceCache.delete(sourceId)
-}
+import {
+  catalog,
+  filterBySearch,
+  useCatalogItem,
+  useCatalogStatus,
+  useVisibleCatalogItems,
+  xtreamCategoriesToRecords,
+  xtreamVodToRecords
+} from '@/catalog'
 
 interface VODRouteState {
   restoreSearchQuery?: string
@@ -47,22 +35,19 @@ interface LoadStatus {
   error: string | null
   foregroundMessage: string | null
   isForegroundLoading: boolean
-  isBackgroundSyncing: boolean
 }
 
 type LoadStatusAction =
   | { type: 'foregroundStart'; message: string }
   | { type: 'foregroundEnd' }
   | { type: 'failed'; message: string }
-  | { type: 'backgroundSyncing'; value: boolean }
   | { type: 'stopLoading' }
   | { type: 'reset' }
 
 const initialLoadStatus: LoadStatus = {
   error: null,
   foregroundMessage: null,
-  isForegroundLoading: false,
-  isBackgroundSyncing: false
+  isForegroundLoading: false
 }
 
 function loadStatusReducer(state: LoadStatus, action: LoadStatusAction): LoadStatus {
@@ -73,10 +58,8 @@ function loadStatusReducer(state: LoadStatus, action: LoadStatusAction): LoadSta
       return { ...state, foregroundMessage: null, isForegroundLoading: false }
     case 'failed':
       return { ...state, error: action.message }
-    case 'backgroundSyncing':
-      return { ...state, isBackgroundSyncing: action.value }
     case 'stopLoading':
-      return { ...state, foregroundMessage: null, isForegroundLoading: false, isBackgroundSyncing: false }
+      return { ...state, foregroundMessage: null, isForegroundLoading: false }
     case 'reset':
       return initialLoadStatus
     default:
@@ -132,10 +115,9 @@ function useVODPageContent() {
   const [pageState, dispatchPage] = useReducer(vodPageReducer, initialVodPageState)
   const [reloadToken, bumpReloadToken] = useReducer((value: number) => value + 1, 0)
   const [
-    { error: loadError, foregroundMessage: foregroundLoadingMessage, isForegroundLoading, isBackgroundSyncing },
+    { error: loadError, foregroundMessage: foregroundLoadingMessage, isForegroundLoading },
     dispatchLoad
   ] = useReducer(loadStatusReducer, initialLoadStatus)
-  const loadedCatsRef = useRef(loadedVodCategoryCache)
   const previousSourceIdRef = useRef<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const { searchQuery, selectedVOD, pendingRestoreVodId } = pageState
@@ -143,21 +125,18 @@ function useVODPageContent() {
     dispatchPage({ type: 'setSearchQuery', value })
   }, [])
 
-  const channels = useStore((s) => s.channels)
   const activeSourceId = useStore((s) => s.activeSourceId)
   const sources = useStore((s) => s.sources)
-  const hydratedSourceIds = useStore((s) => s.hydratedSourceIds)
-  const isSourceTypeHydrated = useStore((s) => s.isSourceTypeHydrated)
   const selectedCategoryId = useStore((s) => s.selectedCategoryId)
   const playChannel = useStore((s) => s.playChannel)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
-  const addChannels = useStore((s) => s.addChannels)
-  const addCategories = useStore((s) => s.addCategories)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const setSelectedCategory = useStore((s) => s.setSelectedCategory)
-  const categories = useStore((s) => s.categories)
   const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
-  const catalogView = useCatalogView()
+  const catalogStatus = useCatalogStatus(activeSourceId, 'vod')
+  const isCatalogComplete = catalogStatus?.complete === true
+  const isBackgroundSyncing = catalogStatus?.syncing === true
+  const categoriesLoaded = catalogStatus?.categoriesLoaded === true
 
   const source = useMemo(
     () => sources.find((item) => item.id === activeSourceId) ?? null,
@@ -174,13 +153,8 @@ function useVODPageContent() {
     () => buildCatalogRetainResetKey(activeSourceId, selectedCategoryId),
     [activeSourceId, selectedCategoryId]
   )
-  const restoredVOD = useMemo(
-    () =>
-      pendingRestoreVodId
-        ? channels.find((channel) => channel.id === pendingRestoreVodId && channel.type === 'vod') || null
-        : null,
-    [channels, pendingRestoreVodId]
-  )
+  const pendingRestoreItem = useCatalogItem(pendingRestoreVodId)
+  const restoredVOD = pendingRestoreItem?.type === 'vod' ? pendingRestoreItem : null
   const activeVOD = selectedVOD ?? restoredVOD
 
   useEffect(() => {
@@ -252,35 +226,20 @@ function useVODPageContent() {
 
   useEffect(() => {
     if (!activeSourceId) return
-    const hasChannelsForSource = channels.some(
-      (channel) => channel.sourceId === activeSourceId && channel.type === 'vod'
-    )
-    if (!hasChannelsForSource) clearSourceVodCaches(activeSourceId)
-  }, [channels, activeSourceId])
-
-  useEffect(() => {
-    if (!activeSourceId) return
-    if (isSourceTypeHydrated(activeSourceId, 'vod')) {
-      loadedVodFullSourceCache.add(activeSourceId)
-      loadedVodPreviewSourceCache.add(activeSourceId)
-    }
-  }, [activeSourceId, hydratedSourceIds, isSourceTypeHydrated])
-
-  useEffect(() => {
-    if (!activeSourceId) return
     if (!source || source.type !== 'xtream') return
-    if (categories.some((c) => c.type === 'vod' && c.sourceId === activeSourceId)) return
+    if (categoriesLoaded) return
 
     const creds = getXtreamCredentials(activeSourceId)
     if (!creds) return
 
     let cancelled = false
     const controller = new AbortController()
+    const token = catalog.beginGeneration(activeSourceId, 'vod')
     const load = async () => {
       try {
         const cats = await xtreamApi.getVodCategories(creds, { signal: controller.signal })
         if (cancelled) return
-        addCategories(xtreamApi.categoriesToApp(cats, activeSourceId, 'vod'))
+        catalog.commit({ token, mode: 'partial', categories: xtreamCategoriesToRecords(cats, activeSourceId, 'vod') })
       } catch (err) {
         if (cancelled) return
         console.error('Failed to load VOD categories:', err)
@@ -292,7 +251,7 @@ function useVODPageContent() {
       cancelled = true
       controller.abort()
     }
-  }, [activeSourceId, source, categories, getXtreamCredentials, addCategories])
+  }, [activeSourceId, source, categoriesLoaded, getXtreamCredentials])
 
   useEffect(() => {
     if (!activeSourceId || !rawCategoryId) return
@@ -301,39 +260,31 @@ function useVODPageContent() {
     const creds = getXtreamCredentials(activeSourceId)
     if (!creds) return
 
-    const cacheKey = `${activeSourceId}:${rawCategoryId}`
-    if (loadedCatsRef.current.has(cacheKey)) return
-
-    const hasCategoryInMemory = channels.some(
-      (channel) =>
-        channel.sourceId === activeSourceId &&
-        channel.type === 'vod' &&
-        channel.categoryId === `${activeSourceId}_vod_${rawCategoryId}`
-    )
-
-    if (hasCategoryInMemory) {
-      loadedCatsRef.current.add(cacheKey)
-      return
-    }
+    const categoryId = `${activeSourceId}_vod_${rawCategoryId}`
+    // In memory as a whole: the complete list, or this category fetched before.
+    if (catalog.isCategoryLoaded(activeSourceId, 'vod', categoryId)) return
 
     let cancelled = false
+    let foreground = false
     const controller = new AbortController()
+    const token = catalog.beginGeneration(activeSourceId, 'vod')
     const load = async () => {
       dispatchLoad({ type: 'foregroundStart', message: 'Seçili kategori yükleniyor...' })
+      foreground = true
 
       try {
         const streams = await xtreamApi.getVodStreams(creds, rawCategoryId, {
           signal: controller.signal
         })
         if (cancelled) return
-        addChannels(xtreamApi.vodStreamsToChannels(streams, creds, activeSourceId))
-        loadedCatsRef.current.add(cacheKey)
+        catalog.commit({ token, mode: 'partial', items: xtreamVodToRecords(streams, activeSourceId), categoryId })
       } catch (err) {
         if (cancelled) return
         console.error('Failed to load VOD:', err)
         dispatchLoad({ type: 'failed', message: err instanceof Error ? err.message : 'Film içerikleri yüklenemedi' })
       } finally {
         if (!cancelled) {
+          foreground = false
           dispatchLoad({ type: 'foregroundEnd' })
         }
       }
@@ -343,17 +294,10 @@ function useVODPageContent() {
     return () => {
       cancelled = true
       controller.abort()
+      // Ended here, before a following run can start a load of its own.
+      if (foreground) dispatchLoad({ type: 'foregroundEnd' })
     }
-  }, [
-    activeSourceId,
-    rawCategoryId,
-    source,
-    channels,
-    getXtreamCredentials,
-    addChannels,
-    isSourceTypeHydrated,
-    reloadToken
-  ])
+  }, [activeSourceId, rawCategoryId, source, getXtreamCredentials, reloadToken])
 
   useEffect(() => {
     if (!activeSourceId || rawCategoryId) return
@@ -363,29 +307,23 @@ function useVODPageContent() {
     if (!creds) return
 
     let cancelled = false
+    let foreground = false
     const controller = new AbortController()
 
     const syncSource = async () => {
-      if (isSourceTypeHydrated(activeSourceId, 'vod')) {
-        loadedVodFullSourceCache.add(activeSourceId)
-        loadedVodPreviewSourceCache.add(activeSourceId)
-        return
-      }
+      if (catalog.getStatus(activeSourceId, 'vod')?.complete) return
 
-      const hasSourceItems = channels.some(
-        (channel) => channel.sourceId === activeSourceId && channel.type === 'vod'
-      )
-
-      if (!loadedVodPreviewSourceCache.has(activeSourceId) && !hasSourceItems) {
+      if (!catalog.getStatus(activeSourceId, 'vod')?.loaded) {
         dispatchLoad({ type: 'foregroundStart', message: 'Filmler hızlı ön izleme listesiyle açılıyor...' })
+        foreground = true
+        const token = catalog.beginGeneration(activeSourceId, 'vod')
 
         try {
           const previewStreams = await xtreamApi.getVodPreviewStreams(creds, 500, {
             signal: controller.signal
           })
           if (cancelled) return
-          addChannels(xtreamApi.vodStreamsToChannels(previewStreams, creds, activeSourceId))
-          loadedVodPreviewSourceCache.add(activeSourceId)
+          catalog.commit({ token, mode: 'partial', items: xtreamVodToRecords(previewStreams, activeSourceId) })
         } catch (err) {
           if (cancelled) return
           console.error('Failed to load VOD preview:', err)
@@ -393,71 +331,34 @@ function useVODPageContent() {
           return
         } finally {
           if (!cancelled) {
+            foreground = false
             dispatchLoad({ type: 'foregroundEnd' })
           }
         }
-      } else if (hasSourceItems) {
-        loadedVodPreviewSourceCache.add(activeSourceId)
       }
 
-      if (loadedVodFullSourceCache.has(activeSourceId) || syncingVodFullSourceCache.has(activeSourceId)) {
-        return
-      }
+      // Already running: started here before, on another page or by home.
+      if (catalog.getStatus(activeSourceId, 'vod')?.syncing) return
 
-      if (!cancelled) dispatchLoad({ type: 'backgroundSyncing', value: true })
-      syncingVodFullSourceCache.add(activeSourceId)
       void ensureStagedSync(activeSourceId, 'vod', creds)
-        .then(() => {
-          if (useStore.getState().isSourceTypeHydrated(activeSourceId, 'vod')) {
-            loadedVodFullSourceCache.add(activeSourceId)
-          }
-        })
-        .finally(() => {
-          syncingVodFullSourceCache.delete(activeSourceId)
-          if (!cancelled) dispatchLoad({ type: 'backgroundSyncing', value: false })
-        })
-        .catch(() => undefined)
     }
 
     void syncSource()
     return () => {
       cancelled = true
       controller.abort()
+      if (foreground) dispatchLoad({ type: 'foregroundEnd' })
     }
-  }, [
-    activeSourceId,
-    rawCategoryId,
-    source,
-    channels,
-    hydratedSourceIds,
-    getXtreamCredentials,
-    addChannels,
-    isSourceTypeHydrated,
-    reloadToken
-  ])
+  }, [activeSourceId, rawCategoryId, source, isCatalogComplete, getXtreamCredentials, reloadToken])
 
-  const filtered = useMemo(() => {
-    let list = channels.filter((c) => c.type === 'vod')
-
-    if (activeSourceId) {
-      list = list.filter((c) => c.sourceId === activeSourceId)
-    }
-    if (selectedCategoryId) {
-      list = list.filter((c) => c.categoryId === selectedCategoryId)
-    }
-    if (searchQuery) {
-      const q = normalizeSearchText(searchQuery)
-      list = list.filter((c) => normalizeSearchText(c.name).includes(q))
-    }
-
-    return applyCatalogView(list, catalogView)
-  }, [channels, activeSourceId, selectedCategoryId, searchQuery, catalogView])
+  const visibleItems = useVisibleCatalogItems(activeSourceId, 'vod', selectedCategoryId)
+  const filtered = useMemo(() => filterBySearch(visibleItems, searchQuery), [visibleItems, searchQuery])
   const displayedItems = useRetainedListWhileLoading(filtered, isForegroundLoading, retainResetKey)
   const isPreviewMode =
     !rawCategoryId &&
     source?.type === 'xtream' &&
     !!activeSourceId &&
-    !loadedVodFullSourceCache.has(activeSourceId)
+    !isCatalogComplete
   const showBlockingLoader = isForegroundLoading && displayedItems.length === 0
   const showInlineLoader = isForegroundLoading && displayedItems.length > 0
 
@@ -536,14 +437,6 @@ function useVODPageContent() {
               size="sm"
               variant="secondary"
               onClick={() => {
-                if (activeSourceId) {
-                  clearSourceVodCaches(activeSourceId)
-                } else {
-                  loadedCatsRef.current.clear()
-                  loadedVodPreviewSourceCache.clear()
-                  loadedVodFullSourceCache.clear()
-                  syncingVodFullSourceCache.clear()
-                }
                 dispatchLoad({ type: 'stopLoading' })
                 bumpReloadToken()
               }}

@@ -4,7 +4,7 @@ import { VODCard } from './VODCard'
 import type { Channel } from '@/types/playlist'
 
 interface VODGridProps {
-  items: Channel[]
+  items: readonly Channel[]
   onPlay: (item: Channel) => void
 }
 

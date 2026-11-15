@@ -1,29 +1,41 @@
 import { useMemo, useRef, useEffect, useCallback, useState } from 'react'
 import { X, Play, Radio, ChevronDown, Folder } from 'lucide-react'
 import { useStore } from '@/store'
-import { isPlayableChannel } from '@/services/playback'
+import { isPlayableChannel, targetFromChannel } from '@/services/playback'
 import { mpvSetVideoMargin } from '@/services/platform'
 import { ensureFullSync } from '@/services/background-sync'
-import { applyCatalogView, applyCategoryView } from '@/services/catalog-view'
-import { useCatalogView } from '@/hooks/useCatalogView'
+import { useCatalogCategories, useVisibleCatalogCategories, useVisibleCatalogItems } from '@/catalog'
+import { mediaKey } from '../../../../shared/playback'
 import { LazyImage } from '@/components/ui/LazyImage'
 import { ClampText } from '@/components/ui'
 import type { Channel } from '@/types/playlist'
 
 const SIDEBAR_WIDTH = 288
 
+function channelMediaKey(channel: Channel): string | null {
+  const target = targetFromChannel(channel)
+  return target ? mediaKey(target) : null
+}
+
+/** Whether `channel` is what is playing: same media key, whatever its URL. */
+export function isPlayingItem(currentMediaKey: string | null | undefined, channel: Channel): boolean {
+  return !!currentMediaKey && channelMediaKey(channel) === currentMediaKey
+}
+
 export function PlayerSidebar() {
   const currentChannel = useStore((s) => s.currentChannel)
-  const channels = useStore((s) => s.channels)
-  const categories = useStore((s) => s.categories)
   const isPlayerSidebarOpen = useStore((s) => s.isPlayerSidebarOpen)
   const setPlayerSidebarOpen = useStore((s) => s.setPlayerSidebarOpen)
   const playbackEngine = useStore((s) => s.playbackEngine)
   const playChannel = useStore((s) => s.playChannel)
-  const hydratedSourceIds = useStore((s) => s.hydratedSourceIds)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const storeSelectedCategoryId = useStore((s) => s.selectedCategoryId)
-  const catalogView = useCatalogView()
+  const sourceId = currentChannel?.sourceId ?? null
+  const type = currentChannel?.type ?? 'live'
+  const isTypeComplete = useStore((s) =>
+    sourceId ? s.catalogStatus[sourceId]?.[type]?.complete === true : false
+  )
+  const categories = useCatalogCategories(sourceId, type)
   const activeRef = useRef<HTMLButtonElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const isMpv = playbackEngine === 'mpv'
@@ -73,15 +85,7 @@ export function PlayerSidebar() {
   }, [isCategoryOpen])
 
   // Available categories for this source + type
-  const availableCategories = useMemo(() => {
-    if (!currentChannel) return []
-    return applyCategoryView(
-      categories.filter(
-        (c) => c.type === currentChannel.type && c.sourceId === currentChannel.sourceId
-      ),
-      { hiddenCategoryIds: catalogView.hiddenCategoryIds }
-    )
-  }, [categories, currentChannel, catalogView])
+  const availableCategories = useVisibleCatalogCategories(sourceId, type)
 
   // Current category label
   const activeCategoryLabel = useMemo(() => {
@@ -91,29 +95,21 @@ export function PlayerSidebar() {
   }, [selectedCategoryId, availableCategories])
 
   // Filtered channels
-  const sidebarChannels = useMemo(() => {
-    if (!currentChannel) return []
-    let list = channels.filter(
-      (ch) =>
-        ch.type === currentChannel.type &&
-        ch.sourceId === currentChannel.sourceId &&
-        isPlayableChannel(ch)
-    )
-    if (selectedCategoryId) {
-      list = list.filter((ch) => ch.categoryId === selectedCategoryId)
-    }
-    return applyCatalogView(list, catalogView)
-  }, [channels, currentChannel, selectedCategoryId, catalogView])
+  const visibleChannels = useVisibleCatalogItems(sourceId, type, selectedCategoryId)
+  const sidebarChannels = useMemo(
+    () => (currentChannel ? visibleChannels.filter(isPlayableChannel) : []),
+    [visibleChannels, currentChannel]
+  )
+  const currentMediaKey = useStore((s) => s.currentPlayback?.mediaKey ?? null)
 
   // Ensure full channel list is available when sidebar opens
   useEffect(() => {
-    if (!isPlayerSidebarOpen || !currentChannel) return
-    const sourceId = currentChannel.sourceId
-    if (hydratedSourceIds[sourceId]) return
+    if (!isPlayerSidebarOpen || !sourceId) return
+    if (isTypeComplete) return
     const creds = getXtreamCredentials(sourceId)
     if (!creds) return
-    ensureFullSync(sourceId, currentChannel.type, creds)
-  }, [isPlayerSidebarOpen, currentChannel, hydratedSourceIds, getXtreamCredentials])
+    void ensureFullSync(sourceId, type, creds)
+  }, [isPlayerSidebarOpen, sourceId, type, isTypeComplete, getXtreamCredentials])
 
   // MPV video alignment
   useEffect(() => {
@@ -136,11 +132,11 @@ export function PlayerSidebar() {
 
   const handleSelect = useCallback(
     (ch: Channel) => {
-      const { currentChannel: playing, playerError, reloadPlayback } = useStore.getState()
+      const { currentPlayback, playerError, reloadPlayback } = useStore.getState()
       // `playChannel` on what is already playing wipes its track state without
       // reloading anything. A broken stream gets a real reload; a healthy one
-      // is left alone.
-      if (playing && playing.id === ch.id && playing.streamUrl === ch.streamUrl) {
+      // is left alone. Identity is the media key, never the URL.
+      if (isPlayingItem(currentPlayback?.mediaKey, ch)) {
         if (playerError) reloadPlayback()
         return
       }
@@ -244,7 +240,8 @@ export function PlayerSidebar() {
           </div>
         )}
         {sidebarChannels.map((ch) => {
-          const isActive = ch.id === currentChannel.id
+          // The id narrows it to one row cheaply; the media key decides.
+          const isActive = ch.id === currentChannel.id && isPlayingItem(currentMediaKey, ch)
           const artwork = ch.logo || ch.coverUrl
           return (
             <button

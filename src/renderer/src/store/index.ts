@@ -5,7 +5,12 @@ import { createAuthSlice, type AuthSlice } from './auth-slice'
 import { createPlaylistSlice, type PlaylistSlice } from './playlist-slice'
 import { createPlayerSlice, type PlayerSlice } from './player-slice'
 import { createEpgSlice, type EpgSlice } from './epg-slice'
-import { createFavoritesSlice, type FavoritesSlice } from './favorites-slice'
+import {
+  createFavoritesSlice,
+  sanitizeFavoriteSnapshot,
+  type FavoriteSnapshot,
+  type FavoritesSlice
+} from './favorites-slice'
 import { createNavigationSlice, type NavigationSlice } from './navigation-slice'
 import { createWatchProgressSlice, type WatchProgressSlice } from './watch-progress-slice'
 import { createPersistController, type PersistBackend, type SideStorage } from './persistence'
@@ -34,6 +39,8 @@ export interface PersistedStoreState {
   volume: number
   isMuted: boolean
   favoriteIds: string[]
+  /** One per favourite id, so favourites render before (or without) their catalog. */
+  favoriteSnapshots: FavoriteSnapshot[]
   hiddenCategoryIds: string[]
   watchProgress: WatchProgressEntry[]
 }
@@ -129,6 +136,7 @@ export function createPartialize(): (state: AppStore) => PersistedStoreState {
       state.volume,
       state.isMuted,
       state.favoriteIds,
+      state.favoriteSnapshots,
       state.hiddenCategoryIds,
       state.watchProgress
     ]
@@ -146,6 +154,9 @@ export function createPartialize(): (state: AppStore) => PersistedStoreState {
       volume: state.volume,
       isMuted: state.isMuted,
       favoriteIds: Array.from(state.favoriteIds),
+      favoriteSnapshots: Array.from(state.favoriteIds, (id) => state.favoriteSnapshots[id]).filter(
+        (snapshot): snapshot is FavoriteSnapshot => !!snapshot
+      ),
       hiddenCategoryIds: Array.from(state.hiddenCategoryIds),
       watchProgress: state.watchProgress
     }
@@ -173,6 +184,14 @@ export function mergePersistedState(persisted: unknown, current: AppStore): AppS
   const favoriteIds = new Set<string>()
   for (const item of rawFavoriteIds) {
     if (typeof item === 'string') favoriteIds.add(item)
+  }
+
+  const favoriteSnapshots: Record<string, FavoriteSnapshot> = {}
+  if (Array.isArray(p.favoriteSnapshots)) {
+    for (const raw of p.favoriteSnapshots) {
+      const snapshot = sanitizeFavoriteSnapshot(raw)
+      if (snapshot && favoriteIds.has(snapshot.id)) favoriteSnapshots[snapshot.id] = snapshot
+    }
   }
 
   const rawHiddenCategoryIds = Array.isArray(p.hiddenCategoryIds) ? p.hiddenCategoryIds : []
@@ -209,6 +228,7 @@ export function mergePersistedState(persisted: unknown, current: AppStore): AppS
     volume,
     isMuted,
     favoriteIds,
+    favoriteSnapshots,
     hiddenCategoryIds,
     watchProgress: sanitizeProgressEntries(p.watchProgress),
     credentialsHydrated
