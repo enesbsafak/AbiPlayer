@@ -16,7 +16,7 @@ Karar noktalarında plandaki öneriler uygulanıyor: dürüst mini oynatıcı ka
 | B | B4 Servisler ve ayrıştırıcılar | F1-12, F1-13, F1-26, F1-28..30, F1-32, F1-37, F1-38, F1-41, F1-53, F1-55, F4-09 | Birleştirildi |
 | B | B5 Arayüz | F1-21, F1-23..25, F1-33, F1-45, F1-46, F1-48, F1-50..52, F1-54 | Birleştirildi |
 | C | C0 Ortak sözleşmeler | `PlaybackTarget`, `playbackId`, kalıcı durum geçiş çerçevesi, uçucu oynatma durumu, F1-15, F4-10 | Birleştirildi |
-| C | C1 Oynatıcı mimarisi | F2-06..10, F2-12 | Sürüyor |
+| C | C1 Oynatıcı mimarisi | F2-06..10, F2-12 | Birleştirildi |
 | C | C2a Katalog çekirdeği | F4-01, F4-02, F4-06, F4-10, F1-15, F1-31, F1-42..44, F1-47, F1-49, F1-56 | Sürüyor |
 | C | C2b Ortak katalog sayfaları | F4-03, F4-07, F1-20, F1-22, F1-40 | Bekliyor |
 | C | C2c Worker, önbellek, EPG | F4-04, F4-05, F4-08, F1-34 | Bekliyor |
@@ -50,3 +50,4 @@ Karar noktalarında plandaki öneriler uygulanıyor: dürüst mini oynatıcı ka
 - 2026-11-15: A2 birleştirildi: sahte Xtream sağlayıcı, Playwright ile gerçek uygulamayı süren 7 senaryo dosyası, zaman damgaları, taban ölçüm raporu (docs/olcumler/2026-11-15-taban.md), paket duman testi. Testler ekran dışında ve sessiz çalışıyor. Plan K7 düştü: CORS başlığı göndermeyen panel sorunsuz çalışıyor.
 - 2026-11-15: E1 birleştirildi. Uçtan uca paket birleştirilmiş kodda geçiyor: 19 testten 16'sı geçiyor, 3'ü hâlâ açık hata olarak işaretli (F1-20, F1-42, F1-43; C2 paketlerinde). Gerçek uygulamada ve gerçek mpv ile doğrulananlar: F1-01, F1-02, F1-03, F1-05, F1-06, F1-08 (klavye yarısı), F1-09, F1-21, F1-23, F1-29, F1-37, F1-41, F1-45, F1-55 ve soğuk başlangıçta durdurma.
 - Yeni bulgu: oynatıcıdan "Geri dön" veya Escape dışında bir yolla çıkılınca (ör. Ctrl+K ile arama) oynatma askıya alınıyor ama mini kart görünmüyor. Düzeltme: kart `isPlaybackSuspended` iken gösterilsin (AppShell.tsx).
+- 2026-11-15: C1 birleştirildi: mpv durumu artık olayla geliyor (anket yok), mpv açılışta ön ısıtılıyor, usePlayer 1160 satırdan 505'e indi ve modüllere bölündü, iki motor tek yeniden bağlanma politikası ve tek parça uzlaştırıcı kullanıyor. 726 birim testi ve 19 uçtan uca test (gerçek mpv) geçiyor. Mini kart artık her çıkış yolunda görünüyor.
