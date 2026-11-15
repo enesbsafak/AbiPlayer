@@ -1,39 +1,65 @@
 import { describe, expect, it } from 'vitest'
-import { resolveUnpackedBinary } from './unpacked-binary'
+import { resolveMediaTools, type MediaToolEnvironment } from './unpacked-binary'
 
-describe('resolveUnpackedBinary', () => {
-  // Packaged builds resolved these paths into app.asar, which is not a real
-  // directory — spawn failed with ENOENT and embedded subtitle probing and
-  // extraction silently never worked outside dev.
-  it('redirects a Windows in-asar path to the unpacked copy', () => {
+function env(overrides: Partial<MediaToolEnvironment>, existing: string[]): MediaToolEnvironment {
+  const present = new Set(existing)
+  return {
+    platform: 'win32',
+    isPackaged: true,
+    resourcesPath: 'C:\\App\\resources',
+    appDir: 'C:\\repo\\out\\main',
+    cwd: 'C:\\repo',
+    exists: (candidate) => present.has(candidate),
+    ...overrides
+  }
+}
+
+describe('resolveMediaTools', () => {
+  it('uses the copy shipped as an extra resource in a packaged build', () => {
     expect(
-      resolveUnpackedBinary(
-        'C:\\app\\resources\\app.asar\\node_modules\\ffprobe-static\\bin\\win32\\x64\\ffprobe.exe'
-      )
-    ).toBe(
-      'C:\\app\\resources\\app.asar.unpacked\\node_modules\\ffprobe-static\\bin\\win32\\x64\\ffprobe.exe'
+      resolveMediaTools(env({}, ['C:\\App\\resources\\ffmpeg\\ffmpeg.exe', 'C:\\App\\resources\\ffmpeg\\ffprobe.exe']))
+    ).toEqual({
+      ffmpeg: 'C:\\App\\resources\\ffmpeg\\ffmpeg.exe',
+      ffprobe: 'C:\\App\\resources\\ffmpeg\\ffprobe.exe'
+    })
+  })
+
+  it('never falls back to the checkout or the working directory when packaged', () => {
+    const resolved = resolveMediaTools(
+      env({ cwd: 'C:\\Users\\me\\Downloads' }, [
+        'C:\\repo\\resources\\ffmpeg\\win32-x64\\ffmpeg.exe',
+        'C:\\Users\\me\\Downloads\\resources\\ffmpeg\\win32-x64\\ffprobe.exe'
+      ])
     )
+    expect(resolved).toEqual({ ffmpeg: null, ffprobe: null })
   })
 
-  it('redirects a POSIX in-asar path to the unpacked copy', () => {
+  it('uses the prepared checkout copy in development', () => {
+    const dev = { isPackaged: false, resourcesPath: 'C:\\repo\\node_modules\\electron\\dist\\resources' }
     expect(
-      resolveUnpackedBinary('/opt/app/resources/app.asar/node_modules/ffmpeg-static/ffmpeg')
-    ).toBe('/opt/app/resources/app.asar.unpacked/node_modules/ffmpeg-static/ffmpeg')
+      resolveMediaTools(
+        env(dev, [
+          'C:\\repo\\resources\\ffmpeg\\win32-x64\\ffmpeg.exe',
+          'C:\\repo\\resources\\ffmpeg\\win32-x64\\ffprobe.exe'
+        ])
+      )
+    ).toEqual({
+      ffmpeg: 'C:\\repo\\resources\\ffmpeg\\win32-x64\\ffmpeg.exe',
+      ffprobe: 'C:\\repo\\resources\\ffmpeg\\win32-x64\\ffprobe.exe'
+    })
   })
 
-  it('leaves a dev path untouched', () => {
-    const devPath = 'C:\\repo\\node_modules\\ffmpeg-static\\ffmpeg.exe'
-    expect(resolveUnpackedBinary(devPath)).toBe(devPath)
+  it('reports a missing binary as null instead of guessing', () => {
+    expect(resolveMediaTools(env({}, ['C:\\App\\resources\\ffmpeg\\ffmpeg.exe']))).toEqual({
+      ffmpeg: 'C:\\App\\resources\\ffmpeg\\ffmpeg.exe',
+      ffprobe: null
+    })
   })
 
-  it('does not rewrite a sibling directory that merely starts with app.asar', () => {
-    // Rewriting `app.asar.backup` would point at something that does not exist.
-    const path = 'C:\\repo\\app.asar.backup\\ffmpeg.exe'
-    expect(resolveUnpackedBinary(path)).toBe(path)
-  })
-
-  it('returns null for a missing binary path', () => {
-    expect(resolveUnpackedBinary(null)).toBeNull()
-    expect(resolveUnpackedBinary(undefined)).toBeNull()
+  it('ships nothing outside Windows', () => {
+    expect(resolveMediaTools(env({ platform: 'linux' }, ['C:\\App\\resources\\ffmpeg\\ffmpeg.exe']))).toEqual({
+      ffmpeg: null,
+      ffprobe: null
+    })
   })
 })

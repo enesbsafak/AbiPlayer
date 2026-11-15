@@ -1,15 +1,47 @@
+import { win32 } from 'path'
+
+export interface MediaToolEnvironment {
+  platform: NodeJS.Platform
+  /** `app.isPackaged`: false for `electron-vite dev` and the test harness. */
+  isPackaged: boolean
+  /** `process.resourcesPath`; undefined outside Electron. */
+  resourcesPath?: string
+  /** Directory of the main-process bundle (`out/main` in dev). */
+  appDir: string
+  cwd: string
+  exists: (candidate: string) => boolean
+}
+
+export interface MediaToolPaths {
+  ffmpeg: string | null
+  ffprobe: string | null
+}
+
+/** Where `npm run prepare:ffmpeg:win` installs the pinned build in a checkout. */
+const CHECKOUT_DIR = ['resources', 'ffmpeg', 'win32-x64']
+
+function candidates(env: MediaToolEnvironment, executable: string): string[] {
+  // electron-builder copies resources/ffmpeg/win32-x64 to <resources>/ffmpeg.
+  const shipped = env.resourcesPath ? [win32.join(env.resourcesPath, 'ffmpeg', executable)] : []
+  if (env.isPackaged) return shipped
+  return [
+    win32.join(env.appDir, '..', '..', ...CHECKOUT_DIR, executable),
+    win32.join(env.cwd, ...CHECKOUT_DIR, executable)
+  ]
+}
+
 /**
- * electron-builder pulls executables out of app.asar so they can actually run,
- * but the packages that own them keep reporting their original in-asar path.
- * An asar archive is not a real directory, so spawning that path fails with
- * ENOENT.
+ * Locates the pinned ffmpeg and ffprobe (scripts/ffmpeg-pin.json) as absolute
+ * paths, or null when they are not there.
  *
- * Only bites in packaged builds; in dev the path is a plain directory and this
- * is a no-op.
+ * Packaged builds only accept the copy shipped next to the app; nothing from
+ * the environment, the working directory or PATH can redirect them. Development
+ * builds use the copy the prepare script installed in the checkout. Only
+ * Windows ships these binaries.
  */
-export function resolveUnpackedBinary(binaryPath: string | null | undefined): string | null {
-  if (!binaryPath) return null
-  // The trailing separator matters: without it a sibling directory such as
-  // `app.asar.backup` would be rewritten into a path that does not exist.
-  return binaryPath.replace(/app\.asar([\\/])/, 'app.asar.unpacked$1')
+export function resolveMediaTools(env: MediaToolEnvironment): MediaToolPaths {
+  if (env.platform !== 'win32') return { ffmpeg: null, ffprobe: null }
+  const find = (executable: string): string | null =>
+    candidates(env, executable).find((candidate) => env.exists(candidate)) ?? null
+  return { ffmpeg: find('ffmpeg.exe'), ffprobe: find('ffprobe.exe') }
 }

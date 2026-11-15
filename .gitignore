@@ -6,6 +6,7 @@ out/
 .env
 .env.*
 resources/mpv/
+resources/ffmpeg/
 .agents/
 .claude/
 .worktrees/

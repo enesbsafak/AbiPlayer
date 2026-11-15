@@ -4,8 +4,8 @@
 //   node e2e/smoke/packaged-smoke.ts <dir>    checks another unpacked build
 //
 // 1. mpv, ffmpeg and ffprobe exist where the packaged app resolves them
-//    (mpv-controller.ts resolveBundledMpvPath; ipc-handlers.ts via
-//    resolveUnpackedBinary) and each starts and prints its version.
+//    (mpv/binary.ts resolveMpvBinary; unpacked-binary.ts resolveMediaTools)
+//    and each starts and prints its version.
 // 2. Nothing from the worktrees, e2e/, docs/, scripts/, src/ or test output
 //    is inside the package.
 // 3. Prints the package size.
@@ -76,8 +76,8 @@ check(existsSync(archive), 'resources/app.asar')
 // Where the packaged app looks for each binary.
 const binaries = [
   { name: 'mpv', path: join(resources, 'mpv', 'mpv.exe'), args: ['--version'], expect: /^mpv /i },
-  { name: 'ffmpeg', path: join(resources, 'app.asar.unpacked', 'node_modules', 'ffmpeg-static', 'ffmpeg.exe'), args: ['-hide_banner', '-version'], expect: /^ffmpeg version/i },
-  { name: 'ffprobe', path: join(resources, 'app.asar.unpacked', 'node_modules', 'ffprobe-static', 'bin', 'win32', 'x64', 'ffprobe.exe'), args: ['-hide_banner', '-version'], expect: /^ffprobe version/i }
+  { name: 'ffmpeg', path: join(resources, 'ffmpeg', 'ffmpeg.exe'), args: ['-hide_banner', '-version'], expect: /^ffmpeg version/i },
+  { name: 'ffprobe', path: join(resources, 'ffmpeg', 'ffprobe.exe'), args: ['-hide_banner', '-version'], expect: /^ffprobe version/i }
 ]
 for (const binary of binaries) {
   const present = existsSync(binary.path)
