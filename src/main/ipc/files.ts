@@ -1,5 +1,5 @@
 import { readFile as fsReadFile, stat as fsStat } from 'fs/promises'
-import { basename, resolve } from 'path'
+import { basename, dirname, resolve } from 'path'
 import type { BrowserWindow, OpenDialogOptions, OpenDialogReturnValue } from 'electron'
 import { MAX_LOCAL_FILE_SIZE_BYTES, type FileFilter, type PickedFile } from '../../shared/ipc/contract'
 import { writeFileAtomic } from './atomic-file'
@@ -177,6 +177,13 @@ export class PickedFileRegistry {
     return this.sessionKeys.has(this.key(filePath))
   }
 
+  /** Folder of the newest pick, remembered across restarts; null before the first. */
+  async lastPickedDirectory(): Promise<string | null> {
+    await this.ensureLoaded()
+    const [latest] = this.remembered
+    return latest === undefined ? null : dirname(latest)
+  }
+
   async wasEverPicked(filePath: string): Promise<boolean> {
     if (this.wasPickedThisSession(filePath)) return true
     await this.ensureLoaded()
@@ -196,18 +203,25 @@ export const NOT_PICKED_MESSAGE = 'Bu dosyayı okuma izni yok. Dosyayı yeniden 
 
 export function registerFileHandlers(registrar: IpcRegistrar, deps: FileHandlerDeps): void {
   const readText = deps.readTextFile ?? ((filePath: string) => readLocalTextFile(filePath))
+  // Since Electron 43 the dialog opens in Downloads unless told otherwise.
+  // The folder of this session's last choice (even one that could not be
+  // read), else of the newest remembered pick.
+  let lastDirectory: string | null = null
 
   registrar.handle('pick-file-content', async (event, filters): Promise<PickedFile | null> => {
     const parsedFilters = parseFileFilters(filters)
     const window = deps.getWindow(event.sender)
     if (!window) return null
 
+    const defaultPath = lastDirectory ?? (await deps.registry.lastPickedDirectory())
     const result = await deps.showOpenDialog(window, {
       properties: ['openFile'],
-      filters: parsedFilters
+      filters: parsedFilters,
+      ...(defaultPath ? { defaultPath } : {})
     })
     const [filePath] = result.filePaths
     if (result.canceled || filePath === undefined) return null
+    lastDirectory = dirname(filePath)
 
     const content = await readText(filePath)
     await deps.registry.remember(filePath)
