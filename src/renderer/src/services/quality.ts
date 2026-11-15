@@ -82,12 +82,11 @@ export function inferContentQualityLabel(
 ): string | null {
   if (!source) return null
 
-  // Only use name and containerExtension — group/categoryName often contain
-  // marketing labels like "2K" or "HD" that don't reflect actual resolution
-  const haystack = normalizeTextParts([
-    getQualityTitle(source),
-    source.containerExtension
-  ])
+  // Only the title: group/categoryName often carry marketing labels like "2K"
+  // or "HD" that don't reflect actual resolution, and the container extension
+  // must stay out because "ts" (MPEG-TS) is also the telesync marker, which
+  // badged every .ts film as CAM.
+  const haystack = normalizeTextParts([getQualityTitle(source)])
 
   if (!haystack) return null
 

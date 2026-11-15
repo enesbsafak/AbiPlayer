@@ -21,6 +21,12 @@ describe('normalizeSearchText', () => {
     expect(normalizeSearchText('İstanbul')).toBe('istanbul')
   })
 
+  it('returns an empty string for a missing or non-string name', () => {
+    expect(normalizeSearchText(undefined)).toBe('')
+    expect(normalizeSearchText(null)).toBe('')
+    expect(normalizeSearchText(42 as unknown as string)).toBe('')
+  })
+
   it('keeps other Turkish characters intact', () => {
     expect(normalizeSearchText('YILDIZ TV')).toBe('yildiz tv') // Y I L D I Z → y ı l d ı z → fold → y i l d i z
     expect(normalizeSearchText('Güneş')).toBe('güneş')

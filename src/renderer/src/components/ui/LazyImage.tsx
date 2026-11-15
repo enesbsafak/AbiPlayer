@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ImageOff } from 'lucide-react'
+import { normalizeImageSrc } from '@/services/image-url'
+import { findScrollRoot } from '@/services/scroll-root'
 
 interface LazyImageProps {
   src?: string
@@ -46,35 +48,6 @@ function writeCachedImageStatus(
   })
 }
 
-function findScrollParent(el: HTMLElement | null): HTMLElement | null {
-  let current = el?.parentElement ?? null
-  while (current) {
-    const style = window.getComputedStyle(current)
-    const overflowY = style.overflowY || style.overflow
-    if (/\b(auto|scroll)\b/.test(overflowY)) return current
-    current = current.parentElement
-  }
-  return null
-}
-
-function withCacheBust(src: string, attempt: number): string {
-  const separator = src.includes('?') ? '&' : '?'
-  return `${src}${separator}cb=${Date.now()}_${attempt}`
-}
-
-function normalizeImageSrc(src?: string): string | undefined {
-  const trimmed = src?.trim()
-  if (!trimmed) return undefined
-
-  const normalized = trimmed.startsWith('//') ? `https:${trimmed}` : trimmed
-  const fixedSlashes = normalized.replace(/\\/g, '/')
-
-  try {
-    return encodeURI(fixedSlashes)
-  } catch {
-    return fixedSlashes
-  }
-}
 
 export function LazyImage(props: LazyImageProps) {
   const normalizedSrc = useMemo(() => normalizeImageSrc(props.src), [props.src])
@@ -123,7 +96,7 @@ function LazyImageView({
         }
       },
       {
-        root: findScrollParent(element),
+        root: findScrollRoot(element),
         rootMargin: '720px 0px',
         threshold: 0.01
       }
@@ -148,11 +121,10 @@ function LazyImageView({
     return () => window.clearTimeout(timer)
   }, [normalizedSrc, displayStatus, retryAttempt])
 
-  const imageSrc = useMemo(() => {
-    if (!normalizedSrc) return ''
-    if (retryAttempt === 0) return normalizedSrc
-    return withCacheBust(normalizedSrc, retryAttempt)
-  }, [normalizedSrc, retryAttempt])
+  // Retries request the same URL: a fresh <img> (new key) loads it again, and
+  // the HTTP cache decides what is reused. A cache-busting query used to
+  // bypass that cache and could also break signed image URLs.
+  const imageSrc = normalizedSrc ?? ''
 
   const handleLoad = () => {
     if (!normalizedSrc) return
@@ -186,7 +158,7 @@ function LazyImageView({
       )}
       {isVisible && (
         <img
-          key={imageSrc}
+          key={retryAttempt}
           src={imageSrc}
           alt={alt}
           loading={eager ? 'eager' : 'lazy'}

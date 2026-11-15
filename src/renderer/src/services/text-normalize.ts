@@ -9,7 +9,9 @@
  * spellings compare equal, while still handling the Turkish-specific
  * "İ → i" mapping that plain `.toLowerCase()` gets wrong.
  */
-export function normalizeSearchText(input: string): string {
+export function normalizeSearchText(input: string | null | undefined): string {
+  // Names come from provider data; a missing one must not crash a filter.
+  if (typeof input !== 'string') return ''
   return input
     .toLocaleLowerCase('tr')
     .replace(/ı/g, 'i')
