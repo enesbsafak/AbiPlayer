@@ -1,324 +1,418 @@
-import { spawn, type ChildProcessByStdio } from 'child_process'
-import net from 'net'
-import { randomUUID } from 'crypto'
-import { join } from 'path'
-import { tmpdir } from 'os'
+import { app } from 'electron'
 import { existsSync } from 'fs'
 import { unlink } from 'fs/promises'
-import type { Readable } from 'stream'
-import type { MpvTrackInfo, MpvStateSnapshot, MpvPlaybackTuning } from '../shared/types/electron-ipc'
+import type {
+  MpvIdentifiedSnapshot,
+  MpvPlaybackPhase,
+  MpvPlaybackTuning,
+  MpvStateSnapshot,
+  MpvSubtitleStyle,
+  MpvTrackInfo
+} from '../shared/types/electron-ipc'
+import { buildMpvLaunchArgs, createMpvSocketPath, hwdecValue } from './mpv/args'
+import { resolveMpvBinary } from './mpv/binary'
+import {
+  connectMpvSocket,
+  spawnMpvProcess,
+  type MpvConnector,
+  type MpvSpawner
+} from './mpv/process'
+import type { MpvLoadVerdict } from './mpv/load-tracker'
+import { MpvSession, type MpvSessionEvent } from './mpv/session'
+import {
+  describeMpvFileError,
+  emptyStreamState,
+  subtitleStyleProperties
+} from './mpv/stream-state'
 
-export type { MpvTrackInfo, MpvStateSnapshot, MpvPlaybackTuning }
-
-export interface MpvSubtitleStyle {
-  fontSize: number
-  color: string
-  background: string
-}
-
-interface MpvPendingRequest {
-  resolve: (value: unknown) => void
-  reject: (error: Error) => void
-  timer: ReturnType<typeof setTimeout>
-}
-
-interface MpvSocketResponse {
-  request_id?: number
-  error?: string
-  data?: unknown
-  event?: string
-  name?: string
-  reason?: string
-  file_error?: string
+export type {
+  MpvIdentifiedSnapshot,
+  MpvPlaybackPhase,
+  MpvPlaybackTuning,
+  MpvStateSnapshot,
+  MpvSubtitleStyle,
+  MpvTrackInfo
 }
 
 const MPV_SPDIF_CODECS = 'ac3,dts,eac3,truehd'
 // Measured: a device rejects the bitstream and drops the audio output within
-// ~300ms. This leaves a wide margin without making a failed attempt feel slow.
-const MPV_PASSTHROUGH_SETTLE_MS = 800
+// ~300ms of audio starting. This leaves a wide margin without making a failed
+// attempt feel slow.
+export const MPV_PASSTHROUGH_SETTLE_MS = 800
+/** A stream whose audio has not started by then is not verified. */
+export const MPV_PASSTHROUGH_START_TIMEOUT_MS = 30_000
+/** Coalescing window for snapshots driven by time-position churn (~5/s). */
+export const MPV_SNAPSHOT_INTERVAL_MS = 200
 
-const MPV_REQUEST_TIMEOUT_MS = 5000
-const MPV_CONNECT_TIMEOUT_MS = 8000
-const MPV_CONNECT_RETRY_MS = 150
+const DEFAULT_TUNING: MpvPlaybackTuning = { audioDelay: 0, subDelay: 0, speed: 1, aspectRatio: 'auto' }
 
-function createMpvSocketPath(): string {
-  if (process.platform === 'win32') {
-    return `\\\\.\\pipe\\freeiptv-mpv-${process.pid}-${randomUUID()}`
-  }
-
-  return join(tmpdir(), `freeiptv-mpv-${process.pid}-${randomUUID()}.sock`)
+export interface MpvOpenOptions {
+  /** Renderer-issued id; echoed on every snapshot describing this playback. */
+  playbackId?: string
+  /**
+   * Tuning for this playback. Omitted keeps the current tuning when this is
+   * the same playback again (a reconnect), defaults otherwise.
+   */
+  tuning?: MpvPlaybackTuning
 }
 
-function resolveBundledMpvPath(): string | null {
-  if (process.platform !== 'win32') return null
+export type MpvSnapshotListener = (snapshot: MpvIdentifiedSnapshot) => void
 
-  const candidates = [
-    join(process.resourcesPath, 'mpv', 'mpv.exe'),
-    join(process.resourcesPath, 'resources', 'mpv', 'win32-x64', 'mpv.exe'),
-    join(process.resourcesPath, 'app.asar.unpacked', 'resources', 'mpv', 'win32-x64', 'mpv.exe'),
-    join(__dirname, '../../resources/mpv/win32-x64/mpv.exe'),
-    join(process.cwd(), 'resources', 'mpv', 'win32-x64', 'mpv.exe')
+export interface MpvControllerDeps {
+  /** Absolute path of the mpv executable, or null when there is none. */
+  resolveBinary: () => string | null
+  spawn: MpvSpawner
+  connect: MpvConnector
+  createSocketPath: () => string
+  /** Removes a unix socket file after its session ended (unused on win32). */
+  removeSocketFile?: (socketPath: string) => Promise<void>
+}
+
+function defaultDeps(): MpvControllerDeps {
+  return {
+    resolveBinary: () =>
+      resolveMpvBinary({
+        platform: process.platform,
+        isPackaged: app.isPackaged,
+        mpvPathOverride: process.env['MPV_PATH'],
+        searchPath: process.env['PATH'],
+        resourcesPath: process.resourcesPath,
+        appDir: __dirname,
+        cwd: process.cwd(),
+        exists: existsSync
+      }),
+    spawn: spawnMpvProcess,
+    connect: connectMpvSocket,
+    createSocketPath: () => createMpvSocketPath(),
+    removeSocketFile: process.platform === 'win32' ? undefined : (path) => unlink(path)
+  }
+}
+
+interface Waiter {
+  resolve: () => void
+  reject: (error: Error) => void
+}
+
+/** One requested load and what became of it. */
+interface Playback {
+  /** Bumped for every load, including a reload of the same playback. */
+  seq: number
+  playbackId: string | null
+  url: string
+  parentWid: string | null
+  tuning: MpvPlaybackTuning
+  liveEdge: boolean
+  /** Still to be (or being) played. False once it failed or mpv died. */
+  wanted: boolean
+  phase: MpvPlaybackPhase
+  error: string | null
+  waiters: Waiter[]
+}
+
+function tuningProperties(tuning: MpvPlaybackTuning): Array<[string, unknown]> {
+  return [
+    ['audio-delay', tuning.audioDelay],
+    ['sub-delay', tuning.subDelay],
+    ['speed', tuning.speed],
+    // mpv wants -1 for "use whatever the stream says"; a ratio string otherwise.
+    ['video-aspect-override', tuning.aspectRatio === 'auto' ? -1 : tuning.aspectRatio]
   ]
-
-  return candidates.find((candidate) => existsSync(candidate)) ?? null
 }
 
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  return fallback
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function toBoolean(value: unknown, fallback = false): boolean {
-  if (typeof value === 'boolean') return value
-  return fallback
-}
-
-function normalizeTrackType(value: unknown): 'audio' | 'sub' | 'video' | null {
-  if (value === 'audio' || value === 'sub' || value === 'video') return value
-  return null
-}
-
-function toPositiveNumber(value: unknown): number | undefined {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined
-  return value
-}
-
-// mpv reports load/playback failures through the `end-file` IPC event. The
-// `file_error` payload is an English libmpv string ("loading failed",
-// "unrecognized file format", …) — map the common ones so the UI can show
-// something actionable instead of raw engine output.
-const MPV_FILE_ERROR_MESSAGES: Record<string, string> = {
-  'loading failed': 'Yayın açılamadı. Kaynak yanıt vermiyor veya adres geçersiz.',
-  'unrecognized file format': 'Yayın biçimi tanınmadı.',
-  'unknown error': 'Yayın açılırken bilinmeyen bir hata oluştu.'
-}
-
-function describeMpvFileError(fileError: unknown): string {
-  if (typeof fileError !== 'string' || !fileError.trim()) {
-    return 'Yayın açılamadı.'
-  }
-
-  const normalized = fileError.trim().toLowerCase()
-  return MPV_FILE_ERROR_MESSAGES[normalized] ?? `Yayın açılamadı: ${fileError.trim().slice(0, 200)}`
-}
-
+/**
+ * Drives one embedded mpv.
+ *
+ * The controller holds intent — the playback the app wants and the durable
+ * settings — and reconciles the current `MpvSession` towards it. Everything
+ * tied to a process lives in that session, so a dying or superseded process
+ * can never touch its replacement.
+ */
 export class MpvController {
-  private process: ChildProcessByStdio<null, Readable, Readable> | null = null
-  private socket: net.Socket | null = null
-  private socketPath: string | null = null
-  private socketBuffer = ''
-  private startupPromise: Promise<void> | null = null
-  private startupParentWid: string | null = null
-  private nextRequestId = 1
-  private shuttingDown = false
-  private pendingRequests = new Map<number, MpvPendingRequest>()
-  private availabilityChecked = false
-  private availability = false
-  private readonly mpvPath = process.env['MPV_PATH'] || resolveBundledMpvPath() || 'mpv'
-  // Mirrors DEFAULT_SETTINGS.hardwareAcceleration so a startup race (mpv opened
-  // before the renderer pushes its stored setting) still lands on the value the
-  // user most likely has.
+  private readonly deps: MpvControllerDeps
+
+  // Durable intent, re-applied to every new session.
   private hardwareDecoding = true
   private audioPassthrough = false
-  // Bumped on every passthrough apply so a verification that is still sleeping
-  // when the next channel loads can tell it has been superseded and bail.
-  private passthroughToken = 0
   private subtitleStyle: MpvSubtitleStyle = {
     fontSize: 24,
     color: '#ffffff',
     background: 'rgba(0,0,0,0.75)'
   }
+  private volume: number | null = null
+  private muted: boolean | null = null
+  private fullscreen: boolean | null = null
+  private videoMarginRatio = 0
 
-  private state: MpvStateSnapshot = {
-    available: false,
-    running: false,
-    paused: true,
-    buffering: false,
-    timePos: 0,
-    duration: 0,
-    demuxerCacheDuration: 0,
-    volume: 80,
-    muted: false,
-    vid: null,
-    aid: null,
-    sid: null,
-    fullscreen: false,
-    tracks: [],
-    path: null,
-    error: null,
-    passthroughActive: false
+  private playback: Playback | null = null
+  private loadSeq = 0
+  private prewarmWid: string | null = null
+
+  private current: MpvSession | null = null
+  private starting: MpvSession | null = null
+  private readonly closingSessions = new Set<MpvSession>()
+  private sessionSeq = 0
+
+  private reconciling: Promise<void> | null = null
+  private dirty = false
+
+  private passthroughToken = 0
+  private passthroughActive = false
+
+  private available = false
+
+  private readonly listeners = new Set<MpvSnapshotListener>()
+  private flushTimer: ReturnType<typeof setTimeout> | null = null
+  /** Bumped on every state change; the snapshot `seq`. */
+  private stateVersion = 0
+  private lastEmittedVersion = -1
+
+  constructor(deps: Partial<MpvControllerDeps> = {}) {
+    this.deps = { ...defaultDeps(), ...deps }
   }
 
+  // ---------------------------------------------------------------------------
+  // Availability and lifecycle
+
+  /** Cheap: whether an mpv executable resolves. No process is started. */
   async isAvailable(): Promise<boolean> {
-    if (this.availabilityChecked) return this.availability
+    return this.resolveBinary() !== null
+  }
 
-    this.availability = await new Promise<boolean>((resolve) => {
-      const child = spawn(this.mpvPath, ['--version'], {
-        windowsHide: true,
-        stdio: ['ignore', 'ignore', 'ignore']
-      })
+  /**
+   * Starts an idle mpv embedded in `parentWid` ahead of the first play, so the
+   * first `open` only has to send `loadfile`. Holds no stream and opens no
+   * audio device. Safe to call repeatedly; never rejects.
+   */
+  async prewarm(parentWid: string): Promise<void> {
+    this.prewarmWid = parentWid
+    const session = this.current
+    if (session && !this.playback?.wanted && session.parentWid && session.parentWid !== parentWid) {
+      // Idle in a window that is gone; mpv cannot be re-parented.
+      this.retire(session)
+    }
+    await this.kick().catch(() => undefined)
+  }
 
-      let settled = false
-      const timer = setTimeout(() => {
-        if (settled) return
-        settled = true
-        child.kill('SIGKILL')
-        resolve(false)
-      }, 2500)
-
-      child.on('error', () => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        resolve(false)
-      })
-
-      child.on('close', (code) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        resolve(code === 0)
-      })
+  async open(url: string, parentWid?: string, options: MpvOpenOptions = {}): Promise<void> {
+    const playbackId = options.playbackId ?? null
+    const previous = this.playback
+    // Tuning belongs to the playback, not to one load: a reconnect or reload
+    // of the same playback keeps it. Without a renderer-issued id, the same
+    // URL is taken to be the same playback.
+    const samePlayback =
+      previous !== null &&
+      (playbackId !== null || previous.playbackId !== null
+        ? previous.playbackId === playbackId
+        : previous.url === url)
+    const playback = this.beginPlayback({
+      playbackId,
+      url,
+      parentWid: parentWid ?? null,
+      tuning: options.tuning ?? (samePlayback && previous ? previous.tuning : DEFAULT_TUNING),
+      liveEdge: false
     })
-
-    this.availabilityChecked = true
-    this.state.available = this.availability
-    return this.availability
-  }
-
-  getState(): MpvStateSnapshot {
-    return {
-      ...this.state,
-      tracks: this.state.tracks.map((track) => ({ ...track }))
-    }
-  }
-
-  async open(url: string, parentWid?: string): Promise<void> {
-    await this.ensureStarted(parentWid).then(() => this.command(['loadfile', url, 'replace']))
-    await Promise.allSettled([
-      this.applySubtitleStyle(),
-      this.command(['set_property', 'pause', false])
-    ])
-    this.state.path = url
-    this.state.running = true
-    this.state.paused = false
-    this.state.error = null
-
-    // Re-verify per stream, not just when the setting is toggled: whether the
-    // device can bitstream depends on the codec of whatever just loaded, so a
-    // channel that worked says nothing about the next one. Deliberately not
-    // awaited — verification sleeps ~1s and must not delay the channel switch.
-    if (this.audioPassthrough) {
-      void this.applyAudioPassthrough().catch(() => undefined)
-    }
+    const handed = this.waitFor(playback)
+    void this.kick()
+    return handed
   }
 
   async stopPlayback(): Promise<void> {
-    if (!this.process) return
-
-    await this.command(['stop']).catch(() => undefined)
-    this.state.running = false
-    this.state.path = null
-    this.state.timePos = 0
-    this.state.duration = 0
-    this.state.demuxerCacheDuration = 0
-    this.state.buffering = false
-    this.state.tracks = []
-    this.state.vid = null
-    this.state.aid = null
-    this.state.sid = null
-    this.state.passthroughActive = false
+    this.supersede()
+    this.playback = null
+    this.notify(true)
+    const settled = this.kick()
+    // A stop must not wait for a cold start; the reconciler sees the empty
+    // intent as soon as the process is up and loads nothing.
+    if (this.starting) return
+    await settled
   }
 
   async shutdown(): Promise<void> {
-    if (this.process && this.socket && !this.socket.destroyed) {
-      await this.command(['quit']).catch(() => undefined)
+    this.supersede()
+    this.playback = null
+    this.prewarmWid = null
+    for (const session of [this.starting, this.current]) {
+      if (session) this.retire(session)
     }
-    await this.cleanup()
+    this.notify(true)
+    await this.reconciling?.catch(() => undefined)
+    await Promise.allSettled(Array.from(this.closingSessions, (session) => session.close()))
   }
 
+  // ---------------------------------------------------------------------------
+  // Snapshots
+
+  getState(): MpvIdentifiedSnapshot {
+    const playback = this.playback
+    const session = this.current
+    const stream =
+      playback && session && session.loadToken === playback.seq ? session.stream : emptyStreamState()
+    const player = session?.player
+    const phase: MpvPlaybackPhase = playback?.phase ?? 'idle'
+
+    return {
+      sessionId: session?.id ?? null,
+      loadId: playback?.seq ?? null,
+      playbackId: playback?.playbackId ?? null,
+      phase,
+      seq: this.stateVersion,
+      available: this.available,
+      running: phase === 'loading' || phase === 'playing' || phase === 'ended',
+      paused: player?.paused ?? true,
+      buffering: stream.buffering,
+      timePos: stream.timePos,
+      duration: stream.duration,
+      demuxerCacheDuration: stream.demuxerCacheDuration,
+      volume: player?.volume ?? this.volume ?? 80,
+      muted: player?.muted ?? this.muted ?? false,
+      vid: stream.vid,
+      aid: stream.aid,
+      sid: stream.sid,
+      fullscreen: player?.fullscreen ?? this.fullscreen ?? false,
+      tracks: stream.tracks.map((track) => ({ ...track })),
+      path: stream.path,
+      error: playback?.error ?? null,
+      passthroughActive: this.passthroughActive
+    }
+  }
+
+  /**
+   * Calls `listener` with the current snapshot right away (the handshake),
+   * then with a full
+   * snapshot whenever it changes: immediately for lifecycle changes (load
+   * start, file loaded, end of file, error, process exit, track changes) and
+   * coalesced to about five per second for time-position churn. Returns the
+   * unsubscribe function.
+   */
+  subscribe(listener: MpvSnapshotListener): () => void {
+    this.listeners.add(listener)
+    try {
+      listener(this.getState())
+    } catch {
+      // A throwing listener must not break the controller or other listeners.
+    }
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Playback commands (act on the current load; no-ops without one)
+
   async togglePause(): Promise<void> {
-    if (!this.process) return
-    await this.command(['cycle', 'pause'])
+    const session = this.readySession()
+    if (!session) return
+    await session.request(['cycle', 'pause'])
   }
 
   async setPause(paused: boolean): Promise<void> {
-    if (!this.process) return
-    await this.command(['set_property', 'pause', paused])
-    this.state.paused = paused
+    const session = this.readySession()
+    if (!session) return
+    await session.request(['set_property', 'pause', paused])
   }
 
   async seek(seconds: number): Promise<void> {
-    if (!this.process) return
-    await this.command(['seek', seconds, 'relative'])
+    const session = this.readySession()
+    if (!session) return
+    await session.request(['seek', seconds, 'relative'])
   }
 
   async seekTo(seconds: number): Promise<void> {
-    if (!this.process) return
-    await this.command(['seek', seconds, 'absolute', 'exact'])
+    const session = this.readySession()
+    if (!session) return
+    await session.request(['seek', seconds, 'absolute', 'exact'])
   }
 
+  /**
+   * Live IPTV streams (TS-over-HTTP, Xtream Codes proxies, many HLS feeds)
+   * serve from "now" regardless of seek attempts — the origin has no seekable
+   * range. Reloading the URL is the only universally reliable way to snap back
+   * to the live edge, so this is a fresh load of the same playback.
+   */
   async jumpToLive(): Promise<void> {
-    if (!this.process) return
-
-    const currentPath = await this.getCurrentPath()
-    if (!currentPath) return
-
-    // Live IPTV streams (TS-over-HTTP, Xtream Codes proxies, many HLS feeds)
-    // serve from "now" regardless of seek attempts — the origin has no
-    // seekable range. Reloading the URL is the only universally reliable way
-    // to snap back to the live edge, so skip the seek dance entirely.
-    await this.reloadAtLiveEdge(currentPath)
+    const previous = this.playback
+    if (!previous || !this.current) return
+    const playback = this.beginPlayback({
+      playbackId: previous.playbackId,
+      url: previous.url,
+      parentWid: previous.parentWid,
+      tuning: previous.tuning,
+      liveEdge: true
+    })
+    const handed = this.waitFor(playback)
+    void this.kick()
+    await handed
   }
 
-  async setVolume(volume: number): Promise<void> {
-    if (!this.process) return
-    await this.command(['set_property', 'volume', volume])
-    this.state.volume = volume
-  }
-
-  async setMute(muted: boolean): Promise<void> {
-    if (!this.process) return
-    await this.command(['set_property', 'mute', muted])
-    this.state.muted = muted
-  }
-
+  // Track setters only ask; the observed property is the truth (mpv may pick
+  // a different track for "auto").
   async setAudioTrack(trackId: number | null): Promise<void> {
-    if (!this.process) return
-    const aid = trackId === null ? 'auto' : trackId
-    await this.command(['set_property', 'aid', aid])
-    this.state.aid = trackId
+    const session = this.loadedSession()
+    if (!session) return
+    await session.request(['set_property', 'aid', trackId === null ? 'auto' : trackId])
   }
 
   async setVideoTrack(trackId: number | null): Promise<void> {
-    if (!this.process) return
-    const vid = trackId === null ? 'auto' : trackId
-    await this.command(['set_property', 'vid', vid])
-    this.state.vid = trackId
+    const session = this.loadedSession()
+    if (!session) return
+    await session.request(['set_property', 'vid', trackId === null ? 'auto' : trackId])
   }
 
   async setSubtitleTrack(trackId: number | null): Promise<void> {
-    if (!this.process) return
-    const sid = trackId === null ? 'no' : trackId
-    await this.command(['set_property', 'sid', sid])
-    this.state.sid = trackId
+    const session = this.loadedSession()
+    if (!session) return
+    await session.request(['set_property', 'sid', trackId === null ? 'no' : trackId])
   }
 
   async addSubtitleFile(filePath: string): Promise<number | null> {
-    if (!this.process) return null
-    await this.command(['sub-add', filePath, 'select']).catch(async () => {
+    const session = this.loadedSession()
+    if (!session) return null
+    await session.request(['sub-add', filePath, 'select']).catch(async () => {
       // Older mpv builds can reject "select"; fallback to default mode.
-      await this.command(['sub-add', filePath])
+      await session.request(['sub-add', filePath])
     })
+    const sid = await session.request(['get_property', 'sid']).catch(() => null)
+    return typeof sid === 'number' && Number.isInteger(sid) ? sid : null
+  }
 
-    await this.refreshTrackState()
-    return this.state.sid
+  /**
+   * Applies lip-sync / subtitle offsets, playback speed and aspect override to
+   * the current load. Tuning is per load: a new `open` starts from defaults
+   * unless it passes its own. Set during a cold start, it is held for the load
+   * it was meant for and applied once mpv is up.
+   */
+  async setPlaybackTuning(tuning: MpvPlaybackTuning): Promise<void> {
+    const playback = this.playback
+    if (!playback) return
+    playback.tuning = { ...tuning }
+    const session = this.readySession()
+    if (!session || session.loadToken !== playback.seq) return
+    await Promise.allSettled(this.applyTuning(session, playback.tuning))
+  }
+
+  // ---------------------------------------------------------------------------
+  // Durable settings (kept across sessions)
+
+  async setVolume(volume: number): Promise<void> {
+    this.volume = volume
+    this.notify(false)
+    await this.syncDurable()
+  }
+
+  async setMute(muted: boolean): Promise<void> {
+    this.muted = muted
+    this.notify(false)
+    await this.syncDurable()
   }
 
   async setFullscreen(fullscreen: boolean): Promise<void> {
-    if (!this.process) return
-    await this.command(['set_property', 'fullscreen', fullscreen])
-    this.state.fullscreen = fullscreen
+    this.fullscreen = fullscreen
+    this.notify(false)
+    await this.syncDurable()
   }
 
   /**
@@ -327,37 +421,327 @@ export class MpvController {
    * unit for this property); 0 restores the full-width video.
    */
   async setVideoMarginRatio(ratio: number): Promise<void> {
-    if (!this.process) return
-    const clamped = Math.max(0, Math.min(0.9, ratio))
-    await this.command(['set_property', 'video-margin-ratio-right', clamped]).catch(() => undefined)
+    this.videoMarginRatio = Math.max(0, Math.min(0.9, ratio))
+    await this.syncDurable()
   }
 
-  /**
-   * `auto-safe` limits mpv to the hardware decoders on its own known-good list,
-   * which is what keeps a flaky driver from producing a black picture; `auto`
-   * would happily pick those. `no` forces software decoding.
-   */
-  private get hwdecValue(): string {
-    return this.hardwareDecoding ? 'auto-safe' : 'no'
-  }
-
+  /** Takes effect in place: mpv reinitialises the decoder without a reload. */
   async setHardwareDecoding(enabled: boolean): Promise<void> {
-    if (this.hardwareDecoding === enabled) return
     this.hardwareDecoding = enabled
+    await this.syncDurable()
+  }
 
-    // Not running yet — startMpv picks the value up as a launch argument.
-    if (!this.process) return
-
-    // mpv reinitialises the decoder in place, so this takes effect on the
-    // stream that is already playing without reloading it.
-    await this.command(['set_property', 'hwdec', this.hwdecValue]).catch(() => undefined)
+  async setSubtitleStyle(style: MpvSubtitleStyle): Promise<void> {
+    this.subtitleStyle = {
+      fontSize: Number.isFinite(style.fontSize) ? style.fontSize : this.subtitleStyle.fontSize,
+      color: style.color || this.subtitleStyle.color,
+      background: style.background || this.subtitleStyle.background
+    }
+    await this.syncDurable()
   }
 
   async setAudioPassthrough(enabled: boolean): Promise<void> {
     if (this.audioPassthrough === enabled) return
     this.audioPassthrough = enabled
-    await this.applyAudioPassthrough()
+
+    const session = this.readySession()
+    if (!enabled) {
+      this.passthroughToken += 1
+      this.setPassthroughActive(false)
+      if (session) await session.request(['set_property', 'audio-spdif', '']).catch(() => undefined)
+      return
+    }
+
+    const playback = this.playback
+    if (!session || !playback || session.loadToken !== playback.seq) return
+    await this.verifyPassthrough(session, playback.seq)
   }
+
+  // ---------------------------------------------------------------------------
+  // Reconciler
+
+  /**
+   * Runs the reconciler, or marks the running one dirty so it takes another
+   * pass. Exactly one pass runs at a time, which is what keeps two concurrent
+   * opens from starting two processes.
+   */
+  private kick(): Promise<void> {
+    this.dirty = true
+    if (!this.reconciling) this.reconciling = this.reconcileLoop()
+    return this.reconciling
+  }
+
+  private async reconcileLoop(): Promise<void> {
+    try {
+      while (this.dirty) {
+        this.dirty = false
+        await this.reconcileOnce()
+      }
+    } finally {
+      this.reconciling = null
+    }
+  }
+
+  private async reconcileOnce(): Promise<void> {
+    const playback = this.playback?.wanted ? this.playback : null
+
+    let session = this.current
+    if (
+      session &&
+      playback?.parentWid &&
+      session.parentWid &&
+      session.parentWid !== playback.parentWid
+    ) {
+      // The host window changed; mpv cannot be re-parented.
+      this.retire(session)
+      session = null
+    }
+
+    if (!session) {
+      if (!playback && this.prewarmWid === null) return
+      await this.startSession(playback ? (playback.parentWid ?? this.prewarmWid) : this.prewarmWid)
+      this.dirty = true
+      return
+    }
+
+    if (playback) {
+      if (session.loadToken !== playback.seq) await this.performLoad(session, playback)
+      return
+    }
+
+    if (session.loadToken !== null) {
+      session.clearLoad()
+      await session.request(['stop']).catch(() => undefined)
+    }
+  }
+
+  private async startSession(parentWid: string | null): Promise<void> {
+    const binary = this.resolveBinary()
+    if (!binary) {
+      this.failStart(new Error('mpv ikili dosyası bulunamadı'))
+      return
+    }
+
+    const socketPath = this.deps.createSocketPath()
+    const session = new MpvSession({
+      id: ++this.sessionSeq,
+      binary,
+      args: buildMpvLaunchArgs({
+        socketPath,
+        parentWid,
+        hardwareDecoding: this.hardwareDecoding
+      }),
+      socketPath,
+      parentWid,
+      // What a fresh process already runs with, so only differences are sent.
+      launchProperties: [
+        ['hwdec', hwdecValue(this.hardwareDecoding)],
+        ['video-margin-ratio-right', 0],
+        ...tuningProperties(DEFAULT_TUNING)
+      ],
+      spawn: this.deps.spawn,
+      connect: this.deps.connect,
+      removeSocketFile: this.deps.removeSocketFile,
+      listener: (source, event) => this.onSessionEvent(source, event)
+    })
+
+    this.starting = session
+    try {
+      await session.start()
+    } catch (error) {
+      if (this.starting === session) this.starting = null
+      this.retire(session)
+      this.failStart(error instanceof Error ? error : new Error(String(error)))
+      return
+    }
+    if (this.starting !== session) {
+      // Shut down while starting.
+      this.retire(session)
+      return
+    }
+    this.starting = null
+    this.current = session
+    this.notify(true)
+    await this.syncDurable(session)
+  }
+
+  /**
+   * A failed start is not cached: nothing retries it on its own, and the next
+   * `open` or `prewarm` tries again from scratch.
+   */
+  private failStart(error: Error): void {
+    this.prewarmWid = null
+    const playback = this.playback
+    if (!playback?.wanted) return
+    playback.wanted = false
+    playback.phase = 'error'
+    playback.error = 'mpv başlatılamadı.'
+    this.rejectWaiters(playback, error)
+    this.notify(true)
+  }
+
+  private async performLoad(session: MpvSession, playback: Playback): Promise<void> {
+    const seq = playback.seq
+    session.beginLoad(seq)
+    this.notify(true)
+
+    // Pipelined ahead of loadfile; mpv runs them in order. The launch
+    // arguments start mpv paused so an idle pre-warmed process stays silent.
+    const preload = [
+      session.request(['set_property', 'pause', false]),
+      ...this.applyTuning(session, playback.tuning)
+    ]
+
+    try {
+      await session.load(seq, playback.url, { liveEdge: playback.liveEdge })
+    } catch (error) {
+      // A dead session already reported itself through `ended`.
+      if (this.playback === playback && session === this.current) {
+        playback.wanted = false
+        playback.phase = 'error'
+        playback.error = 'Yayın açılamadı.'
+        this.rejectWaiters(playback, error instanceof Error ? error : new Error(String(error)))
+        this.notify(true)
+      }
+      return
+    }
+
+    if (this.playback !== playback) return
+    this.resolveWaiters(playback)
+
+    // Re-verified per stream, not just when the setting is toggled: whether
+    // the device can bitstream depends on the codec of whatever just loaded.
+    // Not awaited — it waits for audio to start and must not delay the switch.
+    if (this.audioPassthrough && playback.phase !== 'error') void this.verifyPassthrough(session, seq)
+  }
+
+  private applyTuning(session: MpvSession, tuning: MpvPlaybackTuning): Array<Promise<void>> {
+    return this.sendChanged(session, tuningProperties(tuning))
+  }
+
+  /**
+   * Sends the properties whose value differs from what the session was last
+   * given. A failed write is forgotten so the next sync retries it.
+   */
+  private sendChanged(session: MpvSession, properties: Array<[string, unknown]>): Array<Promise<void>> {
+    const requests: Array<Promise<void>> = []
+    for (const [name, value] of properties) {
+      if (session.applied.has(name) && Object.is(session.applied.get(name), value)) continue
+      session.applied.set(name, value)
+      requests.push(
+        session.request(['set_property', name, value]).then(
+          () => undefined,
+          () => {
+            if (Object.is(session.applied.get(name), value)) session.applied.delete(name)
+          }
+        )
+      )
+    }
+    return requests
+  }
+
+  private durableProperties(): Array<[string, unknown]> {
+    const properties: Array<[string, unknown]> = [
+      ['hwdec', hwdecValue(this.hardwareDecoding)],
+      ['video-margin-ratio-right', this.videoMarginRatio],
+      ...subtitleStyleProperties(this.subtitleStyle)
+    ]
+    if (this.volume !== null) properties.push(['volume', this.volume])
+    if (this.muted !== null) properties.push(['mute', this.muted])
+    if (this.fullscreen !== null) properties.push(['fullscreen', this.fullscreen])
+    return properties
+  }
+
+  /** Sends every durable setting the session does not have yet. */
+  private async syncDurable(session: MpvSession | null = this.current): Promise<void> {
+    if (!session || !session.ready) return
+    await Promise.all(this.sendChanged(session, this.durableProperties()))
+  }
+
+  private onSessionEvent(session: MpvSession, event: MpvSessionEvent): void {
+    if (session !== this.current) return
+
+    switch (event.type) {
+      case 'ended':
+        this.onSessionEnded(session, event.message)
+        return
+      case 'player':
+        this.notify(event.property === 'pause')
+        return
+      case 'stream':
+        this.onStreamProperty(session, event.property)
+        return
+      case 'load':
+        this.onLoadVerdict(event.verdict)
+        return
+    }
+  }
+
+  private onStreamProperty(session: MpvSession, property: string): void {
+    const playback = this.playback
+    if (property === 'eof-reached' && playback && session.loadToken === playback.seq) {
+      if (session.stream.eofReached && playback.phase === 'playing') playback.phase = 'ended'
+      else if (!session.stream.eofReached && playback.phase === 'ended') playback.phase = 'playing'
+    }
+    const urgent =
+      property === 'track-list' ||
+      property === 'vid' ||
+      property === 'aid' ||
+      property === 'sid' ||
+      property === 'path' ||
+      property === 'eof-reached'
+    this.notify(urgent)
+  }
+
+  private onLoadVerdict(verdict: MpvLoadVerdict): void {
+    const playback = this.playback
+    if (!playback || playback.seq !== verdict.token) return
+
+    switch (verdict.kind) {
+      case 'loaded':
+        if (playback.phase === 'loading') playback.phase = 'playing'
+        break
+      case 'end':
+        if (verdict.reason === 'error') {
+          playback.phase = 'error'
+          playback.error = describeMpvFileError(verdict.fileError)
+          this.passthroughToken += 1
+          this.passthroughActive = false
+        } else if (verdict.reason === 'eof') {
+          playback.phase = 'ended'
+        } else if (verdict.reason === 'redirect') {
+          playback.phase = 'loading'
+        }
+        break
+      case 'start':
+      case 'restart':
+        break
+    }
+    this.notify(true)
+  }
+
+  private onSessionEnded(session: MpvSession, message: string): void {
+    this.current = null
+    this.retire(session)
+    this.passthroughToken += 1
+    this.passthroughActive = false
+
+    const playback = this.playback
+    if (playback?.wanted) {
+      playback.wanted = false
+      if (playback.phase !== 'error') {
+        playback.phase = 'error'
+        playback.error = message
+      }
+      this.rejectWaiters(playback, new Error(message))
+    }
+    // Not respawned behind the user's back; the next open or prewarm does.
+    this.prewarmWid = null
+    this.notify(true)
+  }
+
+  // ---------------------------------------------------------------------------
+  // Audio passthrough
 
   /**
    * Hands the compressed bitstream to the audio device instead of decoding it,
@@ -372,673 +756,156 @@ export class MpvController {
    *                        simply does not apply)
    *   current-ao           empty when the device refused what was attempted
    *
-   * Only "attempted AND refused" is a failure worth undoing.
+   * Only "attempted AND refused" is a failure worth undoing. The check belongs
+   * to one load: it waits for that load's audio to start, and after every wait
+   * it re-checks that it is still the newest check for the current load, so a
+   * superseded check never touches what a newer one decided.
    */
-  private async applyAudioPassthrough(): Promise<void> {
+  private async verifyPassthrough(session: MpvSession, seq: number): Promise<void> {
     const token = ++this.passthroughToken
+    const live = () =>
+      token === this.passthroughToken &&
+      session === this.current &&
+      this.playback?.seq === seq &&
+      session.loadToken === seq
 
-    if (!this.process) {
-      this.state.passthroughActive = false
-      return
-    }
+    this.setPassthroughActive(false)
+    const applied = await session
+      .request(['set_property', 'audio-spdif', MPV_SPDIF_CODECS])
+      .then(() => true, () => false)
+    if (!live() || !applied) return
 
-    if (!this.audioPassthrough) {
-      await this.command(['set_property', 'audio-spdif', '']).catch(() => undefined)
-      this.state.passthroughActive = false
-      return
-    }
+    const started = await session.waitForPlaybackStart(seq, MPV_PASSTHROUGH_START_TIMEOUT_MS)
+    if (!live() || !started) return
 
-    const applied = await this.command(['set_property', 'audio-spdif', MPV_SPDIF_CODECS])
-      .then(() => true)
-      .catch(() => false)
-    if (!applied) {
-      this.state.passthroughActive = false
-      return
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, MPV_PASSTHROUGH_SETTLE_MS))
-    // A newer apply (channel switch, or the user toggling again) owns the state now.
-    if (token !== this.passthroughToken) return
+    await delay(MPV_PASSTHROUGH_SETTLE_MS)
+    if (!live()) return
 
     const [format, audioOutput] = await Promise.all([
-      this.command(['get_property', 'audio-params/format']).catch(() => null),
-      this.command(['get_property', 'current-ao']).catch(() => null)
+      session.request(['get_property', 'audio-params/format']).catch(() => null),
+      session.request(['get_property', 'current-ao']).catch(() => null)
     ])
+    if (!live()) return
 
     const attempted = typeof format === 'string' && format.startsWith('spdif')
     if (!attempted) {
-      // This stream is not a passthrough candidate; audio keeps playing as PCM
-      // and the option stays armed for whatever plays next.
-      this.state.passthroughActive = false
+      // Not a passthrough candidate; audio plays as PCM and the option stays
+      // armed for whatever plays next.
       return
     }
 
     if (audioOutput) {
-      this.state.passthroughActive = true
+      this.setPassthroughActive(true)
       return
     }
 
     // Device refused the bitstream and we are now playing to nothing. Put PCM
     // back so the user hears audio, and report that passthrough is not live.
-    await this.command(['set_property', 'audio-spdif', '']).catch(() => undefined)
-    this.state.passthroughActive = false
+    await session.request(['set_property', 'audio-spdif', '']).catch(() => undefined)
   }
 
-  /**
-   * Applies lip-sync / subtitle offsets, playback speed and aspect override.
-   *
-   * Unlike audio-spdif these are plain playback properties — no device
-   * negotiation, so none of them can wedge mpv the way passthrough could. Sent
-   * together because the renderer holds them as one object; set_property is
-   * idempotent, so re-sending unchanged values costs nothing.
-   */
-  async setPlaybackTuning(tuning: MpvPlaybackTuning): Promise<void> {
-    if (!this.process) return
-
-    // mpv wants -1 for "use whatever the stream says"; a ratio string otherwise.
-    const aspect: string | number = tuning.aspectRatio === 'auto' ? -1 : tuning.aspectRatio
-
-    await Promise.allSettled([
-      this.command(['set_property', 'audio-delay', tuning.audioDelay]),
-      this.command(['set_property', 'sub-delay', tuning.subDelay]),
-      this.command(['set_property', 'speed', tuning.speed]),
-      this.command(['set_property', 'video-aspect-override', aspect])
-    ])
+  private setPassthroughActive(active: boolean): void {
+    if (this.passthroughActive === active) return
+    this.passthroughActive = active
+    this.notify(true)
   }
 
-  async setSubtitleStyle(style: MpvSubtitleStyle): Promise<void> {
-    this.subtitleStyle = {
-      fontSize: Number.isFinite(style.fontSize) ? style.fontSize : this.subtitleStyle.fontSize,
-      color: style.color || this.subtitleStyle.color,
-      background: style.background || this.subtitleStyle.background
+  // ---------------------------------------------------------------------------
+  // Helpers
+
+  private beginPlayback(input: Omit<Playback, 'seq' | 'wanted' | 'phase' | 'error' | 'waiters'>): Playback {
+    this.supersede()
+    const playback: Playback = {
+      ...input,
+      tuning: { ...input.tuning },
+      seq: ++this.loadSeq,
+      wanted: true,
+      phase: 'loading',
+      error: null,
+      waiters: []
     }
-
-    if (!this.process) return
-    await this.applySubtitleStyle().catch(() => undefined)
+    this.playback = playback
+    this.notify(true)
+    return playback
   }
 
-  async refreshState(): Promise<MpvStateSnapshot> {
-    if (!this.process || !this.socket || this.socket.destroyed) {
-      return this.getState()
-    }
-
-    await this.refreshTrackState()
-
-    const results = await Promise.allSettled([
-      this.command(['get_property', 'pause']),
-      this.command(['get_property', 'time-pos']),
-      this.command(['get_property', 'duration']),
-      this.command(['get_property', 'demuxer-cache-state']),
-      this.command(['get_property', 'fullscreen'])
-    ])
-
-    const pause = results[0].status === 'fulfilled' ? results[0].value : undefined
-    const timePos = results[1].status === 'fulfilled' ? results[1].value : undefined
-    const duration = results[2].status === 'fulfilled' ? results[2].value : undefined
-    const cacheState = results[3].status === 'fulfilled' ? results[3].value : undefined
-    const fullscreen = results[4].status === 'fulfilled' ? results[4].value : undefined
-
-    this.state.paused = toBoolean(pause, this.state.paused)
-    this.state.timePos = toNumber(timePos, this.state.timePos)
-    this.state.duration = toNumber(duration, this.state.duration)
-    this.state.buffering = this.getBufferingFromCacheState(cacheState)
-    this.state.demuxerCacheDuration = this.getCacheDurationFromState(cacheState)
-    this.state.fullscreen = toBoolean(fullscreen, this.state.fullscreen)
-    this.state.running = !!this.state.path
-
-    return this.getState()
+  /** The current playback is replaced: whoever awaited it is done. */
+  private supersede(): void {
+    const previous = this.playback
+    if (previous) this.resolveWaiters(previous)
+    this.passthroughToken += 1
+    this.passthroughActive = false
   }
 
-  private async refreshTrackState(): Promise<void> {
-    const results = await Promise.allSettled([
-      this.command(['get_property', 'track-list']),
-      this.command(['get_property', 'vid']),
-      this.command(['get_property', 'aid']),
-      this.command(['get_property', 'sid']),
-      this.command(['get_property', 'volume']),
-      this.command(['get_property', 'mute']),
-      this.command(['get_property', 'path'])
-    ])
-
-    const trackList = results[0].status === 'fulfilled' ? results[0].value : undefined
-    const vid = results[1].status === 'fulfilled' ? results[1].value : undefined
-    const aid = results[2].status === 'fulfilled' ? results[2].value : undefined
-    const sid = results[3].status === 'fulfilled' ? results[3].value : undefined
-    const volume = results[4].status === 'fulfilled' ? results[4].value : undefined
-    const muted = results[5].status === 'fulfilled' ? results[5].value : undefined
-    const path = results[6].status === 'fulfilled' ? results[6].value : undefined
-
-    this.state.tracks = this.normalizeTracks(trackList)
-    this.state.vid = typeof vid === 'number' && Number.isInteger(vid) ? vid : null
-    this.state.aid = typeof aid === 'number' && Number.isInteger(aid) ? aid : null
-    this.state.sid = typeof sid === 'number' && Number.isInteger(sid) ? sid : null
-    this.state.volume = Math.max(0, Math.min(100, toNumber(volume, this.state.volume)))
-    this.state.muted = toBoolean(muted, this.state.muted)
-    this.state.path = typeof path === 'string' && path.length > 0 ? path : this.state.path
-  }
-
-  private normalizeTracks(input: unknown): MpvTrackInfo[] {
-    if (!Array.isArray(input)) return []
-
-    const tracks: MpvTrackInfo[] = []
-    for (const rawTrack of input) {
-      if (!rawTrack || typeof rawTrack !== 'object') continue
-      const track = rawTrack as Record<string, unknown>
-
-      const type = normalizeTrackType(track.type)
-      if (!type) continue
-
-      const id = Number(track.id)
-      if (!Number.isInteger(id) || id <= 0) continue
-      if (type === 'video' && (toBoolean(track.image, false) || toBoolean(track.albumart, false))) {
-        continue
-      }
-
-      tracks.push({
-        id,
-        type,
-        title: typeof track.title === 'string' ? track.title : undefined,
-        lang: typeof track.lang === 'string' ? track.lang : undefined,
-        codec: typeof track.codec === 'string' ? track.codec : undefined,
-        bitrate: toPositiveNumber(track['hls-bitrate']) ?? toPositiveNumber(track.bitrate),
-        width: toPositiveNumber(track['demux-w']) ?? toPositiveNumber(track.w),
-        height: toPositiveNumber(track['demux-h']) ?? toPositiveNumber(track.h),
-        selected: toBoolean(track.selected, false),
-        external: toBoolean(track.external, false)
-      })
-    }
-
-    return tracks
-  }
-
-  private getBufferingFromCacheState(cacheState: unknown): boolean {
-    if (!cacheState || typeof cacheState !== 'object') return false
-    const state = cacheState as Record<string, unknown>
-    return toBoolean(state.underrun, false)
-  }
-
-  private getCacheDurationFromState(cacheState: unknown): number {
-    if (!cacheState || typeof cacheState !== 'object') return 0
-    const state = cacheState as Record<string, unknown>
-    const raw = state['cache-duration']
-    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0) return 0
-    return raw
-  }
-
-  private async getCurrentPath(): Promise<string | null> {
-    const path = await this.command(['get_property', 'path']).catch(() => this.state.path)
-    return typeof path === 'string' && path.length > 0 ? path : this.state.path
-  }
-
-  private async tryCommand(command: unknown[]): Promise<boolean> {
-    try {
-      await this.command(command)
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  private async reloadAtLiveEdge(path: string): Promise<void> {
-    await this.command([
-      'loadfile',
-      path,
-      'replace',
-      -1,
-      {
-        'demuxer-lavf-o': 'live_start_index=-1'
-      }
-    ]).catch(async () => {
-      await this.command(['loadfile', path, 'replace'])
+  private waitFor(playback: Playback): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      playback.waiters.push({ resolve, reject })
     })
-    await Promise.allSettled([
-      this.applySubtitleStyle(),
-      this.tryCommand(['set_property', 'pause', false])
-    ])
-    this.state.path = path
-    this.state.running = true
-    this.state.paused = false
-    this.state.error = null
-    this.state.timePos = 0
-    this.state.duration = 0
-    this.state.demuxerCacheDuration = 0
   }
 
-  private async ensureStarted(parentWid?: string): Promise<void> {
-    const available = await this.isAvailable()
-    if (!available) throw new Error('mpv ikili dosyası bulunamadı')
+  private resolveWaiters(playback: Playback): void {
+    const waiters = playback.waiters
+    playback.waiters = []
+    for (const waiter of waiters) waiter.resolve()
+  }
 
-    if (this.process && this.socket && !this.socket.destroyed) {
-      if (parentWid && this.startupParentWid && this.startupParentWid !== parentWid) {
-        await this.shutdown()
-      } else {
-        return
-      }
+  private rejectWaiters(playback: Playback, error: Error): void {
+    const waiters = playback.waiters
+    playback.waiters = []
+    for (const waiter of waiters) waiter.reject(error)
+  }
+
+  private readySession(): MpvSession | null {
+    const session = this.current
+    return session && session.ready ? session : null
+  }
+
+  private loadedSession(): MpvSession | null {
+    const session = this.readySession()
+    return session && session.loadToken !== null ? session : null
+  }
+
+  private retire(session: MpvSession): void {
+    if (this.current === session) this.current = null
+    if (this.starting === session) this.starting = null
+    if (this.closingSessions.has(session)) return
+    this.closingSessions.add(session)
+    void session.close().finally(() => this.closingSessions.delete(session))
+  }
+
+  /** Re-resolved on every call (a few stat calls) so a fixed install is seen. */
+  private resolveBinary(): string | null {
+    const binary = this.deps.resolveBinary()
+    this.available = binary !== null
+    return binary
+  }
+
+  /** Records a state change and schedules (or, if urgent, sends) a snapshot. */
+  private notify(urgent: boolean): void {
+    this.stateVersion += 1
+    if (this.listeners.size === 0) return
+    if (urgent) {
+      this.flush()
+      return
     }
+    if (this.flushTimer) return
+    this.flushTimer = setTimeout(() => this.flush(), MPV_SNAPSHOT_INTERVAL_MS)
+  }
 
-    if (this.startupPromise) return this.startupPromise
-
-    this.startupPromise = this.startMpv(parentWid)
-    try {
-      await this.startupPromise
-    } finally {
-      this.startupPromise = null
+  private flush(): void {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer)
+      this.flushTimer = null
     }
-  }
-
-  private buildLaunchArgs(socketPath: string, parentWid?: string): string[] {
-    const args = [
-      '--idle=yes',
-      '--keep-open=yes',
-      '--player-operation-mode=cplayer',
-      '--force-window=immediate',
-      '--keepaspect-window=no',
-      '--input-terminal=no',
-      '--terminal=no',
-      '--osd-level=0',
-      '--no-osc',
-      '--no-input-default-bindings',
-      '--input-vo-keyboard=no',
-      '--pause=yes',
-      `--hwdec=${this.hwdecValue}`,
-      // NOTE: --audio-spdif must NEVER be added here. Passed as a launch
-      // argument it deadlocks mpv outright when the device rejects the
-      // bitstream — the process hangs before it even creates the IPC socket,
-      // leaving no way out but SIGKILL. Applied later via set_property the very
-      // same value degrades gracefully instead (see applyAudioPassthrough).
-      // Network resilience for live streams
-      '--network-timeout=30',
-      '--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5,reconnect_on_network_error=1',
-      '--demuxer-max-bytes=150MiB',
-      '--demuxer-max-back-bytes=50MiB',
-      '--cache=yes',
-      '--cache-secs=30',
-      // Accept self-signed / expired TLS certificates (common in IPTV)
-      '--tls-verify=no',
-      '--tls-ca-file=',
-      `--input-ipc-server=${socketPath}`
-    ]
-
-    if (parentWid) {
-      args.push(`--wid=${parentWid}`)
-    }
-
-    return args
-  }
-
-  private async startMpv(parentWid?: string): Promise<void> {
-    const socketPath = createMpvSocketPath()
-    this.socketPath = socketPath
-    this.startupParentWid = parentWid ?? null
-
-    const args = this.buildLaunchArgs(socketPath, parentWid)
-
-    const child = spawn(this.mpvPath, args, {
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
-
-    this.process = child
-    this.state.error = null
-    // `--terminal=no` silences mpv entirely, so these pipes stay empty. Drain
-    // them anyway so a future flag change can never stall the child on a full
-    // pipe buffer. Playback failures arrive via the `end-file` IPC event.
-    child.stdout.resume()
-    child.stderr.resume()
-
-    child.on('error', async (error) => {
-      this.state.error = error.message
-      await this.cleanup()
-    })
-
-    child.on('close', async () => {
-      this.state.running = false
-      this.state.path = null
-      await this.cleanup()
-    })
-
-    this.socket = await this.connectSocket(socketPath)
-    this.socket.setEncoding('utf8')
-    this.socket.on('data', (chunk: string) => this.onSocketData(chunk))
-    this.socket.on('error', () => undefined)
-    this.socket.on('close', () => {
-      this.socket = null
-      void this.cleanup().catch(() => undefined)
-    })
-
-    await Promise.allSettled([
-      this.command(['observe_property', 1001, 'pause']),
-      this.command(['observe_property', 1002, 'time-pos']),
-      this.command(['observe_property', 1003, 'duration']),
-      this.command(['observe_property', 1004, 'vid']),
-      this.command(['observe_property', 1005, 'aid']),
-      this.command(['observe_property', 1006, 'sid']),
-      this.command(['observe_property', 1007, 'track-list']),
-      this.command(['observe_property', 1008, 'demuxer-cache-state']),
-      this.command(['observe_property', 1009, 'volume']),
-      this.command(['observe_property', 1010, 'mute']),
-      this.command(['observe_property', 1011, 'path']),
-      this.command(['observe_property', 1012, 'fullscreen'])
-    ])
-
-    await Promise.allSettled([
-      this.applySubtitleStyle(),
-      this.refreshState()
-    ])
-  }
-
-  private async applySubtitleStyle(): Promise<void> {
-    if (!this.process) return
-
-    const fontSize = Math.max(10, Math.min(96, Math.round(this.subtitleStyle.fontSize)))
-    const subtitleScale = Math.max(0.5, Math.min(3, fontSize / 24))
-    const mpvFontSize = Math.max(14, Math.round(fontSize * 2.2))
-    const textColor = this.toMpvColor(this.subtitleStyle.color, false, '#FFFFFF')
-    const backColor = this.toMpvColor(this.subtitleStyle.background, true, '#000000BF')
-
-    await Promise.allSettled([
-      this.command(['set_property', 'sub-ass-override', 'force']),
-      this.command(['set_property', 'sub-scale', subtitleScale]),
-      this.command(['set_property', 'sub-font-size', mpvFontSize]),
-      this.command(['set_property', 'sub-color', textColor]),
-      this.command(['set_property', 'sub-back-color', backColor]),
-      this.command(['set_property', 'sub-border-size', 0]),
-      this.command(['set_property', 'sub-shadow-offset', 0]),
-      this.command(['set_property', 'sub-border-color', '#00000000'])
-    ])
-  }
-
-  private toMpvColor(input: string, includeAlpha: boolean, fallback: string): string {
-    const color = this.parseCssColor(input)
-    if (!color) return fallback
-
-    const toHex = (value: number) => value.toString(16).padStart(2, '0').toUpperCase()
-    const base = `#${toHex(color.r)}${toHex(color.g)}${toHex(color.b)}`
-    if (!includeAlpha) return base
-    return `${base}${toHex(Math.round(color.a * 255))}`
-  }
-
-  private parseCssColor(input: string): { r: number; g: number; b: number; a: number } | null {
-    const value = input.trim()
-    if (!value) return null
-
-    const shortHexMatch = value.match(/^#([0-9a-fA-F]{3})$/)
-    if (shortHexMatch) {
-      const [r, g, b] = shortHexMatch[1].split('').map((ch) => Number.parseInt(ch + ch, 16))
-      return { r, g, b, a: 1 }
-    }
-
-    const hexMatch = value.match(/^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/)
-    if (hexMatch) {
-      const hex = hexMatch[1]
-      const alphaHex = hexMatch[2]
-      return {
-        r: Number.parseInt(hex.slice(0, 2), 16),
-        g: Number.parseInt(hex.slice(2, 4), 16),
-        b: Number.parseInt(hex.slice(4, 6), 16),
-        a: alphaHex ? Number.parseInt(alphaHex, 16) / 255 : 1
-      }
-    }
-
-    const rgbMatch = value.match(
-      /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([0-9]*\.?[0-9]+))?\s*\)$/i
-    )
-    if (!rgbMatch) return null
-
-    const r = Math.max(0, Math.min(255, Number.parseInt(rgbMatch[1], 10)))
-    const g = Math.max(0, Math.min(255, Number.parseInt(rgbMatch[2], 10)))
-    const b = Math.max(0, Math.min(255, Number.parseInt(rgbMatch[3], 10)))
-    const alphaRaw = rgbMatch[4] ? Number.parseFloat(rgbMatch[4]) : 1
-    const a = Number.isFinite(alphaRaw) ? Math.max(0, Math.min(1, alphaRaw)) : 1
-
-    return { r, g, b, a }
-  }
-
-  private async connectSocket(socketPath: string): Promise<net.Socket> {
-    const startedAt = Date.now()
-
-    const tryConnect = async (): Promise<net.Socket> =>
-      new Promise<net.Socket>((resolve, reject) => {
-        const client = net.createConnection(socketPath)
-        const onError = (error: Error) => {
-          client.removeAllListeners()
-          client.destroy()
-          reject(error)
-        }
-
-        client.once('error', onError)
-        client.once('connect', () => {
-          client.removeListener('error', onError)
-          resolve(client)
-        })
-      })
-
-    const retryConnect = async (): Promise<net.Socket> => {
-      if (Date.now() - startedAt >= MPV_CONNECT_TIMEOUT_MS) {
-        throw new Error('mpv IPC soketine bağlanılamadı')
-      }
-
+    if (this.stateVersion === this.lastEmittedVersion) return
+    this.lastEmittedVersion = this.stateVersion
+    const snapshot = this.getState()
+    for (const listener of Array.from(this.listeners)) {
       try {
-        return await tryConnect()
+        listener(snapshot)
       } catch {
-        await new Promise((resolve) => setTimeout(resolve, MPV_CONNECT_RETRY_MS))
-        return retryConnect()
+        // A throwing listener must not break the controller or other listeners.
       }
-    }
-
-    return retryConnect()
-  }
-
-  private onSocketData(chunk: string): void {
-    this.socketBuffer += chunk
-    const lines = this.socketBuffer.split('\n')
-    this.socketBuffer = lines.pop() ?? ''
-
-    for (const rawLine of lines) {
-      const line = rawLine.trim()
-      if (!line) continue
-
-      try {
-        const message = JSON.parse(line) as MpvSocketResponse
-        this.handleSocketMessage(message)
-      } catch {
-        // ignore malformed lines
-      }
-    }
-  }
-
-  private handleSocketMessage(message: MpvSocketResponse): void {
-    if (typeof message.request_id === 'number') {
-      const pending = this.pendingRequests.get(message.request_id)
-      if (!pending) return
-
-      this.pendingRequests.delete(message.request_id)
-      clearTimeout(pending.timer)
-
-      if (message.error && message.error !== 'success') {
-        pending.reject(new Error(message.error))
-      } else {
-        pending.resolve(message.data)
-      }
-
-      return
-    }
-
-    // mpv is started with `--terminal=no`, which silences every message it
-    // would otherwise print (and those go to stdout, not stderr, anyway). The
-    // JSON IPC event stream is the only reliable failure channel.
-    if (message.event === 'start-file') {
-      this.state.error = null
-      return
-    }
-
-    if (message.event === 'end-file') {
-      if (message.reason === 'error') {
-        this.state.error = describeMpvFileError(message.file_error)
-        this.state.running = false
-        this.state.buffering = false
-      }
-      return
-    }
-
-    if (message.event !== 'property-change') return
-
-    switch (message.name) {
-      case 'pause':
-        this.state.paused = toBoolean(message.data, this.state.paused)
-        break
-      case 'time-pos':
-        this.state.timePos = toNumber(message.data, this.state.timePos)
-        break
-      case 'duration':
-        this.state.duration = toNumber(message.data, this.state.duration)
-        break
-      case 'vid':
-        this.state.vid =
-          typeof message.data === 'number' && Number.isInteger(message.data) ? message.data : null
-        break
-      case 'aid':
-        this.state.aid =
-          typeof message.data === 'number' && Number.isInteger(message.data) ? message.data : null
-        break
-      case 'sid':
-        this.state.sid =
-          typeof message.data === 'number' && Number.isInteger(message.data) ? message.data : null
-        break
-      case 'track-list':
-        this.state.tracks = this.normalizeTracks(message.data)
-        break
-      case 'demuxer-cache-state':
-        this.state.buffering = this.getBufferingFromCacheState(message.data)
-        this.state.demuxerCacheDuration = this.getCacheDurationFromState(message.data)
-        break
-      case 'volume':
-        this.state.volume = Math.max(0, Math.min(100, toNumber(message.data, this.state.volume)))
-        break
-      case 'mute':
-        this.state.muted = toBoolean(message.data, this.state.muted)
-        break
-      case 'path':
-        this.state.path =
-          typeof message.data === 'string' && message.data.length > 0 ? message.data : null
-        this.state.running = !!this.state.path
-        break
-      case 'fullscreen':
-        this.state.fullscreen = toBoolean(message.data, this.state.fullscreen)
-        break
-      default:
-        break
-    }
-  }
-
-  private allocRequestId(): number {
-    // IPC request ids must stay within JS safe integer range. MPV treats the
-    // value opaquely, so we just wrap on overflow while skipping 0 (some
-    // clients reserve it for notifications).
-    if (this.nextRequestId >= Number.MAX_SAFE_INTEGER) {
-      this.nextRequestId = 1
-    }
-    const id = this.nextRequestId
-    this.nextRequestId += 1
-    return id
-  }
-
-  private async command(
-    command: unknown[],
-    timeoutMs = MPV_REQUEST_TIMEOUT_MS
-  ): Promise<unknown> {
-    if (this.shuttingDown) throw new Error('mpv IPC kapatılıyor')
-    const socket = this.socket
-    if (!socket || socket.destroyed) throw new Error('mpv IPC soket bağlantısı yok')
-
-    const requestId = this.allocRequestId()
-
-    return new Promise<unknown>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pendingRequests.delete(requestId)
-        reject(new Error('mpv komut zaman aşımına uğradı'))
-      }, timeoutMs)
-
-      this.pendingRequests.set(requestId, { resolve, reject, timer })
-
-      const payload = JSON.stringify({
-        command,
-        request_id: requestId
-      })
-
-      socket.write(`${payload}\n`, (error) => {
-        if (!error) return
-        const pending = this.pendingRequests.get(requestId)
-        if (!pending) return
-        this.pendingRequests.delete(requestId)
-        clearTimeout(pending.timer)
-        pending.reject(error)
-      })
-    })
-  }
-
-  private async cleanup(): Promise<void> {
-    // Guard against re-entry and block new writes while we tear everything down.
-    if (this.shuttingDown) return
-    this.shuttingDown = true
-
-    try {
-      // 1) Tear down socket FIRST so any late bytes from mpv are discarded and
-      //    can't re-populate pendingRequests after we've cleared it.
-      if (this.socket) {
-        this.socket.removeAllListeners()
-        this.socket.destroy()
-        this.socket = null
-      }
-      this.socketBuffer = ''
-
-      // 2) Reject every outstanding request exactly once. Errors from reject
-      //    callbacks must not crash the loop (they bubble up to whoever awaited).
-      const pending = Array.from(this.pendingRequests.entries())
-      this.pendingRequests.clear()
-      for (const [, entry] of pending) {
-        clearTimeout(entry.timer)
-        try {
-          entry.reject(new Error('mpv IPC bağlantısı kesildi'))
-        } catch {
-          // swallow — caller handles promise rejection
-        }
-      }
-
-      if (this.process) {
-        const proc = this.process
-        this.process = null
-        proc.removeAllListeners()
-        // Drain stdio listeners too — otherwise stderr 'data' events keep
-        // scheduling work after the process is gone.
-        proc.stdout?.removeAllListeners()
-        proc.stderr?.removeAllListeners()
-        if (!proc.killed) {
-          proc.kill('SIGTERM')
-          await new Promise<void>((resolve) => {
-            const forceTimer = setTimeout(() => {
-              if (!proc.killed) proc.kill('SIGKILL')
-              resolve()
-            }, 2000)
-            proc.on('close', () => {
-              clearTimeout(forceTimer)
-              resolve()
-            })
-          })
-        }
-      }
-
-      if (this.socketPath && process.platform !== 'win32') {
-        await unlink(this.socketPath).catch(() => undefined)
-      }
-
-      this.socketPath = null
-      this.startupParentWid = null
-    } finally {
-      // Always release the guard — if an intermediate step throws, the next
-      // open() call would otherwise see shuttingDown === true forever and
-      // refuse to issue commands.
-      this.shuttingDown = false
     }
   }
 }
