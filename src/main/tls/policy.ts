@@ -79,8 +79,8 @@ export interface TlsPolicyDeps {
   caFile: (extraPems?: readonly string[]) => Promise<string>
   probe: CertificateProbe
   notify: (notice: UntrustedCertificateNotice) => void
-  /** Called after a pin is removed, so pooled connections do not outlive it. */
-  onRevoked?: () => void
+  /** Called after a pin is removed, so pooled connections do not outlive it; awaited. */
+  onRevoked?: () => Promise<void> | void
   now?: () => number
 }
 
@@ -173,7 +173,7 @@ export class TlsPolicy {
     const endpoint = { host, port }
     const removed = await this.deps.store.remove(endpoint)
     this.forget(endpoint)
-    if (removed) this.deps.onRevoked?.()
+    if (removed) await this.deps.onRevoked?.()
     return removed
   }
 

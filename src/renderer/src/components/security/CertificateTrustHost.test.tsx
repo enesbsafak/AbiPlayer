@@ -92,6 +92,23 @@ describe('CertificateTrustHost', () => {
     expect(useStore.getState().connectRetryToken).toBe(tokenBefore + 1)
   })
 
+  it('reloads the current playback when its host is the one trusted', async () => {
+    useStore.setState({
+      currentChannel: { id: 'c1', name: 'TRT 1', streamUrl: '', sourceId: 's1', type: 'live' },
+      currentPlayback: {
+        playbackId: 'p1',
+        target: { kind: 'live', sourceId: 's1', streamId: 1 },
+        mediaKey: 'live:s1:1',
+        streamUrl: 'https://panel.example:8443/live/u/p/1.m3u8'
+      }
+    } as never)
+    const reloadsBefore = useStore.getState().playbackReloadToken
+    render(<CertificateTrustHost />)
+    emit(notice({ context: 'playback' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Bu sunucuya güven' }))
+    await waitFor(() => expect(useStore.getState().playbackReloadToken).toBe(reloadsBefore + 1))
+  })
+
   it('stays silent for a host that is not one of the sources', () => {
     render(<CertificateTrustHost />)
     emit(notice({ host: 'logos.example' }))

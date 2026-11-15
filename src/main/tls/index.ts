@@ -46,9 +46,8 @@ export function getTlsPolicy(): TlsPolicy {
         'tls-untrusted-certificate',
         notice
       ),
-    onRevoked: () => {
-      void session.defaultSession.closeAllConnections().catch(() => undefined)
-    }
+    // A pooled connection would keep serving the host without a new handshake.
+    onRevoked: () => session.defaultSession.closeAllConnections().catch(() => undefined)
   })
   return policy
 }

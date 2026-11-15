@@ -16,6 +16,7 @@ import {
   DISMISS_QUIET_MS,
   describeProblems,
   endpointLabel,
+  hostOf,
   noticeKey,
   noticeOwner,
   pinsToRevoke,
@@ -137,7 +138,8 @@ export function CertificateTrustHost() {
     // Retry what failed, through the app's own actions.
     if (owner.kind === 'pending' && owner.pending.resubmit()) return
     const state = useStore.getState()
-    if ((owner.kind === 'playback' || notice.context !== 'network') && state.currentPlayback) state.reloadPlayback()
+    // A playback from that host failed as well, whichever request reported it.
+    if (state.currentPlayback && hostOf(state.currentPlayback.streamUrl) === notice.host) state.reloadPlayback()
     if (owner.kind !== 'pending') state.requestSourceReconnect()
   }, [current, busy, resolveFirst])
 

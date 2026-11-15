@@ -96,7 +96,7 @@ describe('validators', () => {
 describe('mpv-open and the TLS policy (F3-01)', () => {
   function setupWithTls(mpvLoadOptions: (url: string) => Promise<Record<string, string>>) {
     const handlers = new Map<string, AnyHandler>()
-    const controller = { open: vi.fn().mockResolvedValue(undefined) }
+    const controller = { open: vi.fn().mockResolvedValue(undefined), stopPlayback: vi.fn().mockResolvedValue(undefined) }
     registerMpvHandlers(
       {
         handle<C extends IpcInvokeChannel>(channel: C, handler: IpcHandler<C>) {
@@ -111,7 +111,11 @@ describe('mpv-open and the TLS policy (F3-01)', () => {
       }
     )
     const event = { sender: { id: 1 } } as unknown as IpcMainInvokeEvent
-    return { controller, open: (url: string) => handlers.get('mpv-open')!(event, url) }
+    return {
+      controller,
+      open: (url: string) => handlers.get('mpv-open')!(event, url),
+      stop: () => handlers.get('mpv-stop')!(event)
+    }
   }
 
   it('hands the per-load TLS options to the controller', async () => {
@@ -120,6 +124,27 @@ describe('mpv-open and the TLS policy (F3-01)', () => {
     expect(controller.open).toHaveBeenCalledWith('https://panel.example/movie/u/p/1.mp4', undefined, {
       fileOptions: { 'tls-verify': 'no' }
     })
+  })
+
+  it('lets a newer open or a stop win over an open still being checked', async () => {
+    const pending: Array<(options: Record<string, string>) => void> = []
+    const { controller, open, stop } = setupWithTls(
+      () => new Promise<Record<string, string>>((resolve) => pending.push(resolve))
+    )
+    const first = open('https://panel.example/live/u/p/1.ts')
+    const second = open('https://panel.example/live/u/p/2.ts')
+    pending[1]({ 'tls-verify': 'yes' })
+    await second
+    pending[0]({ 'tls-verify': 'no' })
+    await first
+    expect(controller.open).toHaveBeenCalledTimes(1)
+    expect(controller.open.mock.calls[0][0]).toBe('https://panel.example/live/u/p/2.ts')
+
+    const third = open('https://panel.example/live/u/p/3.ts')
+    await stop()
+    pending[2]({})
+    await third
+    expect(controller.open).toHaveBeenCalledTimes(1)
   })
 
   it('does not open a stream the policy refuses', async () => {

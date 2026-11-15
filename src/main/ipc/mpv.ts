@@ -74,19 +74,26 @@ export interface MpvHandlerDeps {
 
 export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDeps): void {
   const { controller } = deps
+  // TLS checks may wait on the network; a newer open or a stop meanwhile wins.
+  let tlsOpenSeq = 0
 
   registrar.handle('mpv-is-available', () => controller.isAvailable())
 
   registrar.handle('mpv-open', async (event, streamUrl) => {
     if (!isValidStreamUrl(streamUrl)) throw new Error('Geçersiz yayın URL')
     // TLS (src/main/tls): options for this load only; rejects if the host is refused.
+    const tlsSeq = ++tlsOpenSeq
     const fileOptions = deps.tls ? await deps.tls.mpvLoadOptions(streamUrl) : {}
+    if (tlsSeq !== tlsOpenSeq) return
     const window = deps.getWindow(event.sender)
     const nativeWindowId = window ? getNativeWindowId(window) : null
     await controller.open(streamUrl, nativeWindowId ?? undefined, { fileOptions })
   })
 
-  registrar.handle('mpv-stop', () => controller.stopPlayback())
+  registrar.handle('mpv-stop', () => {
+    tlsOpenSeq += 1 // TLS: a stop supersedes an open still being checked
+    return controller.stopPlayback()
+  })
   registrar.handle('mpv-toggle-pause', () => controller.togglePause())
 
   registrar.handle('mpv-set-pause', (_event, paused) =>
