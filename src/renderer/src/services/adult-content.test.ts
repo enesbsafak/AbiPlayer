@@ -49,6 +49,27 @@ describe('isAdultLabel', () => {
     expect(isAdultLabel('Belgesel 18')).toBe(false)
   })
 
+  it('does not flag well-known ordinary channels and titles', () => {
+    expect(isAdultLabel('Adult Swim')).toBe(false)
+    expect(isAdultLabel('US: ADULT SWIM HD')).toBe(false)
+    expect(isAdultLabel('TR: Cartoon Network / Adult Swim')).toBe(false)
+    expect(isAdultLabel('AdultSwim')).toBe(false)
+    expect(isAdultLabel('Young Adult Filmleri')).toBe(false)
+    expect(isAdultLabel('Sex and the City (2008)')).toBe(false)
+    expect(isAdultLabel('TR: Sex Education S01')).toBe(false)
+    expect(isAdultLabel('Sex/Life')).toBe(false)
+    expect(isAdultLabel('The Sex Lives of College Girls')).toBe(false)
+    expect(isAdultLabel('Sexy Beast (2000) 1080p')).toBe(false)
+    expect(isAdultLabel('Essex TV')).toBe(false)
+  })
+
+  it('still flags adult labels that sit next to a safe phrase', () => {
+    expect(isAdultLabel('Adult Swim | XXX')).toBe(true)
+    expect(isAdultLabel('Adult Channels')).toBe(true)
+    expect(isAdultLabel('VIP | ADULTS 18+')).toBe(true)
+    expect(isAdultLabel('Sexy TV')).toBe(true)
+  })
+
   it('treats empty input as not adult', () => {
     expect(isAdultLabel('')).toBe(false)
     expect(isAdultLabel(null)).toBe(false)

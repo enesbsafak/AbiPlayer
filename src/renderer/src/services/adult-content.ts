@@ -42,10 +42,26 @@ const ADULT_PATTERNS: RegExp[] = [
   /\bredlight\b/
 ]
 
+// Ordinary titles and channels that contain one of the words above. They are
+// removed from the label before matching, so "Adult Swim XXX" still counts.
+const SAFE_PHRASES: RegExp[] = [
+  // Cartoon Network's evening block and its channels.
+  /\badult\s*swim\b/g,
+  /\byoung\s+adults?\b/g,
+  /\badult\s+(?:education|learning)\b/g,
+  // Series and films whose titles start with "Sex".
+  /\bsex\s+and\s+the\s+city\b/g,
+  /\bsex\s+education\b/g,
+  /\bsex\s*\/\s*life\b/g,
+  /\bsex\s+lives\s+of\b/g,
+  /\bsexy\s+beast\b/g
+]
+
 /** True when a channel, group or category label reads as adult content. */
 export function isAdultLabel(text: string | null | undefined): boolean {
-  if (!text) return false
-  const folded = foldForMatching(text)
+  if (!text || typeof text !== 'string') return false
+  let folded = foldForMatching(text)
+  for (const phrase of SAFE_PHRASES) folded = folded.replace(phrase, ' ')
   return ADULT_PATTERNS.some((pattern) => pattern.test(folded))
 }
 
