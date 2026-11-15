@@ -11,7 +11,52 @@ export interface MpvTrackInfo {
   external: boolean
 }
 
-export interface MpvStateSnapshot {
+/**
+ * Where the controller's current playback stands.
+ *
+ *   idle     nothing is requested (stopped, or never started)
+ *   loading  a load was requested: mpv is starting or opening the stream
+ *   playing  the stream is loaded and playing (see `paused` for pause state)
+ *   ended    the stream reached its end and mpv is holding the last frame
+ *   error    the load failed or mpv exited unexpectedly; see `error`
+ */
+export type MpvPlaybackPhase = 'idle' | 'loading' | 'playing' | 'ended' | 'error'
+
+/**
+ * Identity fields. The main-process controller always fills all three (see
+ * `MpvIdentifiedSnapshot`); they are optional on `MpvStateSnapshot` only so
+ * snapshots built elsewhere (renderer test fixtures) keep compiling until the
+ * renderer switches over to them.
+ */
+export interface MpvSnapshotIdentity {
+  /**
+   * Which mpv process this snapshot describes; null when none is running.
+   * Increases with every new process for the lifetime of the app.
+   */
+  sessionId: number | null
+  /**
+   * Main-issued id of the load attempt this snapshot describes; changes on
+   * every load, including a reload or reconnect of the same `playbackId`.
+   * Null when idle. Per-stream fields (time, duration, tracks, path, error)
+   * always belong to this load.
+   */
+  loadId: number | null
+  /**
+   * The renderer-issued id passed to `open` (the renderer's intent, which may
+   * span several loads), or null when idle or when `open` was called without
+   * one.
+   */
+  playbackId: string | null
+  phase: MpvPlaybackPhase
+  /**
+   * Increases with every state change for the controller's lifetime; equal
+   * values describe the same state. Lets a subscriber drop out-of-order or
+   * duplicate deliveries.
+   */
+  seq: number
+}
+
+export interface MpvStateSnapshot extends Partial<MpvSnapshotIdentity> {
   available: boolean
   running: boolean
   paused: boolean
@@ -35,6 +80,9 @@ export interface MpvStateSnapshot {
    */
   passthroughActive: boolean
 }
+
+/** What the controller emits: a snapshot whose identity is always present. */
+export type MpvIdentifiedSnapshot = MpvStateSnapshot & MpvSnapshotIdentity
 
 export interface MpvSubtitleStyle {
   fontSize: number
