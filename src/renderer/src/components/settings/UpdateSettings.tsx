@@ -52,6 +52,7 @@ export function UpdateSettings() {
     state: appUpdateState,
     isChecking: isCheckingUpdates,
     isInstalling: isInstallingUpdate,
+    checkError,
     check,
     install
   } = useAppUpdate()
@@ -83,6 +84,7 @@ export function UpdateSettings() {
           {appUpdateState?.message && (
             <p className="text-xs text-surface-500">{appUpdateState.message}</p>
           )}
+          {checkError && <p className="text-xs text-red-400">{checkError}</p>}
           <p className="text-xs text-surface-500">
             Son kontrol: {formatUpdateTimestamp(appUpdateState?.lastCheckedAt ?? null)}
           </p>

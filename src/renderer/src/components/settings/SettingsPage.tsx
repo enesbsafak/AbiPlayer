@@ -27,9 +27,9 @@ interface SettingsTab {
 
 const TABS: SettingsTab[] = [
   { id: 'sources', label: 'Kaynaklar', description: 'Xtream ve M3U kaynaklarınızı yönetin', icon: Database },
-  { id: 'playback', label: 'Oynatma', description: 'Ses, dublaj dili ve oynatma çekirdeği', icon: Play },
+  { id: 'playback', label: 'Oynatma', description: 'Ses, dublaj dili, donanım hızlandırma ve ses passthrough', icon: Play },
   { id: 'subtitles', label: 'Altyazı', description: 'Altyazı dili ve görünümü', icon: Captions },
-  { id: 'catalog', label: 'Katalog', description: 'Kategori görünürlüğü ve liste düzeni', icon: LayoutGrid },
+  { id: 'catalog', label: 'Katalog', description: 'Hangi kategorilerin listelerde görüneceği', icon: LayoutGrid },
   { id: 'general', label: 'Genel', description: 'Saat, EPG, TMDB ve sıfırlama', icon: SlidersHorizontal },
   { id: 'updates', label: 'Güncelleme', description: 'Sürüm bilgisi ve güncelleme kontrolü', icon: Download },
   { id: 'support', label: 'Destek', description: 'Projeye katkı, geri bildirim ve sürüm notları', icon: Heart }

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { TitleBar } from './TitleBar'
 import { Sidebar } from './Sidebar'
@@ -10,12 +10,8 @@ import { useEPG } from '@/hooks/useEPG'
 import { useAutoConnect } from '@/hooks/useAutoConnect'
 import { useWatchProgress } from '@/hooks/useWatchProgress'
 
-const LAST_ROUTE_KEY = 'iptv:last-route'
-const RESTORABLE_ROUTES = new Set(['/live', '/vod', '/series', '/epg', '/favorites', '/search', '/settings'])
-
 export function AppShell() {
   const routeLocation = useLocation()
-  const restoredRef = useRef(false)
   const currentChannel = useStore((s) => s.currentChannel)
   const isMiniPlayer = useStore((s) => s.isMiniPlayer)
   const playbackEngine = useStore((s) => s.playbackEngine)
@@ -27,20 +23,6 @@ export function AppShell() {
   // Lives here rather than in the player: playback continues in the mini player
   // and survives leaving /player, so the recorder has to outlive that route.
   useWatchProgress()
-
-  // Save last visited route
-  useEffect(() => {
-    if (RESTORABLE_ROUTES.has(routeLocation.pathname)) {
-      localStorage.setItem(LAST_ROUTE_KEY, routeLocation.pathname)
-    }
-  }, [routeLocation.pathname])
-
-  // Always start from home page — bootstrap loads categories + preview first
-  useEffect(() => {
-    if (restoredRef.current) return
-    restoredRef.current = true
-    localStorage.removeItem(LAST_ROUTE_KEY)
-  }, [])
 
   useEffect(() => {
     const useTransparentSurface = isPlayerRoute && playbackEngine === 'mpv'

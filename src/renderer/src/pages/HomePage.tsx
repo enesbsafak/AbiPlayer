@@ -1,5 +1,4 @@
-import { useCallback, useMemo } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useMemo } from 'react'
 import { Tv, Film, Clapperboard, Star } from 'lucide-react'
 import { useStore } from '@/store'
 import { HomeHero } from '@/components/home/HomeHero'
@@ -8,27 +7,18 @@ import { ContinueWatchingSection } from '@/components/home/ContinueWatchingSecti
 import { HomeError, HomeLoading, HomeWelcome } from '@/components/home/HomeStates'
 import { useHomeBootstrap } from '@/hooks/useHomeBootstrap'
 import { useCatalogView } from '@/hooks/useCatalogView'
+import { useOpenCatalogItem } from '@/hooks/useOpenCatalogItem'
 import type { Channel } from '@/types/playlist'
-import { isPlayableChannel } from '@/services/playback'
-import { applyCatalogView } from '@/services/catalog-view'
-import { openPlayerFromRoute } from '@/services/player-navigation'
+import { buildHomeCatalog, HOME_MAX_OTHER } from '@/components/home/home-catalog'
 import { restoreStreamUrl, type WatchProgressEntry } from '@/services/watch-progress'
 
-const MAX_LIVE = 12
-const MAX_OTHER = 6
-
 export default function HomePage() {
-  const location = useLocation()
-  const navigate = useNavigate()
   const channels = useStore((s) => s.channels)
   const sources = useStore((s) => s.sources)
   const favoriteIds = useStore((s) => s.favoriteIds)
   const isLoading = useStore((s) => s.isLoading)
   const isLoadingPlaylist = useStore((s) => s.isLoadingPlaylist)
   const activeSourceId = useStore((s) => s.activeSourceId)
-  const playChannel = useStore((s) => s.playChannel)
-  const setMiniPlayer = useStore((s) => s.setMiniPlayer)
-  const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
   const syncProgress = useStore((s) => (activeSourceId ? s.syncProgress[activeSourceId] : undefined))
   const authError = useStore((s) => s.error)
   const watchProgress = useStore((s) => s.watchProgress)
@@ -37,49 +27,22 @@ export default function HomePage() {
 
   const bootstrap = useHomeBootstrap()
 
-  const handlePlay = useCallback(
-    (channel: Channel) => {
-      if (!isPlayableChannel(channel)) {
-        if (channel.type === 'series') navigate('/series')
-        return
-      }
-
-      playChannel(channel)
-      setMiniPlayer(false)
-      openPlayerFromRoute({ location, navigate, setPlayerReturnTarget })
-    },
-    [location, playChannel, setMiniPlayer, navigate, setPlayerReturnTarget]
-  )
+  const handlePlay = useOpenCatalogItem()
 
   const catalogView = useCatalogView()
 
-  const { recentLive, recentVod, recentSeries } = useMemo(() => {
-    const live: Channel[] = []
-    const vod: Channel[] = []
-    const series: Channel[] = []
-
-    // The dashboard shows the first few of each type, so it is the screen the
-    // catalog order hits hardest — an M3U playlist that opens with its adult
-    // groups used to fill every row here.
-    for (const channel of applyCatalogView(channels, catalogView)) {
-      if (live.length < MAX_LIVE && channel.type === 'live') live.push(channel)
-      if (vod.length < MAX_OTHER && channel.type === 'vod') vod.push(channel)
-      if (series.length < MAX_OTHER && channel.type === 'series') series.push(channel)
-
-      if (live.length >= MAX_LIVE && vod.length >= MAX_OTHER && series.length >= MAX_OTHER) {
-        break
-      }
-    }
-
-    return { recentLive: live, recentVod: vod, recentSeries: series }
-  }, [channels, catalogView])
+  const { visibleCount, hasSourceContent, recentLive, recentVod, recentSeries } = useMemo(
+    () => buildHomeCatalog(channels, activeSourceId, catalogView),
+    [channels, activeSourceId, catalogView]
+  )
 
   // Favourites are an explicit user pick rather than a catalog listing, so
-  // category hiding deliberately does not apply to them.
+  // category hiding deliberately does not apply to them. Like the Favoriler
+  // page this row opens, it spans every source.
   const favChannels = useMemo(() => {
     const fav: Channel[] = []
     for (const channel of channels) {
-      if (fav.length >= MAX_OTHER) break
+      if (fav.length >= HOME_MAX_OTHER) break
       if (favoriteIds.has(channel.id)) fav.push(channel)
     }
     return fav
@@ -97,7 +60,7 @@ export default function HomePage() {
     const playable: WatchProgressEntry[] = []
 
     for (const entry of watchProgress) {
-      if (playable.length >= MAX_OTHER) break
+      if (playable.length >= HOME_MAX_OTHER) break
 
       const streamUrl = restoreStreamUrl(
         entry.channel.streamUrl,
@@ -113,7 +76,7 @@ export default function HomePage() {
 
   if (sources.length === 0) return <HomeWelcome />
 
-  const hasNoContent = channels.length === 0
+  const hasNoContent = !hasSourceContent
   const showInitialLoading =
     hasNoContent && (isLoading || isLoadingPlaylist || bootstrap.isBootstrapping)
 
@@ -137,7 +100,7 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col gap-8 p-4">
-      <HomeHero channelCount={channels.length} syncProgress={syncProgress} />
+      <HomeHero channelCount={visibleCount} syncProgress={syncProgress} />
 
       <ContinueWatchingSection
         entries={continueWatching}

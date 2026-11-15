@@ -7,6 +7,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
 import { secureCredentialService } from '@/services/secure-credentials'
+import { toUserMessage } from '@/services/user-error'
 import type { PlaylistSource } from '@/types/playlist'
 
 interface LoginState {
@@ -55,13 +56,25 @@ export function LoginForm() {
   const navigate = useNavigate()
   const [{ url, username, password, name, loading, error }, dispatch] = useReducer(loginReducer, initialLoginState)
 
-  const { sources, addSource, setActiveSource, setXtreamAuth } = useStore()
+  const addSource = useStore((s) => s.addSource)
+  const setActiveSource = useStore((s) => s.setActiveSource)
+  const setXtreamAuth = useStore((s) => s.setXtreamAuth)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     dispatch({ type: 'submitStart' })
 
+    // Pasted credentials often carry a trailing space or newline, which the
+    // server then rejects as a wrong password.
+    const trimmedUsername = username.trim()
+    const trimmedPassword = password.trim()
+    const trimmedName = name.trim()
+
     try {
+      if (!trimmedUsername || !trimmedPassword) {
+        throw new Error('Kullanıcı adı ve şifre boş bırakılamaz')
+      }
+
       // Add http:// if no protocol specified (most IPTV servers use HTTP)
       let normalizedUrl = url.trim().replace(/\/+$/, '')
       if (!/^https?:\/\//i.test(normalizedUrl)) {
@@ -81,14 +94,14 @@ export function LoginForm() {
       normalizedUrl = parsedUrl.toString().replace(/\/+$/, '')
 
       // Check for duplicate Xtream source (same URL + username)
-      const existing = sources.find(
-        (s) => s.type === 'xtream' && s.url === normalizedUrl && s.username === username
+      const existing = useStore.getState().sources.find(
+        (s) => s.type === 'xtream' && s.url === normalizedUrl && s.username === trimmedUsername
       )
       if (existing) {
         throw new Error(`Bu sunucu ve kullanıcı adı zaten "${existing.name}" olarak ekli`)
       }
 
-      const creds = { url: normalizedUrl, username, password }
+      const creds = { url: normalizedUrl, username: trimmedUsername, password: trimmedPassword }
       const auth = await xtreamApi.authenticate(creds)
 
       if (auth.user_info.auth !== 1) {
@@ -99,11 +112,11 @@ export function LoginForm() {
 
       const source: PlaylistSource = {
         id: `xtream_${Date.now()}`,
-        name: name || `${username}@${hostname}`,
+        name: trimmedName || `${trimmedUsername}@${hostname}`,
         type: 'xtream',
         url: creds.url,
-        username,
-        password,
+        username: trimmedUsername,
+        password: trimmedPassword,
         addedAt: Date.now()
       }
 
@@ -119,7 +132,7 @@ export function LoginForm() {
       // Navigate to home to see channels
       navigate('/')
     } catch (err) {
-      dispatch({ type: 'submitError', message: err instanceof Error ? err.message : 'Bağlantı başarısız oldu' })
+      dispatch({ type: 'submitError', message: toUserMessage(err, 'Bağlantı başarısız oldu.') })
     } finally {
       dispatch({ type: 'submitDone' })
     }
@@ -139,10 +152,10 @@ export function LoginForm() {
 
       <Input id="xtream-name" label="Görünen Ad (opsiyonel)" placeholder="Benim Kaynağım" value={name} onChange={(e) => dispatch({ type: 'setField', field: 'name', value: e.target.value })} />
       <Input id="xtream-url" label="Sunucu URL" placeholder="http://example.com:8080" value={url} onChange={(e) => dispatch({ type: 'setField', field: 'url', value: e.target.value })} required />
-      <Input id="xtream-user" label="Kullanıcı Adı" placeholder="kullanici_adi" value={username} onChange={(e) => dispatch({ type: 'setField', field: 'username', value: e.target.value })} required />
+      <Input id="xtream-user" label="Kullanıcı Adı" placeholder="kullanıcı_adı" value={username} onChange={(e) => dispatch({ type: 'setField', field: 'username', value: e.target.value })} required />
       <Input id="xtream-pass" label="Şifre" type="password" placeholder="şifre" value={password} onChange={(e) => dispatch({ type: 'setField', field: 'password', value: e.target.value })} required />
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
 
       <Button type="submit" disabled={loading} className="mt-2">
         {loading ? <><Spinner size={16} /> Bağlanılıyor…</> : 'Bağlan'}

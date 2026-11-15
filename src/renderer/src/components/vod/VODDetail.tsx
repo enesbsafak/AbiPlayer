@@ -9,10 +9,14 @@ import {
 } from '@/services/tmdb-api'
 import { LazyImage } from '@/components/ui/LazyImage'
 import { Button } from '@/components/ui/Button'
+import { FavoriteToggle } from '@/components/ui/FavoriteToggle'
 import { QualityBadge } from '@/components/ui/QualityBadge'
 import { Spinner } from '@/components/ui/Spinner'
 import { inferContentQualityLabel } from '@/services/quality'
 import type { Channel } from '@/types/playlist'
+
+// The interface is Turkish only; there is no language setting to follow.
+const TMDB_LANGUAGE = resolveTmdbLanguage('tr')
 
 interface VODDetailProps {
   item: Channel
@@ -37,7 +41,7 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
   const [info, setInfo] = useState<VODInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
-  const settings = useStore((s) => s.settings)
+  const tmdbApiKeySetting = useStore((s) => s.settings.tmdbApiKey)
 
   useEffect(() => {
     let cancelled = false
@@ -82,12 +86,12 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
         if (!cancelled) console.error('Failed to load VOD info:', err)
       }
 
-      const tmdbApiKey = resolveTmdbApiKey(settings.tmdbApiKey)
+      const tmdbApiKey = resolveTmdbApiKey(tmdbApiKeySetting)
       if (tmdbApiKey) {
         try {
           const tmdbDetails = await resolveTmdbMovieDetails({
             apiKey: tmdbApiKey,
-            language: resolveTmdbLanguage(settings.language),
+            language: TMDB_LANGUAGE,
             tmdbId,
             name: baseInfo.name,
             year: baseInfo.year || baseInfo.releaseDate
@@ -127,7 +131,7 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
       cancelled = true
       controller.abort()
     }
-  }, [item, getXtreamCredentials, settings.tmdbApiKey, settings.language])
+  }, [item, getXtreamCredentials, tmdbApiKeySetting])
 
   if (loading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>
 
@@ -183,9 +187,12 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
             {detail.releaseDate && <span>Yayın Tarihi: {detail.releaseDate}</span>}
           </div>
 
-          <Button onClick={() => onPlay(item)} className="mt-4 self-start">
-            <Play size={16} fill="currentColor" /> Filmi Oynat
-          </Button>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Button onClick={() => onPlay(item)}>
+              <Play size={16} fill="currentColor" /> Filmi Oynat
+            </Button>
+            <FavoriteToggle channelId={item.id} variant="button" />
+          </div>
         </div>
       </div>
     </div>

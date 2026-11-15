@@ -25,11 +25,14 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-0.5 px-2 lg:px-3">
+      <nav aria-label="Ana gezinme" className="flex flex-1 flex-col gap-0.5 px-2 lg:px-3">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
+            // Below lg only the icon shows; the name has to come from here.
+            aria-label={item.label}
+            title={item.label}
             className={({ isActive }) =>
               `group flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors ${
                 isActive
@@ -38,7 +41,7 @@ export function Sidebar() {
               }`
             }
           >
-            <item.icon size={18} className="mx-auto shrink-0 lg:mx-0" />
+            <item.icon size={18} className="mx-auto shrink-0 lg:mx-0" aria-hidden="true" />
             <span className="hidden lg:block">{item.label}</span>
           </NavLink>
         ))}
@@ -49,14 +52,18 @@ export function Sidebar() {
             NavLink's active state ignores the query string. */}
         <Link
           to="/settings?tab=support"
+          aria-label="Destek"
+          title="Destek"
           className="flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-surface-400 transition-colors hover:bg-surface-900 hover:text-surface-200"
         >
-          <Heart size={18} className="mx-auto shrink-0 lg:mx-0" />
+          <Heart size={18} className="mx-auto shrink-0 lg:mx-0" aria-hidden="true" />
           <span className="hidden lg:block">Destek</span>
         </Link>
 
         <NavLink
           to="/settings"
+          aria-label="Ayarlar"
+          title="Ayarlar"
           className={({ isActive }) =>
             `flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors ${
               isActive
@@ -65,7 +72,7 @@ export function Sidebar() {
             }`
           }
         >
-          <Settings size={18} className="mx-auto shrink-0 lg:mx-0" />
+          <Settings size={18} className="mx-auto shrink-0 lg:mx-0" aria-hidden="true" />
           <span className="hidden lg:block">Ayarlar</span>
         </NavLink>
       </div>

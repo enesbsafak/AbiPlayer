@@ -12,7 +12,7 @@ export function PlaybackSettings() {
   // Reported by the mpv poll: passthrough is armed AND the device accepted it.
   const passthroughActive = useStore((s) => s.passthroughActive)
 
-  const languageCodes = useLanguageCodes()
+  const languageCodes = useLanguageCodes(settings.preferredAudioLanguage)
   const audioLanguageItems = useMemo(
     () => [
       { id: 'auto', label: 'Otomatik (yayın varsayılanı)' },
@@ -62,18 +62,6 @@ export function PlaybackSettings() {
       </div>
 
       <div className="flex flex-col gap-4 rounded-lg border border-surface-800 bg-surface-900 p-5">
-        <div>
-          <label className="flex cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              checked={settings.autoPlay}
-              onChange={(e) => updateSettings({ autoPlay: e.target.checked })}
-              className="rounded border-surface-700 bg-surface-900 text-accent focus:ring-accent"
-            />
-            <span className="text-sm text-surface-300">Kanal seçiminde otomatik oynat</span>
-          </label>
-        </div>
-
         <div>
           <label className="flex cursor-pointer items-center gap-2">
             <input
