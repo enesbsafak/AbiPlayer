@@ -34,6 +34,7 @@ export type FailureMode =
   | 'empty-body'
   | 'drop'
   | 'reset'
+  | 'end'
 
 export interface FailureRule {
   /**
@@ -43,7 +44,12 @@ export interface FailureRule {
    */
   route: string
   mode: FailureMode
-  /** 'drop': close the connection this long after the response starts. */
+  /**
+   * 'drop': close the connection this long after the response starts.
+   * 'end' (live TS only): finish the response cleanly this long after it
+   * starts, as a panel does when it restarts a channel; a clean end of file,
+   * not a network error.
+   */
   afterMs?: number
   /** Only the first N matching requests fail; unlimited when omitted. */
   times?: number
@@ -284,6 +290,7 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
         res.end(JSON.stringify(record.route === 'auth' ? { user_info: {} } : {}))
         return true
       case 'drop':
+      case 'end':
         return false // handled by the stream writer
     }
   }
@@ -492,6 +499,7 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
     }
     later(tickMs, pump)
     if (rule?.mode === 'drop') later(rule.afterMs ?? 3000, () => res.socket?.destroy())
+    if (rule?.mode === 'end') later(rule.afterMs ?? 3000, () => res.end())
   }
 
   function hlsPlaylist(streamId: string, res: ServerResponse, record: RequestRecord) {

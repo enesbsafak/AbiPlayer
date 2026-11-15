@@ -653,6 +653,11 @@ export class MpvController {
     }
 
     if (this.playback !== playback) return
+    // Again now that the new file replaced the old one: a file that reached
+    // its end is held paused by --keep-open, and mpv pauses it once more when
+    // unpaused there, so the unpause sent ahead of loadfile is lost and the
+    // next load (a live reconnect, the next film) would start paused.
+    void session.request(['set_property', 'pause', false]).catch(() => undefined)
     this.resolveWaiters(playback)
 
     // Re-verified per stream, not just when the setting is toggled: whether

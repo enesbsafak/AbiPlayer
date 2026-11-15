@@ -668,6 +668,22 @@ describe('MpvController per-stream state', () => {
     expect(controller.getState().phase).toBe('ended')
   })
 
+  // Found with P4: --keep-open holds a file that reached its end paused and
+  // pauses it again when unpaused there, so the unpause sent ahead of
+  // loadfile was lost and the reconnect (or the next film) started paused.
+  it('unpauses again once a new load has replaced a file held paused at its end', async () => {
+    const { mpv, controller } = setup()
+    const fake = await play(controller, mpv, URL_A, 'A')
+    fake.propertyChange('eof-reached', true)
+    fake.propertyChange('pause', true)
+    await settle()
+
+    await controller.open(URL_A, '100', { playbackId: 'A' })
+    const commands = fake.received.map((entry) => entry.command)
+    const reload = commands.findLastIndex((command) => command[0] === 'loadfile')
+    expect(commands.slice(reload + 1)).toContainEqual(['set_property', 'pause', false])
+  })
+
   it('leaves track ids to the observer after a setter', async () => {
     const { mpv, controller } = setup()
     const fake = await play(controller, mpv, URL_A)
