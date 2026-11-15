@@ -21,6 +21,14 @@ yayımladığı arşivlerden değiştirilmeden alınır; hangi arşivin alındı
 `scripts/mpv-pin.json` ve `scripts/ffmpeg-pin.json` dosyalarında boyut ve
 SHA-256 özetiyle sabitlenmiştir.
 
+**Kaynak kodu.** 0.5.0-beta sürümünden başlayarak, bir sürümdeki mpv ve FFmpeg
+ikililerinin derlendiği kaynak kodu o sürümün
+[GitHub sayfasına](https://github.com/enesbsafak/AbiPlayer/releases) ek dosya
+olarak yüklenir (`source-*.tar.gz`): mpv, kurulumdaki FFmpeg, mpv içine gömülü
+FFmpeg ve iki derleme projesinin betikleri, aşağıda adı geçen commit'lerden.
+mpv derlemesine gömülü diğer kütüphanelerin tam sürümlerini derleme projesi
+yayımlamaz; bunlar yalnızca derleme betikleri üzerinden gösterilebilir.
+
 The notices below are in English, the language of the licences they refer to.
 They describe the application as built from this repository with the pins named
 above; when a pin or a dependency changes, this file has to be updated with it.
