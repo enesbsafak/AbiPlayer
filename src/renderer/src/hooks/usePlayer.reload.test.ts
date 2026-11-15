@@ -241,6 +241,38 @@ describe('usePlayer keeps the viewer’s audio choice on a new load (P2)', () =>
     expect(audio.tracks.map((track) => track.enabled)).toEqual([false, true])
   })
 
+  it('puts the chosen audio track and the loaded subtitle file back after a return from the mini card (P6)', async () => {
+    const element = playingVideo()
+    const audio = withNativeAudioTracks(element.video)
+    const videoRef = { current: element.video }
+    act(() => useStore.getState().playChannel(film('a')))
+    const first = renderHook(() => usePlayer(videoRef))
+    await flush()
+    act(() => {
+      element.video.dispatchEvent(new Event('loadedmetadata'))
+    })
+    const cues = [{ startTime: 1, endTime: 2, text: 'Merhaba' }]
+    act(() => {
+      useStore.getState().setCurrentAudioTrack('native-a:1')
+      useStore.getState().applyPlayerPatch({ subtitleCues: cues })
+      useStore.getState().selectSubtitleTrack('external')
+    })
+
+    first.unmount()
+    act(() => useStore.getState().suspendPlayback())
+    act(() => useStore.getState().resumeSuspendedPlayback())
+    audio.reset()
+    renderHook(() => usePlayer(videoRef))
+    await flush()
+    act(() => {
+      element.video.dispatchEvent(new Event('loadedmetadata'))
+    })
+
+    expect(audio.tracks.map((track) => track.enabled)).toEqual([false, true])
+    expect(useStore.getState().currentSubtitleTrack).toBe('external')
+    expect(useStore.getState().subtitleCues).toEqual(cues)
+  })
+
   it('puts it back after the direct-read retry of the same playback', async () => {
     const element = playingVideo()
     const audio = withNativeAudioTracks(element.video)

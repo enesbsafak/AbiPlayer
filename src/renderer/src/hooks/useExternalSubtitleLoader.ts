@@ -46,8 +46,15 @@ export function useExternalSubtitleLoader() {
         setError(SUBTITLE_FILE_ADD_ERROR)
         return 'failed'
       }
-      store.applyPlayerPatch({ subtitleCues: [], activeSubtitleCues: [] })
-      store.selectSubtitleTrack(`mpv-s:${trackId}`)
+      const selected = `mpv-s:${trackId}`
+      const mediaKey = useStore.getState().currentPlayback?.mediaKey ?? null
+      store.applyPlayerPatch({
+        subtitleCues: [],
+        activeSubtitleCues: [],
+        // mpv holds the file for this load only; a new load of the item adds it again.
+        externalSubtitle: mediaKey ? { mediaKey, path: file.path, trackId: selected } : null
+      })
+      store.selectSubtitleTrack(selected)
       return 'loaded'
     }
 
@@ -61,7 +68,8 @@ export function useExternalSubtitleLoader() {
       setError(SUBTITLE_FILE_EMPTY_ERROR)
       return 'failed'
     }
-    store.setSubtitleCues(cues)
+    // The parsed cues are the file: they stay with the item on their own.
+    store.applyPlayerPatch({ subtitleCues: cues, externalSubtitle: null })
     store.selectSubtitleTrack('external')
     return 'loaded'
   }, [])

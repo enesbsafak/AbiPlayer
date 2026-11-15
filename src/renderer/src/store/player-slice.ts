@@ -26,6 +26,7 @@ import {
   type PlayableTarget,
   type PlaybackId
 } from '../../../shared/playback'
+import { EXTERNAL_SUBTITLE_ID } from '@/player/track-ids'
 
 export const DEFAULT_PLAYBACK_TUNING: MpvPlaybackTuning = {
   audioDelay: 0,
@@ -56,7 +57,20 @@ export type PlayerPatch = Partial<{
   activeSubtitleCues: SubtitleCue[]
   playerNotice: string | null
   loadedPlaybackId: PlaybackId | null
+  externalSubtitle: ExternalSubtitleFile | null
 }>
+
+/**
+ * A subtitle file the viewer loaded into mpv for one item. mpv adds it to the
+ * file being played (`sub-add`), so a new load of the same item (a reconnect,
+ * a reload, the return from the mini card) does not have it; the engine adds
+ * it again from here. `trackId` is its store id in the current load.
+ */
+export interface ExternalSubtitleFile {
+  mediaKey: string
+  path: string
+  trackId: string
+}
 
 function sameSubtitleCues(a: SubtitleCue[], b: SubtitleCue[]): boolean {
   if (a === b) return true
@@ -91,8 +105,26 @@ const EMPTY_STREAM_STATE = {
   subtitleCues: [],
   activeSubtitleCues: [],
   playerNotice: null,
-  loadedPlaybackId: null
+  loadedPlaybackId: null,
+  externalSubtitle: null
 } satisfies Partial<PlayerSlice>
+
+/**
+ * What the viewer chose for the item (audio, subtitle or "off", a loaded
+ * subtitle file). Kept by every new load of the same item: a reload, a
+ * reconnect and a return from the mini card. The engines push it back once
+ * the new load's tracks are known.
+ */
+function viewerSelections(state: PlayerSlice): Partial<PlayerSlice> {
+  return {
+    currentAudioTrack: state.currentAudioTrack,
+    currentSubtitleTrack: state.currentSubtitleTrack,
+    isSubtitleTrackUserChoice: state.isSubtitleTrackUserChoice,
+    externalSubtitle: state.externalSubtitle,
+    // Parsed cues of a file loaded into the HTML5 engine are the file itself.
+    ...(state.currentSubtitleTrack === EXTERNAL_SUBTITLE_ID ? { subtitleCues: state.subtitleCues } : {})
+  }
+}
 
 const NOT_PLAYABLE_MESSAGE = 'Seçilen içerik doğrudan oynatılamıyor.'
 
@@ -185,6 +217,8 @@ export interface PlayerSlice {
   isCornerPlayback: boolean
   /** The viewer picked the subtitle track (or "off") for the current stream. */
   isSubtitleTrackUserChoice: boolean
+  /** The subtitle file the viewer loaded into mpv for the current item. */
+  externalSubtitle: ExternalSubtitleFile | null
   /** Short, non-fatal message shown over the player (e.g. incomplete subtitles). */
   playerNotice: string | null
   showControls: boolean
@@ -322,6 +356,7 @@ function suspendState(state: PlayerSliceState): Partial<PlayerSlice> {
   if (!state.currentChannel || !state.currentPlayback || state.isPlaybackSuspended) return state
   return {
     ...EMPTY_STREAM_STATE,
+    ...viewerSelections(state),
     isPlaying: false,
     isPaused: true,
     isPlaybackSuspended: true,
@@ -364,6 +399,7 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
   isPlaybackSuspended: false,
   isCornerPlayback: false,
   isSubtitleTrackUserChoice: false,
+  externalSubtitle: null,
   playerNotice: null,
   showControls: true,
   isMiniPlayer: false,
@@ -454,15 +490,15 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
       if (!state.isPlaybackSuspended) return state
       if (!state.currentPlayback) return { isPlaybackSuspended: false }
       const playback: CurrentPlayback = { ...state.currentPlayback, playbackId: createPlaybackId() }
+      // Armed by the suspend, for this very item.
       const pending = state.pendingResume
       return {
         isPlaybackSuspended: false,
         currentPlayback: playback,
         loadedPlaybackId: null,
-        pendingResume:
-          pending && pending.mediaKey === playback.mediaKey
-            ? { ...pending, playbackId: playback.playbackId, phase: 'awaiting-load', position: null }
-            : pending
+        pendingResume: pending
+          ? { ...pending, playbackId: playback.playbackId, phase: 'awaiting-load', position: null }
+          : null
       }
     }),
 

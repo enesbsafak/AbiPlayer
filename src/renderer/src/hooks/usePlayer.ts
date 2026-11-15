@@ -42,14 +42,6 @@ import {
 } from '@/player/track-ids'
 import { FRESH_TRACK_PREFERENCES, type TrackPreferenceState } from '@/player/track-reconciler'
 
-export {
-  HLS_MAX_CONSECUTIVE_FATAL_ERRORS,
-  createHlsErrorRecovery,
-  type HlsRecoveryStep
-} from '@/player/hls-engine'
-export { SUBTITLE_PROBE_TIMEOUT_MS, releaseMediaElementSource, waitAtMost } from '@/player/direct-playback'
-export { TRUNCATED_SUBTITLE_NOTICE, isTruncatedSubtitleExtraction } from '@/player/embedded-subtitles'
-
 const HLS_SUBTITLE_RETRY_ATTEMPTS = 8
 const HLS_SUBTITLE_RETRY_STEP_MS = 250
 const PARSED_CUE_TICK_MS = 100

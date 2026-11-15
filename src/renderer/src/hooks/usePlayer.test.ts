@@ -23,16 +23,10 @@ import {
   probeEmbeddedSubtitles
 } from '@/services/platform'
 import { MEDIA_JOB_CANCELLED_MESSAGE } from '../../../shared/ipc/contract'
-import {
-  HLS_MAX_CONSECUTIVE_FATAL_ERRORS,
-  SUBTITLE_PROBE_TIMEOUT_MS,
-  TRUNCATED_SUBTITLE_NOTICE,
-  createHlsErrorRecovery,
-  isTruncatedSubtitleExtraction,
-  releaseMediaElementSource,
-  usePlayer,
-  waitAtMost
-} from './usePlayer'
+import { HLS_MAX_CONSECUTIVE_FATAL_ERRORS, createHlsErrorRecovery } from '@/player/hls-engine'
+import { SUBTITLE_PROBE_TIMEOUT_MS, releaseMediaElementSource, waitAtMost } from '@/player/direct-playback'
+import { TRUNCATED_SUBTITLE_NOTICE, isTruncatedSubtitleExtraction } from '@/player/embedded-subtitles'
+import { usePlayer } from './usePlayer'
 
 const networkError = { type: Hls.ErrorTypes.NETWORK_ERROR, details: Hls.ErrorDetails.FRAG_LOAD_ERROR }
 const manifestError = {

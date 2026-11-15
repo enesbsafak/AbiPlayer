@@ -1,12 +1,12 @@
 import type { AudioTrack, SubtitleTrack, VideoQualityOption } from '@/types/player'
-import type { PlayerPatch } from '@/store/player-slice'
+import type { ExternalSubtitleFile, PlayerPatch } from '@/store/player-slice'
 import type { MpvStateSnapshot, MpvTrackInfo } from '@/services/platform'
 import {
   buildMpvVideoQualityOptions,
   getActiveMpvVideoQualityId
 } from '@/services/quality'
 import { CONNECTION_LOST_MESSAGE, type ReconnectObservation } from './reconnect-policy'
-import { MPV_AUDIO_PREFIX, MPV_SUBTITLE_PREFIX, trackId } from './track-ids'
+import { MPV_AUDIO_PREFIX, MPV_SUBTITLE_PREFIX, trackId, trackIndex } from './track-ids'
 import {
   normalizeVideoQualitySelection,
   reconcileAudioSelection,
@@ -56,6 +56,24 @@ export function mpvReconnectObservation(snapshot: MpvStateSnapshot, isLive: bool
     error: snapshot.error ?? (endedLive ? CONNECTION_LOST_MESSAGE : null),
     errorKey: snapshot.loadId
   }
+}
+
+/**
+ * The path of the viewer's subtitle file when it is the selected subtitle but
+ * this load does not have it (mpv adds such a file to one load only), so it
+ * has to be added again; null otherwise. Asked once the load lists its tracks.
+ */
+export function externalSubtitleToRestore(
+  file: ExternalSubtitleFile | null,
+  mediaKey: string,
+  currentSubtitleTrack: string | null,
+  snapshot: Pick<MpvStateSnapshot, 'tracks' | 'loadId'>
+): string | null {
+  if (!file || file.mediaKey !== mediaKey || currentSubtitleTrack !== file.trackId) return null
+  if (snapshot.loadId === null || snapshot.tracks.length === 0) return null
+  const id = trackIndex(file.trackId, MPV_SUBTITLE_PREFIX)
+  const present = snapshot.tracks.some((track) => track.type === 'sub' && track.external && track.id === id)
+  return present ? null : file.path
 }
 
 /** The stream of that load is open far enough to seek (mpv's `file-loaded`). */

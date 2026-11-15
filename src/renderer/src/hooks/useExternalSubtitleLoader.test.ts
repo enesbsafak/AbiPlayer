@@ -79,4 +79,18 @@ describe('useExternalSubtitleLoader', () => {
     expect(await load()).toEqual({ outcome: 'loaded', error: null })
     expect(useStore.getState().currentSubtitleTrack).toBe('mpv-s:4')
   })
+
+  // P5: mpv holds the file for one load; the item remembers it for the next.
+  it('remembers the file given to mpv for the item being played', async () => {
+    useStore.getState().playChannel({ id: 'f', name: 'Film', streamUrl: 'https://e.test/movie/f.mkv', sourceId: 's', type: 'vod' })
+    useStore.getState().setPlaybackEngine('mpv')
+    vi.mocked(pickAndReadFile).mockResolvedValue({ path: 'C:/a.srt', content: SRT })
+    vi.mocked(mpvAddSubtitleFile).mockResolvedValue(4)
+    await load()
+    expect(useStore.getState().externalSubtitle).toEqual({
+      mediaKey: useStore.getState().currentPlayback!.mediaKey,
+      path: 'C:/a.srt',
+      trackId: 'mpv-s:4'
+    })
+  })
 })

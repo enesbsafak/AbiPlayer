@@ -17,6 +17,7 @@ vi.mock('@/services/platform', async (importOriginal) => {
     mpvStop: vi.fn(() => Promise.resolve()),
     mpvSetSubtitleTrack: vi.fn(() => Promise.resolve()),
     mpvSetAudioTrack: vi.fn(() => Promise.resolve()),
+    mpvAddSubtitleFile: vi.fn(() => Promise.resolve(3)),
     subscribeMpvState: vi.fn((listener: (snapshot: MpvStateSnapshot) => void) => {
       bridge.listeners.add(listener)
       return () => bridge.listeners.delete(listener)
@@ -29,9 +30,13 @@ vi.mock('@/services/platform', async (importOriginal) => {
   }
 })
 
-import { mpvOpen, mpvSetAudioTrack, mpvSetSubtitleTrack } from '@/services/platform'
-import { STALL_THRESHOLD_MS } from '@/player/reconnect-policy'
-import { MAX_AUTO_RECONNECT, MPV_CONNECTION_LOST_MESSAGE, useMpvPlayer } from './useMpvPlayer'
+import { mpvAddSubtitleFile, mpvOpen, mpvSetAudioTrack, mpvSetSubtitleTrack } from '@/services/platform'
+import {
+  CONNECTION_LOST_MESSAGE as MPV_CONNECTION_LOST_MESSAGE,
+  MAX_RECONNECT_ATTEMPTS as MAX_AUTO_RECONNECT,
+  STALL_THRESHOLD_MS
+} from '@/player/reconnect-policy'
+import { useMpvPlayer } from './useMpvPlayer'
 
 let seq = 0
 
@@ -382,6 +387,74 @@ describe('useMpvPlayer', () => {
     await push(playing({ loadId: 2, tracks: loadedTracks, aid: 1 }))
     expect(vi.mocked(mpvSetAudioTrack)).toHaveBeenCalledWith(2)
     expect(useStore.getState().currentAudioTrack).toBe('mpv-a:2')
+  })
+
+  // P5: `sub-add` belongs to one load. The next load of the same item gets
+  // the viewer's file again instead of losing the choice.
+  it('adds the viewer’s subtitle file again to a new load of the same item', async () => {
+    act(() => useStore.getState().playChannel(film))
+    renderHook(() => useMpvPlayer(true))
+    const withFile = [...loadedTracks, track({ id: 3, type: 'sub', external: true, title: 'a.srt' })]
+    await push(playing({ loadId: 1, tracks: withFile, aid: 1, sid: 3 }))
+    act(() => {
+      const mediaKey = useStore.getState().currentPlayback!.mediaKey
+      useStore.getState().applyPlayerPatch({ externalSubtitle: { mediaKey, path: 'C:/a.srt', trackId: 'mpv-s:3' } })
+      useStore.getState().selectSubtitleTrack('mpv-s:3')
+    })
+    vi.mocked(mpvSetSubtitleTrack).mockClear()
+
+    act(() => useStore.getState().reloadPlayback())
+    await advance(0)
+    await push(playing({ loadId: 2, tracks: loadedTracks, aid: 1, sid: null }))
+    await push(playing({ loadId: 2, tracks: loadedTracks, aid: 1, sid: null, timePos: 1 }))
+    expect(vi.mocked(mpvAddSubtitleFile)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(mpvAddSubtitleFile)).toHaveBeenCalledWith('C:/a.srt')
+    expect(useStore.getState().currentSubtitleTrack).toBe('mpv-s:3')
+    expect(vi.mocked(mpvSetSubtitleTrack)).not.toHaveBeenCalledWith(null)
+
+    await push(playing({ loadId: 2, tracks: withFile, aid: 1, sid: 3 }))
+    expect(useStore.getState().currentSubtitleTrack).toBe('mpv-s:3')
+    expect(useStore.getState().subtitleTracks.map((item) => item.id)).toContain('mpv-s:3')
+  })
+
+  it('forgets a subtitle file mpv no longer accepts', async () => {
+    vi.mocked(mpvAddSubtitleFile).mockResolvedValueOnce(null)
+    act(() => useStore.getState().playChannel(film))
+    renderHook(() => useMpvPlayer(true))
+    act(() => {
+      const mediaKey = useStore.getState().currentPlayback!.mediaKey
+      useStore.getState().applyPlayerPatch({ externalSubtitle: { mediaKey, path: 'C:/a.srt', trackId: 'mpv-s:3' } })
+      useStore.getState().selectSubtitleTrack('mpv-s:3')
+    })
+    await push(playing({ loadId: 2, tracks: loadedTracks, aid: 1 }))
+    await push(playing({ loadId: 2, tracks: loadedTracks, aid: 1, timePos: 1 }))
+    expect(useStore.getState().externalSubtitle).toBeNull()
+    expect(useStore.getState().currentSubtitleTrack).toBeNull()
+  })
+
+  // P6: back from the mini card the player mounts again for a new playback.
+  it('gives the viewer’s choices back to mpv after a return from the mini card', async () => {
+    act(() => useStore.getState().playChannel(film))
+    const first = renderHook(() => useMpvPlayer(true))
+    await push(playing({ loadId: 1, tracks: loadedTracks, aid: 1, sid: 2 }))
+    act(() => {
+      useStore.getState().setCurrentAudioTrack('mpv-a:2')
+      useStore.getState().selectSubtitleTrack(null)
+    })
+    first.unmount()
+    act(() => useStore.getState().suspendPlayback())
+    act(() => useStore.getState().resumeSuspendedPlayback())
+    vi.mocked(mpvSetAudioTrack).mockClear()
+    vi.mocked(mpvSetSubtitleTrack).mockClear()
+
+    renderHook(() => useMpvPlayer(true))
+    await advance(0)
+    // mpv's own defaults for the new load: first audio, the Turkish subtitle.
+    await push(playing({ loadId: 2, tracks: loadedTracks, aid: 1, sid: 2 }))
+    expect(vi.mocked(mpvSetAudioTrack)).toHaveBeenCalledWith(2)
+    expect(vi.mocked(mpvSetSubtitleTrack)).toHaveBeenCalledWith(null)
+    expect(useStore.getState().currentAudioTrack).toBe('mpv-a:2')
+    expect(useStore.getState().currentSubtitleTrack).toBeNull()
   })
 
   it('turns off a subtitle mpv picked on its own when the setting says off', async () => {
