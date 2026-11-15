@@ -6,6 +6,7 @@ import { secureCredentialService } from '@/services/secure-credentials'
 import { catalog } from '@/catalog/catalog-store'
 import { m3uPlaylistToReplacement } from '@/catalog/convert'
 import type { CatalogStatusMap } from '@/store/playlist-slice'
+import { perfMark } from '@/services/perf'
 
 const AUTO_RETRY_INTERVAL_MS = 15_000
 
@@ -50,7 +51,9 @@ export function useAutoConnect() {
 
     const hydrateCredentials = async () => {
       try {
+        perfMark('connect:credentials-ipc-start')
         const credentialsBySource = await secureCredentialService.getAll()
+        perfMark('connect:credentials-ipc-done')
         const mergedCredentials = { ...credentialsBySource }
         const migrationTasks: Promise<void>[] = []
 
@@ -158,7 +161,9 @@ export function useAutoConnect() {
             try {
               if (source.type === 'xtream') {
                 const creds = { url: source.url!, username: source.username!, password: source.password! }
+                perfMark('connect:auth-start')
                 const auth = await xtreamApi.authenticate(creds)
+                perfMark('connect:auth-done')
 
                 if (auth.user_info.auth !== 1) {
                   throw new Error('Kimlik doğrulama başarısız (kullanıcı adı veya şifre reddedildi)')
@@ -172,8 +177,10 @@ export function useAutoConnect() {
                 // Dropped by the catalog when the source is removed or
                 // refreshed while the playlist downloads.
                 const revision = catalog.getSourceRevision(source.id)
+                perfMark('connect:m3u-fetch-start')
                 const parsed = await fetchAndParseM3U(source.url, source.id)
                 replaceSourceCatalog(source.id, m3uPlaylistToReplacement(parsed), revision)
+                perfMark('connect:m3u-added', { channels: parsed.channels.length })
               }
             } catch (error) {
               reportFailure(source, error)

@@ -17,6 +17,7 @@ import { createPersistController, type PersistBackend, type SideStorage } from '
 import { PERSIST_VERSION, runPersistMigrations } from './persist-migrations'
 import { sanitizeProgressEntries, type WatchProgressEntry } from '@/services/watch-progress'
 import type { PlaylistSource } from '@/types/playlist'
+import { perfMark, perfWatchStore } from '@/services/perf'
 
 export type AppStore =
   & SettingsSlice
@@ -275,6 +276,7 @@ export function migratePersistedState(persisted: unknown, version: number): Pers
   return outcome.state as unknown as PersistedStoreState
 }
 
+perfMark('renderer:store-create')
 export const useStore = create<AppStore>()(
   persist(
     (...a) => ({
@@ -309,6 +311,7 @@ export const useStore = create<AppStore>()(
     }
   )
 )
+perfWatchStore(useStore)
 
 declare global {
   interface Window {

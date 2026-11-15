@@ -5,6 +5,7 @@ import { xtreamLiveToRecords, xtreamSeriesToRecords, xtreamVodToRecords } from '
 import { toCatalogSyncError } from '@/catalog/sync-error'
 import type { CatalogItem, CatalogType } from '@/catalog/types'
 import type { XtreamCredentials } from '@/types/xtream'
+import { perfMark } from './perf'
 
 /**
  * Module-level background sync that persists across page navigation.
@@ -58,10 +59,13 @@ export function createBackgroundSync(
 
     const promise = (async () => {
       try {
+        perfMark('sync:start', { type })
         const items = await fetchFullList(type, creds, sourceId, signal)
         catalog.commit({ token, mode: 'replace', items })
+        perfMark('sync:done', { type, items: items.length })
         catalog.setSyncState(token, { syncing: false, error: null })
       } catch (error) {
+        perfMark('sync:failed', { type })
         const syncError = signal.aborted ? null : toCatalogSyncError(error)
         if (syncError) console.warn(`[background-sync] ${type} sync failed for ${sourceId}:`, syncError.message)
         catalog.setSyncState(token, { syncing: false, error: syncError })

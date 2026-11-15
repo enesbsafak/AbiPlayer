@@ -1,5 +1,6 @@
 import type { Channel, Category } from '@/types/playlist'
 import { isAdultLabel } from './adult-content'
+import { perfMark } from './perf'
 
 // Startup blocks on this: a 2-minute ceiling meant one unreachable playlist URL
 // pinned the "Kaynaklar bağlanıyor..." screen for two minutes with no feedback.
@@ -155,6 +156,7 @@ function detectChannelType(url: string): ContentType {
  * deterministic `_<n>` suffix (n = 2, 3, ...) in playlist order.
  */
 export function parseM3U(content: string, sourceId: string): { channels: Channel[]; categories: Category[] } {
+  perfMark('m3u:parse-start', { chars: content.length })
   const channels: Channel[] = []
   const groupStats = new Map<string, GroupStats>()
   const idCounts = new Map<string, number>()
@@ -253,6 +255,7 @@ export function parseM3U(content: string, sourceId: string): { channels: Channel
     if (info.adult) channel.isAdult = true
   }
 
+  perfMark('m3u:parse-done', { channels: channels.length })
   return { channels, categories }
 }
 

@@ -18,6 +18,8 @@ import {
   selectContinueWatching,
   type ContinueWatchingItem
 } from '@/services/watch-progress'
+import { perfMark, usePerfMarkOnce } from '@/services/perf'
+perfMark('renderer:home-chunk-loaded')
 
 /** Items the source holds in every type, before any view rule. */
 function sourceItemCount(status: CatalogStatusMap, sourceId: string | null): number {
@@ -55,6 +57,7 @@ export default function HomePage() {
     () => buildHomeCatalog({ live: visibleLive, vod: visibleVod, series: visibleSeries, totalCount }),
     [visibleLive, visibleVod, visibleSeries, totalCount]
   )
+  usePerfMarkOnce('renderer:home-first-content', hasSourceContent)
 
   // Favourites are an explicit user pick rather than a catalog listing, so
   // category hiding deliberately does not apply to them. Like the Favoriler

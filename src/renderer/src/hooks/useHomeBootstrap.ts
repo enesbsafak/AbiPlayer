@@ -11,6 +11,7 @@ import {
 } from '@/catalog/convert'
 import { CATALOG_TYPES, type CatalogCategory, type CatalogItem, type CatalogType } from '@/catalog/types'
 import type { CatalogStatusMap } from '@/store/playlist-slice'
+import { perfMark } from '@/services/perf'
 
 // Message and progress bar come from one source so they can never drift apart.
 export const BOOTSTRAP_STAGES = {
@@ -104,11 +105,13 @@ export function useHomeBootstrap(): HomeBootstrap {
       setPlaylistLoading(true)
       try {
         // Step 1: Fetch categories (small, fast — ~18KB total)
+        perfMark('bootstrap:start')
         const [liveCats, vodCats, seriesCats] = await Promise.all([
           xtreamApi.getLiveCategories(creds, { signal: controller.signal }).catch(() => []),
           xtreamApi.getVodCategories(creds, { signal: controller.signal }).catch(() => []),
           xtreamApi.getSeriesCategories(creds, { signal: controller.signal }).catch(() => [])
         ])
+        perfMark('bootstrap:categories-done')
         if (cancelled) return
         commitCategories('live', xtreamCategoriesToRecords(liveCats, activeSourceId, 'live'))
         commitCategories('vod', xtreamCategoriesToRecords(vodCats, activeSourceId, 'vod'))
@@ -121,10 +124,12 @@ export function useHomeBootstrap(): HomeBootstrap {
           xtreamApi.getVodPreviewStreams(creds, 30, { signal: controller.signal }).catch(() => []),
           xtreamApi.getSeriesPreviewStreams(creds, 30, { signal: controller.signal }).catch(() => [])
         ])
+        perfMark('bootstrap:previews-done')
         if (cancelled) return
         commitPreview('live', xtreamLiveToRecords(livePreview, activeSourceId))
         commitPreview('vod', xtreamVodToRecords(vodPreview, activeSourceId))
         commitPreview('series', xtreamSeriesToRecords(seriesPreview, activeSourceId))
+        perfMark('bootstrap:preview-added')
 
         // Step 3: Full catalog in background — sequential, not parallel
         // This runs after UI is already showing content, user doesn't wait
