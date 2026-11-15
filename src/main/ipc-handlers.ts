@@ -17,6 +17,8 @@ import { createMediaService, MediaJobRunner } from './ipc/media-jobs'
 import { createMpvPrewarmTrigger, getNativeWindowId, registerMpvHandlers } from './ipc/mpv'
 import { createIpcRegistrar, isTrustedSenderFrame, type TrustedRendererLocation } from './ipc/register'
 import { registerWindowHandlers } from './ipc/window'
+import { registerTlsHandlers } from './ipc/tls'
+import { getTlsPolicy } from './tls'
 
 const mpvController = new MpvController()
 
@@ -80,6 +82,7 @@ export function registerIpcHandlers(): MainServices {
     }
   })
 
+  const tls = getTlsPolicy()
   const pickedFiles = new PickedFileRegistry({ storePath: join(userData, 'picked-files.json') })
 
   const media = createMediaService({
@@ -87,7 +90,8 @@ export function registerIpcHandlers(): MainServices {
       spawn(executable, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
     ),
     ffprobePath: resolveUnpackedBinary(ffprobeStatic.path),
-    ffmpegPath: resolveUnpackedBinary(ffmpegPath)
+    ffmpegPath: resolveUnpackedBinary(ffmpegPath),
+    tlsArgs: (streamUrl) => tls.ffmpegArgs(streamUrl)
   })
 
   registerAppHandlers(registrar)
@@ -102,8 +106,10 @@ export function registerIpcHandlers(): MainServices {
   registerMpvHandlers(registrar, {
     controller: mpvController,
     registry: pickedFiles,
-    getWindow: getSenderWindow
+    getWindow: getSenderWindow,
+    tls
   })
+  registerTlsHandlers(registrar, tls)
 
   return {
     stopPlayback: () => mpvController.stopPlayback(),

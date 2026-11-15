@@ -885,3 +885,36 @@ describe('MpvController audio passthrough', () => {
     expect(controller.getState().passthroughActive).toBe(true)
   })
 })
+
+describe('MpvController per-load file options (F3-01)', () => {
+  const URL_TLS = 'https://iptv.test/live/u/p/1.ts'
+
+  it('sends the TLS options of a load with that loadfile only', async () => {
+    const { mpv, controller } = setup()
+    await controller.open(URL_TLS, '100', { fileOptions: { 'tls-verify': 'no' } })
+    const fake = mpv.last
+    expect(fake.commands('loadfile').at(-1)).toEqual(['loadfile', URL_TLS, 'replace', -1, { 'tls-verify': 'no' }])
+
+    // The next load decides for itself; nothing carries over.
+    await controller.open(URL_B, '100')
+    expect(fake.commands('loadfile').at(-1)).toEqual(['loadfile', URL_B, 'replace'])
+  })
+
+  it('keeps the options when jumping to the live edge of the same playback', async () => {
+    const { mpv, controller } = setup()
+    await controller.open(URL_TLS, '100', { playbackId: 'T', fileOptions: { 'tls-verify': 'yes', 'tls-ca-file': '/certs/ca.pem' } })
+    const fake = mpv.last
+    fake.startFile()
+    fake.fileLoaded()
+    await settle()
+
+    await controller.jumpToLive()
+    expect(fake.commands('loadfile').at(-1)).toEqual([
+      'loadfile',
+      URL_TLS,
+      'replace',
+      -1,
+      { 'tls-verify': 'yes', 'tls-ca-file': '/certs/ca.pem', 'demuxer-lavf-o': 'live_start_index=-1' }
+    ])
+  })
+})

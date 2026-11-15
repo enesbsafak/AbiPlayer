@@ -9,6 +9,9 @@ import type {
 } from '../../../shared/types/electron-ipc'
 import {
   MEDIA_JOB_CANCELLED_MESSAGE,
+  type CertificateTrustRequest,
+  type TrustedCertificateHost,
+  type UntrustedCertificateNotice,
   type FileFilter,
   type MediaJobOptions,
   type MpvOpenRequest,
@@ -289,4 +292,40 @@ export async function installAppUpdate(): Promise<boolean> {
 export function onAppUpdateStateChange(listener: (state: AppUpdateState) => void): (() => void) | null {
   if (!isElectron() || !window.electron?.onAppUpdateStateChange) return null
   return window.electron.onAppUpdateStateChange(listener)
+}
+
+export type {
+  CertificateProblem,
+  CertificateTrustRequest,
+  TrustedCertificateHost,
+  UntrustedCertificateNotice
+} from '../../../shared/ipc/contract'
+
+/** Hosts the user trusted, each pinned to one certificate. Empty outside Electron. */
+export async function tlsListTrusted(): Promise<TrustedCertificateHost[]> {
+  if (!isElectron() || !window.electron?.tlsListTrusted) return []
+  return window.electron.tlsListTrusted()
+}
+
+/** Certificates main refused in this run and nobody has trusted since, newest first. */
+export async function tlsListUntrusted(): Promise<UntrustedCertificateNotice[]> {
+  if (!isElectron() || !window.electron?.tlsListUntrusted) return []
+  return window.electron.tlsListUntrusted()
+}
+
+/** Pins the certificate main last saw for that host and port. Rejects for GitHub/TMDB hosts. */
+export async function tlsTrust(request: CertificateTrustRequest): Promise<TrustedCertificateHost> {
+  if (!isElectron() || !window.electron?.tlsTrust) throw new Error('Sertifika onayı yalnızca uygulamada yapılabilir')
+  return window.electron.tlsTrust(request)
+}
+
+export async function tlsRevoke(host: string, port: number): Promise<boolean> {
+  if (!isElectron() || !window.electron?.tlsRevoke) return false
+  return window.electron.tlsRevoke(host, port)
+}
+
+/** Fires when a server presents a certificate the app refused. Returns an unsubscribe function, or null outside Electron. */
+export function onUntrustedCertificate(listener: (notice: UntrustedCertificateNotice) => void): (() => void) | null {
+  if (!isElectron() || !window.electron?.onUntrustedCertificate) return null
+  return window.electron.onUntrustedCertificate(listener)
 }

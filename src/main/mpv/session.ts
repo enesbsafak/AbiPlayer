@@ -58,6 +58,19 @@ function entryIdOf(value: unknown): number | null {
   return typeof value === 'number' && Number.isInteger(value) ? value : null
 }
 
+/**
+ * The per-file options of one `loadfile`, or null when there are none. mpv
+ * restores them when the file ends, so they cannot leak into the next load.
+ */
+export function loadFileOptions(options: {
+  liveEdge?: boolean
+  fileOptions?: Record<string, string>
+}): Record<string, string> | null {
+  const merged: Record<string, string> = { ...options.fileOptions }
+  if (options.liveEdge) merged['demuxer-lavf-o'] = 'live_start_index=-1'
+  return Object.keys(merged).length > 0 ? merged : null
+}
+
 function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' ? value : null
 }
@@ -183,17 +196,17 @@ export class MpvSession {
   }
 
   /** Sends `loadfile` for the load begun with `token`. */
-  async load(token: number, url: string, options: { liveEdge?: boolean } = {}): Promise<void> {
-    const reply = options.liveEdge
-      ? await this.request([
-          'loadfile',
-          url,
-          'replace',
-          -1,
-          { 'demuxer-lavf-o': 'live_start_index=-1' }
-        ]).catch((error: unknown) => {
+  async load(
+    token: number,
+    url: string,
+    options: { liveEdge?: boolean; fileOptions?: Record<string, string> } = {}
+  ): Promise<void> {
+    const fileOptions = loadFileOptions(options)
+    const reply = fileOptions
+      ? await this.request(['loadfile', url, 'replace', -1, fileOptions]).catch((error: unknown) => {
           if (error instanceof MpvIpcClosedError) throw error
-          // Builds without the index argument reject the five-argument form.
+          // Builds without the index argument reject the five-argument form;
+          // they then load with the launch defaults (TLS verification on).
           return this.request(['loadfile', url, 'replace'])
         })
       : await this.request(['loadfile', url, 'replace'])

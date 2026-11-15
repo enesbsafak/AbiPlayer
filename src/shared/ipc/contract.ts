@@ -74,6 +74,57 @@ export interface MpvOpenRequest {
   tuning?: MpvPlaybackTuning
 }
 
+/** Why a server certificate failed verification, in the user's terms. */
+export type CertificateProblem = 'authority' | 'expired' | 'not-yet-valid' | 'name-mismatch' | 'other'
+
+/** Which part of the app met the certificate: Chromium requests, mpv, or ffprobe/ffmpeg. */
+export type CertificateFailureContext = 'network' | 'playback' | 'media'
+
+export interface CertificateSummary {
+  /** SHA-256 of the DER certificate: upper-case hex pairs joined by ':'. */
+  fingerprint256: string
+  subject: string
+  issuer: string
+  /** ISO 8601. */
+  validFrom: string
+  validTo: string
+}
+
+/**
+ * A server presented a certificate the app does not accept. `host` is
+ * lower-case ASCII (IDN in punycode, IPv6 without brackets); `port` is the
+ * real port (443 when the URL had none).
+ */
+export interface UntrustedCertificateNotice extends CertificateSummary {
+  host: string
+  port: number
+  problems: CertificateProblem[]
+  /** Engine error code, e.g. net::ERR_CERT_AUTHORITY_INVALID. */
+  error: string
+  context: CertificateFailureContext
+  /** A different certificate was trusted for this host and port before. */
+  changed: boolean
+  seenAt: number
+}
+
+/** A host and port the user agreed to trust, pinned to one certificate. */
+export interface TrustedCertificateHost extends CertificateSummary {
+  host: string
+  port: number
+  problems: CertificateProblem[]
+  /** Sources the trust was given for; empty when given while a source was being added. */
+  sourceIds: string[]
+  trustedAt: number
+}
+
+export interface CertificateTrustRequest {
+  host: string
+  port: number
+  /** Must be the fingerprint main last saw for this host and port. */
+  fingerprint256: string
+  sourceId?: string
+}
+
 type Invoke<Args extends unknown[], Result> = { args: Args; result: Result }
 
 export interface IpcInvokeContract {
@@ -137,6 +188,11 @@ export interface IpcInvokeContract {
   'app-update-install': Invoke<[], boolean>
   'store-backup-read': Invoke<[], string | null>
   'store-backup-delete': Invoke<[], void>
+
+  'tls-list-trusted': Invoke<[], TrustedCertificateHost[]>
+  'tls-list-untrusted': Invoke<[], UntrustedCertificateNotice[]>
+  'tls-trust': Invoke<[request: CertificateTrustRequest], TrustedCertificateHost>
+  'tls-revoke': Invoke<[host: string, port: number], boolean>
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeContract
@@ -153,6 +209,7 @@ export interface IpcEventContract {
    * changes at once, time and cache churn about five per second. `seq` orders them.
    */
   'mpv-state': MpvStateSnapshot
+  'tls-untrusted-certificate': UntrustedCertificateNotice
 }
 
 export type IpcEventChannel = keyof IpcEventContract

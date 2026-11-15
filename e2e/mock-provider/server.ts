@@ -5,6 +5,7 @@
 
 import { readFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https'
 import type { AddressInfo, Socket } from 'node:net'
 import { dirname, join } from 'node:path'
 import {
@@ -19,6 +20,7 @@ import {
 } from './catalog.ts'
 import type { MediaSet } from './media.ts'
 import { artworkPng } from './png.ts'
+import { generateSelfSignedCertificate, type GeneratedCertificate } from '../../src/main/tls/testing/self-signed.ts'
 
 export type FailureMode =
   | 'timeout'
@@ -70,6 +72,11 @@ export interface MockOptions extends Partial<MockConfig> {
   size?: CatalogPreset | CatalogSize
   media: MediaSet
   seed?: number
+  /**
+   * HTTPS mode: true serves a self-signed certificate made at start for
+   * 127.0.0.1 and localhost; or pass the certificate to serve.
+   */
+  tls?: boolean | GeneratedCertificate
 }
 
 export interface RequestRecord {
@@ -99,6 +106,13 @@ export interface MockProvider {
   stats(): MockStats
   resetStats(): void
   close(): Promise<void>
+  /** The certificate served in HTTPS mode, null over plain HTTP. */
+  certificate: GeneratedCertificate | null
+  /**
+   * HTTPS mode: serves another certificate from now on and drops open
+   * connections, so the next request makes a new handshake.
+   */
+  setCertificate(next: GeneratedCertificate): void
 }
 
 const STREAM_ROUTES = new Set(['live-ts', 'live-hls', 'hls-segment', 'movie', 'series-episode'])
@@ -685,7 +699,9 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
     }
   }
 
-  const server: Server = createServer((req, res) => {
+  let certificate: GeneratedCertificate | null =
+    options.tls === true ? generateSelfSignedCertificate({ altNames: ['127.0.0.1', 'localhost'] }) : options.tls || null
+  const onRequest = (req: IncomingMessage, res: ServerResponse) => {
     handle(req, res).catch((error: unknown) => {
       if (!res.headersSent) {
         res.statusCode = 500
@@ -694,7 +710,10 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
         res.destroy()
       }
     })
-  })
+  }
+  const server: Server | HttpsServer = certificate
+    ? createHttpsServer({ cert: certificate.cert, key: certificate.key }, onRequest)
+    : createServer(onRequest)
   server.on('connection', (socket) => {
     sockets.add(socket)
     socket.once('close', () => sockets.delete(socket))
@@ -705,7 +724,7 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
     server.listen(options.port ?? 0, options.host ?? '127.0.0.1', () => resolve())
   })
   const address = server.address() as AddressInfo
-  baseUrl = `http://${options.host ?? '127.0.0.1'}:${address.port}`
+  baseUrl = `${certificate ? 'https' : 'http'}://${options.host ?? '127.0.0.1'}:${address.port}`
   catalog = generateCatalog(size, baseUrl, options.seed)
 
   const provider: MockProvider = {
@@ -719,6 +738,15 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
     },
     catalog,
     config,
+    get certificate() {
+      return certificate
+    },
+    setCertificate(next) {
+      if (!certificate) throw new Error('setCertificate needs the HTTPS mode')
+      certificate = next
+      ;(server as HttpsServer).setSecureContext({ cert: next.cert, key: next.key })
+      for (const socket of sockets) socket.destroy()
+    },
     m3uUrl(output = 'ts') {
       return `${baseUrl}/get.php?username=${encodeURIComponent(config.username)}&password=${encodeURIComponent(config.password)}&type=m3u_plus&output=${output}`
     },

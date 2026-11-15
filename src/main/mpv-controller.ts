@@ -54,6 +54,8 @@ export interface MpvOpenOptions {
    * the same playback again (a reconnect), defaults otherwise.
    */
   tuning?: MpvPlaybackTuning
+  /** Per-file mpv options for this load only (the TLS policy's verification settings). */
+  fileOptions?: Record<string, string>
 }
 
 export type MpvSnapshotListener = (snapshot: MpvIdentifiedSnapshot) => void
@@ -102,6 +104,7 @@ interface Playback {
   parentWid: string | null
   tuning: MpvPlaybackTuning
   liveEdge: boolean
+  fileOptions: Record<string, string>
   /** Still to be (or being) played. False once it failed or mpv died. */
   wanted: boolean
   phase: MpvPlaybackPhase
@@ -213,7 +216,8 @@ export class MpvController {
       url,
       parentWid: parentWid ?? null,
       tuning: options.tuning ?? (samePlayback && previous ? previous.tuning : DEFAULT_TUNING),
-      liveEdge: false
+      liveEdge: false,
+      fileOptions: { ...options.fileOptions }
     })
     const handed = this.waitFor(playback)
     void this.kick()
@@ -352,7 +356,8 @@ export class MpvController {
       url: previous.url,
       parentWid: previous.parentWid,
       tuning: previous.tuning,
-      liveEdge: true
+      liveEdge: true,
+      fileOptions: previous.fileOptions
     })
     const handed = this.waitFor(playback)
     void this.kick()
@@ -604,7 +609,7 @@ export class MpvController {
     void Promise.allSettled(this.applyTuning(session, playback.tuning))
 
     try {
-      await session.load(seq, playback.url, { liveEdge: playback.liveEdge })
+      await session.load(seq, playback.url, { liveEdge: playback.liveEdge, fileOptions: playback.fileOptions })
     } catch (error) {
       // A dead session already reported itself through `ended`.
       if (this.playback === playback && session === this.current) {

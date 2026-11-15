@@ -15,6 +15,7 @@ export type UserErrorKind =
   | 'too-large'
   | 'http'
   | 'bad-response'
+  | 'certificate'
   | 'generic'
 
 export const USER_ERROR_MESSAGES: Record<Exclude<UserErrorKind, 'http' | 'too-large'>, string> = {
@@ -23,6 +24,9 @@ export const USER_ERROR_MESSAGES: Record<Exclude<UserErrorKind, 'http' | 'too-la
   cancelled: 'İstek tamamlanmadan durduruldu. Tekrar deneyin.',
   auth: 'Kullanıcı adı veya şifre kabul edilmedi.',
   'bad-response': 'Sunucudan beklenmeyen bir yanıt geldi.',
+  certificate:
+    'Sunucunun güvenlik sertifikası doğrulanamadı ya da daha önce güvendiğiniz sertifikadan farklı. ' +
+      'Açılan onay penceresinden ya da Ayarlar > Kaynaklar > Sunucu sertifikaları bölümünden bu sunucuya güvenebilirsiniz.',
   generic: 'Beklenmeyen bir hata oluştu.'
 }
 
@@ -54,9 +58,16 @@ const KIND_ALIASES: Record<string, UserErrorKind> = {
   parse: 'bad-response',
   'too-large': 'too-large',
   too_large: 'too-large',
-  toolarge: 'too-large'
+  toolarge: 'too-large',
+  certificate: 'certificate',
+  cert: 'certificate',
+  tls: 'certificate'
 }
 
+// Chromium's certificate codes, mpv/libcurl, ffmpeg/GnuTLS and the app's own
+// certificate refusals.
+const CERTIFICATE_PATTERN =
+  /net::err_cert_|err_ssl_|ssl peer certificate|peer certificate failed|tls certificate verification|certificate (?:verify|verification|is not trusted|has expired)|sertifika/i
 const NETWORK_PATTERN =
   /failed to fetch|networkerror|network error|load failed|net::err_|err_internet_disconnected|err_name_not_resolved|err_connection|econnrefused|econnreset|enotfound|ehostunreach|getaddrinfo|bağlanılamadı|baglanilamadi|ulaşılamadı|ulasilamadi/i
 const TIMEOUT_PATTERN = /timed? ?out|timeout|etimedout|zaman aşımı|zaman asimi/i
@@ -128,6 +139,7 @@ function kindFromMessage(message: string, status: number | null): UserErrorKind 
   if (!message) return null
   if (TOO_LARGE_PATTERN.test(message) || status === 413) return 'too-large'
   if (AUTH_PATTERN.test(message) || status === 401 || status === 403) return 'auth'
+  if (CERTIFICATE_PATTERN.test(message)) return 'certificate'
   if (TIMEOUT_PATTERN.test(message)) return 'timeout'
   if (CANCELLED_PATTERN.test(message)) return 'cancelled'
   if (NETWORK_PATTERN.test(message)) return 'network'

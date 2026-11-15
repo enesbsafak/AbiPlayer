@@ -78,10 +78,10 @@ describe('mpv handlers', () => {
     const tuning = { audioDelay: 0.5, subDelay: 0, speed: 1, aspectRatio: 'auto' as const }
 
     await call('mpv-open', 'https://p.example/a.ts', { playbackId: 'pb-1', tuning })
-    expect(controller.open).toHaveBeenLastCalledWith('https://p.example/a.ts', undefined, { playbackId: 'pb-1', tuning })
+    expect(controller.open).toHaveBeenLastCalledWith('https://p.example/a.ts', undefined, { playbackId: 'pb-1', tuning, fileOptions: {} })
 
     await call('mpv-open', 'https://p.example/a.ts', { playbackId: 'pb-1' })
-    expect(controller.open).toHaveBeenLastCalledWith('https://p.example/a.ts', undefined, { playbackId: 'pb-1' })
+    expect(controller.open).toHaveBeenLastCalledWith('https://p.example/a.ts', undefined, { playbackId: 'pb-1', fileOptions: {} })
 
     await expect(call('mpv-open', 'https://p.example/a.ts')).rejects.toThrow('Geçersiz oynatma isteği')
     expect(controller.open).toHaveBeenCalledTimes(2)
@@ -298,5 +298,69 @@ describe('validators', () => {
     expect(isValidPlaybackTuning({ audioDelay: 0, subDelay: 0, speed: 1, aspectRatio: '16:9' })).toBe(true)
     expect(isValidPlaybackTuning({ audioDelay: 11, subDelay: 0, speed: 1, aspectRatio: 'auto' })).toBe(false)
     expect(isValidPlaybackTuning({ audioDelay: 0, subDelay: 0, speed: 1, aspectRatio: '21:9' })).toBe(false)
+  })
+})
+
+describe('mpv-open and the TLS policy (F3-01)', () => {
+  function setupWithTls(mpvLoadOptions: (url: string) => Promise<Record<string, string>>) {
+    const handlers = new Map<string, AnyHandler>()
+    const controller = { open: vi.fn().mockResolvedValue(undefined), stopPlayback: vi.fn().mockResolvedValue(undefined) }
+    registerMpvHandlers(
+      {
+        handle<C extends IpcInvokeChannel>(channel: C, handler: IpcHandler<C>) {
+          handlers.set(channel, handler as unknown as AnyHandler)
+        }
+      },
+      {
+        controller: controller as unknown as MpvControllerApi,
+        registry: { wasPickedThisSession: () => false },
+        getWindow: () => null,
+        tls: { mpvLoadOptions }
+      }
+    )
+    const event = { sender: { id: 1 } } as unknown as IpcMainInvokeEvent
+    return {
+      controller,
+      open: (url: string) => handlers.get('mpv-open')!(event, url, { playbackId: 'pb-tls' }),
+      stop: () => handlers.get('mpv-stop')!(event)
+    }
+  }
+
+  it('hands the per-load TLS options to the controller', async () => {
+    const { controller, open } = setupWithTls(async () => ({ 'tls-verify': 'no' }))
+    await open('https://panel.example/movie/u/p/1.mp4')
+    expect(controller.open).toHaveBeenCalledWith('https://panel.example/movie/u/p/1.mp4', undefined, {
+      playbackId: 'pb-tls',
+      fileOptions: { 'tls-verify': 'no' }
+    })
+  })
+
+  it('lets a newer open or a stop win over an open still being checked', async () => {
+    const pending: Array<(options: Record<string, string>) => void> = []
+    const { controller, open, stop } = setupWithTls(
+      () => new Promise<Record<string, string>>((resolve) => pending.push(resolve))
+    )
+    const first = open('https://panel.example/live/u/p/1.ts')
+    const second = open('https://panel.example/live/u/p/2.ts')
+    pending[1]({ 'tls-verify': 'yes' })
+    await second
+    pending[0]({ 'tls-verify': 'no' })
+    await first
+    expect(controller.open).toHaveBeenCalledTimes(1)
+    expect(controller.open.mock.calls[0][0]).toBe('https://panel.example/live/u/p/2.ts')
+
+    const third = open('https://panel.example/live/u/p/3.ts')
+    await stop()
+    pending[2]({})
+    await third
+    expect(controller.open).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not open a stream the policy refuses', async () => {
+    const { controller, open } = setupWithTls(async () => {
+      throw new Error('Sunucunun güvenlik sertifikası değişti')
+    })
+    await expect(open('https://panel.example/movie/u/p/1.mp4')).rejects.toThrow('sertifika')
+    expect(controller.open).not.toHaveBeenCalled()
   })
 })
