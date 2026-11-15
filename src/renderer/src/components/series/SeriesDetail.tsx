@@ -1,4 +1,4 @@
-import { useState, useReducer, useEffect, useRef } from 'react'
+import { useState, useReducer, useEffect, useMemo, useRef } from 'react'
 import { Play, ArrowLeft } from 'lucide-react'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
@@ -10,10 +10,15 @@ import {
 } from '@/services/tmdb-api'
 import { LazyImage } from '@/components/ui/LazyImage'
 import { Button } from '@/components/ui/Button'
+import { FavoriteToggle } from '@/components/ui/FavoriteToggle'
 import { QualityBadge } from '@/components/ui/QualityBadge'
 import { Spinner } from '@/components/ui/Spinner'
 import { inferContentQualityLabel } from '@/services/quality'
+import { toUserMessage } from '@/services/user-error'
 import type { SeriesDetail as SeriesDetailType } from '@/types/playlist'
+
+// The interface is Turkish only; there is no language setting to follow.
+const TMDB_LANGUAGE = resolveTmdbLanguage('tr')
 
 interface SeriesDetailProps {
   seriesId: number
@@ -126,7 +131,16 @@ function useSeriesDetailData({
   const hydratedSeasons = hydratedSeasonsRef.current
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const credentialsHydrated = useStore((s) => s.credentialsHydrated)
-  const settings = useStore((s) => s.settings)
+  const tmdbApiKeySetting = useStore((s) => s.settings.tmdbApiKey)
+
+  // The parent feeds every season click back as `initialSeasonNumber`. Reading
+  // it through a ref keeps it out of the load effect's dependencies: as a
+  // dependency it refetched the whole series on each click. A later reload
+  // (retry, credentials arriving) still opens on the season last shown.
+  const initialSeasonRef = useRef(initialSeasonNumber)
+  useEffect(() => {
+    initialSeasonRef.current = initialSeasonNumber
+  }, [initialSeasonNumber])
 
   useEffect(() => {
     let cancelled = false
@@ -243,12 +257,12 @@ function useSeriesDetailData({
           episodes
         }
 
-        const tmdbApiKey = resolveTmdbApiKey(settings.tmdbApiKey)
+        const tmdbApiKey = resolveTmdbApiKey(tmdbApiKeySetting)
         if (tmdbApiKey) {
           try {
             const tmdbDetails = await resolveTmdbTvDetails({
               apiKey: tmdbApiKey,
-              language: resolveTmdbLanguage(settings.language),
+              language: TMDB_LANGUAGE,
               tmdbId:
                 (rawInfo.tmdb_id as string | number | undefined) ??
                 (rawInfo.tmdb as string | number | undefined),
@@ -286,10 +300,11 @@ function useSeriesDetailData({
 
         const availableSeasons = nextDetail.seasons
         if (availableSeasons.length > 0) {
+          const requestedSeason = initialSeasonRef.current
           const preferredSeasonNumber =
-            typeof initialSeasonNumber === 'number' &&
-            availableSeasons.some((season) => season.seasonNumber === initialSeasonNumber)
-              ? initialSeasonNumber
+            typeof requestedSeason === 'number' &&
+            availableSeasons.some((season) => season.seasonNumber === requestedSeason)
+              ? requestedSeason
               : availableSeasons[0].seasonNumber
 
           setSelectedSeason(preferredSeasonNumber)
@@ -297,7 +312,7 @@ function useSeriesDetailData({
       } catch (err) {
         if (cancelled) return
         console.error('Failed to load series info:', err)
-        dispatchLoad({ type: 'loadFailed', message: err instanceof Error ? err.message : 'Dizi detayı yüklenemedi' })
+        dispatchLoad({ type: 'loadFailed', message: toUserMessage(err, 'Dizi detayı yüklenemedi.') })
       } finally {
         if (!cancelled) dispatchLoad({ type: 'loadEnd' })
       }
@@ -311,17 +326,15 @@ function useSeriesDetailData({
     credentialsHydrated,
     getXtreamCredentials,
     hydratedSeasons,
-    initialSeasonNumber,
     reloadToken,
     seriesId,
-    settings.language,
-    settings.tmdbApiKey,
+    tmdbApiKeySetting,
     sourceId
   ])
 
   useEffect(() => {
     let cancelled = false
-    const tmdbApiKey = resolveTmdbApiKey(settings.tmdbApiKey)
+    const tmdbApiKey = resolveTmdbApiKey(tmdbApiKeySetting)
     const tmdbTvId = tmdbTvIdRef.current
     if (!detail || !tmdbTvId || !tmdbApiKey) return
     if (!detail.episodes[selectedSeason]?.length) return
@@ -331,7 +344,7 @@ function useSeriesDetailData({
       try {
         const seasonEpisodes = await resolveTmdbSeasonEpisodes({
           apiKey: tmdbApiKey,
-          language: resolveTmdbLanguage(settings.language),
+          language: TMDB_LANGUAGE,
           tmdbTvId,
           seasonNumber: selectedSeason
         })
@@ -390,7 +403,7 @@ function useSeriesDetailData({
     return () => {
       cancelled = true
     }
-  }, [detail, hydratedSeasons, selectedSeason, settings.language, settings.tmdbApiKey])
+  }, [detail, hydratedSeasons, selectedSeason, tmdbApiKeySetting])
 
   const retry = () => {
     bumpReloadToken()
@@ -423,6 +436,15 @@ export function SeriesDetail({
     selectedSeason,
     setSelectedSeason
   } = useSeriesDetailData({ seriesId, sourceId, initialSeasonNumber })
+  const channels = useStore((s) => s.channels)
+  const favoriteChannelId = useMemo(
+    () =>
+      channels.find(
+        (channel) =>
+          channel.type === 'series' && channel.sourceId === sourceId && channel.seriesId === seriesId
+      )?.id ?? null,
+    [channels, seriesId, sourceId]
+  )
 
   if (loading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>
   if (!detail) {
@@ -466,9 +488,12 @@ export function SeriesDetail({
           {detail.plot && <p className="text-sm text-surface-400 leading-relaxed max-w-2xl">{detail.plot}</p>}
           <div className="flex gap-4 text-xs text-surface-500 mt-2">
             {detail.rating && <span>Puan: {detail.rating}</span>}
-            {detail.director && <span>Yonetmen: {detail.director}</span>}
+            {detail.director && <span>Yönetmen: {detail.director}</span>}
             {detail.releaseDate && <span>{detail.releaseDate}</span>}
           </div>
+          {favoriteChannelId && (
+            <FavoriteToggle channelId={favoriteChannelId} variant="button" className="mt-3 self-start" />
+          )}
         </div>
       </div>
 

@@ -1,9 +1,9 @@
 import { memo } from 'react'
-import { Star, Play, Radio } from 'lucide-react'
+import { Play, Radio } from 'lucide-react'
 import { LazyImage } from '@/components/ui/LazyImage'
 import { ClampText, QualityBadge } from '@/components/ui'
+import { FavoriteToggle } from '@/components/ui/FavoriteToggle'
 import { inferContentQualityLabel } from '@/services/quality'
-import { useStore } from '@/store'
 import type { Channel } from '@/types/playlist'
 
 interface ChannelCardProps {
@@ -17,9 +17,6 @@ export const ChannelCard = memo(function ChannelCard({
   onPlay,
   eagerImage = false
 }: ChannelCardProps) {
-  const isFavorite = useStore((s) => s.isFavorite)
-  const toggleFavorite = useStore((s) => s.toggleFavorite)
-  const fav = isFavorite(channel.id)
   const artwork = channel.logo || channel.coverUrl
   const qualityLabel = inferContentQualityLabel(channel)
 
@@ -81,17 +78,7 @@ export const ChannelCard = memo(function ChannelCard({
         </div>
       </button>
       <div className="absolute bottom-3 right-3">
-        <button
-          type="button"
-          onClick={() => { toggleFavorite(channel.id) }}
-          className="shrink-0 rounded-md p-1.5 text-surface-500 transition-colors hover:bg-surface-800 hover:text-surface-300"
-          aria-label={fav ? 'Favorilerden çıkar' : 'Favorilere ekle'}
-        >
-          <Star
-            size={14}
-            className={fav ? 'fill-amber-400 text-amber-400' : ''}
-          />
-        </button>
+        <FavoriteToggle channelId={channel.id} />
       </div>
     </div>
   )

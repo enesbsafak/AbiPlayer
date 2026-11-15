@@ -19,6 +19,9 @@ export function Modal({ isOpen, onClose, title, children, className = '' }: Moda
     if (!isOpen || !dialog) return
 
     if (!dialog.open) dialog.showModal()
+    // React's autoFocus fires before the dialog is open and is lost, so a child
+    // marks the element that should take focus instead of the close button.
+    dialog.querySelector<HTMLElement>('[data-autofocus]')?.focus()
 
     return () => {
       if (dialog.open) dialog.close()
