@@ -15,6 +15,9 @@ export function AppShell() {
   const routeLocation = useLocation()
   const currentChannel = useStore((s) => s.currentChannel)
   const isMiniPlayer = useStore((s) => s.isMiniPlayer)
+  // Leaving the player by any route (search shortcut, a link) suspends playback
+  // without setting the mini flag; the card must still offer the way back.
+  const isPlaybackSuspended = useStore((s) => s.isPlaybackSuspended)
   const playbackEngine = useStore((s) => s.playbackEngine)
   const isPlayerRoute = routeLocation.pathname === '/player'
 
@@ -66,7 +69,7 @@ export function AppShell() {
           </main>
         </div>
       </div>
-      {currentChannel && isMiniPlayer && <MiniPlayer />}
+      {currentChannel && (isMiniPlayer || isPlaybackSuspended) && <MiniPlayer />}
     </div>
   )
 }
