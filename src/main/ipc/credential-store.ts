@@ -11,10 +11,15 @@ import {
 } from '../../shared/secure-credentials'
 import { nodeAtomicWriteOps, writeFileAtomic, type AtomicWriteOps } from './atomic-file'
 
+/**
+ * Electron's asynchronous safeStorage (the synchronous methods are deprecated
+ * in Electron 45 and removed in 46). Files written by the synchronous
+ * `encryptString` decrypt with `decryptStringAsync`.
+ */
 export interface SafeStorageLike {
-  isEncryptionAvailable(): boolean
-  encryptString(plainText: string): Buffer
-  decryptString(encrypted: Buffer): string
+  isAsyncEncryptionAvailable(): Promise<boolean>
+  encryptStringAsync(plainText: string): Promise<Buffer>
+  decryptStringAsync(encrypted: Buffer): Promise<{ result: string; shouldReEncrypt: boolean }>
 }
 
 export interface CredentialStoreFs extends AtomicWriteOps {
@@ -59,6 +64,12 @@ interface StoreContents {
   secrets: SecureCredentialMap
   cacheKey: string | null
   tmdbApiKey: string | null
+}
+
+interface DecodedContents {
+  contents: StoreContents
+  /** safeStorage rotated its key: the file should be written again with the new one. */
+  shouldReEncrypt: boolean
 }
 
 const EMPTY_CONTENTS = (): StoreContents => ({ secrets: {}, cacheKey: null, tmdbApiKey: null })
@@ -148,14 +159,14 @@ export class CredentialStore {
     })
   }
 
-  private ensureAvailable(): void {
-    if (!this.options.safeStorage.isEncryptionAvailable()) {
+  private async ensureAvailable(): Promise<void> {
+    if (!(await this.options.safeStorage.isAsyncEncryptionAvailable())) {
       throw new Error('Güvenli kimlik bilgisi saklama bu sistemde kullanılamıyor')
     }
   }
 
   private async read(): Promise<StoreContents> {
-    this.ensureAvailable()
+    await this.ensureAvailable()
 
     let encryptedBase64: string
     try {
@@ -170,22 +181,33 @@ export class CredentialStore {
 
     if (encryptedBase64.trim().length === 0) return EMPTY_CONTENTS()
 
+    let decoded: DecodedContents
     try {
-      return this.decode(encryptedBase64)
+      decoded = await this.decode(encryptedBase64)
     } catch (error) {
       if (!(error instanceof UnreadableStoreError)) throw error
       await this.quarantine(error.reason)
       return EMPTY_CONTENTS()
     }
+    if (decoded.shouldReEncrypt) {
+      try {
+        await this.write(decoded.contents)
+      } catch (error) {
+        // The old encryption still reads; the next write tries again.
+        console.warn('[credentials] could not re-encrypt the credential file:', error)
+      }
+    }
+    return decoded.contents
   }
 
-  private decode(encryptedBase64: string): StoreContents {
+  private async decode(encryptedBase64: string): Promise<DecodedContents> {
     const encrypted = Buffer.from(encryptedBase64, 'base64')
     if (encrypted.length === 0) throw new UnreadableStoreError('corrupt')
 
     let decrypted: string
+    let shouldReEncrypt: boolean
     try {
-      decrypted = this.options.safeStorage.decryptString(encrypted)
+      ;({ result: decrypted, shouldReEncrypt } = await this.options.safeStorage.decryptStringAsync(encrypted))
     } catch {
       throw new UnreadableStoreError('decrypt-failed')
     }
@@ -203,9 +225,12 @@ export class CredentialStore {
     const cacheKey = (parsed as Record<string, unknown>)[CACHE_KEY_FIELD]
     const tmdbApiKey = (parsed as Record<string, unknown>)[TMDB_KEY_FIELD]
     return {
-      secrets: sanitizeCredentialMap(parsed),
-      cacheKey: isCacheKey(cacheKey) ? cacheKey : null,
-      tmdbApiKey: isValidTmdbApiKey(tmdbApiKey) ? tmdbApiKey : null
+      contents: {
+        secrets: sanitizeCredentialMap(parsed),
+        cacheKey: isCacheKey(cacheKey) ? cacheKey : null,
+        tmdbApiKey: isValidTmdbApiKey(tmdbApiKey) ? tmdbApiKey : null
+      },
+      shouldReEncrypt
     }
   }
 
@@ -228,11 +253,11 @@ export class CredentialStore {
   }
 
   private async write(store: StoreContents): Promise<void> {
-    this.ensureAvailable()
+    await this.ensureAvailable()
     const payload: Record<string, unknown> = { ...store.secrets }
     if (store.cacheKey) payload[CACHE_KEY_FIELD] = store.cacheKey
     if (store.tmdbApiKey) payload[TMDB_KEY_FIELD] = store.tmdbApiKey
-    const encrypted = this.options.safeStorage.encryptString(JSON.stringify(payload)).toString('base64')
+    const encrypted = (await this.options.safeStorage.encryptStringAsync(JSON.stringify(payload))).toString('base64')
     await writeFileAtomic(this.options.filePath, encrypted, this.fs)
   }
 
