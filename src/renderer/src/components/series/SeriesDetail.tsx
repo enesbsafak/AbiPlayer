@@ -16,6 +16,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { inferContentQualityLabel } from '@/services/quality'
 import { toUserMessage } from '@/services/user-error'
 import type { SeriesDetail as SeriesDetailType } from '@/types/playlist'
+import type { EpisodePlaybackRequest } from '@/types/player'
 
 // The interface is Turkish only; there is no language setting to follow.
 const TMDB_LANGUAGE = resolveTmdbLanguage('tr')
@@ -26,7 +27,8 @@ interface SeriesDetailProps {
   initialSeasonNumber?: number
   onBack: () => void
   onSeasonChange?: (seasonNumber: number) => void
-  onPlayEpisode: (url: string, title: string, seasonNumber?: number) => void
+  /** The episode to play, identified by its own id rather than by a URL. */
+  onPlayEpisode: (episode: EpisodePlaybackRequest) => void
 }
 
 type SeasonRaw = { season_number?: number; name?: string; episode_count?: number; cover?: string }
@@ -523,13 +525,21 @@ export function SeriesDetail({
                 key={ep.id}
                 type="button"
                 className="flex w-full items-center gap-4 rounded-lg border border-surface-800 bg-surface-900 p-3 text-left hover:border-surface-700 transition-colors"
-                onClick={() =>
-                  onPlayEpisode(
-                    ep.streamUrl,
-                    `${detail.name} - S${ep.season}E${ep.episodeNum} - ${ep.title}`,
-                    ep.season
-                  )
-                }
+                onClick={() => {
+                  const episodeId = parseEpisodeId(ep.id)
+                  if (episodeId === null) return
+                  onPlayEpisode({
+                    sourceId,
+                    seriesId,
+                    season: ep.season,
+                    episodeNum: ep.episodeNum,
+                    episodeId,
+                    containerExtension: ep.containerExtension,
+                    title: `${detail.name} - S${ep.season}E${ep.episodeNum} - ${ep.title}`,
+                    ...(ep.coverUrl ? { coverUrl: ep.coverUrl } : {}),
+                    fallbackStreamUrl: ep.streamUrl
+                  })
+                }}
               >
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-800">
                   <Play size={16} className="text-accent" fill="currentColor" />

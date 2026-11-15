@@ -1,8 +1,10 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useStore } from '@/store'
+import { STORE_NAME, storePersistence, useStore } from '@/store'
 import { findProgress } from '@/services/watch-progress'
+import { targetFromChannel } from '@/services/playback'
 import type { Channel } from '@/types/playlist'
+import { mediaKey } from '../../../shared/playback'
 import { useWatchProgress } from './useWatchProgress'
 
 const movie: Channel = {
@@ -12,25 +14,39 @@ const movie: Channel = {
   sourceId: 'src',
   type: 'vod'
 }
+const movieKey = mediaKey(targetFromChannel(movie)!)
 
 function savedPosition(): number | null {
-  return findProgress(useStore.getState().watchProgress, movie)?.position ?? null
+  return findProgress(useStore.getState().watchProgress, movieKey)?.position ?? null
 }
 
 describe('useWatchProgress', () => {
+  const disk = new Map<string, string>()
+
   beforeEach(() => {
     vi.useFakeTimers()
+    disk.clear()
+    storePersistence.setBackend(
+      {
+        getItem: (name) => disk.get(name) ?? null,
+        setItem: (name, value) => void disk.set(name, value),
+        removeItem: (name) => void disk.delete(name)
+      },
+      { getItem: (name) => disk.get(name) ?? null, setItem: (name, value) => void disk.set(name, value) }
+    )
     useStore.getState().stopPlayback()
     useStore.setState({ watchProgress: [] })
+    storePersistence.flush()
   })
 
   afterEach(() => {
     // Without vitest globals, testing-library cannot register its own cleanup.
     cleanup()
+    window.dispatchEvent(new Event('pageshow'))
     vi.useRealTimers()
   })
 
-  it('writes the last position when the window is closed', () => {
+  it('writes the last position to storage when the window is closed', () => {
     renderHook(() => useWatchProgress())
     act(() => {
       useStore.getState().playChannel(movie)
@@ -40,6 +56,11 @@ describe('useWatchProgress', () => {
     window.dispatchEvent(new Event('pagehide'))
 
     expect(savedPosition()).toBe(600)
+    // Not just in memory: the coalesced write must not be left pending.
+    const stored = JSON.parse(disk.get(STORE_NAME) ?? '{}') as {
+      state?: { watchProgress?: Array<{ key: string; position: number }> }
+    }
+    expect(stored.state?.watchProgress?.[0]).toMatchObject({ key: movieKey, position: 600 })
   })
 
   it('writes the position at once when the player is left for the mini card', () => {
@@ -55,7 +76,7 @@ describe('useWatchProgress', () => {
   })
 
   it('never lowers the saved position while the resume for that film is pending', () => {
-    useStore.getState().saveWatchProgress(movie, 1800, 3600)
+    useStore.getState().saveWatchProgress({ target: targetFromChannel(movie)!, channel: movie }, 1800, 3600)
     renderHook(() => useWatchProgress())
 
     // Back from the mini card: the film is loaded again from 0:00 and has not
@@ -65,7 +86,7 @@ describe('useWatchProgress', () => {
       useStore.getState().suspendPlayback()
       useStore.getState().resumeSuspendedPlayback()
     })
-    expect(useStore.getState().pendingResumeStreamUrl).toBe(movie.streamUrl)
+    expect(useStore.getState().pendingResume?.mediaKey).toBe(movieKey)
     act(() => useStore.getState().applyPlayerPatch({ currentTime: 45, duration: 3600 }))
 
     act(() => {

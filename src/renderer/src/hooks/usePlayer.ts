@@ -19,6 +19,7 @@ import {
   pickPreferredSubtitleTrackId
 } from '@/services/track-preferences'
 import { GENERATED_CAPTIONS_TRACK_LABEL } from '@/constants/captions'
+import { isLiveTarget } from '../../../shared/playback'
 
 const HLS_TRACK_PREFIX = 'hls:'
 const NATIVE_TRACK_PREFIX = 'native:'
@@ -361,7 +362,6 @@ export function usePlayer(
   options?: { disabled?: boolean }
 ) {
   const disabled = options?.disabled ?? false
-  const currentChannelId = useStore((s) => s.currentChannel?.id)
   const hlsRef = useRef<Hls | null>(null)
   const directReadErrorRetryCountRef = useRef(0)
   const audioPreferenceAppliedRef = useRef(false)
@@ -369,8 +369,13 @@ export function usePlayer(
 
   // Select individually: a bare `useStore()` re-runs this hook on every store
   // write, and playback pushes several per second.
-  const currentChannel = useStore((s) => s.currentChannel)
-  const playbackReloadToken = useStore((s) => s.playbackReloadToken)
+  // Each start, reload and return from the mini card is a new playback id;
+  // the URL and the live flag never change within one.
+  const playbackId = useStore((s) => s.currentPlayback?.playbackId ?? null)
+  const streamUrl = useStore((s) => s.currentPlayback?.streamUrl ?? null)
+  const isLive = useStore((s) => (s.currentPlayback ? isLiveTarget(s.currentPlayback.target) : false))
+  const mediaKey = useStore((s) => s.currentPlayback?.mediaKey ?? null)
+  const markPlaybackLoaded = useStore((s) => s.markPlaybackLoaded)
   const volume = useStore((s) => s.volume)
   const isMuted = useStore((s) => s.isMuted)
   const currentAudioTrack = useStore((s) => s.currentAudioTrack)
@@ -380,21 +385,26 @@ export function usePlayer(
   const setActiveSubtitleCues = useStore((s) => s.setActiveSubtitleCues)
   const applyPlayerPatch = useStore((s) => s.applyPlayerPatch)
 
+  // Track preferences are applied once per item, not again on a reload.
   useEffect(() => {
     audioPreferenceAppliedRef.current = false
     subtitlePreferenceAppliedRef.current = false
-  }, [currentChannel?.id, currentChannel?.streamUrl])
+  }, [mediaKey])
 
   // HLS lifecycle
   useEffect(() => {
     if (disabled) return
     const video = videoRef.current
-    if (!video || !currentChannel) return
+    if (!video || !playbackId) return
     directReadErrorRetryCountRef.current = 0
 
-    const url = currentChannel.streamUrl
+    const url = streamUrl
     if (!url) return
     let disposed = false
+    // Results that arrive late (the subtitle probe) are applied only to the
+    // playback they were started for.
+    const isCurrentPlayback = () =>
+      !disposed && useStore.getState().currentPlayback?.playbackId === playbackId
     let probedTracks: SubtitleTrack[] = []
     const hlsRetryTimers: number[] = []
     // `{ once: true }` only self-removes AFTER the event fires. Switching
@@ -717,13 +727,13 @@ export function usePlayer(
 
       // Probe direct VOD streams before playback starts to avoid concurrent
       // connections that can exceed provider max-connection limits.
-      const shouldProbeBeforePlayback = currentChannel.type !== 'live'
+      const shouldProbeBeforePlayback = !isLive
       if (shouldProbeBeforePlayback) {
         const probe = probeEmbeddedSubtitles(url)
         void (async () => {
           try {
             const outcome = await waitAtMost(probe, SUBTITLE_PROBE_TIMEOUT_MS)
-            if (disposed) return
+            if (!isCurrentPlayback()) return
 
             if (outcome.timedOut) {
               // Playback goes ahead; the probe's answer is still worth having.
@@ -731,7 +741,7 @@ export function usePlayer(
               // running and there is nothing for the viewer to act on.
               probe.then(
                 (tracks) => {
-                  if (disposed || tracks.length === 0) return
+                  if (!isCurrentPlayback() || tracks.length === 0) return
                   probedTracks = collectProbedSubtitleTracks(tracks)
                   refreshSubtitleTracks(null)
                 },
@@ -781,9 +791,10 @@ export function usePlayer(
       releaseMediaElementSource(video)
     }
   }, [
-    currentChannel,
-    // Not read in the body: bumping it is how "Yeniden Bağlan" reloads.
-    playbackReloadToken,
+    // A reload issues a new playback id, which is how "Yeniden Bağlan" reloads.
+    playbackId,
+    streamUrl,
+    isLive,
     videoRef,
     setActiveSubtitleCues,
     applyPlayerPatch,
@@ -797,7 +808,7 @@ export function usePlayer(
     if (!video) return
     video.volume = volume
     video.muted = isMuted
-  }, [volume, isMuted, videoRef, disabled, currentChannelId])
+  }, [volume, isMuted, videoRef, disabled, playbackId])
 
   // Audio track switching
   useEffect(() => {
@@ -882,12 +893,12 @@ export function usePlayer(
       applyPlayerPatch({ subtitleCues: [], activeSubtitleCues: [] })
 
       const streamIndex = Number.parseInt(currentSubtitleTrack.replace(PROBED_TRACK_PREFIX, ''), 10)
-      if (Number.isNaN(streamIndex) || !currentChannel?.streamUrl) return
+      if (Number.isNaN(streamIndex) || !streamUrl || !playbackId) return
 
       void (async () => {
         try {
-          const extracted = await extractEmbeddedSubtitle(currentChannel.streamUrl, streamIndex)
-          if (cancelled) return
+          const extracted = await extractEmbeddedSubtitle(streamUrl, streamIndex)
+          if (cancelled || useStore.getState().currentPlayback?.playbackId !== playbackId) return
           if (!extracted) {
             applyPlayerPatch({ subtitleCues: [] })
             return
@@ -961,7 +972,7 @@ export function usePlayer(
       cancelled = true
       for (const timer of retryTimers) clearTimeout(timer)
     }
-  }, [currentSubtitleTrack, currentChannel, videoRef, setActiveSubtitleCues, applyPlayerPatch, disabled])
+  }, [currentSubtitleTrack, playbackId, streamUrl, videoRef, setActiveSubtitleCues, applyPlayerPatch, disabled])
 
   // Video events
   useEffect(() => {
@@ -981,16 +992,22 @@ export function usePlayer(
       applyPlayerPatch({ isBuffering: false, playerError: null })
     }
     const onTimeUpdate = () => applyPlayerPatch({ currentTime: video.currentTime })
-    const onDurationChange = () => applyPlayerPatch({ duration: video.duration })
+    const onDurationChange = () => {
+      applyPlayerPatch({ duration: video.duration })
+      // The element has this playback's metadata: a resume seek can land now.
+      if (playbackId && Number.isFinite(video.duration) && video.duration > 0) {
+        markPlaybackLoaded(playbackId)
+      }
+    }
     const onError = () => {
       const message = video.error?.message || 'Oynatma hatası'
-      const isDirectStream = !!currentChannel?.streamUrl && !(urlIsHlsOrTs(currentChannel.streamUrl))
+      const isDirectStream = !!streamUrl && !urlIsHlsOrTs(streamUrl)
       const isReadPipelineError =
         message.includes('PIPELINE_ERROR_READ') || message.includes('FFmpegDemuxer: data source error')
 
       if (isDirectStream && isReadPipelineError && directReadErrorRetryCountRef.current < 2) {
         const resumeAt = Number.isFinite(video.currentTime) ? video.currentTime : 0
-        const src = video.currentSrc || currentChannel!.streamUrl
+        const src = video.currentSrc || streamUrl
 
         if (src) {
           directReadErrorRetryCountRef.current += 1
@@ -1004,7 +1021,9 @@ export function usePlayer(
               if (resumeAt > 1) {
                 try {
                   video.currentTime = Math.max(0, resumeAt - 0.25)
-                } catch {}
+                } catch {
+                  // The element may already be resetting; playback resumes from 0.
+                }
               }
               video.play().catch(() => {})
             },
@@ -1036,13 +1055,13 @@ export function usePlayer(
       video.removeEventListener('durationchange', onDurationChange)
       video.removeEventListener('error', onError)
     }
-  }, [videoRef, currentChannel, applyPlayerPatch, disabled])
+  }, [videoRef, playbackId, streamUrl, applyPlayerPatch, markPlaybackLoaded, disabled])
 
   // Live stream stall detection — recovers frozen HLS/direct streams
   useEffect(() => {
     if (disabled) return
     const video = videoRef.current
-    if (!video || !currentChannel || currentChannel.type !== 'live') return
+    if (!video || !playbackId || !isLive) return
 
     let lastTimePos = -1
     let lastProgressTime = Date.now()
@@ -1096,7 +1115,7 @@ export function usePlayer(
           hls.stopLoad()
           hls.startLoad(-1)
         } else {
-          const src = video.currentSrc || currentChannel.streamUrl
+          const src = video.currentSrc || streamUrl
           if (src) {
             video.src = src
             video.play().catch(() => {})
@@ -1114,7 +1133,7 @@ export function usePlayer(
       video.removeEventListener('timeupdate', onStallTimeUpdate)
       window.clearInterval(stallCheck)
     }
-  }, [currentChannel, playbackReloadToken, videoRef, applyPlayerPatch, disabled])
+  }, [playbackId, isLive, streamUrl, videoRef, applyPlayerPatch, disabled])
 
   // Cue matching for parsed subtitle sources (external files + extracted embedded tracks)
   useEffect(() => {

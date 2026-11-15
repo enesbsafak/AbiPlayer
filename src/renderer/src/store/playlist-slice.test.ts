@@ -166,7 +166,9 @@ describe('player-slice resume flag', () => {
 
     store.getState().playChannel(movie)
 
-    expect(store.getState().pendingResumeStreamUrl).toBe(movie.streamUrl)
+    const { pendingResume, currentPlayback } = store.getState()
+    expect(pendingResume?.playbackId).toBe(currentPlayback?.playbackId)
+    expect(pendingResume?.mediaKey).toBe(currentPlayback?.mediaKey)
   })
 
   it('never arms one for live', () => {
@@ -174,7 +176,7 @@ describe('player-slice resume flag', () => {
 
     store.getState().playChannel({ ...movie, type: 'live' })
 
-    expect(store.getState().pendingResumeStreamUrl).toBeNull()
+    expect(store.getState().pendingResume).toBeNull()
   })
 
   it('is consumed once so returning to the player cannot re-seek', () => {
@@ -185,7 +187,7 @@ describe('player-slice resume flag', () => {
     store.getState().playChannel(movie)
     store.getState().clearPendingResume()
 
-    expect(store.getState().pendingResumeStreamUrl).toBeNull()
+    expect(store.getState().pendingResume).toBeNull()
   })
 
   it('clears on stop', () => {
@@ -194,7 +196,7 @@ describe('player-slice resume flag', () => {
     store.getState().playChannel(movie)
     store.getState().stopPlayback()
 
-    expect(store.getState().pendingResumeStreamUrl).toBeNull()
+    expect(store.getState().pendingResume).toBeNull()
   })
 })
 

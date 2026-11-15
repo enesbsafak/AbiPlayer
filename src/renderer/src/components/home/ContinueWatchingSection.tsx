@@ -1,12 +1,11 @@
 import { History, Play, X } from 'lucide-react'
 import { LazyImage } from '@/components/ui/LazyImage'
 import { ClampText } from '@/components/ui'
-import type { WatchProgressEntry } from '@/services/watch-progress'
-import type { Channel } from '@/types/playlist'
+import type { ContinueWatchingItem } from '@/services/watch-progress'
 
 interface ContinueWatchingSectionProps {
-  entries: WatchProgressEntry[]
-  onPlay: (channel: Channel) => void
+  entries: ContinueWatchingItem[]
+  onPlay: (item: ContinueWatchingItem) => void
   onRemove: (key: string) => void
 }
 
@@ -41,7 +40,8 @@ export function ContinueWatchingSection({
       </div>
 
       <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-        {entries.map((entry) => {
+        {entries.map((item) => {
+          const { entry } = item
           const percent = Math.min(100, Math.max(0, (entry.position / entry.duration) * 100))
           const artwork = entry.channel.coverUrl || entry.channel.logo
 
@@ -52,7 +52,7 @@ export function ContinueWatchingSection({
             >
               <button
                 type="button"
-                onClick={() => onPlay(entry.channel)}
+                onClick={() => onPlay(item)}
                 className="flex w-full flex-col text-left"
                 aria-label={`${entry.channel.name} — kaldığın yerden devam et`}
               >
