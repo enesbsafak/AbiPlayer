@@ -77,6 +77,16 @@ export function isPerfFlag(value: string | null | undefined): boolean {
   return ['1', 'true', 'on', 'yes'].includes(value.trim().toLowerCase())
 }
 
+/**
+ * Where main writes its timeline on quit (`ABI_PERF_OUT`). Only development
+ * builds honour it: a packaged app must not write to a path an environment
+ * variable chose.
+ */
+export function perfOutputPath(value: string | undefined, isPackaged: boolean): string | null {
+  if (isPackaged) return null
+  return value?.trim() || null
+}
+
 function round(value: number): number {
   return Math.round(value * 100) / 100
 }

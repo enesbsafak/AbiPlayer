@@ -12,7 +12,7 @@ vi.mock('electron', () => ({
 }))
 vi.mock('@electron-toolkit/utils', () => ({ is: { dev: false } }))
 
-const { createAppUpdater, cleanupStoreBackupIfUnneeded } = await import('./app-updater')
+const { autoUpdatesEnabled, createAppUpdater, cleanupStoreBackupIfUnneeded } = await import('./app-updater')
 type Backend = import('./app-updater').UpdaterBackend
 type UpdateInfo = import('./app-updater').UpdateInfoLike
 
@@ -232,5 +232,20 @@ describe('cleanupStoreBackupIfUnneeded', () => {
     await expect(cleanupStoreBackupIfUnneeded(async () => null, backupPath, () => false)).resolves.toBe(false)
     await expect(cleanupStoreBackupIfUnneeded(async () => '{"state":{}}', backupPath, () => true)).resolves.toBe(false)
     expect(existsSync(backupPath)).toBe(true)
+  })
+})
+
+describe('autoUpdatesEnabled', () => {
+  const installed = { isDev: false, isPackaged: true, platform: 'win32' as const, e2eMode: false }
+
+  it('checks in an installed build', () => {
+    expect(autoUpdatesEnabled(installed)).toBe(true)
+  })
+
+  // A packaged end-to-end run must not reach GitHub or raise the install prompt.
+  it('never checks in development or in the end-to-end test mode', () => {
+    expect(autoUpdatesEnabled({ ...installed, isPackaged: false })).toBe(false)
+    expect(autoUpdatesEnabled({ ...installed, isDev: true })).toBe(false)
+    expect(autoUpdatesEnabled({ ...installed, e2eMode: true })).toBe(false)
   })
 })

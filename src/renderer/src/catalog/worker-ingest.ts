@@ -37,8 +37,17 @@ export interface IngestOutcome {
   job: JobResult
 }
 
-/** Handlers that stage each partition's batches and swap them in on `list-end`. */
-function stagingHandlers(store: CatalogStore, tokens: Map<CatalogType, GenerationToken>, outcome: IngestOutcome): JobHandlers {
+/**
+ * Handlers that stage each partition's batches and swap them in on `list-end`.
+ * `worker` only labels the timing mark: whether the job ran in a real Worker
+ * or in the in-page fallback (the packaged end-to-end run checks it).
+ */
+function stagingHandlers(
+  store: CatalogStore,
+  tokens: Map<CatalogType, GenerationToken>,
+  outcome: IngestOutcome,
+  worker: Pick<CatalogWorkerClient, 'isolated'>
+): JobHandlers {
   const stages = new Map<CatalogType, StagedReplace>()
   const categories = new Map<CatalogType, CatalogCategory[]>()
   const stageFor = (type: CatalogType): StagedReplace | null => {
@@ -70,7 +79,11 @@ function stagingHandlers(store: CatalogStore, tokens: Map<CatalogType, Generatio
         outcome.results[type] = result
         outcome.counts[type] = stage.count
         if (result === 'committed') {
-          perfMark(meta.origin === 'cache' ? 'cache:committed' : 'ingest:committed', { type, items: stage.count })
+          perfMark(meta.origin === 'cache' ? 'cache:committed' : 'ingest:committed', {
+            type,
+            items: stage.count,
+            isolated: worker.isolated
+          })
         }
         stages.delete(type)
       }
@@ -100,7 +113,7 @@ export async function ingestXtreamList(
   const status = store.getStatus(args.sourceId, args.type)
   const categories = status?.categoriesLoaded ? [...store.getCategories(args.sourceId, args.type)] : null
   const outcome = emptyOutcome()
-  const handlers = stagingHandlers(store, new Map([[args.type, args.token]]), outcome)
+  const handlers = stagingHandlers(store, new Map([[args.type, args.token]]), outcome, worker)
   outcome.job = await worker.run(
     {
       kind: 'xtream-list',
@@ -131,7 +144,7 @@ export async function ingestM3uUrl(sourceId: string, url: string, options: Inges
   await cacheKeyReady()
   outcome.job = await worker.run(
     { kind: 'm3u-url', sourceId, url, revision: store.getSourceRevision(sourceId), cache: true },
-    stagingHandlers(store, tokens, outcome),
+    stagingHandlers(store, tokens, outcome, worker),
     options.signal
   )
   if (outcome.results.live === 'committed') setSourceEpgUrls(sourceId, outcome.epgUrls)
@@ -153,7 +166,7 @@ export async function ingestM3uText(
   await cacheKeyReady()
   outcome.job = await worker.run(
     { kind: 'm3u-text', sourceId, text, path, revision: store.getSourceRevision(sourceId), cache: true },
-    stagingHandlers(store, tokens, outcome),
+    stagingHandlers(store, tokens, outcome, worker),
     options.signal
   )
   if (outcome.results.live === 'committed') setSourceEpgUrls(sourceId, outcome.epgUrls)
@@ -187,7 +200,7 @@ export async function ingestFromCache(
   if (source.type !== 'xtream') await cacheKeyReady()
   outcome.job = await worker.run(
     { kind: 'cache-read', sourceId: source.id, identity, types: [...types], revision: store.getSourceRevision(source.id) },
-    stagingHandlers(store, tokens, outcome),
+    stagingHandlers(store, tokens, outcome, worker),
     options.signal
   )
   if (outcome.epgUrls.length > 0 && Object.values(outcome.results).includes('committed')) setSourceEpgUrls(source.id, outcome.epgUrls)

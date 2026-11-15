@@ -5,6 +5,7 @@ import {
   describeXtreamUrl,
   findMark,
   isPerfFlag,
+  perfOutputPath,
   mergeTimelines,
   summarizeMarks
 } from './perf'
@@ -18,6 +19,15 @@ function clock(start = 0) {
     }
   }
 }
+
+describe('perfOutputPath', () => {
+  it('is honoured by development builds only', () => {
+    expect(perfOutputPath('C:/tmp/main.json', false)).toBe('C:/tmp/main.json')
+    expect(perfOutputPath('C:/tmp/main.json', true)).toBeNull()
+    expect(perfOutputPath('  ', false)).toBeNull()
+    expect(perfOutputPath(undefined, false)).toBeNull()
+  })
+})
 
 describe('isPerfFlag', () => {
   it('accepts the usual truthy spellings and nothing else', () => {

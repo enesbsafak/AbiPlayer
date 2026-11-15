@@ -15,7 +15,7 @@ import {
 } from '../support/flows.ts'
 
 test.describe('canlı yayın mpv ile', () => {
-  test('kanal açılır, mpv konumu ilerler, kanal değiştirilir, çıkılıp geri dönülür', async ({ launch, mock, closeApp }) => {
+  test('kanal açılır, mpv konumu ilerler, kanal değiştirilir, çıkılıp geri dönülür', { tag: '@packaged' }, async ({ launch, mock, closeApp }) => {
     const app = await launch()
     const { page } = app
     await addXtreamSource(page, mock)

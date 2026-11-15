@@ -5,6 +5,7 @@ import { unlink } from 'fs/promises'
 import { join } from 'path'
 import type { AppUpdateState, AppUpdateStatus } from '../shared/types/electron-ipc'
 import { maskCredentials } from '../shared/mask-credentials'
+import { E2E_MODE } from './e2e-mode'
 import { broadcastEvent } from './ipc/events'
 
 export type { AppUpdateState, AppUpdateStatus }
@@ -355,10 +356,18 @@ export type AppUpdater = ReturnType<typeof createAppUpdater>
 // ---------------------------------------------------------------------------
 // Electron wiring
 
+/**
+ * Only an installed build checks for updates. The end-to-end test mode
+ * (ABI_E2E) never does: a test run must not reach GitHub, download an update
+ * or raise the install prompt over the owner's desktop.
+ */
+export function autoUpdatesEnabled(env: { isDev: boolean; isPackaged: boolean; platform: NodeJS.Platform; e2eMode: boolean }): boolean {
+  if (env.isDev || !env.isPackaged || env.e2eMode) return false
+  return ['win32', 'darwin', 'linux'].includes(env.platform)
+}
+
 function shouldEnableAutoUpdates(): boolean {
-  if (is.dev) return false
-  if (!app.isPackaged) return false
-  return ['win32', 'darwin', 'linux'].includes(process.platform)
+  return autoUpdatesEnabled({ isDev: is.dev, isPackaged: app.isPackaged, platform: process.platform, e2eMode: E2E_MODE })
 }
 
 function getStoreBackupPath(): string {
