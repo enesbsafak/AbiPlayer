@@ -1,6 +1,14 @@
-import Hls from 'hls.js'
+import type Hls from 'hls.js'
+
+// hls.js (about 590 kB) is loaded only when the HTML5 engine actually plays
+// HLS: with mpv, the usual engine, it is never needed. Nothing in this module
+// may import it at runtime; the values below are hls.js's own enum strings
+// (Hls.ErrorTypes / Hls.ErrorDetails), checked against it in the tests.
 
 export const HLS_MAX_CONSECUTIVE_FATAL_ERRORS = 8
+
+export const HLS_NETWORK_ERROR = 'networkError'
+export const HLS_MEDIA_ERROR = 'mediaError'
 
 export type HlsRecoveryStep =
   | { kind: 'restart-load'; delayMs: number }
@@ -10,10 +18,10 @@ export type HlsRecoveryStep =
 
 // After a fatal manifest failure hls.js has no playlist to resume from, so
 // `startLoad()` does nothing; only `loadSource()` fetches it again.
-const HLS_MANIFEST_ERROR_DETAILS = new Set<string>([
-  Hls.ErrorDetails.MANIFEST_LOAD_ERROR,
-  Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT,
-  Hls.ErrorDetails.MANIFEST_PARSING_ERROR
+export const HLS_MANIFEST_ERROR_DETAILS: ReadonlySet<string> = new Set<string>([
+  'manifestLoadError',
+  'manifestLoadTimeOut',
+  'manifestParsingError'
 ])
 
 /**
@@ -37,19 +45,51 @@ export function createHlsErrorRecovery(maxConsecutive = HLS_MAX_CONSECUTIVE_FATA
       }
       consecutive++
       const delayMs = Math.min(1000 * Math.pow(1.5, consecutive - 1), 10000)
-      if (error.type === Hls.ErrorTypes.NETWORK_ERROR) {
+      if (error.type === HLS_NETWORK_ERROR) {
         return HLS_MANIFEST_ERROR_DETAILS.has(error.details)
           ? { kind: 'reload-source', delayMs }
           : { kind: 'restart-load', delayMs }
       }
-      if (error.type === Hls.ErrorTypes.MEDIA_ERROR) return { kind: 'recover-media' }
+      if (error.type === HLS_MEDIA_ERROR) return { kind: 'recover-media' }
       return { kind: 'fail', message: `Oynatma hatası: ${error.details}` }
     }
   }
 }
 
-export function isHlsJsSupported(): boolean {
-  return Hls.isSupported()
+type MediaSourceLike = { isTypeSupported?: (type: string) => boolean }
+
+/**
+ * Whether hls.js could play here, answered without loading it: the same
+ * Media Source Extensions check as `Hls.isSupported()` (hls.js 1.x,
+ * src/is-supported.ts).
+ */
+export function isHlsJsSupported(scope: Record<string, unknown> = globalThis as unknown as Record<string, unknown>): boolean {
+  const mediaSource = (scope['ManagedMediaSource'] ?? scope['MediaSource'] ?? scope['WebKitMediaSource']) as
+    | MediaSourceLike
+    | undefined
+  if (!mediaSource) return false
+
+  const sourceBuffer = (scope['SourceBuffer'] ?? scope['WebKitSourceBuffer']) as
+    | { prototype?: { appendBuffer?: unknown; remove?: unknown } }
+    | undefined
+  if (
+    sourceBuffer &&
+    !(
+      sourceBuffer.prototype &&
+      typeof sourceBuffer.prototype.appendBuffer === 'function' &&
+      typeof sourceBuffer.prototype.remove === 'function'
+    )
+  ) {
+    return false
+  }
+
+  const isTypeSupported = mediaSource.isTypeSupported
+  if (typeof isTypeSupported !== 'function') return false
+  const supports = (type: string) => isTypeSupported.call(mediaSource, type)
+  return (
+    ['avc1.42E01E,mp4a.40.2', 'av01.0.01M.08', 'vp09.00.50.08'].some((codecs) => supports(`video/mp4;codecs=${codecs}`)) ||
+    ['mp4a.40.2', 'fLaC'].some((codec) => supports(`audio/mp4;codecs=${codec}`))
+  )
 }
 
 /** Played through hls.js (or the element's native HLS) rather than as a plain file. */
@@ -64,13 +104,14 @@ export function urlIsHlsOrTs(url: string): boolean {
   return isHlsOrTsUrl(url.toLowerCase())
 }
 
+/** Each event hands over the engine's hls.js instance. */
 export interface HlsEngineEvents {
-  manifestParsed(): void
-  levelsChanged(): void
-  audioTracksChanged(): void
-  audioTrackSwitched(): void
-  subtitleTracksChanged(): void
-  subtitleTrackSwitched(): void
+  manifestParsed(hls: Hls): void
+  levelsChanged(hls: Hls): void
+  audioTracksChanged(hls: Hls): void
+  audioTrackSwitched(hls: Hls): void
+  subtitleTracksChanged(hls: Hls): void
+  subtitleTrackSwitched(hls: Hls): void
   /** Recovery gave up; the message is for the viewer. */
   failed(message: string): void
 }
@@ -81,8 +122,36 @@ export interface HlsEngine {
   dispose(): void
 }
 
-/** hls.js attached to `video`, playing `url`, recovering from fatal errors on its own. */
-export function startHlsEngine(video: HTMLVideoElement, url: string, events: HlsEngineEvents): HlsEngine {
+export type HlsModuleLoader = () => Promise<{ default: typeof Hls }>
+
+const loadHlsModule: HlsModuleLoader = () => import('hls.js')
+
+export interface StartHlsEngineOptions {
+  /**
+   * Aborted when the playback this engine was started for is gone (another
+   * playback, a reload, the player unmounting). Checked once the hls.js
+   * module has arrived: an aborted start creates nothing.
+   */
+  signal: AbortSignal
+  /** For tests; loads hls.js on demand otherwise. */
+  load?: HlsModuleLoader
+}
+
+/**
+ * hls.js attached to `video`, playing `url`, recovering from fatal errors on
+ * its own. Resolves with null when `signal` was aborted while hls.js was being
+ * loaded; rejects only if the module cannot be loaded.
+ */
+export async function startHlsEngine(
+  video: HTMLVideoElement,
+  url: string,
+  events: HlsEngineEvents,
+  options: StartHlsEngineOptions
+): Promise<HlsEngine | null> {
+  if (options.signal.aborted) return null
+  const { default: Hls } = await (options.load ?? loadHlsModule)()
+  if (options.signal.aborted) return null
+
   const hls = new Hls({
     enableWorker: true,
     lowLatencyMode: true,
@@ -104,14 +173,14 @@ export function startHlsEngine(video: HTMLVideoElement, url: string, events: Hls
 
   hls.on(Hls.Events.MANIFEST_PARSED, () => {
     video.play().catch(() => {})
-    events.manifestParsed()
+    events.manifestParsed(hls)
   })
-  hls.on(Hls.Events.LEVELS_UPDATED, () => events.levelsChanged())
-  hls.on(Hls.Events.LEVEL_SWITCHED, () => events.levelsChanged())
-  hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => events.audioTracksChanged())
-  hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => events.audioTrackSwitched())
-  hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => events.subtitleTracksChanged())
-  hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, () => events.subtitleTrackSwitched())
+  hls.on(Hls.Events.LEVELS_UPDATED, () => events.levelsChanged(hls))
+  hls.on(Hls.Events.LEVEL_SWITCHED, () => events.levelsChanged(hls))
+  hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => events.audioTracksChanged(hls))
+  hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => events.audioTrackSwitched(hls))
+  hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => events.subtitleTracksChanged(hls))
+  hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, () => events.subtitleTrackSwitched(hls))
 
   const recovery = createHlsErrorRecovery()
   hls.on(Hls.Events.FRAG_BUFFERED, () => recovery.noteProgress())

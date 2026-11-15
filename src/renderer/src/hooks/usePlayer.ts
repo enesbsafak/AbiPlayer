@@ -53,6 +53,7 @@ export { TRUNCATED_SUBTITLE_NOTICE, isTruncatedSubtitleExtraction } from '@/play
 const HLS_SUBTITLE_RETRY_ATTEMPTS = 8
 const HLS_SUBTITLE_RETRY_STEP_MS = 250
 const PARSED_CUE_TICK_MS = 100
+export const HLS_LOAD_FAILED_MESSAGE = 'Oynatıcı bileşeni yüklenemedi.'
 
 /**
  * The HTML5 engine: hls.js or the `<video>` element playing the current
@@ -157,36 +158,55 @@ export function usePlayer(
 
     if (isHlsOrTsUrl(url)) {
       if (isHlsJsSupported()) {
-        const started = startHlsEngine(video, url, {
-          manifestParsed: () => {
-            tracks.refreshVideoQualities(started.hls)
-            tracks.refreshAudioTracks(started.hls)
-            tracks.refreshSubtitleTracks(started.hls)
-            attachCueListeners(video, setActiveSubtitleCues)
-            tracks.syncHlsSubtitleSelection()
+        // hls.js is loaded on demand; a playback that ended meanwhile aborts
+        // the start (listenerAbort), and nothing is created for it.
+        void startHlsEngine(
+          video,
+          url,
+          {
+            manifestParsed: (hls) => {
+              tracks.refreshVideoQualities(hls)
+              tracks.refreshAudioTracks(hls)
+              tracks.refreshSubtitleTracks(hls)
+              attachCueListeners(video, setActiveSubtitleCues)
+              tracks.syncHlsSubtitleSelection()
+            },
+            levelsChanged: (hls) => tracks.refreshVideoQualities(hls),
+            audioTracksChanged: (hls) => tracks.refreshAudioTracks(hls),
+            audioTrackSwitched: (hls) => {
+              tracks.refreshAudioTracks(hls)
+              const active = trackId(HLS_AUDIO_PREFIX, hls.audioTrack)
+              if (useStore.getState().currentAudioTrack !== active) applyPlayerPatch({ currentAudioTrack: active })
+            },
+            subtitleTracksChanged: (hls) => {
+              tracks.refreshSubtitleTracks(hls)
+              attachCueListeners(video, setActiveSubtitleCues)
+              tracks.syncHlsSubtitleSelection()
+            },
+            subtitleTrackSwitched: (hls) => {
+              tracks.refreshSubtitleTracks(hls)
+              attachCueListeners(video, setActiveSubtitleCues)
+              tracks.syncHlsSubtitleSelection()
+              syncActiveSubtitleCues(video, setActiveSubtitleCues)
+            },
+            failed: (message) => applyPlayerPatch({ playerError: message })
           },
-          levelsChanged: () => tracks.refreshVideoQualities(started.hls),
-          audioTracksChanged: () => tracks.refreshAudioTracks(started.hls),
-          audioTrackSwitched: () => {
-            tracks.refreshAudioTracks(started.hls)
-            const active = trackId(HLS_AUDIO_PREFIX, started.hls.audioTrack)
-            if (useStore.getState().currentAudioTrack !== active) applyPlayerPatch({ currentAudioTrack: active })
+          { signal: listenerAbort.signal }
+        ).then(
+          (started) => {
+            if (!started) return
+            if (disposed) {
+              // Cleaned up between hls.js being created and this callback.
+              started.dispose()
+              return
+            }
+            engine = started
+            hlsRef.current = started.hls
           },
-          subtitleTracksChanged: () => {
-            tracks.refreshSubtitleTracks(started.hls)
-            attachCueListeners(video, setActiveSubtitleCues)
-            tracks.syncHlsSubtitleSelection()
-          },
-          subtitleTrackSwitched: () => {
-            tracks.refreshSubtitleTracks(started.hls)
-            attachCueListeners(video, setActiveSubtitleCues)
-            tracks.syncHlsSubtitleSelection()
-            syncActiveSubtitleCues(video, setActiveSubtitleCues)
-          },
-          failed: (message) => applyPlayerPatch({ playerError: message })
-        })
-        engine = started
-        hlsRef.current = started.hls
+          () => {
+            if (!disposed) applyPlayerPatch({ playerError: HLS_LOAD_FAILED_MESSAGE })
+          }
+        )
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         playDirectSource(
           video,
