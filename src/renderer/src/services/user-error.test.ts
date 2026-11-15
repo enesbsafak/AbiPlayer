@@ -87,3 +87,28 @@ describe('stripErrorPrefixes', () => {
     expect(stripErrorPrefixes('  Hata: bir şey  ')).toBe('Hata: bir şey')
   })
 })
+
+describe('certificate errors (F3-01)', () => {
+  it('recognises Chromium, mpv, ffmpeg and the app’s own certificate failures', () => {
+    for (const message of [
+      'net::ERR_CERT_AUTHORITY_INVALID',
+      "Error invoking remote method 'mpv-open': Error: Sunucunun güvenlik sertifikası, güvendiğiniz sertifikadan farklı.",
+      '[tls @ 0000] Peer certificate failed verification',
+      'SSL peer certificate or SSH remote key was not OK'
+    ]) {
+      expect(classifyError(new Error(message))).toBe('certificate')
+    }
+    expect(classifyError({ kind: 'certificate', message: 'x' })).toBe('certificate')
+  })
+
+  it('tells the user where to confirm the server', () => {
+    const message = toUserMessage(new Error('net::ERR_CERT_DATE_INVALID'))
+    expect(message).toBe(USER_ERROR_MESSAGES.certificate)
+    expect(message).toMatch(/onay penceresinden/)
+    expect(message).toMatch(/Ayarlar > Kaynaklar/)
+  })
+
+  it('still reports other net:: errors as network failures', () => {
+    expect(classifyError(new Error('net::ERR_CONNECTION_REFUSED'))).toBe('network')
+  })
+})

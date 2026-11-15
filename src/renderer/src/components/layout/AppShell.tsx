@@ -4,6 +4,7 @@ import { TitleBar } from './TitleBar'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { MiniPlayer } from '@/components/player/MiniPlayer'
+import { CertificateTrustHost } from '@/components/security/CertificateTrustHost'
 import { useStore } from '@/store'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useEPG } from '@/hooks/useEPG'
@@ -49,6 +50,7 @@ export function AppShell() {
         <main className="relative h-full overflow-hidden">
           <Outlet />
         </main>
+        <CertificateTrustHost />
       </div>
     )
   }
@@ -66,6 +68,7 @@ export function AppShell() {
         </div>
       </div>
       {currentChannel && isMiniPlayer && <MiniPlayer />}
+      <CertificateTrustHost />
     </div>
   )
 }
