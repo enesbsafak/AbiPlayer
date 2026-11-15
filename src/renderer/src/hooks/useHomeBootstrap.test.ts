@@ -13,6 +13,8 @@ import type { PlaylistSource } from '@/types/playlist'
 import type { XtreamAuthResponse, XtreamCategory, XtreamCredentials, XtreamLiveStream } from '@/types/xtream'
 import {
   bootstrapReducer,
+  offlineCopyMessage,
+  offlineCopySince,
   orderPreviewByCategories,
   runHomeBootstrap,
   summarizeBootstrap,
@@ -198,6 +200,21 @@ describe('bootstrapReducer (F1-44)', () => {
     expect(state.phases).toEqual({})
     state = bootstrapReducer(state, { kind: 'finish', runId: 2, error: 'x', partialError: null })
     expect(state).toMatchObject({ running: false, error: 'x' })
+  })
+})
+
+describe('offline copy notice (C2c)', () => {
+  const status = (fromCache: boolean, error: boolean) =>
+    ({ fromCache, fetchedAt: 1_000, error: error ? { kind: 'network', message: 'x', retryable: true } : null }) as never
+
+  it('speaks up only while a cached copy is shown and the provider cannot be reached', () => {
+    expect(offlineCopySince({ s: { live: status(true, false) } }, 's', false)).toBeNull()
+    expect(offlineCopySince({ s: { live: status(true, true) } }, 's', false)).toBe(1_000)
+    expect(offlineCopySince({ s: { live: status(true, false) } }, 's', true)).toBe(1_000)
+    expect(offlineCopySince({ s: { live: status(false, true) } }, 's', true)).toBeNull()
+    expect(offlineCopyMessage(Date.UTC(2026, 10, 14, 18, 30))).toMatch(
+      /^Kaynağa bağlanılamadı: çevrimdışı kopya gösteriliyor \(.+ tarihinde güncellendi\)\. Bağlantı otomatik olarak yeniden denenecek\.$/
+    )
   })
 })
 

@@ -1,5 +1,37 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchAndParseM3U, parseExtInf, parseM3U } from './m3u-parser'
+import { createM3uParser, fetchAndParseM3U, parseExtInf, parseHeaderEpgUrls, parseM3U } from './m3u-parser'
+
+describe('M3U header guide URL and streamed parsing (C2c)', () => {
+  it('reads url-tvg and x-tvg-url, several URLs included, http(s) only', () => {
+    expect(parseHeaderEpgUrls('#EXTM3U url-tvg="http://a.test/1.xml,http://b.test/2.xml" x-tvg-url="https://c.test/3.xml"')).toEqual([
+      'http://a.test/1.xml',
+      'http://b.test/2.xml',
+      'https://c.test/3.xml'
+    ])
+    expect(parseHeaderEpgUrls('#EXTM3U x-tvg-url=file:///etc/passwd')).toEqual([])
+    const { epgUrls } = parseM3U('#EXTM3U x-tvg-url="http://epg.test/xmltv.php?username=a&password=b"\n#EXTINF:-1,K\nhttp://c/1.ts', 's')
+    expect(epgUrls).toEqual(['http://epg.test/xmltv.php?username=a&password=b'])
+  })
+
+  it('gives the same result however the text is split', () => {
+    const playlist = [
+      '﻿#EXTM3U url-tvg="http://epg.test/g.xml"',
+      '#EXTINF:-1 tvg-id="k1" group-title="Haber",Kanal, Bir',
+      'http://cdn.test/live/1.ts',
+      '#EXTGRP:Filmler',
+      '#EXTINF:-1,Film',
+      'http://cdn.test/movie/2.mp4',
+      'http://cdn.test/bare.ts'
+    ].join('\r\n')
+    const whole = parseM3U(playlist, 'src')
+    for (const size of [1, 3, 17]) {
+      const parser = createM3uParser('src')
+      for (let i = 0; i < playlist.length; i += size) parser.feed(playlist.slice(i, i + size))
+      expect(parser.end()).toEqual(whole)
+    }
+    expect(whole.channels.map((channel) => channel.name)).toEqual(['Kanal, Bir', 'Film', 'bare'])
+  })
+})
 
 describe('parseM3U', () => {
   it('parses EXTINF metadata into channels and categories', () => {
@@ -244,6 +276,14 @@ describe('fetchAndParseM3U', () => {
 
     const { channels } = await fetchAndParseM3U('https://example.com/list.m3u', 'src')
     expect(channels.length).toBeGreaterThan(20 * 1024 * 1024 / entry.length)
+  })
+
+  it('names the host of a playlist that could not be reached', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))))
+    await expect(fetchAndParseM3U('https://Liste.Example/get.php?password=x', 'src')).rejects.toMatchObject({
+      kind: 'network',
+      host: 'liste.example'
+    })
   })
 
   it('reports a failed download with a Turkish message', async () => {

@@ -26,6 +26,7 @@ import {
   reconnectDelayMs,
   SECRET_MIGRATION_FAILED_MESSAGE,
   SourceConnectError,
+  sourcesWithCatalogKey,
   useAutoConnect
 } from './useAutoConnect'
 
@@ -97,6 +98,13 @@ describe('reconnect timing (F1-31)', () => {
   })
 })
 
+describe('sourcesWithCatalogKey (C2c)', () => {
+  it('does not count a cached copy as connected, so the playlist is still fetched at start', () => {
+    const status = (fromCache: boolean) => ({ loaded: true, fromCache }) as never
+    expect(sourcesWithCatalogKey({ a: { live: status(true) }, b: { live: status(false) } })).toBe('b')
+  })
+})
+
 describe('connectSource', () => {
   const deps = () => ({ setXtreamAuth: vi.fn(), replaceSourceCatalog: vi.fn() })
 
@@ -105,9 +113,25 @@ describe('connectSource', () => {
     const readFile = vi.fn().mockResolvedValue({ path: fileSource.filePath, content: PLAYLIST })
     await connectSource(fileSource, { ...d, readFile })
     expect(readFile).toHaveBeenCalledWith('C:\\listeler\\a.m3u')
-    const [sourceId, replacement] = d.replaceSourceCatalog.mock.calls[0]
-    expect(sourceId).toBe('mf')
-    expect(replacement.live.items.map((entry: { name: string }) => entry.name)).toEqual(['Kanal 1'])
+    // Parsed in the catalog worker and swapped in as complete, fresh lists.
+    expect(catalog.getItems('mf', 'live').map((entry) => entry.name)).toEqual(['Kanal 1'])
+    expect(catalog.getStatus('mf', 'live')).toMatchObject({ complete: true, fromCache: false })
+  })
+
+  it('keeps the cached copy of a file that is gone, and says so', async () => {
+    const fetchedAt = Date.UTC(2026, 10, 14, 18, 30)
+    const token = catalog.beginGeneration('mf', 'live')
+    catalog.commit({
+      token,
+      mode: 'replace',
+      items: [{ id: 'x', name: 'Kayıtlı', streamUrl: 'http://cdn.test/x.ts', sourceId: 'mf', type: 'live', searchName: 'kayitli', isAdult: false }],
+      origin: { fromCache: true, fetchedAt }
+    })
+    const readFile = vi.fn().mockRejectedValue(new Error('Dosya bulunamadı: a.m3u'))
+    const error = await connectSource(fileSource, { ...deps(), readFile }).catch((caught: unknown) => caught)
+    expect(error).toMatchObject({ kind: 'file' })
+    expect((error as Error).message).toMatch(/tarihinde okunan kopyası gösteriliyor\.$/)
+    expect(catalog.getItems('mf', 'live')).toHaveLength(1)
   })
 
   it('says so when the file is gone, and asks for it to be picked again', async () => {

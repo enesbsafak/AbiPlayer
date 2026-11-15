@@ -19,6 +19,7 @@ export const INVOKE_METHODS = {
   setSecureCredential: 'secure-credentials-set',
   deleteSecureCredential: 'secure-credentials-delete',
   getSecureCredentialsLoss: 'secure-credentials-get-loss',
+  getCatalogCacheKey: 'secure-credentials-get-cache-key',
 
   probeEmbeddedSubtitles: 'embedded-subtitles-probe',
   extractEmbeddedSubtitle: 'embedded-subtitles-extract',

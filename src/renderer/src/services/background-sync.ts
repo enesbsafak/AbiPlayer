@@ -3,7 +3,10 @@ import { useStore } from '@/store'
 import { catalog as defaultCatalog, type CatalogStore } from '@/catalog/catalog-store'
 import { xtreamLiveToRecords, xtreamSeriesToRecords, xtreamVodToRecords } from '@/catalog/convert'
 import { toCatalogSyncError } from '@/catalog/sync-error'
-import type { CatalogItem, CatalogType } from '@/catalog/types'
+import { certificateAwareError } from '@/catalog/certificate-errors'
+import { ingestXtreamList } from '@/catalog/worker-ingest'
+import type { CatalogItem, CatalogType, GenerationToken } from '@/catalog/types'
+import type { CatalogWorkerClient } from '@/workers/client'
 import type { XtreamCredentials } from '@/types/xtream'
 import { perfMark } from './perf'
 
@@ -16,11 +19,14 @@ import { perfMark } from './perf'
  * refreshed, and the result is committed as a complete list that replaces the
  * previous one. A result that comes back for a removed or refreshed source is
  * dropped by the catalog store.
+ *
+ * The download, parse and conversion run in the catalog worker, which also
+ * writes the list to the disk cache; its batches are swapped in at once.
  */
 
 type ContentType = CatalogType
 
-/** Fetches one complete list and turns it into records. */
+/** Fetches one complete list and turns it into records (main-thread variant, for tests and tools). */
 export type FullListFetcher = (
   type: ContentType,
   creds: XtreamCredentials,
@@ -34,24 +40,57 @@ export const fetchFullXtreamList: FullListFetcher = async (type, creds, sourceId
   return xtreamSeriesToRecords(await xtreamApi.getSeries(creds, undefined, { signal }), sourceId)
 }
 
-export interface BackgroundSync {
-  ensureFullSync(sourceId: string, type: ContentType, creds: XtreamCredentials): Promise<void>
-  ensureStagedSync(sourceId: string, priorityType: ContentType, creds: XtreamCredentials): Promise<void>
+export interface FullSyncOptions {
+  /**
+   * Download again even though a complete list is held. The list stays on
+   * screen and is replaced once the fresh one is complete. A list served
+   * from the disk cache is always refreshed.
+   */
+  refresh?: boolean
 }
 
+export interface BackgroundSync {
+  ensureFullSync(sourceId: string, type: ContentType, creds: XtreamCredentials, options?: FullSyncOptions): Promise<void>
+  ensureStagedSync(sourceId: string, priorityType: ContentType, creds: XtreamCredentials, options?: FullSyncOptions): Promise<void>
+}
+
+/** The held list is complete and fresh from the provider: nothing to sync. */
+function isSettled(catalog: CatalogStore, sourceId: string, type: ContentType, options?: FullSyncOptions): boolean {
+  const status = catalog.getStatus(sourceId, type)
+  return !!status?.complete && !status.fromCache && !options?.refresh
+}
+
+/**
+ * `fetchFullList` replaces the worker with a main-thread fetcher (tests);
+ * `worker` picks the worker client (tests).
+ */
 export function createBackgroundSync(
   catalog: CatalogStore,
-  fetchFullList: FullListFetcher = fetchFullXtreamList
+  fetchFullList?: FullListFetcher,
+  worker?: () => CatalogWorkerClient
 ): BackgroundSync {
   // Keyed by revision too: after a refresh a new sync must not join the
   // cancelled one that is still unwinding.
   const activeSyncs = new Map<string, Promise<void>>()
 
-  const ensureFullSync: BackgroundSync['ensureFullSync'] = (sourceId, type, creds) => {
+  const runList = async (token: GenerationToken, creds: XtreamCredentials, signal: AbortSignal): Promise<number> => {
+    if (fetchFullList) {
+      const items = await fetchFullList(token.type, creds, token.sourceId, signal)
+      catalog.commit({ token, mode: 'replace', items })
+      return items.length
+    }
+    const outcome = await ingestXtreamList(
+      { sourceId: token.sourceId, type: token.type, creds, token },
+      { store: catalog, worker: worker?.(), signal }
+    )
+    return outcome.counts[token.type] ?? 0
+  }
+
+  const ensureFullSync: BackgroundSync['ensureFullSync'] = (sourceId, type, creds, options) => {
     const key = `${sourceId}:${type}:${catalog.getSourceRevision(sourceId)}`
     const existing = activeSyncs.get(key)
     if (existing) return existing
-    if (catalog.getStatus(sourceId, type)?.complete) return Promise.resolve()
+    if (isSettled(catalog, sourceId, type, options)) return Promise.resolve()
 
     const token = catalog.beginGeneration(sourceId, type)
     const signal = catalog.sourceSignal(sourceId)
@@ -60,13 +99,12 @@ export function createBackgroundSync(
     const promise = (async () => {
       try {
         perfMark('sync:start', { type })
-        const items = await fetchFullList(type, creds, sourceId, signal)
-        catalog.commit({ token, mode: 'replace', items })
-        perfMark('sync:done', { type, items: items.length })
+        const items = await runList(token, creds, signal)
+        perfMark('sync:done', { type, items })
         catalog.setSyncState(token, { syncing: false, error: null })
       } catch (error) {
         perfMark('sync:failed', { type })
-        const syncError = signal.aborted ? null : toCatalogSyncError(error)
+        const syncError = signal.aborted ? null : toCatalogSyncError(await certificateAwareError(error))
         if (syncError) console.warn(`[background-sync] ${type} sync failed for ${sourceId}:`, syncError.message)
         catalog.setSyncState(token, { syncing: false, error: syncError })
       } finally {
@@ -83,7 +121,7 @@ export function createBackgroundSync(
    * parallel. Reports progress to the store so the UI can show it; progress of
    * a source removed or refreshed meanwhile is not written back.
    */
-  const ensureStagedSync: BackgroundSync['ensureStagedSync'] = async (sourceId, priorityType, creds) => {
+  const ensureStagedSync: BackgroundSync['ensureStagedSync'] = async (sourceId, priorityType, creds, options) => {
     const revision = catalog.getSourceRevision(sourceId)
     const isCurrent = () => catalog.getSourceRevision(sourceId) === revision
     const { setSyncProgress } = useStore.getState()
@@ -92,7 +130,7 @@ export function createBackgroundSync(
     const pendingTypes: ContentType[] = []
 
     for (const type of order) {
-      if (catalog.getStatus(sourceId, type)?.complete) {
+      if (isSettled(catalog, sourceId, type, options)) {
         completed++
         continue
       }
@@ -104,7 +142,7 @@ export function createBackgroundSync(
     if (firstType) {
       setSyncProgress(sourceId, { currentType: firstType, completedTypes: completed, active: true })
 
-      await ensureFullSync(sourceId, firstType, creds)
+      await ensureFullSync(sourceId, firstType, creds, options)
       completed++
 
       // Removed or refreshed meanwhile: the rest would sync a source that is
@@ -122,7 +160,7 @@ export function createBackgroundSync(
 
     await Promise.all(
       remainingTypes.map(async (type) => {
-        await ensureFullSync(sourceId, type, creds)
+        await ensureFullSync(sourceId, type, creds, options)
         completed++
         if (!isCurrent()) return
         setSyncProgress(sourceId, { currentType: null, completedTypes: completed, active: completed < 3 })

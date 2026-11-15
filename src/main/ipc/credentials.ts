@@ -17,4 +17,6 @@ export function registerCredentialHandlers(registrar: IpcRegistrar, store: Crede
   })
 
   registrar.handle('secure-credentials-get-loss', () => store.getLossNotice())
+
+  registrar.handle('secure-credentials-get-cache-key', () => store.getCacheKey())
 }

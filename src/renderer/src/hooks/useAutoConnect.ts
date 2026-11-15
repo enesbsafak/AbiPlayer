@@ -2,12 +2,15 @@ import { useEffect, useRef } from 'react'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
 import { XtreamRequestError } from '@/services/xtream-errors'
-import { fetchAndParseM3U, parseM3U } from '@/services/m3u-parser'
 import { readPickedFile } from '@/services/platform'
 import { secureCredentialService, type SourceSecrets } from '@/services/secure-credentials'
 import { classifyError, toUserMessage } from '@/services/user-error'
 import { catalog } from '@/catalog/catalog-store'
-import { m3uPlaylistToReplacement } from '@/catalog/convert'
+import type { m3uPlaylistToReplacement } from '@/catalog/convert'
+import { certificateAwareError } from '@/catalog/certificate-errors'
+import { isCatalogCacheSettled, watchCatalogCache } from '@/catalog/cache-lifecycle'
+import { ingestM3uText, ingestM3uUrl } from '@/catalog/worker-ingest'
+import { CATALOG_TYPES } from '@/catalog/types'
 import type { CatalogStatusMap } from '@/store/playlist-slice'
 import { plainSecretOf, type SourceConnectionError } from '@/store/auth-slice'
 import type { PlaylistSource } from '@/types/playlist'
@@ -22,13 +25,37 @@ export function reconnectDelayMs(failures: number): number {
   return RECONNECT_DELAYS_MS[index]
 }
 
-/** Ids of sources with any catalog data, as one string so the selector result is stable. */
+/**
+ * Ids of sources with catalog data from this session, as one string so the
+ * selector result is stable. A list shown from the disk cache does not count:
+ * the source still connects (its playlist is fetched again at start).
+ */
 export function sourcesWithCatalogKey(status: CatalogStatusMap): string {
   const ids: string[] = []
   for (const [sourceId, types] of Object.entries(status)) {
-    if (types && Object.values(types).some((entry) => entry?.loaded)) ids.push(sourceId)
+    if (types && Object.values(types).some((entry) => entry?.loaded && !entry.fromCache)) ids.push(sourceId)
   }
   return ids.sort().join('\n')
+}
+
+/** When the cached copy a source shows was fetched, if a cached copy is what it shows. */
+export function cachedCopyFetchedAt(sourceId: string): number | null {
+  const times = CATALOG_TYPES.map((type) => catalog.getStatus(sourceId, type)).flatMap((status) =>
+    status?.fromCache && status.fetchedAt ? [status.fetchedAt] : []
+  )
+  return times.length > 0 ? Math.min(...times) : null
+}
+
+export function formatCacheTime(epochMs: number): string {
+  return new Date(epochMs).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+/** Waits (briefly) until the source's cached catalog, if it has one, is in memory. */
+async function cacheSettled(sourceId: string, timeoutMs = 3_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!isCatalogCacheSettled(sourceId) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
 }
 
 function authedSourcesKey(auth: Record<string, XtreamAuthResponse>): string {
@@ -89,21 +116,26 @@ export function connectionSummary(
 
 export interface ConnectDeps {
   setXtreamAuth: (sourceId: string, auth: XtreamAuthResponse) => void
-  replaceSourceCatalog: (
+  /** Unused: playlists go through the catalog worker. Kept so existing callers still type-check. */
+  replaceSourceCatalog?: (
     sourceId: string,
     replacement: ReturnType<typeof m3uPlaylistToReplacement>,
     expectedRevision?: number
   ) => void
   authenticate?: typeof xtreamApi.authenticate
-  fetchPlaylist?: typeof fetchAndParseM3U
   readFile?: typeof readPickedFile
+  /** The catalog worker's playlist ingest (tests replace it). */
+  ingestUrl?: typeof ingestM3uUrl
+  ingestText?: typeof ingestM3uText
 }
 
 /**
  * One connection attempt for a saved source: sign in to an Xtream panel,
- * download an M3U playlist, or read a local playlist file again (the catalog
- * is not kept on disk, so without this a file source came back empty after
- * every restart). Main only re-reads paths the user once picked in its dialog.
+ * download an M3U playlist, or read a local playlist file again. Playlists
+ * are parsed in the catalog worker and replace the cached copy shown in the
+ * meantime once complete. Main only re-reads paths the user once picked in
+ * its dialog; when the file is gone, the cached copy stays and the error
+ * says so.
  */
 export async function connectSource(source: PlaylistSource, deps: ConnectDeps): Promise<void> {
   if (source.type === 'xtream') {
@@ -112,7 +144,12 @@ export async function connectSource(source: PlaylistSource, deps: ConnectDeps): 
       throw new SourceConnectError('missing-secret', 'Kayıtlı kimlik bilgileri bulunamadı. Kaynağı silip yeniden ekleyin.')
     }
     perfMark('connect:auth-start')
-    const auth = await (deps.authenticate ?? xtreamApi.authenticate)(secret)
+    let auth: XtreamAuthResponse
+    try {
+      auth = await (deps.authenticate ?? xtreamApi.authenticate)(secret)
+    } catch (error) {
+      throw await certificateAwareError(error)
+    }
     perfMark('connect:auth-done')
     if (auth.user_info.auth !== 1) {
       throw new XtreamRequestError('auth', 'Kimlik doğrulama başarısız (kullanıcı adı veya şifre reddedildi)')
@@ -121,17 +158,17 @@ export async function connectSource(source: PlaylistSource, deps: ConnectDeps): 
     return
   }
 
-  // Dropped by the catalog when the source is removed or refreshed meanwhile.
-  const revision = catalog.getSourceRevision(source.id)
-
+  // The swap is dropped by the catalog when the source is removed or
+  // refreshed meanwhile: the worker job's tokens are taken before it starts.
   if (source.type === 'm3u_url') {
     if (!source.url) {
       throw new SourceConnectError('missing-secret', 'Kayıtlı liste adresi bulunamadı. Kaynağı silip yeniden ekleyin.')
     }
-    perfMark('connect:m3u-fetch-start')
-    const parsed = await (deps.fetchPlaylist ?? fetchAndParseM3U)(source.url, source.id)
-    deps.replaceSourceCatalog(source.id, m3uPlaylistToReplacement(parsed), revision)
-    perfMark('connect:m3u-added', { channels: parsed.channels.length })
+    try {
+      await (deps.ingestUrl ?? ingestM3uUrl)(source.id, source.url)
+    } catch (error) {
+      throw await certificateAwareError(error)
+    }
     return
   }
 
@@ -142,13 +179,17 @@ export async function connectSource(source: PlaylistSource, deps: ConnectDeps): 
   try {
     file = await (deps.readFile ?? readPickedFile)(source.filePath)
   } catch (error) {
-    throw new SourceConnectError('file', `${toUserMessage(error, 'Liste dosyası okunamadı.')} Dosyayı yeniden seçin.`, {
+    // The cached copy may be all there is now: it stays, and the user is told.
+    await cacheSettled(source.id)
+    const cachedAt = cachedCopyFetchedAt(source.id)
+    const kept = cachedAt ? ` Dosyanın ${formatCacheTime(cachedAt)} tarihinde okunan kopyası gösteriliyor.` : ''
+    throw new SourceConnectError('file', `${toUserMessage(error, 'Liste dosyası okunamadı.')} Dosyayı yeniden seçin.${kept}`, {
       cause: error
     })
   }
   // Outside Electron there is nothing to read; the source stays empty.
   if (!file) return
-  deps.replaceSourceCatalog(source.id, m3uPlaylistToReplacement(parseM3U(file.content, source.id)), revision)
+  await (deps.ingestText ?? ingestM3uText)(source.id, file.content, file.path)
 }
 
 export interface SecretMigrationPlan {
@@ -248,6 +289,8 @@ interface SourceAttempt {
  * (`requestSourceReconnect`) starts every source over at once.
  */
 export function useAutoConnect() {
+  // Set up before the secrets are in: the cache read starts the moment they are.
+  watchCatalogCache()
   const hydratingRef = useRef(false)
   const attemptsRef = useRef(new Map<string, SourceAttempt>())
   const lastRetryTokenRef = useRef(0)
@@ -308,8 +351,7 @@ export function useAutoConnect() {
         inFlightRef.current += 1
         useStore.getState().setAuthLoading(true)
       }
-      const { setXtreamAuth, replaceSourceCatalog } = useStore.getState()
-      void connectSource(source, { setXtreamAuth, replaceSourceCatalog })
+      void connectSource(source, { setXtreamAuth: useStore.getState().setXtreamAuth })
         .then(
           () => {
             if (attempts.get(sourceId) !== attempt) return
