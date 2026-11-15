@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { parseM3U } from './m3u-parser'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { fetchAndParseM3U, parseExtInf, parseM3U } from './m3u-parser'
 
 describe('parseM3U', () => {
   it('parses EXTINF metadata into channels and categories', () => {
@@ -138,5 +138,118 @@ https://a.com/1.m3u8`
     const result1 = parseM3U(playlist, 'src')
     const result2 = parseM3U(playlist, 'src')
     expect(result1.channels[0].id).toBe(result2.channels[0].id)
+  })
+
+  it('keeps commas in the channel name and in quoted attributes', () => {
+    // The name used to be taken after the last comma, so this became " Bölüm 2".
+    const playlist = `#EXTINF:-1 tvg-name="Film, Bölüm 2" group-title="Aksiyon, Macera",Film, Bölüm 2
+https://a.com/movie/1.mp4`
+
+    const [channel] = parseM3U(playlist, 'src').channels
+    expect(channel.name).toBe('Film, Bölüm 2')
+    expect(channel.group).toBe('Aksiyon, Macera')
+  })
+
+  it('does not read attributes that appear in the name', () => {
+    const meta = parseExtInf('#EXTINF:-1 group-title="Haber",Kanal group-title="Sahte"')
+    expect(meta.group).toBe('Haber')
+    expect(meta.name).toBe('Kanal group-title="Sahte"')
+  })
+
+  it('gives a repeated URL a distinct id and keeps the first id unchanged', () => {
+    const single = parseM3U(`#EXTINF:-1 group-title="Ulusal",Kanal
+https://a.com/1.m3u8`, 'src')
+    const repeated = parseM3U(`#EXTINF:-1 group-title="Ulusal",Kanal
+https://a.com/1.m3u8
+#EXTINF:-1 group-title="Spor",Kanal (Spor)
+https://a.com/1.m3u8
+#EXTINF:-1 group-title="Favori",Kanal (Favori)
+https://a.com/1.m3u8`, 'src')
+
+    const ids = repeated.channels.map((c) => c.id)
+    expect(ids[0]).toBe(single.channels[0].id)
+    expect(ids).toEqual([ids[0], `${ids[0]}_2`, `${ids[0]}_3`])
+    expect(new Set(ids).size).toBe(3)
+
+    // Deterministic across refreshes.
+    expect(parseM3U(`#EXTINF:-1,A
+https://a.com/1.m3u8
+#EXTINF:-1,B
+https://a.com/1.m3u8`, 'src').channels.map((c) => c.id)).toEqual([ids[0], `${ids[0]}_2`])
+  })
+
+  it('handles CRLF line endings, a BOM and blank lines', () => {
+    const playlist = '﻿#EXTM3U\r\n\r\n#EXTINF:-1 group-title="Haber",Haber TV\r\nhttps://a.com/h.m3u8\r\n'
+    const { channels, categories } = parseM3U(playlist, 'src')
+    expect(channels).toHaveLength(1)
+    expect(channels[0]).toMatchObject({ name: 'Haber TV', streamUrl: 'https://a.com/h.m3u8', group: 'Haber' })
+    expect(categories.map((c) => c.name)).toEqual(['Haber'])
+  })
+
+  it('detects group type from the URLs of the whole group', () => {
+    const playlist = `#EXTINF:-1 group-title="Karışık",A
+https://a.com/a.mkv?token=1
+#EXTINF:-1 group-title="Karışık",B
+https://a.com/b.mp4
+#EXTINF:-1 group-title="Karışık",C
+https://a.com/c.m3u8
+#EXTINF:-1 group-title="Arşiv",D
+https://a.com/series/u/p/1.mkv`
+    const { channels, categories } = parseM3U(playlist, 'src')
+    expect(categories.map((c) => [c.name, c.type])).toEqual([['Karışık', 'vod'], ['Arşiv', 'series']])
+    expect(channels.map((c) => c.type)).toEqual(['vod', 'vod', 'vod', 'series'])
+  })
+
+  it('parses a playlist with 100k+ entries', () => {
+    const lines = ['#EXTM3U']
+    for (let i = 0; i < 120_000; i++) {
+      lines.push(`#EXTINF:-1 tvg-id="k${i}" tvg-logo="https://img.example/${i}.png" group-title="Grup ${i % 50}",Kanal ${i}`)
+      lines.push(`https://cdn.example.com/live/user/pass/${i}.ts`)
+    }
+
+    const started = Date.now()
+    const { channels, categories } = parseM3U(lines.join('\n'), 'src')
+    const elapsed = Date.now() - started
+
+    expect(channels).toHaveLength(120_000)
+    expect(categories).toHaveLength(50)
+    expect(channels[119_999]).toMatchObject({ name: 'Kanal 119999', epgChannelId: 'k119999', group: 'Grup 49' })
+    expect(new Set(channels.map((c) => c.id)).size).toBe(120_000)
+    // Generous bound: catches accidental quadratic work, not machine speed.
+    expect(elapsed).toBeLessThan(10_000)
+  })
+})
+
+describe('fetchAndParseM3U', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('accepts playlists larger than the old 20 MB limit', async () => {
+    const entry = '#EXTINF:-1 group-title="Grup",Kanal\nhttps://cdn.example.com/live/1.ts\n'
+    const chunk = new TextEncoder().encode(entry.repeat(10_000))
+    const totalBytes = 22 * 1024 * 1024
+    let sent = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent >= totalBytes) {
+          controller.close()
+          return
+        }
+        controller.enqueue(chunk)
+        sent += chunk.length
+      }
+    })
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(body, { status: 200 }))))
+
+    const { channels } = await fetchAndParseM3U('https://example.com/list.m3u', 'src')
+    expect(channels.length).toBeGreaterThan(20 * 1024 * 1024 / entry.length)
+  })
+
+  it('reports a failed download with a Turkish message', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('', { status: 404 }))))
+    await expect(fetchAndParseM3U('https://example.com/list.m3u', 'src')).rejects.toThrow(
+      'M3U listesi indirilemedi (HTTP 404)'
+    )
   })
 })
