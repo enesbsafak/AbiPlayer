@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser'
 import type { EPGData, EPGProgram, EPGChannel } from '@/types/epg'
+import { normalizeLanguageCode } from './track-preferences'
 
 function parseXMLTVDate(str: string): number {
   if (!str) return 0
@@ -39,31 +40,58 @@ const MAX_EPG_SIZE_BYTES = 50 * 1024 * 1024
 async function readChunksWithLimit(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   maxSizeBytes: number
-): Promise<Uint8Array[]> {
+): Promise<{ chunks: Uint8Array[]; truncated: boolean }> {
   const chunks: Uint8Array[] = []
+  let truncated = false
 
   async function readNext(totalSize: number): Promise<void> {
     const { done, value } = await reader.read()
     if (done) return
 
-    chunks.push(value)
     const nextSize = totalSize + value.length
     if (nextSize > maxSizeBytes) {
+      // Keep the bytes up to the limit; the XML is repaired at the last
+      // complete element before parsing.
+      chunks.push(value.subarray(0, maxSizeBytes - totalSize))
+      truncated = true
       await reader.cancel()
       return
     }
 
+    chunks.push(value)
     await readNext(nextSize)
   }
 
   await readNext(0)
-  return chunks
+  return { chunks, truncated }
 }
 
-export async function fetchAndParseEPG(url: string): Promise<EPGData> {
+/**
+ * Close a document that was cut off mid-stream: drop everything after the
+ * last complete <programme> (or <channel>, if no programme finished) and
+ * close the root, so the parser sees only whole elements.
+ */
+export function closeTruncatedXmltv(xml: string): string {
+  const endOf = (tag: string): number => {
+    const index = xml.lastIndexOf(tag)
+    return index === -1 ? -1 : index + tag.length
+  }
+  let cut = endOf('</programme>')
+  if (cut === -1) cut = endOf('</channel>')
+  if (cut === -1) return '<tv></tv>'
+  return `${xml.slice(0, cut)}\n</tv>`
+}
+
+export async function fetchAndParseEPG(url: string, options?: { signal?: AbortSignal }): Promise<EPGData> {
   const controller = new AbortController()
   // 60 second timeout for large EPG files
   const timeout = setTimeout(() => controller.abort(), 60000)
+  const signal = options?.signal
+  const abortFromSignal = () => controller.abort()
+  if (signal) {
+    if (signal.aborted) controller.abort()
+    else signal.addEventListener('abort', abortFromSignal, { once: true })
+  }
 
   try {
     const res = await fetch(url, { signal: controller.signal, cache: 'no-store' })
@@ -73,21 +101,25 @@ export async function fetchAndParseEPG(url: string): Promise<EPGData> {
     const reader = res.body?.getReader()
     if (!reader) throw new Error('Sunucudan geçerli veri gelmedi')
 
-    const chunks = await readChunksWithLimit(reader, MAX_EPG_SIZE_BYTES)
+    const { chunks, truncated } = await readChunksWithLimit(reader, MAX_EPG_SIZE_BYTES)
 
     const decoder = new TextDecoder()
-    let xml = ''
+    const parts: string[] = []
     for (const chunk of chunks) {
-      xml += decoder.decode(chunk, { stream: true })
+      parts.push(decoder.decode(chunk, { stream: true }))
     }
-    xml += decoder.decode()
+    parts.push(decoder.decode())
 
     // Free chunks
     chunks.length = 0
+    const xml = parts.join('')
+    parts.length = 0
 
-    return parseEPGXml(xml)
+    if (!truncated) return parseEPGXml(xml)
+    return { ...parseEPGXml(closeTruncatedXmltv(xml)), truncated: true }
   } finally {
     clearTimeout(timeout)
+    if (signal) signal.removeEventListener('abort', abortFromSignal)
   }
 }
 
@@ -134,6 +166,54 @@ function decodeXmlText(value: unknown): string | undefined {
   return undefined
 }
 
+export interface LocalizedText {
+  text: string
+  /** The element's `lang` attribute as written, '' when absent. */
+  lang: string
+}
+
+/** Languages tried in order before falling back to the first text. */
+const PREFERRED_EPG_LANGUAGES: readonly string[] = ['tr']
+
+function collectLocalizedTexts(value: unknown): LocalizedText[] {
+  const items = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value]
+  return items.flatMap((item: unknown) => {
+    let raw: unknown = item
+    let lang = ''
+    if (typeof item === 'object' && item !== null) {
+      const record = item as Record<string, unknown>
+      raw = record['#text']
+      if (typeof record['@_lang'] === 'string') lang = record['@_lang']
+    }
+    const text = decodeXmlText(raw)?.trim()
+    return text ? [{ text, lang }] : []
+  })
+}
+
+/**
+ * XMLTV repeats <title>, <desc>, <category> and <display-name> once per
+ * language (`<title lang="tr">…</title><title lang="en">…</title>`), which the
+ * parser hands over as an array. Pick the preferred language — Turkish first,
+ * matching "tr", "tur" or "tr-TR" alike — and otherwise the first non-empty
+ * text.
+ */
+export function pickLocalizedText(
+  value: unknown,
+  preferredLanguages: readonly string[] = PREFERRED_EPG_LANGUAGES
+): LocalizedText | undefined {
+  const texts = collectLocalizedTexts(value)
+  for (const preferred of preferredLanguages) {
+    const wanted = normalizeLanguageCode(preferred)
+    if (!wanted) continue
+    const match = texts.find((entry) => {
+      const lang = normalizeLanguageCode(entry.lang)
+      return lang === wanted || lang.startsWith(`${wanted}-`)
+    })
+    if (match) return match
+  }
+  return texts[0]
+}
+
 export function normalizeEpgChannelKey(id: string | null | undefined): string | null {
   if (!id) return null
   // EPG IDs are technical identifiers (e.g. "istanbul.tr", "TRT1.tr") — compare
@@ -154,6 +234,8 @@ export function parseEPGXml(xml: string): EPGData {
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
     isArray: (name) => ['channel', 'programme', 'display-name'].includes(name),
+    // Keep text as written: number parsing turned a title like "007" into 7.
+    parseTagValue: false,
     processEntities: false
   })
 
@@ -176,12 +258,9 @@ export function parseEPGXml(xml: string): EPGData {
     if (!id) continue
     const key = normalizeChannelKey(id)
     if (!key) continue
-    const displayNames = ensureArray(ch['display-name'])
-    const rawDisplayName =
-      typeof displayNames[0] === 'object' ? displayNames[0]?.['#text'] : displayNames[0]
     channels[key] = {
       id,
-      displayName: decodeXmlText(rawDisplayName) || id,
+      displayName: pickLocalizedText(ch['display-name'])?.text || id,
       icon: ch.icon?.['@_src']
     }
   }
@@ -200,25 +279,24 @@ export function parseEPGXml(xml: string): EPGData {
     // Skip programs outside our window
     if (end < windowStart || start > windowEnd) continue
 
-    const title = decodeXmlText(typeof prog.title === 'object' ? prog.title?.['#text'] : prog.title)
-    const desc = decodeXmlText(typeof prog.desc === 'object' ? prog.desc?.['#text'] : prog.desc)
-    const catVal = decodeXmlText(
-      typeof prog.category === 'object' ? prog.category?.['#text'] : prog.category
-    )
-
     if (!programs[channelId]) programs[channelId] = []
 
     // Limit per channel
     if (programs[channelId].length >= MAX_PROGRAMS_PER_CHANNEL) continue
 
+    const title = pickLocalizedText(prog.title)
+    const desc = pickLocalizedText(prog.desc)
+    const category = pickLocalizedText(prog.category)
+
     programs[channelId].push({
       channelId,
-      title: title || 'Başlık Yok',
-      description: desc || undefined,
+      title: title?.text || 'Başlık Yok',
+      description: desc?.text || undefined,
       start,
       end,
-      category: catVal || undefined,
-      icon: prog.icon?.['@_src']
+      category: category?.text || undefined,
+      icon: prog.icon?.['@_src'],
+      lang: title?.lang || undefined
     })
   }
 
