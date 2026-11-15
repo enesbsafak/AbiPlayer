@@ -1,14 +1,6 @@
 import type { StateCreator } from 'zustand'
-import type { Channel, Category } from '@/types/playlist'
 import { catalog as defaultCatalog, type CatalogStore } from '@/catalog/catalog-store'
-import { categoryToRecord, toCatalogItem } from '@/catalog/convert'
-import type {
-  CatalogCategory,
-  CatalogItem,
-  CatalogStatus,
-  CatalogType,
-  SourceCatalogReplacement
-} from '@/catalog/types'
+import type { CatalogStatus, CatalogType, SourceCatalogReplacement } from '@/catalog/types'
 
 type ContentType = CatalogType
 
@@ -81,14 +73,6 @@ export interface PlaylistSlice {
   selectedCategoryIds: CategorySelectionMap
   isLoadingPlaylist: boolean
   /**
-   * @deprecated Merges channels into the catalog as partial batches. Kept for
-   * callers that still hold parsed `Channel` lists; new code commits through
-   * `replaceSourceCatalog` or the catalog store.
-   */
-  addChannels: (channels: Channel[]) => void
-  /** @deprecated Merges categories into the catalog; see `addChannels`. */
-  addCategories: (categories: Category[]) => void
-  /**
    * The one path for a source refresh: cancels the source's running syncs and
    * swaps in the given complete lists, or (null) keeps the items on screen but
    * marks them incomplete so the next visit re-syncs and replaces them. Hidden
@@ -106,7 +90,6 @@ export interface PlaylistSlice {
   setSelectedCategory: (sourceId: string, type: ContentType, id: string | null) => void
   setSyncProgress: (sourceId: string, progress: SyncProgress | null) => void
   toggleCategoryHidden: (categoryId: string) => void
-  setHiddenCategories: (ids: string[]) => void
   /** Unhides every category, or only those belonging to one source. */
   showAllCategories: (sourceId?: string) => void
   setPlaylistLoading: (loading: boolean) => void
@@ -136,17 +119,6 @@ function belongsToSource(catalog: CatalogStore, sourceId: string): (categoryId: 
   return (categoryId) => known.has(categoryId) || categoryId.startsWith(prefix)
 }
 
-function groupByPartition<T extends { sourceId: string; type: ContentType }>(list: readonly T[]): Map<string, T[]> {
-  const groups = new Map<string, T[]>()
-  for (const entry of list) {
-    const key = `${entry.type}\n${entry.sourceId}`
-    const group = groups.get(key)
-    if (group) group.push(entry)
-    else groups.set(key, [entry])
-  }
-  return groups
-}
-
 export function createPlaylistSliceFor(
   catalog: CatalogStore
 ): StateCreator<PlaylistSlice, [], [], PlaylistSlice> {
@@ -164,29 +136,6 @@ export function createPlaylistSliceFor(
       hiddenCategoryIds: new Set<string>(),
       selectedCategoryIds: {},
       isLoadingPlaylist: false,
-
-      addChannels: (channels) => {
-        for (const group of groupByPartition(channels).values()) {
-          const items: CatalogItem[] = group.map(toCatalogItem)
-          const token = catalog.beginGeneration(group[0].sourceId, group[0].type)
-          catalog.commit({ token, mode: 'partial', items })
-        }
-      },
-
-      addCategories: (categories) => {
-        for (const group of groupByPartition(categories).values()) {
-          const { sourceId, type } = group[0]
-          const merged: CatalogCategory[] = [...catalog.getCategories(sourceId, type)]
-          const known = new Set(merged.map((category) => category.id))
-          for (const category of group) {
-            if (known.has(category.id)) continue
-            known.add(category.id)
-            merged.push(categoryToRecord(category))
-          }
-          const token = catalog.beginGeneration(sourceId, type)
-          catalog.commit({ token, mode: 'partial', categories: merged })
-        }
-      },
 
       replaceSourceCatalog: (sourceId, replacement, expectedRevision) =>
         catalog.replaceSource(sourceId, replacement, expectedRevision),
@@ -254,8 +203,6 @@ export function createPlaylistSliceFor(
             ? { hiddenCategoryIds: next }
             : { hiddenCategoryIds: next, selectedCategoryIds: selection }
         }),
-
-      setHiddenCategories: (ids) => set({ hiddenCategoryIds: new Set(ids) }),
 
       showAllCategories: (sourceId) =>
         set((state) => {

@@ -174,7 +174,7 @@ export const CategoryList = memo(function CategoryList({
         )}
         {hiddenCount > 0 && (
           <p className="mt-2 px-3 text-xs leading-5 text-surface-500">
-            {hiddenCount} kategori gizli. Ayarlar → Kategoriler bölümünden geri getirebilirsiniz.
+            {hiddenCount} kategori gizli. Ayarlar → Katalog bölümünden geri getirebilirsiniz.
           </p>
         )}
       </div>

@@ -7,8 +7,12 @@ import type { CatalogStatus, CatalogType } from '@/catalog/types'
  */
 
 export type CatalogBanner =
+  /** The source cannot load anything: its secret is missing. Says why; the fix is in the source settings. */
+  | { kind: 'source-error'; message: string }
   /** A foreground load (preview list or the selected category) failed. */
   | { kind: 'load-error'; message: string }
+  /** A copy from the disk cache is shown and the provider could not be reached. */
+  | { kind: 'offline'; since: number; retryable: boolean }
   /** The full list failed: what is shown is all there is until a retry. */
   | { kind: 'sync-error'; message: string; retryable: boolean; partial: boolean }
   /** A preview (or the part fetched so far) is shown; the full list is loading or about to. */
@@ -23,17 +27,33 @@ export interface CatalogBannerInput {
   categoryLoaded: boolean
   status: CatalogStatus | null
   loadError: string | null
+  /** Why the source cannot load at all (its secret is missing), or null. */
+  sourceError?: string | null
+  /** The source failed to connect (an M3U playlist could not be fetched, a sign-in failed). */
+  connectionFailed?: boolean
+}
+
+/** The offline banner's text: when the copy shown was fetched. */
+export function offlineCopyBannerText(since: number): string {
+  const when = new Date(since).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })
+  return `Çevrimdışı kopya, ${when} tarihinde güncellendi`
 }
 
 /**
  * One banner at a time, the most urgent first. A failure always replaces the
  * calm "loading in the background" banner; that one only shows while the full
  * list may still arrive. A fully loaded category needs no banner: what it
- * shows is complete whatever happened to the full list.
+ * shows is complete whatever happened to the full list. A list served from
+ * the disk cache is complete too, but while its refresh fails (or the source
+ * cannot connect) the page says that it is an offline copy and how old.
  */
 export function catalogBanner(input: CatalogBannerInput): CatalogBanner | null {
   const { isXtream, hasCategory, categoryLoaded, status, loadError } = input
+  if (input.sourceError) return { kind: 'source-error', message: input.sourceError }
   if (loadError) return { kind: 'load-error', message: loadError }
+  if (status?.fromCache && status.fetchedAt && (status.error || input.connectionFailed)) {
+    return { kind: 'offline', since: status.fetchedAt, retryable: status.error ? status.error.retryable : true }
+  }
   if (!isXtream || status?.complete) return null
   if (hasCategory && categoryLoaded) return null
   if (status?.error) {
@@ -96,8 +116,8 @@ function parseDetail(raw: unknown): CatalogDetailRef | undefined {
 /**
  * Reads route state for a catalog page of `type`. Besides its own shape it
  * accepts what other screens send: `restoreSelectedSeries` (home, favourites,
- * search open a series this way) and `restoreSelectedVODId`. Returns null
- * when there is nothing to restore, so the caller leaves the history entry alone.
+ * search open a series this way). Returns null when there is nothing to
+ * restore, so the caller leaves the history entry alone.
  */
 export function parseCatalogRouteState(state: unknown, type: CatalogType): CatalogRestore | null {
   if (!isRecord(state)) return null
@@ -121,10 +141,6 @@ export function parseCatalogRouteState(state: unknown, type: CatalogType): Catal
         ...(season !== undefined ? { season } : {})
       }
     }
-  }
-  if (!detail && type === 'vod' && typeof state.restoreSelectedVODId === 'string' && state.restoreSelectedVODId) {
-    // The source is the record's; the page resolves the record by id.
-    detail = { itemId: state.restoreSelectedVODId, sourceId: '' }
   }
   // A series detail can only be opened with its provider id.
   if (detail && type === 'series' && detail.seriesId === undefined) detail = undefined

@@ -118,6 +118,20 @@ describe('favourite snapshots (F1-42)', () => {
     expect(channels.map((channel) => channel.name)).toEqual(['Film'])
   })
 
+  it('keeps the M3U marker when a card drawn from a snapshot is favourited again (K15)', () => {
+    const { store } = storeWith()
+    const card = channelFromFavoriteSnapshot(favoriteSnapshotOf(entry))
+    store.getState().toggleFavorite(entry.id, card)
+    store.getState().toggleFavorite(entry.id, card)
+    store.getState().toggleFavorite(entry.id, card)
+
+    const merged = mergePersistedState(
+      { favoriteIds: [entry.id], favoriteSnapshots: Object.values(store.getState().favoriteSnapshots) },
+      useStore.getState()
+    )
+    expect(merged.favoriteSnapshots[entry.id]).toMatchObject({ id: entry.id, m3u: true, name: 'Liste Kanalı' })
+  })
+
   it('round-trips through sanitize', () => {
     const snapshot = favoriteSnapshotOf(film)
     expect(sanitizeFavoriteSnapshot(JSON.parse(JSON.stringify(snapshot)))).toEqual(snapshot)

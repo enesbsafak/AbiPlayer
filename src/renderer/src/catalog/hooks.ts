@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import { useStore } from '@/store'
 import { catalog, type CategoryViewRequest } from './catalog-store'
-import { searchCatalog, searchCatalogWithTotal, type CatalogSearchResult } from './search'
+import { searchCatalogWithTotal, type CatalogSearchResult } from './search'
 import type {
   CatalogCategory,
   CatalogItem,
@@ -39,16 +39,6 @@ export function useCatalogViewSettings(): CatalogViewSettings {
 /** Status of one (source, type), from the zustand mirror. */
 export function useCatalogStatus(sourceId: string | null | undefined, type: CatalogType): CatalogStatus | null {
   return useStore((s) => (sourceId ? (s.catalogStatus[sourceId]?.[type] ?? null) : null))
-}
-
-/** Every record of one (source, type), in provider order, before any view rule. */
-export function useCatalogItems(sourceId: string | null | undefined, type: CatalogType): readonly CatalogItem[] {
-  const subscribe = usePartitionSubscription(sourceId, type)
-  const getSnapshot = useCallback(
-    () => (sourceId ? catalog.getItems(sourceId, type) : EMPTY_ITEMS),
-    [sourceId, type]
-  )
-  return useSyncExternalStore(subscribe, getSnapshot)
 }
 
 /** Every category of one (source, type), before any view rule. */
@@ -121,15 +111,5 @@ export function useCatalogSearchResults(query: string, limit: number): CatalogSe
   return useMemo(() => {
     void version
     return searchCatalogWithTotal(catalog, query, settings, limit)
-  }, [query, settings, limit, version])
-}
-
-/** `searchCatalog` over every source, recomputed when the query, the settings or the catalog change. */
-export function useCatalogSearch(query: string, limit: number): CatalogItem[] {
-  const settings = useCatalogViewSettings()
-  const version = useCatalogVersion()
-  return useMemo(() => {
-    void version
-    return searchCatalog(catalog, query, settings, limit)
   }, [query, settings, limit, version])
 }

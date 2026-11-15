@@ -7,6 +7,7 @@ import { openPlayerFromRoute } from '@/services/player-navigation'
 import { ensureFullSync, ensureStagedSync } from '@/services/background-sync'
 import { buildCatalogRetainResetKey } from '@/services/catalog-view'
 import { toUserMessage } from '@/services/user-error'
+import { certificateAwareError } from '@/catalog/certificate-errors'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
 import type { VirtualCardGridHandle } from '@/components/catalog/VirtualCardGrid'
 import {
@@ -71,6 +72,8 @@ export interface CatalogPageMessages {
 
 interface ForegroundLoad {
   error: string | null
+  /** What the failed load was for (source and category): the error belongs to it alone. */
+  errorScope: string | null
   message: string | null
   active: boolean
 }
@@ -78,19 +81,24 @@ interface ForegroundLoad {
 type ForegroundAction =
   | { type: 'start'; message: string }
   | { type: 'end' }
-  | { type: 'failed'; message: string }
+  | { type: 'failed'; message: string; scope: string }
   | { type: 'reset' }
 
-const IDLE: ForegroundLoad = { error: null, message: null, active: false }
+const IDLE: ForegroundLoad = { error: null, errorScope: null, message: null, active: false }
+
+/** What a foreground load is for: the error of another selection is not shown. */
+function selectionScope(sourceId: string | null, categoryId: string | null): string {
+  return `${sourceId ?? ''}\n${categoryId ?? ''}`
+}
 
 function foregroundReducer(state: ForegroundLoad, action: ForegroundAction): ForegroundLoad {
   switch (action.type) {
     case 'start':
-      return { error: null, message: action.message, active: true }
+      return { error: null, errorScope: null, message: action.message, active: true }
     case 'end':
       return state.active ? { ...state, message: null, active: false } : state
     case 'failed':
-      return { ...state, error: action.message }
+      return { ...state, error: action.message, errorScope: action.scope }
     case 'reset':
       return IDLE
     default:
@@ -163,6 +171,9 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
   const sourceId = useStore((s) => s.activeSourceId)
   const sources = useStore((s) => s.sources)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
+  const credentialsHydrated = useStore((s) => s.credentialsHydrated)
+  const sourceError = useStore((s) => (s.activeSourceId ? (s.sourceErrors[s.activeSourceId] ?? null) : null))
+  const requestSourceReconnect = useStore((s) => s.requestSourceReconnect)
   const setSelectedCategory = useStore((s) => s.setSelectedCategory)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
   const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
@@ -185,6 +196,9 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
 
   const source = useMemo(() => sources.find((item) => item.id === sourceId) ?? null, [sources, sourceId])
   const isXtream = source?.type === 'xtream'
+  // Without its secret an Xtream source loads nothing: its page says so
+  // instead of waiting for a preview and a category list that never come.
+  const missingSecret = isXtream && credentialsHydrated && !!sourceId && !getXtreamCredentials(sourceId)
   const rawCategoryId = providerCategoryId(sourceId, type, selectedCategoryId)
   const messagesRef = useRef(messages)
   useEffect(() => {
@@ -238,10 +252,11 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
         if (controller.signal.aborted) return
         catalog.commit({ token, mode: 'partial', categories: xtreamCategoriesToRecords(categories, sourceId, type) })
       })
-      .catch((error: unknown) => {
+      .catch(async (error: unknown) => {
         if (controller.signal.aborted) return
         console.error(`Failed to load ${type} categories:`, error)
-        setCategoriesError(toUserMessage(error, 'Kategori listesi alınamadı.'))
+        const message = toUserMessage(await certificateAwareError(error), 'Kategori listesi alınamadı.')
+        if (!controller.signal.aborted) setCategoriesError(message)
       })
     return () => controller.abort()
   }, [sourceId, source, type, categoriesLoaded, getXtreamCredentials, categoriesReload])
@@ -255,6 +270,7 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
 
     const controller = new AbortController()
     const token = catalog.beginGeneration(sourceId, type)
+    const scope = selectionScope(sourceId, selectedCategoryId)
     dispatch({ type: 'start', message: 'Seçili kategori yükleniyor...' })
     void XTREAM_LOADERS[type]
       .category(creds, rawCategoryId, sourceId, { signal: controller.signal })
@@ -262,10 +278,11 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
         if (controller.signal.aborted) return
         catalog.commit({ token, mode: 'partial', items, categoryId: selectedCategoryId })
       })
-      .catch((error: unknown) => {
+      .catch(async (error: unknown) => {
         if (controller.signal.aborted) return
         console.error(`Failed to load ${type} category:`, error)
-        dispatch({ type: 'failed', message: toUserMessage(error, messagesRef.current.loadFailed) })
+        const message = toUserMessage(await certificateAwareError(error), messagesRef.current.loadFailed)
+        if (!controller.signal.aborted) dispatch({ type: 'failed', message, scope })
       })
       .finally(() => {
         if (!controller.signal.aborted) dispatch({ type: 'end' })
@@ -299,6 +316,7 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
     }
 
     const token = catalog.beginGeneration(sourceId, type)
+    const scope = selectionScope(sourceId, null)
     dispatch({ type: 'start', message: messagesRef.current.previewLoading })
     void XTREAM_LOADERS[type]
       .preview(creds, sourceId, { signal: controller.signal })
@@ -307,10 +325,11 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
         catalog.commit({ token, mode: 'partial', items })
         startSync()
       })
-      .catch((error: unknown) => {
+      .catch(async (error: unknown) => {
         if (controller.signal.aborted) return
         console.error(`Failed to load ${type} preview:`, error)
-        dispatch({ type: 'failed', message: toUserMessage(error, messagesRef.current.loadFailed) })
+        const message = toUserMessage(await certificateAwareError(error), messagesRef.current.loadFailed)
+        if (!controller.signal.aborted) dispatch({ type: 'failed', message, scope })
       })
       .finally(() => {
         if (!controller.signal.aborted) dispatch({ type: 'end' })
@@ -326,7 +345,9 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
   // a deferred render that the next keystroke can interrupt.
   const appliedQuery = useDeferredValue(searchQuery)
   const filtered = useMemo(() => filterBySearch(visibleItems, appliedQuery), [visibleItems, appliedQuery])
-  const retainKey = buildCatalogRetainResetKey(sourceId, selectedCategoryId)
+  // Per query too: a query that matches nothing must not show the previous,
+  // unfiltered cards next to "0 sonuç" while a load runs.
+  const retainKey = `${buildCatalogRetainResetKey(sourceId, selectedCategoryId)}\n${appliedQuery}`
   const items = useRetainedListWhileLoading(filtered, foreground.active, retainKey)
 
   // Read on every render; `status` changes with every commit to this slice.
@@ -336,18 +357,23 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
     hasCategory: !!selectedCategoryId,
     categoryLoaded,
     status,
-    loadError: foreground.error
+    // An error of another category (or of "all") does not belong here.
+    loadError: foreground.errorScope === selectionScope(sourceId, selectedCategoryId) ? foreground.error : null,
+    sourceError: missingSecret ? (sourceError?.message ?? 'Bu kaynağın giriş bilgileri yüklenemedi.') : null,
+    connectionFailed: !!sourceError
   })
 
   const retry = useCallback(() => {
-    if (banner?.kind === 'sync-error') {
+    if (banner?.kind === 'sync-error' || banner?.kind === 'offline') {
+      // An offline copy of a source that did not connect: connect it again.
+      if (banner.kind === 'offline' && sourceError) requestSourceReconnect()
       const creds = sourceId ? getXtreamCredentials(sourceId) : null
       if (sourceId && creds) void ensureFullSync(sourceId, type, creds)
       return
     }
     dispatch({ type: 'reset' })
     bumpReload()
-  }, [banner?.kind, getXtreamCredentials, sourceId, type])
+  }, [banner?.kind, getXtreamCredentials, requestSourceReconnect, sourceError, sourceId, type])
 
   const retryCategories = useCallback(() => {
     setCategoriesError(null)
@@ -396,7 +422,7 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
     selectedCategoryId,
     selectCategory,
     categoriesError,
-    categoriesLoading: isXtream && !categoriesLoaded && !categoriesError,
+    categoriesLoading: isXtream && !missingSecret && !categoriesLoaded && !categoriesError,
     retryCategories,
     searchQuery,
     setSearchQuery,

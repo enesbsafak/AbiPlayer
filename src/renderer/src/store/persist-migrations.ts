@@ -96,7 +96,10 @@ export const PERSIST_MIGRATIONS: readonly PersistMigration[] = [
   {
     // Favourites used to be bare ids, rendered only once their catalog was in
     // memory. Each now carries a snapshot; favourites that were watched get
-    // theirs from the history entry, the rest when they are next toggled.
+    // theirs from the history entry. The rest stay without one: as before,
+    // they are shown once their catalog is in memory (the card comes from
+    // the record). Toggling such a favourite removes it; it gets a snapshot
+    // when it is added again.
     version: 2,
     name: 'favorite-snapshots',
     migrate: (state) => ({
