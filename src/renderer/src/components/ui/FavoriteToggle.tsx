@@ -1,13 +1,22 @@
 import { Star } from 'lucide-react'
 import { useStore } from '@/store'
+import type { Channel } from '@/types/playlist'
 
 interface FavoriteToggleProps {
   channelId: string
+  /**
+   * The item as the caller shows it. Passed on to `toggleFavorite`, so the
+   * favourite's snapshot is taken even when the card is rendered from a
+   * snapshot or a record no longer in the catalog.
+   */
+  item?: Channel
   /** Added to the icon's accessible name, so a grid of stars is not a list of identical labels. */
   itemName?: string
   /** `button` is the labelled variant used in detail views. */
   variant?: 'icon' | 'button'
   className?: string
+  /** For grids with a roving tab stop: -1 keeps the star out of the Tab order. */
+  tabIndex?: number
 }
 
 /**
@@ -16,7 +25,7 @@ interface FavoriteToggleProps {
  * it during render was never told the answer had changed and its star stayed
  * as it was until something else re-rendered it.
  */
-export function FavoriteToggle({ channelId, itemName, variant = 'icon', className = '' }: FavoriteToggleProps) {
+export function FavoriteToggle({ channelId, item, itemName, variant = 'icon', className = '', tabIndex }: FavoriteToggleProps) {
   const isFavorite = useStore((s) => s.favoriteIds.has(channelId))
   const toggleFavorite = useStore((s) => s.toggleFavorite)
   const action = isFavorite ? 'Favorilerden çıkar' : 'Favorilere ekle'
@@ -26,8 +35,9 @@ export function FavoriteToggle({ channelId, itemName, variant = 'icon', classNam
     return (
       <button
         type="button"
-        onClick={() => toggleFavorite(channelId)}
-        className={`inline-flex items-center gap-2 rounded-lg border border-surface-700 bg-surface-900 px-4 py-2 text-sm font-medium text-surface-200 transition-colors hover:bg-surface-800 hover:text-surface-50 ${className}`}
+        onClick={() => toggleFavorite(channelId, item)}
+        tabIndex={tabIndex}
+        className={`inline-flex items-center gap-2 rounded-lg border border-surface-700 bg-surface-900 px-4 py-2 text-sm font-medium text-surface-200 transition-colors hover:bg-surface-800 hover:text-surface-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${className}`}
       >
         <Star size={16} className={isFavorite ? 'fill-amber-400 text-amber-400' : ''} aria-hidden="true" />
         {isFavorite ? 'Favorilerden Çıkar' : 'Favorilere Ekle'}
@@ -38,10 +48,11 @@ export function FavoriteToggle({ channelId, itemName, variant = 'icon', classNam
   return (
     <button
       type="button"
-      onClick={() => toggleFavorite(channelId)}
+      onClick={() => toggleFavorite(channelId, item)}
+      tabIndex={tabIndex}
       aria-label={label}
       title={action}
-      className={`shrink-0 rounded-md p-1.5 text-surface-500 transition-colors hover:bg-surface-800 hover:text-surface-300 ${className}`}
+      className={`shrink-0 rounded-md p-1.5 text-surface-500 transition-colors hover:bg-surface-800 hover:text-surface-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${className}`}
     >
       <Star size={14} className={isFavorite ? 'fill-amber-400 text-amber-400' : ''} aria-hidden="true" />
     </button>

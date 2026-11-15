@@ -3,7 +3,6 @@ import { test, expect } from '../support/fixtures.ts'
 import { KNOWN } from '../mock-provider/catalog.ts'
 import type { MockProvider } from '../mock-provider/server.ts'
 import { addXtreamSource, anyCard, cardButton, expectHomeWithContent, openRoute } from '../support/flows.ts'
-import { knownBug } from '../support/known-bugs.ts'
 
 /** A live category other than the first, and the first channel in it. */
 function secondLiveCategory(mock: MockProvider) {
@@ -75,16 +74,23 @@ test.describe('katalog gezintisi', () => {
   })
 
   test('F1-20: Canlı TV kategorisi seçiliyken Filmler sayfası dolu gelir', async ({ launch, mock }) => {
-    knownBug('F1-20', 'Canlı TV\'de seçilen kategori Filmler ve Diziler\'e sızıyor, liste boş')
     const app = await launch()
     const { page } = app
     await signIn(page, mock)
     await openRoute(page, '/live')
-    await page.getByRole('button', { name: secondLiveCategory(mock).name, exact: true }).click()
+    const liveCategory = secondLiveCategory(mock)
+    await page.getByRole('button', { name: liveCategory.name, exact: true }).click()
     await openRoute(page, '/vod')
     await page.waitForTimeout(1500)
     await app.shot('vod-after-live-category')
     await expect(page.getByRole('button', { name: / oynat$/ }).first()).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: 'Tüm Filmler', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await openRoute(page, '/series')
+    await expect(page.getByRole('button', { name: / oynat$/ }).first()).toBeVisible({ timeout: 5000 })
+    // Each page keeps its own choice: Live TV still shows the category picked there.
+    await openRoute(page, '/live')
+    await expect(page.getByRole('button', { name: liveCategory.name, exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(cardButton(page, liveCategory.firstChannel)).toBeVisible()
   })
 
   test('F1-21: kanal kartındaki favori yıldızı tıklanınca güncellenir', async ({ launch, mock }) => {

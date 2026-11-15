@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Play, ArrowLeft, Clock, Star } from 'lucide-react'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
@@ -42,10 +42,18 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
   const [loading, setLoading] = useState(true)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const tmdbApiKeySetting = useStore((s) => s.settings.tmdbApiKey)
+  // Loaded per film id: the catalog replaces the record object on a full
+  // sync, and that must not reload the detail on screen.
+  const itemRef = useRef(item)
+  useEffect(() => {
+    itemRef.current = item
+  })
+  const itemId = item.id
 
   useEffect(() => {
     let cancelled = false
     const controller = new AbortController()
+    const item = itemRef.current
     const load = async () => {
       setLoading(true)
       setInfo(null)
@@ -132,7 +140,7 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
       cancelled = true
       controller.abort()
     }
-  }, [item, getXtreamCredentials, tmdbApiKeySetting])
+  }, [itemId, getXtreamCredentials, tmdbApiKeySetting])
 
   if (loading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>
 
@@ -192,7 +200,7 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
             <Button onClick={() => onPlay(item)}>
               <Play size={16} fill="currentColor" /> Filmi Oynat
             </Button>
-            <FavoriteToggle channelId={item.id} variant="button" />
+            <FavoriteToggle channelId={item.id} item={item} variant="button" />
           </div>
         </div>
       </div>
