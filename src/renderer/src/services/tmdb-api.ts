@@ -1,89 +1,10 @@
+import { cleanTitleForTmdbSearch, pickConfidentTmdbMatch, type TmdbMatchCandidate } from './tmdb-match'
+
+export { cleanTitleForTmdbSearch, normalizeTitleForMatch, pickConfidentTmdbMatch } from './tmdb-match'
+
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3'
 const TMDB_REQUEST_TIMEOUT_MS = 12_000
 const TMDB_CACHE_TTL_MS = 10 * 60 * 1000
-
-interface TmdbGenre {
-  id: number
-  name: string
-}
-
-interface TmdbCastMember {
-  id: number
-  name: string
-  character?: string
-  order?: number
-}
-
-interface TmdbCrewMember {
-  id: number
-  name: string
-  job?: string
-  department?: string
-}
-
-interface TmdbMovieResponse {
-  id: number
-  title: string
-  overview: string
-  release_date?: string
-  runtime?: number
-  vote_average?: number
-  poster_path?: string | null
-  backdrop_path?: string | null
-  genres?: TmdbGenre[]
-  credits?: {
-    cast?: TmdbCastMember[]
-    crew?: TmdbCrewMember[]
-  }
-}
-
-interface TmdbTvResponse {
-  id: number
-  name: string
-  overview: string
-  first_air_date?: string
-  vote_average?: number
-  poster_path?: string | null
-  backdrop_path?: string | null
-  genres?: TmdbGenre[]
-  credits?: {
-    cast?: TmdbCastMember[]
-    crew?: TmdbCrewMember[]
-  }
-}
-
-interface TmdbTvSeasonResponse {
-  id: number
-  name?: string
-  overview?: string
-  season_number: number
-  episodes: Array<{
-    id: number
-    name?: string
-    overview?: string
-    episode_number: number
-    runtime?: number | null
-    still_path?: string | null
-    vote_average?: number
-    air_date?: string
-  }>
-}
-
-interface TmdbSearchResponse<T> {
-  results: T[]
-}
-
-interface TmdbSearchMovieItem {
-  id: number
-  title: string
-  release_date?: string
-}
-
-interface TmdbSearchTvItem {
-  id: number
-  name: string
-  first_air_date?: string
-}
 
 export interface TmdbMovieDetails {
   id: number
@@ -168,8 +89,45 @@ function tmdbCacheGet<T>(key: CacheKey): CachedValue<T> | undefined {
   return entry
 }
 
-function toArray<T>(input: T[] | undefined | null): T[] {
-  return Array.isArray(input) ? input : []
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+function invalidTmdbResponse(): Error {
+  return new Error('TMDB geçersiz bir yanıt döndürdü')
+}
+
+/** A details response is only usable when it is an object with a numeric id. */
+function requireTmdbObject(data: unknown): Record<string, unknown> & { id: number } {
+  if (!isRecord(data) || typeof data.id !== 'number') throw invalidTmdbResponse()
+  return data as Record<string, unknown> & { id: number }
+}
+
+/** Search results as match candidates; malformed entries are skipped. */
+function readSearchCandidates(data: unknown, kind: 'movie' | 'tv'): TmdbMatchCandidate[] {
+  if (!isRecord(data) || !Array.isArray(data.results)) throw invalidTmdbResponse()
+  return data.results.flatMap((item: unknown) => {
+    if (!isRecord(item) || typeof item.id !== 'number') return []
+    return [
+      kind === 'movie'
+        ? {
+            id: item.id,
+            title: optionalString(item.title),
+            originalTitle: optionalString(item.original_title),
+            date: optionalString(item.release_date)
+          }
+        : {
+            id: item.id,
+            title: optionalString(item.name),
+            originalTitle: optionalString(item.original_name),
+            date: optionalString(item.first_air_date)
+          }
+    ]
+  })
 }
 
 function normalizeText(value: string | undefined | null): string {
@@ -211,10 +169,11 @@ function buildImageUrl(path: string | null | undefined, width: 'w500' | 'w780' =
   return `https://image.tmdb.org/t/p/${width}${path}`
 }
 
-async function fetchTmdb<T>(
+/** Raw JSON from TMDB; callers validate it before use. */
+async function fetchTmdb(
   path: string,
   { apiKey, language, query }: { apiKey: string; language?: string; query?: Record<string, string> }
-): Promise<T> {
+): Promise<unknown> {
   const url = new URL(`${TMDB_BASE_URL}${path}`)
   if (!isBearerToken(apiKey)) {
     url.searchParams.set('api_key', apiKey)
@@ -230,14 +189,14 @@ async function fetchTmdb<T>(
   }
 
   const cacheKey = `${url.toString()}|auth:${apiKey}`
-  const cached = tmdbCacheGet<T>(cacheKey)
+  const cached = tmdbCacheGet<unknown>(cacheKey)
   if (cached) {
     return cached.data
   }
 
   const existing = inflightRequests.get(cacheKey)
   if (existing) {
-    return existing as Promise<T>
+    return existing
   }
 
   const request = (async () => {
@@ -256,11 +215,13 @@ async function fetchTmdb<T>(
       })
 
       if (!response.ok) {
-        throw new Error(`TMDB request failed (${response.status})`)
+        throw new Error(`TMDB isteği başarısız oldu (HTTP ${response.status})`)
       }
 
-      const data = (await response.json()) as T
-      tmdbCacheSet<T>(cacheKey, { data, expiresAt: Date.now() + TMDB_CACHE_TTL_MS })
+      const data: unknown = await response.json().catch(() => {
+        throw invalidTmdbResponse()
+      })
+      tmdbCacheSet<unknown>(cacheKey, { data, expiresAt: Date.now() + TMDB_CACHE_TTL_MS })
       return data
     } finally {
       window.clearTimeout(timer)
@@ -275,55 +236,100 @@ async function fetchTmdb<T>(
   }
 }
 
-function mapMovieDetails(input: TmdbMovieResponse): TmdbMovieDetails {
-  const cast = toArray(input.credits?.cast)
-    .sort((a, b) => (a.order ?? 999) - (b.order ?? 999))
-    .slice(0, 10)
-    .flatMap((member) => (member.name ? [member.name] : []))
+function recordsOf(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : []
+}
 
-  const directors = toArray(input.credits?.crew)
-    .flatMap((member) => (member.job === 'Director' && member.name ? [member.name] : []))
+function nameOf(record: Record<string, unknown>): string[] {
+  return typeof record.name === 'string' && record.name ? [record.name] : []
+}
 
+function castNames(credits: unknown, limit: number): string[] {
+  const cast = isRecord(credits) ? recordsOf(credits.cast) : []
+  const order = (member: Record<string, unknown>) => (typeof member.order === 'number' ? member.order : 999)
+  return cast
+    .sort((a, b) => order(a) - order(b))
+    .slice(0, limit)
+    .flatMap(nameOf)
+}
+
+function crewNames(credits: unknown, include: (member: Record<string, unknown>) => boolean): string[] {
+  const crew = isRecord(credits) ? recordsOf(credits.crew) : []
+  return crew.flatMap((member) => (include(member) ? nameOf(member) : []))
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function imagePath(value: unknown, width: 'w500' | 'w780'): string | undefined {
+  return buildImageUrl(typeof value === 'string' ? value : undefined, width)
+}
+
+function mapMovieDetails(data: unknown): TmdbMovieDetails {
+  const input = requireTmdbObject(data)
   return {
     id: input.id,
-    title: input.title || '',
-    overview: input.overview || '',
-    releaseDate: input.release_date || undefined,
-    runtime: typeof input.runtime === 'number' ? input.runtime : undefined,
-    rating: typeof input.vote_average === 'number' ? input.vote_average : undefined,
-    genres: toArray(input.genres).flatMap((genre) => (genre.name ? [genre.name] : [])),
-    cast,
-    directors,
-    posterPath: buildImageUrl(input.poster_path, 'w500'),
-    backdropPath: buildImageUrl(input.backdrop_path, 'w780')
+    title: optionalString(input.title) || '',
+    overview: optionalString(input.overview) || '',
+    releaseDate: optionalString(input.release_date) || undefined,
+    runtime: optionalNumber(input.runtime),
+    rating: optionalNumber(input.vote_average),
+    genres: recordsOf(input.genres).flatMap(nameOf),
+    cast: castNames(input.credits, 10),
+    directors: crewNames(input.credits, (member) => member.job === 'Director'),
+    posterPath: imagePath(input.poster_path, 'w500'),
+    backdropPath: imagePath(input.backdrop_path, 'w780')
   }
 }
 
-function mapTvDetails(input: TmdbTvResponse): TmdbTvDetails {
-  const cast = toArray(input.credits?.cast)
-    .sort((a, b) => (a.order ?? 999) - (b.order ?? 999))
-    .slice(0, 12)
-    .flatMap((member) => (member.name ? [member.name] : []))
-
-  const creators = toArray(input.credits?.crew)
-    .flatMap((member) =>
-      (member.job === 'Creator' || member.job === 'Screenplay' || member.department === 'Writing') && member.name
-        ? [member.name]
-        : []
-    )
-
+function mapTvDetails(data: unknown): TmdbTvDetails {
+  const input = requireTmdbObject(data)
   return {
     id: input.id,
-    name: input.name || '',
-    overview: input.overview || '',
-    firstAirDate: input.first_air_date || undefined,
-    rating: typeof input.vote_average === 'number' ? input.vote_average : undefined,
-    genres: toArray(input.genres).flatMap((genre) => (genre.name ? [genre.name] : [])),
-    cast,
-    creators,
-    posterPath: buildImageUrl(input.poster_path, 'w500'),
-    backdropPath: buildImageUrl(input.backdrop_path, 'w780')
+    name: optionalString(input.name) || '',
+    overview: optionalString(input.overview) || '',
+    firstAirDate: optionalString(input.first_air_date) || undefined,
+    rating: optionalNumber(input.vote_average),
+    genres: recordsOf(input.genres).flatMap(nameOf),
+    cast: castNames(input.credits, 12),
+    creators: crewNames(
+      input.credits,
+      (member) => member.job === 'Creator' || member.job === 'Screenplay' || member.department === 'Writing'
+    ),
+    posterPath: imagePath(input.poster_path, 'w500'),
+    backdropPath: imagePath(input.backdrop_path, 'w780')
   }
+}
+
+/**
+ * Search TMDB for a provider name and return the id of a confident match, or
+ * null. The name is cleaned first ("TR: Film (2019) 4K" searches "Film" with
+ * year 2019); a result that does not match the cleaned title is never taken,
+ * so the provider's own plot and artwork stay in place.
+ */
+async function searchConfidentTmdbId(
+  kind: 'movie' | 'tv',
+  name: string,
+  year: string | number | undefined,
+  apiKey: string,
+  language: string | undefined
+): Promise<number | null> {
+  const cleaned = cleanTitleForTmdbSearch(name)
+  if (!cleaned.title) return null
+  const targetYear = normalizeYear(year) || cleaned.year
+
+  const search = await fetchTmdb(kind === 'movie' ? '/search/movie' : '/search/tv', {
+    apiKey,
+    language,
+    query:
+      kind === 'movie'
+        ? { query: cleaned.title, year: targetYear }
+        : { query: cleaned.title, first_air_date_year: targetYear }
+  })
+
+  const match = pickConfidentTmdbMatch(readSearchCandidates(search, kind), cleaned.title, targetYear || null)
+  return match?.id ?? null
 }
 
 export async function resolveTmdbMovieDetails({
@@ -344,28 +350,12 @@ export async function resolveTmdbMovieDetails({
 
   let movieId = parseTmdbId(tmdbId)
   if (!movieId && name) {
-    const search = await fetchTmdb<TmdbSearchResponse<TmdbSearchMovieItem>>('/search/movie', {
-      apiKey: key,
-      language,
-      query: {
-        query: name,
-        year: normalizeYear(year)
-      }
-    })
-
-    const targetName = normalizeText(name)
-    const targetYear = normalizeYear(year)
-    const exact = toArray(search.results).find((item) => {
-      const sameName = normalizeText(item.title) === targetName
-      const itemYear = normalizeYear(item.release_date)
-      return sameName && (!targetYear || targetYear === itemYear)
-    })
-    movieId = exact?.id ?? search.results?.[0]?.id ?? null
+    movieId = await searchConfidentTmdbId('movie', name, year, key, language)
   }
 
   if (!movieId) return null
 
-  const details = await fetchTmdb<TmdbMovieResponse>(`/movie/${movieId}`, {
+  const details = await fetchTmdb(`/movie/${movieId}`, {
     apiKey: key,
     language,
     query: {
@@ -393,29 +383,12 @@ export async function resolveTmdbTvDetails({
 
   let tvId = parseTmdbId(tmdbId)
   if (!tvId && name) {
-    const search = await fetchTmdb<TmdbSearchResponse<TmdbSearchTvItem>>('/search/tv', {
-      apiKey: key,
-      language,
-      query: {
-        query: name,
-        first_air_date_year: normalizeYear(year)
-      }
-    })
-
-    const targetName = normalizeText(name)
-    const targetYear = normalizeYear(year)
-    const exact = toArray(search.results).find((item) => {
-      const sameName = normalizeText(item.name) === targetName
-      const itemYear = normalizeYear(item.first_air_date)
-      return sameName && (!targetYear || targetYear === itemYear)
-    })
-
-    tvId = exact?.id ?? search.results?.[0]?.id ?? null
+    tvId = await searchConfidentTmdbId('tv', name, year, key, language)
   }
 
   if (!tvId) return null
 
-  const details = await fetchTmdb<TmdbTvResponse>(`/tv/${tvId}`, {
+  const details = await fetchTmdb(`/tv/${tvId}`, {
     apiKey: key,
     language,
     query: {
@@ -439,21 +412,25 @@ export async function resolveTmdbSeasonEpisodes({
   const key = normalizeApiKey(apiKey)
   if (!key || !tmdbTvId || !Number.isFinite(seasonNumber) || seasonNumber < 0) return []
 
-  const details = await fetchTmdb<TmdbTvSeasonResponse>(`/tv/${tmdbTvId}/season/${seasonNumber}`, {
+  const details = await fetchTmdb(`/tv/${tmdbTvId}/season/${seasonNumber}`, {
     apiKey: key,
     language
   })
+  if (!isRecord(details)) throw invalidTmdbResponse()
 
-  return toArray(details.episodes).map((episode) => ({
-    id: episode.id,
-    name: episode.name || undefined,
-    overview: episode.overview || undefined,
-    episodeNumber: episode.episode_number,
-    runtime: typeof episode.runtime === 'number' ? episode.runtime : undefined,
-    stillPath: buildImageUrl(episode.still_path, 'w500'),
-    voteAverage: typeof episode.vote_average === 'number' ? episode.vote_average : undefined,
-    airDate: episode.air_date || undefined
-  }))
+  return recordsOf(details.episodes).flatMap((episode) => {
+    if (typeof episode.id !== 'number' || typeof episode.episode_number !== 'number') return []
+    return [{
+      id: episode.id,
+      name: optionalString(episode.name) || undefined,
+      overview: optionalString(episode.overview) || undefined,
+      episodeNumber: episode.episode_number,
+      runtime: optionalNumber(episode.runtime),
+      stillPath: imagePath(episode.still_path, 'w500'),
+      voteAverage: optionalNumber(episode.vote_average),
+      airDate: optionalString(episode.air_date) || undefined
+    }]
+  })
 }
 
 export function resolveTmdbLanguage(language: string | undefined): string {
