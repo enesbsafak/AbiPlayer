@@ -2,7 +2,7 @@ import { perfMark } from './services/perf'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from './App'
-import '@fontsource-variable/inter'
+import './fonts.css'
 import './styles/globals.css'
 perfMark('renderer:modules-evaluated')
 
