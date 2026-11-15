@@ -7,6 +7,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { useStore } from '@/store'
 import { fetchAndParseM3U, parseM3U } from '@/services/m3u-parser'
 import { pickAndReadFile } from '@/services/platform'
+import { toUserMessage } from '@/services/user-error'
 import type { PlaylistSource } from '@/types/playlist'
 
 interface FormState {
@@ -53,7 +54,10 @@ export function PlaylistImport() {
   const navigate = useNavigate()
   const [{ mode, url, name, loading, error }, dispatch] = useReducer(formReducer, initialFormState)
 
-  const { sources, addSource, setActiveSource, addChannels, addCategories } = useStore()
+  const addSource = useStore((s) => s.addSource)
+  const setActiveSource = useStore((s) => s.setActiveSource)
+  const addChannels = useStore((s) => s.addChannels)
+  const addCategories = useStore((s) => s.addCategories)
 
   const handleUrlImport = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -80,7 +84,7 @@ export function PlaylistImport() {
       normalizedUrl = parsedUrl.toString()
 
       // Check for duplicate M3U URL source
-      const existing = sources.find(
+      const existing = useStore.getState().sources.find(
         (s) => s.type === 'm3u_url' && s.url === normalizedUrl
       )
       if (existing) {
@@ -89,7 +93,7 @@ export function PlaylistImport() {
 
       const source: PlaylistSource = {
         id: `m3u_${Date.now()}`,
-        name: name || parsedUrl.hostname,
+        name: name.trim() || parsedUrl.hostname,
         type: 'm3u_url',
         url: normalizedUrl,
         addedAt: Date.now()
@@ -103,7 +107,7 @@ export function PlaylistImport() {
       dispatch({ type: 'clearForm' })
       navigate('/')
     } catch (err) {
-      dispatch({ type: 'importError', message: err instanceof Error ? err.message : 'İçe aktarma başarısız oldu' })
+      dispatch({ type: 'importError', message: toUserMessage(err, 'İçe aktarma başarısız oldu.') })
     } finally {
       dispatch({ type: 'importDone' })
     }
@@ -119,7 +123,7 @@ export function PlaylistImport() {
       if (!result) { dispatch({ type: 'importDone' }); return }
 
       // Check for duplicate M3U file source
-      const existingFile = sources.find(
+      const existingFile = useStore.getState().sources.find(
         (s) => s.type === 'm3u_file' && s.filePath === result.path
       )
       if (existingFile) {
@@ -130,7 +134,7 @@ export function PlaylistImport() {
 
       const source: PlaylistSource = {
         id: `m3u_file_${Date.now()}`,
-        name: name || fileName,
+        name: name.trim() || fileName,
         type: 'm3u_file',
         filePath: result.path,
         addedAt: Date.now()
@@ -144,7 +148,7 @@ export function PlaylistImport() {
       dispatch({ type: 'clearForm' })
       navigate('/')
     } catch (err) {
-      dispatch({ type: 'importError', message: err instanceof Error ? err.message : 'İçe aktarma başarısız oldu' })
+      dispatch({ type: 'importError', message: toUserMessage(err, 'İçe aktarma başarısız oldu.') })
     } finally {
       dispatch({ type: 'importDone' })
     }
@@ -176,14 +180,14 @@ export function PlaylistImport() {
       {mode === 'url' ? (
         <form onSubmit={handleUrlImport} className="flex flex-col gap-4">
           <Input id="m3u-url" label="Liste URL" placeholder="https://example.com/playlist.m3u" value={url} onChange={(e) => dispatch({ type: 'setUrl', value: e.target.value })} required />
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
           <Button type="submit" disabled={loading}>
             {loading ? <><Spinner size={16} /> İçe aktarılıyor…</> : 'Listeyi İçe Aktar'}
           </Button>
         </form>
       ) : (
         <div className="flex flex-col gap-4">
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
           <Button onClick={handleFileImport} disabled={loading}>
             {loading ? <><Spinner size={16} /> Okunuyor…</> : <><Upload size={16} /> Dosya Seç</>}
           </Button>
