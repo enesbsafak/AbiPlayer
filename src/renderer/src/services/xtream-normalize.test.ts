@@ -129,11 +129,7 @@ describe('list normalizers', () => {
 
   it('keeps tv archive on when the panel sends "1" instead of 1', () => {
     const [stream] = normalizeXtreamLiveStreams([{ stream_id: 1, name: 'Arşivli', tv_archive: '1' }])
-    const [channel] = xtreamApi.liveStreamsToChannels(
-      [stream],
-      { url: 'http://h', username: 'u', password: 'p' },
-      's'
-    )
+    const [channel] = xtreamApi.liveStreamsToRecords([stream], 's')
     expect(channel.tvArchive).toBe(true)
   })
 

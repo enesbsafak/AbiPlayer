@@ -1,4 +1,5 @@
-import { migrateProgressEntriesToMediaKeys } from '@/services/watch-progress'
+import { migrateProgressEntriesToMediaKeys, stripStoredEntryUrls } from '@/services/watch-progress'
+import { stripSnapshotStreamUrls } from './favorites-slice'
 
 /** The persisted payload's `state`, as read back: untrusted, any shape. */
 export type PersistedRecord = Record<string, unknown>
@@ -101,6 +102,20 @@ export const PERSIST_MIGRATIONS: readonly PersistMigration[] = [
     migrate: (state) => ({
       ...state,
       favoriteSnapshots: seedFavoriteSnapshots(state.favoriteIds, state.favoriteSnapshots, state.watchProgress)
+    })
+  },
+  {
+    // M3U entry URLs (usually holding the account password, like the Xtream
+    // URLs they are generated from) left history and favourite snapshots: the
+    // entry is found again in the loaded playlist by its id. The playlist URL
+    // of the source itself moves to the secure store at runtime
+    // (useAutoConnect), since that needs a write that can fail.
+    version: 3,
+    name: 'strip-m3u-entry-urls',
+    migrate: (state) => ({
+      ...state,
+      watchProgress: stripStoredEntryUrls(state.watchProgress),
+      favoriteSnapshots: stripSnapshotStreamUrls(state.favoriteSnapshots)
     })
   }
 ]

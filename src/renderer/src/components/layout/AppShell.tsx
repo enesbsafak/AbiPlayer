@@ -4,6 +4,7 @@ import { TitleBar } from './TitleBar'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { MiniPlayer } from '@/components/player/MiniPlayer'
+import { CredentialNotice } from '@/components/auth/CredentialNotice'
 import { useStore } from '@/store'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useEPG } from '@/hooks/useEPG'
@@ -70,6 +71,7 @@ export function AppShell() {
         </div>
       </div>
       {currentChannel && (isMiniPlayer || isPlaybackSuspended) && <MiniPlayer />}
+      <CredentialNotice />
     </div>
   )
 }

@@ -83,6 +83,27 @@ describe('partialize', () => {
     )
   })
 
+  it('never persists an M3U playlist URL either (F3-02)', () => {
+    const m3uSource: PlaylistSource = {
+      id: 'mu',
+      name: 'Liste',
+      type: 'm3u_url',
+      url: 'http://panel.example/get.php?username=ahmet&password=s3cret',
+      addedAt: 1
+    }
+    const persisted = createPartialize()({ ...useStore.getState(), sources: [m3uSource] } as AppStore)
+    expect(JSON.stringify(persisted)).not.toContain('s3cret')
+    expect(persisted.sources[0]).toEqual({ id: 'mu', name: 'Liste', type: 'm3u_url', addedAt: 1 })
+  })
+
+  it('keeps writing a legacy plain secret until it has been moved to the secure store (F1-56)', () => {
+    const partialize = createPartialize()
+    const state = { ...useStore.getState(), sources: [xtreamSource], legacySecretSourceIds: ['xt'] } as AppStore
+    expect(partialize(state).sources[0]).toMatchObject({ username: 'ahmet', password: 's3cret' })
+    const migrated = partialize({ ...state, legacySecretSourceIds: [] } as AppStore)
+    expect(migrated.sources[0]).not.toHaveProperty('password')
+  })
+
   it('persists one snapshot per favourite, in favourite order, without credentials', () => {
     const partialize = createPartialize()
     const persisted = partialize({
@@ -154,6 +175,24 @@ describe('mergePersistedState', () => {
     expect(merged.credentialsHydrated).toBe(false)
 
     expect(mergePersistedState({ sources: [] }, hydratedEarly).credentialsHydrated).toBe(true)
+    expect(
+      mergePersistedState({ sources: [{ id: 'mu', name: 'Liste', type: 'm3u_url', addedAt: 1 }] }, hydratedEarly)
+        .credentialsHydrated
+    ).toBe(false)
+  })
+
+  it('marks secrets an older version stored in plain text for migration', () => {
+    const merged = mergePersistedState(
+      {
+        sources: [
+          xtreamSource,
+          { id: 'mu', name: 'Liste', type: 'm3u_url', url: 'http://panel.example/get.php?u=1', addedAt: 1 },
+          { id: 'xt2', name: 'Yeni', type: 'xtream', url: 'http://panel.example', addedAt: 1 }
+        ]
+      },
+      current()
+    )
+    expect(merged.legacySecretSourceIds).toEqual(['xt', 'mu'])
   })
 })
 

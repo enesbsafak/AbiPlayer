@@ -4,14 +4,16 @@ import { useStore } from '@/store'
 import { HomeHero } from '@/components/home/HomeHero'
 import { HomeSection } from '@/components/home/HomeSection'
 import { ContinueWatchingSection } from '@/components/home/ContinueWatchingSection'
-import { HomeError, HomeLoading, HomeWelcome } from '@/components/home/HomeStates'
+import { HomeError, HomeLoading, HomeNotice, HomeWelcome } from '@/components/home/HomeStates'
 import { useHomeBootstrap } from '@/hooks/useHomeBootstrap'
 import { useOpenCatalogItem, useOpenPlayback } from '@/hooks/useOpenCatalogItem'
+import { useDeferredPlayback } from '@/hooks/useDeferredPlayback'
 import type { Channel } from '@/types/playlist'
 import { buildHomeCatalog, HOME_MAX_OTHER } from '@/components/home/home-catalog'
-import { useFavoriteChannels } from '@/components/favorites/favorite-channels'
+import { useFavoriteChannels, useOpenFavorite } from '@/components/favorites/favorite-channels'
 import { catalog, useCatalogVersion, useVisibleCatalogItems } from '@/catalog'
 import type { CatalogStatusMap } from '@/store/playlist-slice'
+import { findM3uEntry } from '@/services/playback'
 import {
   indexChannelsByLegacyKey,
   legacyIndexKey,
@@ -35,6 +37,7 @@ export default function HomePage() {
   const activeSourceId = useStore((s) => s.activeSourceId)
   const syncProgress = useStore((s) => (activeSourceId ? s.syncProgress[activeSourceId] : undefined))
   const authError = useStore((s) => s.error)
+  const activeSourceRetryAt = useStore((s) => (activeSourceId ? (s.sourceErrors[activeSourceId]?.retryAt ?? null) : null))
   const watchProgress = useStore((s) => s.watchProgress)
   const removeWatchProgress = useStore((s) => s.removeWatchProgress)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
@@ -43,10 +46,32 @@ export default function HomePage() {
 
   const handlePlay = useOpenCatalogItem()
   const openPlayback = useOpenPlayback()
+  const deferred = useDeferredPlayback()
+  const { playWhenReady } = deferred
+  // History keeps no M3U entry URL: it is looked up in the loaded playlist,
+  // waiting for the playlist when the card is clicked before it is in.
   const handleContinue = useCallback(
-    (item: ContinueWatchingItem) => openPlayback({ target: item.target, channel: item.channel }),
-    [openPlayback]
+    (item: ContinueWatchingItem) => {
+      const { target, channel } = item
+      if (target.kind !== 'm3u') {
+        openPlayback({ target, channel })
+        return
+      }
+      playWhenReady(
+        {
+          sourceId: target.sourceId,
+          name: channel.name,
+          resolve: () => {
+            const entry = findM3uEntry(target, catalog, channel.id)
+            return entry ? { ...channel, streamUrl: entry.streamUrl } : null
+          }
+        },
+        (resolved) => openPlayback({ target, channel: resolved })
+      )
+    },
+    [openPlayback, playWhenReady]
   )
+  const handleFavorite = useOpenFavorite(handlePlay, playWhenReady)
 
   const visibleLive = useVisibleCatalogItems(activeSourceId, 'live')
   const visibleVod = useVisibleCatalogItems(activeSourceId, 'vod')
@@ -67,9 +92,9 @@ export default function HomePage() {
   // Like favourites, this is the viewer's own history rather than a catalog
   // listing, so category hiding deliberately does not filter it.
   //
-  // Nothing stored holds an Xtream credential: those items are rebuilt from
-  // the live source when played, so they are listed only while it has
-  // credentials. M3U items carry their own URL.
+  // Nothing stored holds a URL. Xtream items are rebuilt from the live source
+  // when played, so they are listed only while it has credentials; M3U items
+  // are listed while their source exists and find their URL in its playlist.
   //
   // Entries from before the media-key migration that it could not map are
   // matched against the catalog by their old key; the index is built only for
@@ -78,6 +103,7 @@ export default function HomePage() {
     () => new Set(sources.filter((source) => getXtreamCredentials(source.id)).map((source) => source.id)),
     [sources, getXtreamCredentials]
   )
+  const sourceIds = useMemo(() => new Set(sources.map((source) => source.id)), [sources])
   const legacySourceIds = useMemo(() => {
     const ids = new Set<string>()
     for (const entry of watchProgress) if (!entry.target) ids.add(entry.channel.sourceId)
@@ -98,10 +124,11 @@ export default function HomePage() {
     () =>
       selectContinueWatching(watchProgress, {
         hasCredentials: (sourceId) => sourcesWithCredentials.has(sourceId),
+        hasSource: (sourceId) => sourceIds.has(sourceId),
         findLegacyChannel: (entry) => legacyIndex.get(legacyIndexKey(entry)) ?? null,
         limit: HOME_MAX_OTHER
       }),
-    [watchProgress, sourcesWithCredentials, legacyIndex]
+    [watchProgress, sourcesWithCredentials, sourceIds, legacyIndex]
   )
 
   if (sources.length === 0) return <HomeWelcome />
@@ -125,12 +152,29 @@ export default function HomePage() {
   // server just showed an empty dashboard.
   const blockingError = bootstrap.error ?? authError
   if (blockingError && hasNoContent) {
-    return <HomeError message={blockingError} onRetry={bootstrap.retry} />
+    return (
+      <HomeError
+        message={blockingError}
+        onRetry={bootstrap.retry}
+        detail={activeSourceRetryAt !== null ? 'Bağlantı otomatik olarak yeniden denenecek.' : undefined}
+      />
+    )
   }
+
+  const loading = new Set(bootstrap.loadingTypes)
 
   return (
     <div className="flex flex-col gap-8 p-4">
       <HomeHero channelCount={visibleCount} syncProgress={syncProgress} />
+
+      {bootstrap.partialError && <HomeNotice message={bootstrap.partialError} onRetry={bootstrap.retry} />}
+      {deferred.notice && (
+        <HomeNotice
+          message={deferred.notice.message}
+          tone={deferred.notice.pending ? 'info' : 'error'}
+          onDismiss={deferred.dismissNotice}
+        />
+      )}
 
       <ContinueWatchingSection
         entries={continueWatching}
@@ -143,13 +187,14 @@ export default function HomePage() {
         icon={Star}
         viewAllTo="/favorites"
         channels={favChannels}
-        onPlay={handlePlay}
+        onPlay={handleFavorite}
       />
       <HomeSection
         title="Canlı TV"
         icon={Tv}
         viewAllTo="/live"
         channels={recentLive}
+        loading={loading.has('live')}
         onPlay={handlePlay}
       />
       <HomeSection
@@ -158,6 +203,7 @@ export default function HomePage() {
         iconClassName="text-signal"
         viewAllTo="/vod"
         channels={recentVod}
+        loading={loading.has('vod')}
         onPlay={handlePlay}
       />
       <HomeSection
@@ -166,6 +212,7 @@ export default function HomePage() {
         iconClassName="text-signal"
         viewAllTo="/series"
         channels={recentSeries}
+        loading={loading.has('series')}
         onPlay={handlePlay}
       />
     </div>
