@@ -3,6 +3,8 @@
 // işlev ağa, git'e veya dosya sistemine doğrudan dokunmaz; akış, dışarıdan verilen
 // `api` nesnesi üzerinden çalışır ki birim testlerle denenebilsin.
 
+import { createHash } from 'crypto'
+
 export const UPDATE_MANIFEST = 'latest.yml'
 
 export const LEGAL_NOTE = [
@@ -397,6 +399,21 @@ export function buildDefaultNotes(version, subjects) {
 // ---------------------------------------------------------------------------
 // Yükleme sırası ve sunucu tarafı doğrulama
 
+/**
+ * Yüklenecek dosyaların `publishRelease` biçimi: boyut ve sha256 içerikten
+ * hesaplanır. latest.yml içeriğini taşır ki sunucudaki kopyayla bayt bayt
+ * karşılaştırılabilsin; büyük kurulum dosyası taşımaz.
+ */
+export function describeReleaseFiles(entries) {
+  return entries.map(({ name, path, content }) => ({
+    name,
+    path,
+    size: content.length,
+    sha256: createHash('sha256').update(content).digest('hex'),
+    ...(name === UPDATE_MANIFEST ? { content } : {})
+  }))
+}
+
 /** latest.yml her zaman en sona: istemcilere yeni sürümü o duyurur. */
 export function orderForUpload(fileNames) {
   return [
@@ -406,8 +423,19 @@ export function orderForUpload(fileNames) {
 }
 
 /**
+ * GitHub'ın varlık için hesapladığı sha256 (`digest: "sha256:<hex>"`), küçük
+ * harfle; alan yoksa veya başka bir algoritmaysa null.
+ */
+export function assetSha256(asset) {
+  const match = typeof asset?.digest === 'string' ? asset.digest.match(/^sha256:([0-9a-f]{64})$/i) : null
+  return match ? match[1].toLowerCase() : null
+}
+
+/**
  * Sunucudaki varlık listesi yerel dosyalarla birebir mi? Eksik, yarım, boyutu
- * tutmayan veya beklenmeyen fazladan varlık bir sorun sayılır.
+ * veya sha256'sı tutmayan ya da beklenmeyen fazladan varlık bir sorun sayılır.
+ * GitHub sha256 bildirmezse yalnızca boyut denetlenir (bu çalıştırmada yüklenen
+ * varlık; atlanan bir varlık zaten sha256 eşleşmesiyle atlanır).
  */
 export function verifyRemoteAssets(remoteAssets, expectedFiles) {
   const problems = []
@@ -415,12 +443,15 @@ export function verifyRemoteAssets(remoteAssets, expectedFiles) {
 
   for (const file of expectedFiles) {
     const asset = byName.get(file.name)
+    const remoteSha256 = assetSha256(asset)
     if (!asset) {
       problems.push(`${file.name} is missing from the release`)
     } else if (asset.state !== 'uploaded') {
       problems.push(`${file.name} is in state "${String(asset.state)}", not "uploaded"`)
     } else if (asset.size !== file.size) {
       problems.push(`${file.name} is ${asset.size} bytes on GitHub, ${file.size} bytes locally`)
+    } else if (remoteSha256 && file.sha256 && remoteSha256 !== file.sha256.toLowerCase()) {
+      problems.push(`${file.name} on GitHub differs from the local file (sha256 ${remoteSha256}, expected ${file.sha256})`)
     }
   }
 
@@ -434,8 +465,21 @@ export function verifyRemoteAssets(remoteAssets, expectedFiles) {
   return problems
 }
 
-export function isAssetIntact(asset, size) {
-  return asset?.state === 'uploaded' && asset.size === size
+/**
+ * Var olan varlık yeniden yüklenmeden kalabilir mi? Yalnızca içeriği yerel
+ * dosyayla aynıysa: tamamlanmış, aynı boyutta ve GitHub'ın sha256'sı yerel
+ * dosyanınkine eşit. Aynı boyutta ama başka baytlardan oluşan bir varlık (yeniden
+ * derlenmiş kurulum dosyası) ya da sha256'sı bilinmeyen bir varlık değiştirilir.
+ */
+export function isAssetIntact(asset, file) {
+  const remoteSha256 = assetSha256(asset)
+  return (
+    asset?.state === 'uploaded' &&
+    asset.size === file.size &&
+    typeof file.sha256 === 'string' &&
+    remoteSha256 !== null &&
+    remoteSha256 === file.sha256.toLowerCase()
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -456,8 +500,9 @@ export function isAssetIntact(asset, size) {
  *   uploadFiles(release, files)      → void (dosyalar verilen sırayla)
  *   downloadAsset(asset)             → Buffer
  *
- * `files`: [{ name, path, size, content? }]; latest.yml için `content` verilirse
- * sunucudaki kopya bayt bayt karşılaştırılır.
+ * `files`: [{ name, path, size, sha256, content? }]; `sha256` dosyanın onaltılık
+ * özetidir ve var olan varlığın atlanıp atlanmayacağını o belirler. latest.yml
+ * için `content` verilirse sunucudaki kopya bayt bayt karşılaştırılır.
  */
 export async function publishRelease({
   api,
@@ -498,13 +543,14 @@ export async function publishRelease({
     throw new Error('GitHub did not return a draft release; refusing to continue.')
   }
 
-  // Bozuk ya da yarım kalmış varlıklar silinip yeniden yüklenir; sağlamlar atlanır.
+  // İçeriği yerel dosyadan farklı, bozuk ya da yarım kalmış varlıklar silinip
+  // yeniden yüklenir; yalnızca baytları aynı olanlar atlanır.
   const existing = await api.listAssets(release.id)
   const pending = []
   for (const name of orderForUpload(files.map((file) => file.name))) {
     const file = files.find((candidate) => candidate.name === name)
     const asset = existing.find((candidate) => candidate.name === name)
-    if (isAssetIntact(asset, file.size)) {
+    if (isAssetIntact(asset, file)) {
       log(`Skipped ${name} (already uploaded)`)
       continue
     }

@@ -140,6 +140,29 @@ describe('media jobs', () => {
     expect(runner.runningCount).toBe(0)
   })
 
+  // Regression (M2): the bare Xtream live form has no /live/ prefix; the URL
+  // the job was given tells which segments are the account.
+  it('masks the account of the input URL in error output, whatever form ffmpeg prints it in', async () => {
+    const { children, media } = setup()
+    const LIVE_URL = 'http://h.example:8080/alice/s3cret/12345'
+
+    const probe = media.probe('w1', LIVE_URL)
+    children[0].err(`${LIVE_URL}: Server returned 404 Not Found`)
+    children[0].exit(1)
+    await expect(probe).rejects.toThrow('http://h.example:8080/***/***/12345: Server returned 404 Not Found')
+
+    const extract = media.extract('w1', LIVE_URL, 2)
+    children[1].err(
+      "[hls @ 000001d8a6b0e3c0] Opening 'http://edge.example/hls/alice/s3cret/12345/index.m3u8' for reading\n" +
+        'Error opening input file http://edge.example/hls/alice/s3cret/12345/index.m3u8.\n'
+    )
+    children[1].exit(1)
+    const error = (await extract.catch((caught: Error) => caught)) as Error
+    expect(error.message).not.toContain('alice')
+    expect(error.message).not.toContain('s3cret')
+    expect(error.message).toContain('Error opening input file http://edge.example/hls/***/***/12345/index.m3u8.')
+  })
+
   it('reports a spawn failure', async () => {
     const { children, media } = setup()
     const probe = media.probe('w1', URL_WITH_CREDS)
@@ -255,6 +278,94 @@ describe('media jobs and the TLS policy (F3-01)', () => {
     expect(extractArgs.indexOf('-tls_verify')).toBeLessThan(extractArgs.indexOf('-i'))
     children[1].exit(0)
     await extract
+  })
+
+  // Regression (M3): the TLS check used to be awaited before the job was
+  // registered, so a cancel in that window found nothing and the stale job
+  // later ran and cancelled the newer one.
+  describe('while the TLS check is pending', () => {
+    function deferredTls() {
+      const pending: { url: string; resolve(args: string[]): void; reject(error: Error): void }[] = []
+      const tlsArgs = (url: string) =>
+        new Promise<string[]>((resolve, reject) => {
+          pending.push({ url, resolve, reject })
+        })
+      return { pending, tlsArgs }
+    }
+
+    it('a cancel by id or by window ends the job and nothing is started', async () => {
+      const { pending, tlsArgs } = deferredTls()
+      const { spawn, media } = setupWithTls(tlsArgs)
+
+      const byId = media.probe('w1', HTTPS_URL, { jobId: 'probe-1' })
+      await vi.waitFor(() => expect(pending).toHaveLength(1))
+      expect(media.cancel('w1', 'probe-1')).toBe(true)
+      await expect(byId).rejects.toThrow(MEDIA_JOB_CANCELLED_MESSAGE)
+
+      // Window destroyed or renderer crashed: the owner's jobs are cancelled.
+      const byWindow = media.extract('w1', HTTPS_URL, 2)
+      await vi.waitFor(() => expect(pending).toHaveLength(2))
+      expect(media.cancel('w1')).toBe(true)
+      await expect(byWindow).rejects.toThrow(MEDIA_JOB_CANCELLED_MESSAGE)
+
+      pending[0].resolve([])
+      pending[1].resolve([])
+      await flush()
+      expect(spawn).not.toHaveBeenCalled()
+    })
+
+    it('shutdown cancels it', async () => {
+      const { pending, tlsArgs } = deferredTls()
+      const { spawn, media } = setupWithTls(tlsArgs)
+
+      const probe = media.probe('w1', HTTPS_URL)
+      const other = media.probe('w2', HTTPS_URL)
+      await vi.waitFor(() => expect(pending).toHaveLength(2))
+      media.cancelAll()
+      await expect(probe).rejects.toThrow(MEDIA_JOB_CANCELLED_MESSAGE)
+      await expect(other).rejects.toThrow(MEDIA_JOB_CANCELLED_MESSAGE)
+
+      for (const entry of pending) entry.resolve([])
+      await flush()
+      expect(spawn).not.toHaveBeenCalled()
+    })
+
+    it('an older job whose check finishes late neither runs nor cancels the newer one', async () => {
+      const { pending, tlsArgs } = deferredTls()
+      const { children, spawn, media } = setupWithTls(tlsArgs)
+      const OLD_URL = 'https://p.example/movie/u/p/1.mkv'
+      const NEW_URL = 'https://p.example/movie/u/p/2.mkv'
+
+      const older = media.probe('w1', OLD_URL)
+      await vi.waitFor(() => expect(pending).toHaveLength(1))
+      const newer = media.probe('w1', NEW_URL)
+      await expect(older).rejects.toThrow(MEDIA_JOB_CANCELLED_MESSAGE)
+      await vi.waitFor(() => expect(pending).toHaveLength(2))
+
+      pending[1].resolve([])
+      await vi.waitFor(() => expect(children).toHaveLength(1))
+      pending[0].resolve([])
+      await flush()
+
+      expect(spawn).toHaveBeenCalledTimes(1)
+      expect(spawn.mock.calls[0][1]).toContain(NEW_URL)
+      expect(children[0].kill).not.toHaveBeenCalled()
+      children[0].out('{"streams":[]}')
+      children[0].exit(0)
+      await expect(newer).resolves.toEqual([])
+    })
+
+    it('a refusal that arrives after a cancel changes nothing', async () => {
+      const { pending, tlsArgs } = deferredTls()
+      const { spawn, media } = setupWithTls(tlsArgs)
+
+      const probe = media.probe('w1', HTTPS_URL)
+      await vi.waitFor(() => expect(pending).toHaveLength(1))
+      media.cancel('w1')
+      pending[0].reject(new Error('Sunucunun güvenlik sertifikası değişti'))
+      await expect(probe).rejects.toThrow(MEDIA_JOB_CANCELLED_MESSAGE)
+      expect(spawn).not.toHaveBeenCalled()
+    })
   })
 
   it('starts nothing when the policy refuses the URL', async () => {
