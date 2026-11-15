@@ -30,6 +30,12 @@ export { getAllowedLiveFormats, pickLiveFormat } from './xtream-normalize'
 /** Time allowed until the response headers arrive. */
 const XTREAM_HEADERS_TIMEOUT_MS = 20_000
 /**
+ * Header window for whole-catalog calls (no category_id): panels build the
+ * complete JSON before sending the first byte, which takes longer than any
+ * single-category answer.
+ */
+const XTREAM_FULL_LIST_HEADERS_TIMEOUT_MS = 45_000
+/**
  * Time the body may go without receiving a single byte. There is no fixed
  * total: a full catalog on a slow link keeps going as long as data flows.
  */
@@ -106,6 +112,11 @@ export interface XtreamRequestOptions {
    * never retried. Defaults to 2.
    */
   maxRetries?: number
+  /**
+   * Time allowed until the response headers arrive. Defaults to 20 s, and to
+   * 45 s for whole-catalog list calls.
+   */
+  headersTimeoutMs?: number
 }
 
 async function runWithConcurrency<T>(
@@ -291,13 +302,17 @@ interface RawJsonResponse {
 }
 
 /** One network attempt: headers, body and JSON parse. */
-async function requestOnce(url: string, signal: AbortSignal | undefined): Promise<RawJsonResponse> {
+async function requestOnce(
+  url: string,
+  signal: AbortSignal | undefined,
+  headersTimeoutMs: number
+): Promise<RawJsonResponse> {
   const controller = new AbortController()
   const state: { timeoutPhase: 'headers' | 'body' | null } = { timeoutPhase: null }
   const headersTimer = setTimeout(() => {
     state.timeoutPhase = 'headers'
     controller.abort()
-  }, XTREAM_HEADERS_TIMEOUT_MS)
+  }, headersTimeoutMs)
   const abortFromSignal = () => controller.abort()
 
   if (signal) {
@@ -339,7 +354,7 @@ async function requestOnce(url: string, signal: AbortSignal | undefined): Promis
     if (state.timeoutPhase === 'headers') {
       throw new XtreamRequestError(
         'timeout',
-        `İstek zaman aşımına uğradı: sunucu ${XTREAM_HEADERS_TIMEOUT_MS / 1000} saniye içinde yanıt vermedi`,
+        `İstek zaman aşımına uğradı: sunucu ${headersTimeoutMs / 1000} saniye içinde yanıt vermedi`,
         { cause: error }
       )
     }
@@ -372,11 +387,12 @@ export function xtreamRetryDelayMs(retry: number): number {
 async function requestWithRetry(
   url: string,
   signal: AbortSignal | undefined,
-  maxRetries: number
+  maxRetries: number,
+  headersTimeoutMs: number
 ): Promise<RawJsonResponse> {
   const attempt = async (retry: number): Promise<RawJsonResponse> => {
     try {
-      return await requestOnce(url, signal)
+      return await requestOnce(url, signal, headersTimeoutMs)
     } catch (error) {
       if (!(error instanceof XtreamRequestError) || !error.retryable || retry >= maxRetries) throw error
       await sleep(xtreamRetryDelayMs(retry + 1), signal)
@@ -395,6 +411,7 @@ async function fetchJSON<T>(
   const cacheTtlMs = options?.cacheTtlMs ?? XTREAM_DEFAULT_CACHE_TTL_MS
   const signal = options?.signal
   const maxRetries = Math.max(0, options?.maxRetries ?? XTREAM_DEFAULT_MAX_RETRIES)
+  const headersTimeoutMs = options?.headersTimeoutMs ?? XTREAM_HEADERS_TIMEOUT_MS
 
   if (!bypassCache && cacheTtlMs > 0) {
     const cached = requestCache.get(url)
@@ -413,7 +430,7 @@ async function fetchJSON<T>(
   }
 
   const request = (async () => {
-    const { data: raw, size } = await requestWithRetry(url, signal, maxRetries)
+    const { data: raw, size } = await requestWithRetry(url, signal, maxRetries, headersTimeoutMs)
     const data = normalize(raw)
     // Full catalogs run to tens of megabytes and are turned into channels
     // right away; a second copy in this cache would only cost memory.
@@ -440,6 +457,12 @@ async function fetchJSON<T>(
   } finally {
     if (shareable) inflightRequests.delete(url)
   }
+}
+
+/** Whole-catalog calls get the longer header window unless the caller sets one. */
+function listOptions(categoryId: string | undefined, options?: XtreamRequestOptions): XtreamRequestOptions | undefined {
+  if (categoryId || options?.headersTimeoutMs !== undefined) return options
+  return { ...options, headersTimeoutMs: XTREAM_FULL_LIST_HEADERS_TIMEOUT_MS }
 }
 
 /** Options for converting Xtream live streams into channels. */
@@ -486,7 +509,7 @@ export const xtreamApi = {
     options?: XtreamRequestOptions
   ): Promise<XtreamLiveStream[]> {
     const params = categoryId ? { category_id: categoryId } : undefined
-    return fetchJSON(buildUrl(creds, 'get_live_streams', params), normalizeXtreamLiveStreams, options)
+    return fetchJSON(buildUrl(creds, 'get_live_streams', params), normalizeXtreamLiveStreams, listOptions(categoryId, options))
   },
 
   async getLivePreviewStreams(
@@ -521,7 +544,7 @@ export const xtreamApi = {
     options?: XtreamRequestOptions
   ): Promise<XtreamVODStream[]> {
     const params = categoryId ? { category_id: categoryId } : undefined
-    return fetchJSON(buildUrl(creds, 'get_vod_streams', params), normalizeXtreamVodStreams, options)
+    return fetchJSON(buildUrl(creds, 'get_vod_streams', params), normalizeXtreamVodStreams, listOptions(categoryId, options))
   },
 
   async getVodPreviewStreams(
@@ -567,7 +590,7 @@ export const xtreamApi = {
     options?: XtreamRequestOptions
   ): Promise<XtreamSeriesStream[]> {
     const params = categoryId ? { category_id: categoryId } : undefined
-    return fetchJSON(buildUrl(creds, 'get_series', params), normalizeXtreamSeries, options)
+    return fetchJSON(buildUrl(creds, 'get_series', params), normalizeXtreamSeries, listOptions(categoryId, options))
   },
 
   async getSeriesPreviewStreams(

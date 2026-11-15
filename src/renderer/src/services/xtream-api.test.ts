@@ -261,12 +261,37 @@ describe('xtream-api request layer', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const errorPromise = captureError(xtreamApi.getLiveStreams(creds, undefined, { maxRetries: 0 }))
+    const errorPromise = captureError(xtreamApi.getLiveStreams(creds, '5', { maxRetries: 0 }))
     await vi.advanceTimersByTimeAsync(20_000)
     const error = await errorPromise
 
     expect(error.kind).toBe('timeout')
-    expect(error.message).toContain('zaman aşımına uğradı')
+    expect(error.message).toBe('İstek zaman aşımına uğradı: sunucu 20 saniye içinde yanıt vermedi')
+  })
+
+  it('gives whole-catalog calls a longer header window', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const creds = uniqueCreds()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init?: RequestInit) => {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+        })
+      })
+    )
+
+    let settled = false
+    const errorPromise = captureError(xtreamApi.getVodStreams(creds, undefined, { maxRetries: 0 })).finally(() => {
+      settled = true
+    })
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(25_000)
+
+    const error = await errorPromise
+    expect(error.kind).toBe('timeout')
+    expect(error.message).toContain('45 saniye')
   })
 
   it('lets a slow body finish as long as data keeps flowing', async () => {
