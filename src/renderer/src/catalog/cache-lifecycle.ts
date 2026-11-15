@@ -210,9 +210,11 @@ export function watchCatalogCache(): void {
       if (state.sources.length === 0 && previous.sources.length > 0) {
         void worker().run({ kind: 'cache-retain', sourceIds: [] }).catch(() => undefined)
       }
-      // A secret that arrived late: the source's cache can be told apart now.
+      // A secret that arrived late (the store was read again, or the user
+      // entered it): the source's cache can be told apart now. Not on the
+      // first hydration: `start` reads those caches itself.
       const before = new Map(previous.sources.map((source) => [source.id, source]))
-      for (const source of state.sources) {
+      for (const source of previous.credentialsHydrated ? state.sources : []) {
         const earlier = before.get(source.id)
         if (!earlier || sourceIdentity(earlier) || !sourceIdentity(source)) continue
         if (source.type === 'xtream' && source.id !== state.activeSourceId) continue

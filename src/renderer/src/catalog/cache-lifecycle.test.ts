@@ -14,7 +14,7 @@ import { useStore } from '@/store'
 import type { PlaylistSource } from '@/types/playlist'
 import { catalog } from './catalog-store'
 import { m3uEntryToRecord } from './convert'
-import { reloadAfterCertificateTrust, reloadSourceCatalog } from './cache-lifecycle'
+import { reloadAfterCertificateTrust, reloadSourceCatalog, resetCatalogCacheForTests, watchCatalogCache } from './cache-lifecycle'
 
 const xtream: PlaylistSource = { id: 'xt', name: 'Panel', type: 'xtream', url: 'https://panel.test', username: 'u', password: 'p', addedAt: 1 }
 const m3u: PlaylistSource = { id: 'mu', name: 'Liste', type: 'm3u_url', url: 'https://panel.test/get.php', addedAt: 1 }
@@ -57,6 +57,28 @@ describe('reloadAfterCertificateTrust (C2c follow-up)', () => {
     ingest.ingestM3uUrl.mockResolvedValue(outcome('committed'))
     await reloadAfterCertificateTrust('mu')
     expect(ingest.ingestM3uUrl).toHaveBeenCalledWith('mu', m3u.url)
+  })
+})
+
+describe('cache read of a secret that arrives late (K3)', () => {
+  it('reads each cache once at start, and again for a source whose secret is entered later', async () => {
+    ingest.ingestFromCache.mockClear()
+    const { url: _url, ...withoutUrl } = m3u
+    const second: PlaylistSource = { id: 'm2', name: 'İkinci', type: 'm3u_url', addedAt: 1 }
+    useStore.setState({ sources: [withoutUrl, second], credentialsHydrated: false, activeSourceId: null })
+    watchCatalogCache()
+
+    // The first hydration puts the stored URL on the first source.
+    useStore.getState().hydrateSourceSecrets({ xtream: {}, m3uUrls: { mu: m3u.url! } })
+    await vi.waitFor(() => expect(ingest.ingestFromCache).toHaveBeenCalledTimes(2))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(ingest.ingestFromCache).toHaveBeenCalledTimes(2)
+
+    // The user enters the second one's URL again.
+    useStore.getState().updateSource('m2', { url: 'https://cdn.test/list.m3u' })
+    await vi.waitFor(() => expect(ingest.ingestFromCache).toHaveBeenCalledTimes(3))
+    expect(ingest.ingestFromCache).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'm2', url: 'https://cdn.test/list.m3u' }), expect.anything(), expect.anything())
+    resetCatalogCacheForTests()
   })
 })
 
