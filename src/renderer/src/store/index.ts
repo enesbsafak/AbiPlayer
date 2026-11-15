@@ -21,6 +21,7 @@ import { createNavigationSlice, type NavigationSlice } from './navigation-slice'
 import { createWatchProgressSlice, type WatchProgressSlice } from './watch-progress-slice'
 import { createPersistController, type PersistBackend, type SideStorage } from './persistence'
 import { PERSIST_VERSION, runPersistMigrations } from './persist-migrations'
+import { redactStoredCopy } from './stored-copy-redaction'
 import { sanitizeProgressEntries, type WatchProgressEntry } from '@/services/watch-progress'
 import type { PlaylistSource } from '@/types/playlist'
 import { perfMark, perfWatchStore } from '@/services/perf'
@@ -38,9 +39,13 @@ export type AppStore =
 export const STORE_NAME = 'iptv-player-store'
 export { PERSIST_VERSION }
 
-/** What is written to storage. Everything else in the store is session state. */
+/**
+ * What is written to storage. Everything else in the store is session state.
+ * The TMDB key lives in the secure store; it is only written here while a
+ * plain copy from an older version waits to be moved there.
+ */
 export interface PersistedStoreState {
-  settings: AppStore['settings']
+  settings: Omit<AppStore['settings'], 'tmdbApiKey'> & { tmdbApiKey?: string }
   sources: PlaylistSource[]
   activeSourceId: string | null
   volume: number
@@ -124,7 +129,33 @@ function createBackupFallbackStorage(): PersistBackend {
   }
 }
 
-const localSideStorage: SideStorage = { getItem: safeLocalGet, setItem: safeLocalSet }
+function safeLocalKeys(): string[] {
+  try {
+    const keys: string[] = []
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index)
+      if (key !== null) keys.push(key)
+    }
+    return keys
+  } catch (err) {
+    console.warn('[store] localStorage keys could not be listed:', err)
+    return []
+  }
+}
+
+const localSideStorage: SideStorage = {
+  getItem: safeLocalGet,
+  setItem: safeLocalSet,
+  removeItem: safeLocalRemove,
+  keys: safeLocalKeys
+}
+
+/** Persisted settings: the TMDB key only while its plain copy has not reached the secure store. */
+function persistableSettings(settings: AppStore['settings'], keepTmdbKey: boolean): PersistedStoreState['settings'] {
+  if (keepTmdbKey) return settings
+  const { tmdbApiKey: _tmdbApiKey, ...safe } = settings
+  return safe
+}
 
 /**
  * Builds the persisted subset. Returns the same object as long as none of the
@@ -146,14 +177,15 @@ export function createPartialize(): (state: AppStore) => PersistedStoreState {
       state.favoriteSnapshots,
       state.hiddenCategoryIds,
       state.watchProgress,
-      state.legacySecretSourceIds
+      state.legacySecretSourceIds,
+      state.tmdbKeyPlainPending
     ]
     if (last && lastParts && parts.every((part, index) => part === lastParts![index])) return last
 
     lastParts = parts
     const keepPlainSecret = new Set(state.legacySecretSourceIds)
     last = {
-      settings: state.settings,
+      settings: persistableSettings(state.settings, state.tmdbKeyPlainPending),
       sources: state.sources.map((source) => persistableSource(source, keepPlainSecret.has(source.id))),
       activeSourceId: state.activeSourceId,
       volume: state.volume,
@@ -182,8 +214,17 @@ export function mergePersistedState(persisted: unknown, current: AppStore): AppS
     : {}) as Record<string, unknown>
 
   const persistedSources = sanitizePersistedSources(p.sources, current.sources)
-  const settings =
+  const loadedSettings =
     p.settings && typeof p.settings === 'object' ? normalizeSettings(p.settings) : current.settings
+  // A TMDB key in the persisted settings was written by a version that kept
+  // it in plain text: it stays there until useAutoConnect has moved it to the
+  // secure store. Without one, a key already read from the secure store (the
+  // update backup restores late) is kept.
+  const tmdbKeyPlainPending = loadedSettings.tmdbApiKey !== ''
+  const settings =
+    tmdbKeyPlainPending || loadedSettings.tmdbApiKey === current.settings.tmdbApiKey
+      ? loadedSettings
+      : { ...loadedSettings, tmdbApiKey: current.settings.tmdbApiKey }
 
   const rawFavoriteIds = Array.isArray(p.favoriteIds) ? p.favoriteIds : []
   const favoriteIds = new Set<string>()
@@ -238,15 +279,21 @@ export function mergePersistedState(persisted: unknown, current: AppStore): AppS
     hiddenCategoryIds,
     watchProgress: sanitizeProgressEntries(p.watchProgress),
     credentialsHydrated,
-    legacySecretSourceIds
+    legacySecretSourceIds,
+    tmdbKeyPlainPending
   }
 }
 
 export const storePersistence = createPersistController<PersistedStoreState>({
   name: STORE_NAME,
   backend: createBackupFallbackStorage(),
-  sideStorage: localSideStorage
+  sideStorage: localSideStorage,
+  redactCopy: redactStoredCopy
 })
+
+/** A side copy kept when a migration step failed; deleted once a later start loads cleanly. */
+const BEFORE_MIGRATION_COPY = /^v\d+-before-migration$/
+let migrationFailedThisLoad = false
 
 /**
  * Writes any pending store change to localStorage now. Call it before anything
@@ -264,6 +311,7 @@ export function flushPersistedStore(): void {
 export function migratePersistedState(persisted: unknown, version: number): PersistedStoreState {
   const outcome = runPersistMigrations(persisted, version)
   if (outcome.failure) {
+    migrationFailedThisLoad = true
     console.warn(
       `[store] migration "${outcome.failure.name}" (v${outcome.failure.version}) failed; keeping v${outcome.version} data:`,
       outcome.failure.error
@@ -304,11 +352,18 @@ export const useStore = create<AppStore>()(
       merge: mergePersistedState,
       onRehydrateStorage: () => {
         storePersistence.beginHydration()
+        migrationFailedThisLoad = false
         return (state, error) => {
           if (error) {
             console.warn('[store] loading the persisted state failed; keeping a copy of it:', error)
             storePersistence.preserveStoredCopy('unloaded')
+          } else if (state && !migrationFailedThisLoad) {
+            // The data is in its current shape: a copy kept from a failed
+            // migration has served its purpose (and may hold old secrets).
+            storePersistence.discardStoredCopies((suffix) => BEFORE_MIGRATION_COPY.test(suffix))
           }
+          // Copies left by older builds were written unredacted.
+          storePersistence.redactStoredCopies()
           // What storage holds now matches the loaded state; only a change
           // from here on needs a write.
           storePersistence.markHydrated(state ? partializeStore(state) : undefined)

@@ -80,6 +80,14 @@ function stagingHandlers(store: CatalogStore, tokens: Map<CatalogType, Generatio
   }
 }
 
+/**
+ * The job delivered lists that the catalog refused because the source was
+ * removed or refreshed meanwhile (`stale`): nothing of it is on screen.
+ */
+export function ingestDropped(outcome: IngestOutcome): boolean {
+  return Object.values(outcome.results).includes('stale')
+}
+
 function emptyOutcome(): IngestOutcome {
   return { results: {}, counts: {}, meta: null, epgUrls: [], job: { kind: 'ok' } }
 }

@@ -121,11 +121,28 @@ export function createBackgroundSync(
    * parallel. Reports progress to the store so the UI can show it; progress of
    * a source removed or refreshed meanwhile is not written back.
    */
+  // The newest staged run per source: only it reports progress, so a run
+  // that was overtaken (another start, a refresh) cannot overwrite or clear
+  // the progress of the run that replaced it.
+  const latestStagedRun = new Map<string, number>()
+  let stagedRunCounter = 0
+
   const ensureStagedSync: BackgroundSync['ensureStagedSync'] = async (sourceId, priorityType, creds, options) => {
     const revision = catalog.getSourceRevision(sourceId)
+    stagedRunCounter += 1
+    const runId = stagedRunCounter
+    latestStagedRun.set(sourceId, runId)
     const isCurrent = () => catalog.getSourceRevision(sourceId) === revision
-    const { setSyncProgress } = useStore.getState()
+    const ownsProgress = () => latestStagedRun.get(sourceId) === runId
+    const report = (progress: Parameters<ReturnType<typeof useStore.getState>['setSyncProgress']>[1]) => {
+      if (ownsProgress()) useStore.getState().setSyncProgress(sourceId, progress)
+    }
     const order: ContentType[] = [priorityType, ...(['live', 'vod', 'series'] as const).filter((t) => t !== priorityType)]
+    // A type whose sync failed is not done, even when an older list is still shown.
+    const isComplete = (type: ContentType) => {
+      const status = catalog.getStatus(sourceId, type)
+      return !!status?.complete && !status.error
+    }
     let completed = 0
     const pendingTypes: ContentType[] = []
 
@@ -139,35 +156,35 @@ export function createBackgroundSync(
 
     const [firstType, ...remainingTypes] = pendingTypes
 
-    if (firstType) {
-      setSyncProgress(sourceId, { currentType: firstType, completedTypes: completed, active: true })
+    try {
+      if (firstType) {
+        report({ currentType: firstType, completedTypes: completed, active: true })
 
-      await ensureFullSync(sourceId, firstType, creds, options)
-      completed++
+        await ensureFullSync(sourceId, firstType, creds, options)
+        if (isComplete(firstType)) completed++
 
-      // Removed or refreshed meanwhile: the rest would sync a source that is
-      // gone, or one whose new revision starts its own syncs.
-      if (!isCurrent()) {
-        setSyncProgress(sourceId, null)
-        return
-      }
-      setSyncProgress(sourceId, {
-        currentType: null,
-        completedTypes: completed,
-        active: completed < 3 && remainingTypes.length > 0
-      })
-    }
-
-    await Promise.all(
-      remainingTypes.map(async (type) => {
-        await ensureFullSync(sourceId, type, creds, options)
-        completed++
+        // Removed or refreshed meanwhile: the rest would sync a source that is
+        // gone, or one whose new revision starts its own syncs.
         if (!isCurrent()) return
-        setSyncProgress(sourceId, { currentType: null, completedTypes: completed, active: completed < 3 })
-      })
-    )
+        report({ currentType: null, completedTypes: completed, active: remainingTypes.length > 0 })
+      }
 
-    setSyncProgress(sourceId, null)
+      let finished = 0
+      await Promise.all(
+        remainingTypes.map(async (type) => {
+          await ensureFullSync(sourceId, type, creds, options)
+          finished++
+          if (isComplete(type)) completed++
+          if (!isCurrent()) return
+          report({ currentType: null, completedTypes: completed, active: finished < remainingTypes.length })
+        })
+      )
+    } finally {
+      if (ownsProgress()) {
+        latestStagedRun.delete(sourceId)
+        useStore.getState().setSyncProgress(sourceId, null)
+      }
+    }
   }
 
   return { ensureFullSync, ensureStagedSync }

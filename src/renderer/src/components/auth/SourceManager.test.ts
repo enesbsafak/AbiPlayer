@@ -2,14 +2,6 @@ import { createElement } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Category, Channel, PlaylistSource } from '@/types/playlist'
-
-const m3u = vi.hoisted(() => ({
-  fetchAndParseM3U: vi.fn(),
-  parseM3U: vi.fn()
-}))
-
-vi.mock('@/services/m3u-parser', () => m3u)
-
 import { useStore } from '@/store'
 import { catalog } from '@/catalog/catalog-store'
 import { m3uPlaylistToReplacement } from '@/catalog/convert'
@@ -25,6 +17,18 @@ function channel(id: string, sourceId: string): Channel {
 
 function category(id: string, sourceId: string): Category {
   return { id, name: id, sourceId, type: 'live' }
+}
+
+/** A playlist as the provider sends it, one channel per name. */
+function playlist(...names: string[]): string {
+  return ['#EXTM3U', ...names.flatMap((name) => [`#EXTINF:-1 group-title="Grup",${name}`, `http://example.test/${name}.ts`])].join('\n')
+}
+
+/** Playlists are downloaded in the catalog worker (in the page under jsdom) with fetch. */
+const fetchMock = vi.fn<(input: unknown) => Promise<Response>>()
+
+function liveNames(sourceId: string): string[] {
+  return catalog.getItems(sourceId, 'live').map((item) => item.name)
 }
 
 function deferred<T>() {
@@ -56,6 +60,8 @@ function liveCategoryIds(sourceId: string): string[] {
 }
 
 beforeEach(() => {
+  fetchMock.mockReset()
+  vi.stubGlobal('fetch', fetchMock)
   catalog.reset()
   useStore.setState({
     sources: [source('a', 'Liste A'), source('b', 'Liste B')],
@@ -69,13 +75,14 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
   catalog.reset()
   useStore.setState({ sources: [], activeSourceId: null, hiddenCategoryIds: new Set() })
 })
 
 describe('SourceManager refresh', () => {
   it('keeps the old catalog when fetching the new one fails', async () => {
-    m3u.fetchAndParseM3U.mockRejectedValue(new TypeError('Failed to fetch'))
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
     render(createElement(SourceManager))
 
     fireEvent.click(screen.getByRole('button', { name: 'Liste A kaynağını yenile' }))
@@ -89,57 +96,58 @@ describe('SourceManager refresh', () => {
     expect(liveCategoryIds('a')).toEqual(['ca'])
   })
 
-  it('swaps the catalog once the new one has arrived', async () => {
-    m3u.fetchAndParseM3U.mockResolvedValue({
-      channels: [channel('a2', 'a')],
-      categories: [category('ca2', 'a')]
-    })
+  it('swaps the catalog once the new one has arrived, parsed off the main thread (C2c follow-up)', async () => {
+    fetchMock.mockResolvedValue(new Response(playlist('Yeni Kanal')))
     render(createElement(SourceManager))
 
     fireEvent.click(screen.getByRole('button', { name: 'Liste A kaynağını yenile' }))
 
     await waitFor(() => {
-      expect(liveIds('a')).toEqual(['a2'])
+      expect(liveNames('a')).toEqual(['Yeni Kanal'])
     })
+    expect(fetchMock).toHaveBeenCalledWith('http://example.test/a.m3u', expect.anything())
     expect(liveIds('b')).toEqual(['b1'])
-    expect(liveCategoryIds('a')).toEqual(['ca2'])
-    expect(catalog.getStatus('a', 'live')).toMatchObject({ complete: true })
+    expect(catalog.getCategories('a', 'live').map((item) => item.name)).toEqual(['Grup'])
+    expect(catalog.getStatus('a', 'live')).toMatchObject({ complete: true, fromCache: false })
   })
 
   it('keeps the hidden categories of the refreshed source', async () => {
     useStore.setState({ hiddenCategoryIds: new Set(['ca']) })
-    m3u.fetchAndParseM3U.mockResolvedValue({ channels: [channel('a2', 'a')], categories: [category('ca', 'a')] })
+    fetchMock.mockResolvedValue(new Response(playlist('Yeni Kanal')))
     render(createElement(SourceManager))
 
     fireEvent.click(screen.getByRole('button', { name: 'Liste A kaynağını yenile' }))
 
-    await waitFor(() => expect(liveIds('a')).toEqual(['a2']))
+    await waitFor(() => expect(liveNames('a')).toEqual(['Yeni Kanal']))
     expect(useStore.getState().hiddenCategoryIds).toEqual(new Set(['ca']))
   })
 
   it('drops a refresh that finishes after its source was deleted', async () => {
-    const pending = deferred<{ channels: Channel[]; categories: Category[] }>()
-    m3u.fetchAndParseM3U.mockReturnValue(pending.promise)
+    const pending = deferred<Response>()
+    fetchMock.mockReturnValue(pending.promise)
     render(createElement(SourceManager))
 
     fireEvent.click(screen.getByRole('button', { name: 'Liste A kaynağını yenile' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     // Deleted and added back under the same id while the download runs.
     useStore.getState().removeSource('a')
     useStore.getState().removeSourceCatalog('a')
     useStore.getState().addSource(source('a', 'Liste A'))
 
     await act(async () => {
-      pending.resolve({ channels: [channel('ghost', 'a')], categories: [] })
+      pending.resolve(new Response(playlist('Hayalet')))
     })
 
+    // Dropped, and the user is told the refresh did not take.
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringMatching(/Tekrar deneyin/))
     expect(liveIds('a')).toEqual([])
     expect(catalog.getStatus('a', 'live')).toBeNull()
   })
 
   it('keeps the other spinner when one of two refreshes finishes', async () => {
-    const first = deferred<{ channels: Channel[]; categories: Category[] }>()
-    const second = deferred<{ channels: Channel[]; categories: Category[] }>()
-    m3u.fetchAndParseM3U.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+    const first = deferred<Response>()
+    const second = deferred<Response>()
+    fetchMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
     render(createElement(SourceManager))
 
     const refreshA = screen.getByRole('button', { name: 'Liste A kaynağını yenile' })
@@ -149,17 +157,12 @@ describe('SourceManager refresh', () => {
     expect(refreshA).toHaveProperty('disabled', true)
     expect(refreshB).toHaveProperty('disabled', true)
 
-    await act(async () => {
-      first.resolve({ channels: [], categories: [] })
-    })
-
-    expect(refreshA).toHaveProperty('disabled', false)
+    first.resolve(new Response(playlist('A')))
+    await waitFor(() => expect(refreshA).toHaveProperty('disabled', false))
     expect(refreshB).toHaveProperty('disabled', true)
 
-    await act(async () => {
-      second.resolve({ channels: [], categories: [] })
-    })
-    expect(refreshB).toHaveProperty('disabled', false)
+    second.resolve(new Response(playlist('B')))
+    await waitFor(() => expect(refreshB).toHaveProperty('disabled', false))
   })
 })
 

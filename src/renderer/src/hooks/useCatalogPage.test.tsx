@@ -49,7 +49,10 @@ beforeEach(() => {
   sync.ensureFullSync.mockClear()
   sync.ensureStagedSync.mockClear()
   xtream.getVodCategories.mockReset()
+  xtream.getVodStreams.mockReset()
   useStore.setState({
+    credentialsHydrated: true,
+    sourceErrors: {},
     sources: [source('m3u')],
     activeSourceId: 's1',
     selectedCategoryIds: {},
@@ -201,6 +204,64 @@ describe('useCatalogPage', () => {
 
       expect(sync.ensureStagedSync).toHaveBeenCalledWith('s1', 'vod', creds)
       expect(result.current.banner).toEqual({ kind: 'partial', syncing: false })
+    })
+
+    it('drops the load error of a category once another selection is shown (K4)', async () => {
+      commitItems('vod', ['Film A'], 's1_vod_1', 'partial')
+      xtream.getVodStreams.mockRejectedValueOnce(Object.assign(new Error('Sunucu hatası'), { kind: 'http', status: 500 }))
+      const { result } = renderHook(() => useCatalogPage('vod', MESSAGES), { wrapper: router() })
+
+      act(() => result.current.selectCategory('s1_vod_7'))
+      await waitFor(() => expect(result.current.banner?.kind).toBe('load-error'))
+
+      act(() => result.current.selectCategory(null))
+      expect(result.current.banner).toEqual({ kind: 'partial', syncing: false })
+    })
+
+    it('does not show unfiltered cards next to "0 sonuç" while a category loads (K13)', async () => {
+      // Two films of the category are known from the preview; the rest is loading.
+      commitItems('vod', ['Film A', 'Film B'], 's1_vod_1', 'partial')
+      xtream.getVodStreams.mockImplementation(() => new Promise(() => undefined))
+      const { result } = renderHook(() => useCatalogPage('vod', MESSAGES), { wrapper: router() })
+      act(() => result.current.selectCategory('s1_vod_1'))
+      await waitFor(() => expect(result.current.loading).toBe(true))
+      expect(result.current.items).toHaveLength(2)
+
+      act(() => result.current.setSearchQuery('zzz'))
+      await waitFor(() => expect(result.current.appliedQuery).toBe('zzz'))
+      expect(result.current.matchCount).toBe(0)
+      expect(result.current.items).toHaveLength(0)
+    })
+
+    it('shows why a source without its secret shows nothing, and spins nowhere (K11)', () => {
+      useStore.setState({
+        credentialsHydrated: true,
+        getXtreamCredentials: () => null,
+        sourceErrors: { s1: { kind: 'missing-secret', message: 'Kayıtlı kullanıcı adı ve şifre bulunamadı.', retryAt: null } }
+      })
+      const { result } = renderHook(() => useCatalogPage('vod', MESSAGES), { wrapper: router() })
+
+      expect(result.current.banner).toEqual({ kind: 'source-error', message: 'Kayıtlı kullanıcı adı ve şifre bulunamadı.' })
+      expect(result.current.categoriesLoading).toBe(false)
+      expect(xtream.getVodCategories).not.toHaveBeenCalled()
+    })
+
+    it('says that a cached copy is shown when its refresh failed, and refreshes it on retry (C2c follow-up)', () => {
+      const fetchedAt = Date.UTC(2026, 10, 14, 18, 30)
+      catalog.commit({
+        token: catalog.beginGeneration('s1', 'vod'),
+        mode: 'replace',
+        items: [m3uEntryToRecord({ id: 's1_vod_0', name: 'Film A', streamUrl: 'http://cdn.test/a', sourceId: 's1', type: 'vod' })],
+        origin: { fromCache: true, fetchedAt }
+      })
+      catalog.setSyncState(catalog.beginGeneration('s1', 'vod'), {
+        error: { kind: 'network', message: 'Sunucuya ulaşılamadı', retryable: true }
+      })
+      const { result } = renderHook(() => useCatalogPage('vod', MESSAGES), { wrapper: router() })
+
+      expect(result.current.banner).toEqual({ kind: 'offline', since: fetchedAt, retryable: true })
+      act(() => result.current.retry())
+      expect(sync.ensureFullSync).toHaveBeenCalledWith('s1', 'vod', creds)
     })
 
     it('shows a failed category list and fetches it again on retry', async () => {

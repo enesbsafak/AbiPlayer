@@ -9,7 +9,6 @@ export function PlaybackSettings() {
   // form while a stream is running in the mini player.
   const settings = useStore((s) => s.settings)
   const updateSettings = useStore((s) => s.updateSettings)
-  const setVolume = useStore((s) => s.setVolume)
   // Reported by the mpv poll: passthrough is armed AND the device accepted it.
   const passthroughActive = useStore((s) => s.passthroughActive)
 
@@ -24,27 +23,6 @@ export function PlaybackSettings() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
-        <label htmlFor="default-volume" className="mb-1 block text-sm text-surface-400">
-          Varsayılan Ses Seviyesi
-        </label>
-        <input
-          id="default-volume"
-          type="range"
-          min={0}
-          max={1}
-          step={0.05}
-          value={settings.defaultVolume}
-          onChange={(e) => {
-            const v = parseFloat(e.target.value)
-            updateSettings({ defaultVolume: v })
-            setVolume(v)
-          }}
-          className="w-full"
-        />
-        <span className="text-xs text-surface-500">{Math.round(settings.defaultVolume * 100)}%</span>
-      </div>
-
       <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
         <p id="preferred-audio-language-label" className="mb-2 text-sm text-surface-400">
           Tercih Edilen Dublaj Dili

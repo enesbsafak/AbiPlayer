@@ -23,11 +23,6 @@ export function splitSourceSecrets(map: SecureCredentialMap): SourceSecrets {
 }
 
 export const secureCredentialService = {
-  /** Xtream credentials only; `getAllSecrets` also returns the M3U URLs. */
-  async getAll(): Promise<CredentialMap> {
-    return (await secureCredentialService.getAllSecrets()).xtream
-  },
-
   async getAllSecrets(): Promise<SourceSecrets> {
     if (!window.electron?.getSecureCredentials) return { xtream: {}, m3uUrls: {} }
     const raw = await window.electron.getSecureCredentials()
@@ -43,6 +38,18 @@ export const secureCredentialService = {
   async setM3uUrl(sourceId: string, url: string): Promise<void> {
     if (!window.electron?.setSecureCredential) return
     await window.electron.setSecureCredential(sourceId, { kind: 'm3u_url', url })
+  },
+
+  /** The stored TMDB API key, or null when there is none (or no Electron). */
+  async getTmdbApiKey(): Promise<string | null> {
+    if (!window.electron?.getSecureTmdbApiKey) return null
+    return window.electron.getSecureTmdbApiKey()
+  },
+
+  /** Stores the TMDB API key; an empty key removes it. */
+  async setTmdbApiKey(apiKey: string): Promise<void> {
+    if (!window.electron?.setSecureTmdbApiKey) return
+    await window.electron.setSecureTmdbApiKey(apiKey.trim() || null)
   },
 
   async delete(sourceId: string): Promise<void> {

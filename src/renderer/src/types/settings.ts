@@ -1,6 +1,5 @@
 export interface UserSettings {
   epgRefreshInterval: number // minutes
-  defaultVolume: number // 0-1
   preferredAudioLanguage: string // auto | IETF language tag (tr, en, en-us, ...)
   preferredSubtitleLanguage: string // auto | IETF language tag
   defaultSubtitleEnabled: boolean
@@ -8,6 +7,8 @@ export interface UserSettings {
   subtitleFontSize: number
   subtitleColor: string
   subtitleBackground: string
+  // Kept in memory only: it is stored in the secure credential store, never
+  // in localStorage (store/index.ts strips it from the persisted settings).
   tmdbApiKey: string
   epgTimeFormat: '12h' | '24h'
   hardwareAcceleration: boolean
@@ -24,7 +25,6 @@ export interface UserSettings {
 
 export const DEFAULT_SETTINGS: UserSettings = {
   epgRefreshInterval: 60,
-  defaultVolume: 0.8,
   preferredAudioLanguage: 'auto',
   preferredSubtitleLanguage: 'auto',
   defaultSubtitleEnabled: false,

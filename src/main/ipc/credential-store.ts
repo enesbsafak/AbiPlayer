@@ -6,6 +6,7 @@ import {
   isValidCredential,
   isValidSourceId,
   isValidSourceSecret,
+  isValidTmdbApiKey,
   sanitizeCredentialMap
 } from '../../shared/secure-credentials'
 import { nodeAtomicWriteOps, writeFileAtomic, type AtomicWriteOps } from './atomic-file'
@@ -38,7 +39,7 @@ const nodeCredentialFs: CredentialStoreFs = {
   rename: (from, to) => rename(from, to)
 }
 
-export { isValidCredential, isValidSourceId, isValidSourceSecret }
+export { isValidCredential, isValidSourceId, isValidSourceSecret, isValidTmdbApiKey }
 
 /**
  * Property of the stored JSON that holds the catalog cache key. Not a valid
@@ -47,6 +48,8 @@ export { isValidCredential, isValidSourceId, isValidSourceSecret }
  */
 const CACHE_KEY_FIELD = '\u0000catalogCacheKey'
 const CACHE_KEY_BYTES = 32
+/** The TMDB API key, kept the same way (and dropped the same way by older versions). */
+const TMDB_KEY_FIELD = '\u0000tmdbApiKey'
 
 function isCacheKey(value: unknown): value is string {
   return typeof value === 'string' && Buffer.from(value, 'base64').length === CACHE_KEY_BYTES
@@ -55,7 +58,10 @@ function isCacheKey(value: unknown): value is string {
 interface StoreContents {
   secrets: SecureCredentialMap
   cacheKey: string | null
+  tmdbApiKey: string | null
 }
+
+const EMPTY_CONTENTS = (): StoreContents => ({ secrets: {}, cacheKey: null, tmdbApiKey: null })
 
 class UnreadableStoreError extends Error {
   constructor(readonly reason: SecureCredentialsLossNotice['reason']) {
@@ -128,6 +134,20 @@ export class CredentialStore {
     })
   }
 
+  getTmdbApiKey(): Promise<string | null> {
+    return this.withLock(async () => (await this.read()).tmdbApiKey)
+  }
+
+  /** Stores the TMDB API key; null removes it. */
+  setTmdbApiKey(apiKey: string | null): Promise<void> {
+    return this.withLock(async () => {
+      const store = await this.read()
+      if (store.tmdbApiKey === apiKey) return
+      store.tmdbApiKey = apiKey
+      await this.write(store)
+    })
+  }
+
   private ensureAvailable(): void {
     if (!this.options.safeStorage.isEncryptionAvailable()) {
       throw new Error('Güvenli kimlik bilgisi saklama bu sistemde kullanılamıyor')
@@ -144,18 +164,18 @@ export class CredentialStore {
       // Only a missing file means "no credentials". Other I/O errors (a lock
       // held by an antivirus scan, say) are transient and must not cost the
       // user their stored logins.
-      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return { secrets: {}, cacheKey: null }
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return EMPTY_CONTENTS()
       throw error
     }
 
-    if (encryptedBase64.trim().length === 0) return { secrets: {}, cacheKey: null }
+    if (encryptedBase64.trim().length === 0) return EMPTY_CONTENTS()
 
     try {
       return this.decode(encryptedBase64)
     } catch (error) {
       if (!(error instanceof UnreadableStoreError)) throw error
       await this.quarantine(error.reason)
-      return { secrets: {}, cacheKey: null }
+      return EMPTY_CONTENTS()
     }
   }
 
@@ -181,7 +201,12 @@ export class CredentialStore {
     }
 
     const cacheKey = (parsed as Record<string, unknown>)[CACHE_KEY_FIELD]
-    return { secrets: sanitizeCredentialMap(parsed), cacheKey: isCacheKey(cacheKey) ? cacheKey : null }
+    const tmdbApiKey = (parsed as Record<string, unknown>)[TMDB_KEY_FIELD]
+    return {
+      secrets: sanitizeCredentialMap(parsed),
+      cacheKey: isCacheKey(cacheKey) ? cacheKey : null,
+      tmdbApiKey: isValidTmdbApiKey(tmdbApiKey) ? tmdbApiKey : null
+    }
   }
 
   private async quarantine(reason: SecureCredentialsLossNotice['reason']): Promise<void> {
@@ -206,6 +231,7 @@ export class CredentialStore {
     this.ensureAvailable()
     const payload: Record<string, unknown> = { ...store.secrets }
     if (store.cacheKey) payload[CACHE_KEY_FIELD] = store.cacheKey
+    if (store.tmdbApiKey) payload[TMDB_KEY_FIELD] = store.tmdbApiKey
     const encrypted = this.options.safeStorage.encryptString(JSON.stringify(payload)).toString('base64')
     await writeFileAtomic(this.options.filePath, encrypted, this.fs)
   }

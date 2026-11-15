@@ -115,7 +115,7 @@ describe('playlist-slice hidden categories per source', () => {
   it('restores only the requested source when showing all', () => {
     const { store, catalog } = createTestStore()
     commitCategories(catalog, categories)
-    store.getState().setHiddenCategories(['s1_live_2', 's2_live_1'])
+    store.setState({ hiddenCategoryIds: new Set(['s1_live_2', 's2_live_1']) })
 
     store.getState().showAllCategories('s1')
 
@@ -124,7 +124,7 @@ describe('playlist-slice hidden categories per source', () => {
 
   it('restores hidden categories of a source whose catalog is not loaded', () => {
     const { store } = createTestStore()
-    store.getState().setHiddenCategories(['s1_vod_7', 's2_live_1'])
+    store.setState({ hiddenCategoryIds: new Set(['s1_vod_7', 's2_live_1']) })
 
     store.getState().showAllCategories('s1')
 
@@ -134,7 +134,7 @@ describe('playlist-slice hidden categories per source', () => {
   it('restores every source when no source is given', () => {
     const { store, catalog } = createTestStore()
     commitCategories(catalog, categories)
-    store.getState().setHiddenCategories(['s1_live_2', 's2_live_1'])
+    store.setState({ hiddenCategoryIds: new Set(['s1_live_2', 's2_live_1']) })
 
     store.getState().showAllCategories()
 
@@ -144,7 +144,7 @@ describe('playlist-slice hidden categories per source', () => {
   it('forgets hidden entries when their source is removed', () => {
     const { store, catalog } = createTestStore()
     commitCategories(catalog, categories)
-    store.getState().setHiddenCategories(['s1_live_2', 's2_live_1'])
+    store.setState({ hiddenCategoryIds: new Set(['s1_live_2', 's2_live_1']) })
 
     store.getState().removeSourceCatalog('s1')
 
@@ -155,7 +155,7 @@ describe('playlist-slice hidden categories per source', () => {
   it('keeps hidden entries when the source is refreshed (F1-25)', () => {
     const { store, catalog } = createTestStore()
     commitCategories(catalog, categories)
-    store.getState().setHiddenCategories(['s1_live_2'])
+    store.setState({ hiddenCategoryIds: new Set(['s1_live_2']) })
 
     store.getState().replaceSourceCatalog('s1', {
       live: { items: [m3uEntryToRecord(entry('a', 's1', 's1_live_2'))], categories: [categoryToRecord(categories[1])] }
@@ -194,21 +194,6 @@ describe('playlist-slice catalog status mirror', () => {
 
     expect(store.getState().catalogStatus.s1).toBeUndefined()
     expect(store.getState().syncProgress.s1).toBeUndefined()
-  })
-})
-
-describe('playlist-slice legacy adapters', () => {
-  it('merges channels and categories into the catalog without claiming completeness', () => {
-    const { store, catalog } = createTestStore()
-
-    store.getState().addChannels([entry('a', 's1', 's1_live_1'), entry('b', 's1')])
-    store.getState().addCategories([categories[0]])
-    store.getState().addCategories([categories[0], categories[1]])
-
-    expect(catalog.getItems('s1', 'live').map((item) => item.id)).toEqual(['a', 'b'])
-    expect(catalog.getItems('s1', 'live')[0]).toMatchObject({ searchName: 'a', isAdult: false })
-    expect(catalog.getCategories('s1', 'live').map((category) => category.id)).toEqual(['s1_live_1', 's1_live_2'])
-    expect(catalog.getStatus('s1', 'live')).toMatchObject({ loaded: true, complete: false })
   })
 })
 

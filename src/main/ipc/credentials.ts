@@ -1,6 +1,6 @@
 import type { IpcRegistrar } from './register'
 import { copySourceSecret } from '../../shared/secure-credentials'
-import { isValidSourceId, isValidSourceSecret, type CredentialStore } from './credential-store'
+import { isValidSourceId, isValidSourceSecret, isValidTmdbApiKey, type CredentialStore } from './credential-store'
 
 export function registerCredentialHandlers(registrar: IpcRegistrar, store: CredentialStore): void {
   registrar.handle('secure-credentials-get-all', () => store.getAll())
@@ -19,4 +19,11 @@ export function registerCredentialHandlers(registrar: IpcRegistrar, store: Crede
   registrar.handle('secure-credentials-get-loss', () => store.getLossNotice())
 
   registrar.handle('secure-credentials-get-cache-key', () => store.getCacheKey())
+
+  registrar.handle('secure-credentials-get-tmdb-key', () => store.getTmdbApiKey())
+
+  registrar.handle('secure-credentials-set-tmdb-key', async (_event, apiKey) => {
+    if (apiKey !== null && !isValidTmdbApiKey(apiKey)) throw new Error('Geçersiz TMDB anahtarı')
+    await store.setTmdbApiKey(apiKey)
+  })
 }

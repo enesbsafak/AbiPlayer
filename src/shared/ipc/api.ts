@@ -20,6 +20,8 @@ export const INVOKE_METHODS = {
   deleteSecureCredential: 'secure-credentials-delete',
   getSecureCredentialsLoss: 'secure-credentials-get-loss',
   getCatalogCacheKey: 'secure-credentials-get-cache-key',
+  getSecureTmdbApiKey: 'secure-credentials-get-tmdb-key',
+  setSecureTmdbApiKey: 'secure-credentials-set-tmdb-key',
 
   probeEmbeddedSubtitles: 'embedded-subtitles-probe',
   extractEmbeddedSubtitle: 'embedded-subtitles-extract',

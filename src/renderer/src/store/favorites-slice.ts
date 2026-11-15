@@ -152,8 +152,14 @@ export function createFavoritesSliceFor(
           delete snapshots[channelId]
         } else {
           next.add(channelId)
-          const source = item && item.id === channelId ? item : catalog.getItem(channelId)
-          if (source) snapshots[channelId] = favoriteSnapshotOf(source)
+          const record = catalog.getItem(channelId)
+          const shown = item && item.id === channelId ? item : undefined
+          // A card drawn from a snapshot has no URL; its M3U entry keeps the marker.
+          if (shown && isM3uSnapshotChannel(shown) && !record) snapshots[channelId] = { ...favoriteSnapshotOf(shown), m3u: true }
+          else {
+            const source = shown && !isM3uSnapshotChannel(shown) ? shown : (record ?? shown)
+            if (source) snapshots[channelId] = favoriteSnapshotOf(source)
+          }
         }
         return { favoriteIds: next, favoriteSnapshots: snapshots }
       }),

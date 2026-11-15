@@ -288,6 +288,36 @@ describe('useHomeBootstrap', () => {
     expect(ensureStagedSync).not.toHaveBeenCalled()
   })
 
+  it('reports a retry that fails again after a partial failure as partial, and starts the full sync (K5)', async () => {
+    // Live TV loaded before; the retry tries only films and series.
+    catalog.commit({ token: catalog.beginGeneration('s', 'live'), mode: 'partial', items: [item('live1', 'live')] })
+    const failure = new XtreamRequestError('http', 'Sunucu hata döndürdü (HTTP 500)', { status: 500 })
+    vi.mocked(xtreamApi.getVodPreviewStreams).mockRejectedValue(failure)
+    vi.mocked(xtreamApi.getSeriesPreviewStreams).mockRejectedValue(failure)
+
+    const { result } = renderHook(() => useHomeBootstrap())
+
+    await waitFor(() => expect(result.current.isBootstrapping).toBe(false))
+    expect(xtreamApi.getLiveCategories).not.toHaveBeenCalled()
+    expect(result.current.error).toBeNull()
+    expect(result.current.partialError).toMatch(/^Filmler, Diziler yüklenemedi\./)
+    expect(ensureStagedSync).toHaveBeenCalledWith('s', 'live', CREDS)
+  })
+
+  it('does not throw away an M3U playlist that is downloading when the user retries (K1)', () => {
+    const m3u: PlaylistSource = { id: 'm', name: 'Liste', type: 'm3u_url', url: 'http://cdn.test/list.m3u', addedAt: 1 }
+    useStore.setState({ sources: [m3u], activeSourceId: 'm' })
+    const revision = catalog.getSourceRevision('m')
+    const retryToken = useStore.getState().connectRetryToken
+    const { result } = renderHook(() => useHomeBootstrap())
+
+    act(() => result.current.retry())
+
+    // The download in flight keeps its revision, so its playlist is kept.
+    expect(catalog.getSourceRevision('m')).toBe(revision)
+    expect(useStore.getState().connectRetryToken).toBe(retryToken + 1)
+  })
+
   it('keeps the loading state of the retry when the run it replaced settles later (F1-44)', async () => {
     const { result } = renderHook(() => useHomeBootstrap())
     const firstPreview = livePreview

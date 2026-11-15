@@ -11,6 +11,10 @@ export interface PersistBackend {
 export interface SideStorage {
   getItem(name: string): string | null
   setItem(name: string, value: string): void
+  /** Needed to discard and re-redact copies; storage without it keeps them. */
+  removeItem?(name: string): void
+  /** Every key held. */
+  keys?(): string[]
 }
 
 export interface PersistTimers {
@@ -35,6 +39,11 @@ export interface PersistControllerOptions {
   backend: PersistBackend
   /** Where `preserveStoredCopy` writes; must not fall back to anything. */
   sideStorage: SideStorage
+  /**
+   * Applied to a payload before it becomes a side copy: a recovery copy must
+   * not keep secrets in localStorage. Default: kept as is.
+   */
+  redactCopy?: (raw: string) => string
   delayMs?: number
   maxDelayMs?: number
   timers?: PersistTimers
@@ -58,8 +67,12 @@ export interface PersistController<S> {
   setImmediate(on: boolean): void
   /** Version stamped on written payloads instead of zustand's (null: zustand's). */
   setWriteVersion(version: number | null): void
-  /** Copies the payload read at hydration to `<name>:<suffix>`, unless that key exists. */
+  /** Copies the payload read at hydration (redacted) to `<name>:<suffix>`, unless that key exists. */
   preserveStoredCopy(suffix: string): void
+  /** Deletes the side copies whose suffix matches. */
+  discardStoredCopies(match: (suffix: string) => boolean): void
+  /** Rewrites every side copy through `redactCopy` (copies of older builds were kept as is). */
+  redactStoredCopies(): void
   setBackend(backend: PersistBackend, sideStorage?: SideStorage): void
 }
 
@@ -78,6 +91,7 @@ export function createPersistController<S>(options: PersistControllerOptions): P
   const delayMs = options.delayMs ?? PERSIST_WRITE_DELAY_MS
   const maxDelayMs = options.maxDelayMs ?? PERSIST_MAX_WRITE_DELAY_MS
   const timers = options.timers ?? defaultTimers
+  const redactCopy = options.redactCopy ?? ((raw: string) => raw)
   let backend = options.backend
   let sideStorage = options.sideStorage
 
@@ -137,7 +151,14 @@ export function createPersistController<S>(options: PersistControllerOptions): P
     if (lastRawRead === null) return
     const key = `${name}:${suffix}`
     if (sideStorage.getItem(key) !== null) return
-    sideStorage.setItem(key, lastRawRead)
+    sideStorage.setItem(key, redactCopy(lastRawRead))
+  }
+
+  const copyKeys = (): Array<{ key: string; suffix: string }> => {
+    const prefix = `${name}:`
+    return (sideStorage.keys?.() ?? [])
+      .filter((key) => key.startsWith(prefix))
+      .map((key) => ({ key, suffix: key.slice(prefix.length) }))
   }
 
   const storage: PersistStorage<S> = {
@@ -191,6 +212,17 @@ export function createPersistController<S>(options: PersistControllerOptions): P
       writeVersion = version
     },
     preserveStoredCopy,
+    discardStoredCopies(match) {
+      for (const { key, suffix } of copyKeys()) if (match(suffix)) sideStorage.removeItem?.(key)
+    },
+    redactStoredCopies() {
+      for (const { key } of copyKeys()) {
+        const raw = sideStorage.getItem(key)
+        if (raw === null) continue
+        const redacted = redactCopy(raw)
+        if (redacted !== raw) sideStorage.setItem(key, redacted)
+      }
+    },
     setBackend(next, nextSideStorage) {
       backend = next
       if (nextSideStorage) sideStorage = nextSideStorage

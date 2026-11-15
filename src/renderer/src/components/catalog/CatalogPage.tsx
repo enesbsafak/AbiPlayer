@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { AlertTriangle, WifiOff } from 'lucide-react'
 import { CategoryList } from '@/components/channels/CategoryList'
 import { ChannelSearch } from '@/components/channels/ChannelSearch'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 import { isTextEntryTarget } from '@/hooks/useKeyboard'
 import type { CatalogPageModel } from '@/hooks/useCatalogPage'
-import type { CatalogBanner } from '@/hooks/catalog-page-state'
+import { offlineCopyBannerText, type CatalogBanner } from '@/hooks/catalog-page-state'
 import type { Channel } from '@/types/playlist'
 import { VirtualCardGrid, type CardGridLayout, type CardRenderProps } from './VirtualCardGrid'
 
@@ -183,7 +184,50 @@ function Banner({
   onRetry: () => void
   foregroundLoading: boolean
 }) {
+  const navigate = useNavigate()
+  const onOpenSourceSettings = () => void navigate('/settings')
   if (!banner) return null
+
+  if (banner.kind === 'offline') {
+    return (
+      <div
+        className="flex items-start justify-between gap-3 rounded-lg border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+        role="status"
+      >
+        <div className="flex min-w-0 items-start gap-2">
+          <WifiOff size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="font-medium">{offlineCopyBannerText(banner.since)}</p>
+            <p className="mt-0.5 text-xs leading-5 text-amber-100/80">
+              Kaynağa şu an ulaşılamıyor; liste kayıtlı kopyadan gösteriliyor.
+            </p>
+          </div>
+        </div>
+        {banner.retryable && (
+          <Button size="sm" variant="secondary" className="shrink-0" onClick={onRetry}>
+            Tekrar Dene
+          </Button>
+        )}
+      </div>
+    )
+  }
+
+  if (banner.kind === 'source-error') {
+    return (
+      <div
+        role="alert"
+        className="flex items-start justify-between gap-3 rounded-lg border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+      >
+        <div className="flex min-w-0 items-start gap-2">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <p className="min-w-0">{banner.message}</p>
+        </div>
+        <Button size="sm" variant="secondary" className="shrink-0" onClick={onOpenSourceSettings}>
+          Kaynak Ayarları
+        </Button>
+      </div>
+    )
+  }
 
   if (banner.kind === 'partial') {
     return (

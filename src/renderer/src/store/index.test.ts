@@ -34,7 +34,12 @@ function useMemoryBackend(getItem?: (name: string) => string | null | Promise<st
       },
       removeItem: (name) => void disk.delete(name)
     },
-    { getItem: (name) => disk.get(name) ?? null, setItem: (name, value) => void disk.set(name, value) }
+    {
+      getItem: (name) => disk.get(name) ?? null,
+      setItem: (name, value) => void disk.set(name, value),
+      removeItem: (name) => void disk.delete(name),
+      keys: () => [...disk.keys()]
+    }
   )
 }
 
@@ -102,6 +107,14 @@ describe('partialize', () => {
     expect(partialize(state).sources[0]).toMatchObject({ username: 'ahmet', password: 's3cret' })
     const migrated = partialize({ ...state, legacySecretSourceIds: [] } as AppStore)
     expect(migrated.sources[0]).not.toHaveProperty('password')
+  })
+
+  it('keeps the TMDB key out of localStorage unless a plain copy still waits for the secure store (K10)', () => {
+    const partialize = createPartialize()
+    const settings = { ...DEFAULT_SETTINGS, tmdbApiKey: 'tmdb-secret-key' }
+    const state = { ...useStore.getState(), settings, tmdbKeyPlainPending: false } as AppStore
+    expect(JSON.stringify(partialize(state))).not.toContain('tmdb-secret-key')
+    expect(partialize({ ...state, tmdbKeyPlainPending: true } as AppStore).settings.tmdbApiKey).toBe('tmdb-secret-key')
   })
 
   it('persists one snapshot per favourite, in favourite order, without credentials', () => {
@@ -181,6 +194,17 @@ describe('mergePersistedState', () => {
     ).toBe(false)
   })
 
+  it('marks a plain TMDB key of an older version for the secure store, and keeps one already read from it (K10)', () => {
+    const legacy = mergePersistedState({ settings: { tmdbApiKey: 'plain-key' } }, current())
+    expect(legacy.tmdbKeyPlainPending).toBe(true)
+    expect(legacy.settings.tmdbApiKey).toBe('plain-key')
+
+    const hydratedEarly = { ...current(), settings: { ...DEFAULT_SETTINGS, tmdbApiKey: 'stored-key' } } as AppStore
+    const merged = mergePersistedState({ settings: { epgRefreshInterval: 30 } }, hydratedEarly)
+    expect(merged.tmdbKeyPlainPending).toBe(false)
+    expect(merged.settings.tmdbApiKey).toBe('stored-key')
+  })
+
   it('marks secrets an older version stored in plain text for migration', () => {
     const merged = mergePersistedState(
       {
@@ -243,6 +267,21 @@ describe('persisted store', () => {
     expect(writes).toEqual([])
   })
 
+  it('drops a copy kept by a failed migration once a later start loads cleanly, and redacts older copies (K10)', async () => {
+    disk.set(`${STORE_NAME}:v1-before-migration`, JSON.stringify({ state: { sources: [xtreamSource] }, version: 1 }))
+    disk.set(`${STORE_NAME}:unloaded`, JSON.stringify({ state: { sources: [xtreamSource], settings: { tmdbApiKey: 'tmdb-key-1' } }, version: 1 }))
+    disk.set(STORE_NAME, JSON.stringify({ state: { volume: 0.5 }, version: PERSIST_VERSION }))
+
+    await useStore.persist.rehydrate()
+
+    expect(disk.has(`${STORE_NAME}:v1-before-migration`)).toBe(false)
+    const unloaded = disk.get(`${STORE_NAME}:unloaded`) ?? ''
+    expect(unloaded).not.toContain('s3cret')
+    expect(unloaded).not.toContain('ahmet')
+    expect(unloaded).not.toContain('tmdb-key-1')
+    expect(JSON.parse(unloaded).state.sources[0]).toMatchObject({ id: 'xt', name: 'Panel', url: 'http://panel.example' })
+  })
+
   it('keeps a copy of state written by a newer version', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const newer = JSON.stringify({ state: { volume: 0.4, futureKey: [1] }, version: PERSIST_VERSION + 5 })
@@ -263,7 +302,7 @@ describe('persisted store', () => {
 
     const hydration = useStore.persist.rehydrate()
     // useAutoConnect finishes first, against the default (empty) source list.
-    useStore.getState().hydrateXtreamCredentials({})
+    useStore.getState().hydrateSourceSecrets({ xtream: {}, m3uUrls: {} })
     expect(useStore.getState().credentialsHydrated).toBe(true)
 
     restore(JSON.stringify({ state: { sources: [{ id: 'xt', name: 'Panel', type: 'xtream', addedAt: 1 }] }, version: PERSIST_VERSION }))

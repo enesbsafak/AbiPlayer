@@ -198,4 +198,45 @@ describe('background sync', () => {
     expect(catalog.getSourceIds()).not.toContain('s9')
     expect(order).toEqual(['live'])
   })
+
+  it('does not count a failed type as done (K12)', async () => {
+    const catalog = createCatalogStore()
+    const vod = deferred<CatalogItem[]>()
+    const sync = createBackgroundSync(catalog, async (type) => {
+      if (type === 'live') throw new XtreamRequestError('http', 'Sunucu hatası', { status: 500 })
+      return type === 'vod' ? vod.promise : [record('series-1', 'series', 's7')]
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const staged = sync.ensureStagedSync('s7', 'live', creds)
+    await vi.waitFor(() => expect(useStore.getState().syncProgress.s7).toMatchObject({ currentType: null, completedTypes: 1 }))
+    vod.resolve([record('vod-1', 'vod', 's7')])
+    await staged
+    expect(useStore.getState().syncProgress.s7).toBeUndefined()
+    vi.restoreAllMocks()
+  })
+
+  it('leaves the progress of a newer run alone when an overtaken run ends (K12)', async () => {
+    const catalog = createCatalogStore()
+    const first = deferred<CatalogItem[]>()
+    const second = deferred<CatalogItem[]>()
+    let calls = 0
+    const sync = createBackgroundSync(catalog, async (type) => {
+      if (type !== 'live') return [record(`${type}-x`, type, 's8')]
+      calls += 1
+      return calls === 1 ? first.promise : second.promise
+    })
+
+    const old = sync.ensureStagedSync('s8', 'live', creds)
+    // A refresh: the old run's sync is cancelled and a new run starts.
+    catalog.replaceSource('s8', null)
+    const fresh = sync.ensureStagedSync('s8', 'live', creds)
+    first.resolve([record('live-old', 'live', 's8')])
+    await old
+
+    expect(useStore.getState().syncProgress.s8).toMatchObject({ currentType: 'live', active: true })
+    second.resolve([record('live-new', 'live', 's8')])
+    await fresh
+    expect(useStore.getState().syncProgress.s8).toBeUndefined()
+  })
 })

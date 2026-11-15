@@ -5,12 +5,31 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
 import { useStore } from '@/store'
-import { fetchAndParseM3U, parseM3U } from '@/services/m3u-parser'
 import { pickAndReadFile } from '@/services/platform'
 import { secureCredentialService } from '@/services/secure-credentials'
 import { toUserMessage } from '@/services/user-error'
-import { m3uPlaylistToReplacement } from '@/catalog/convert'
+import { ingestM3uText, ingestM3uUrl } from '@/catalog/worker-ingest'
+import { discardSourceCatalog } from '@/catalog/cache-lifecycle'
 import type { PlaylistSource } from '@/types/playlist'
+
+/**
+ * Loads the playlist of a source that is not added yet through the catalog
+ * worker (downloaded or parsed there, cached at once), then adds the source
+ * with `add`. What was loaded is dropped again when adding fails.
+ */
+export async function importPlaylistSource(
+  source: PlaylistSource,
+  load: () => Promise<unknown>,
+  add: () => Promise<void> | void
+): Promise<void> {
+  try {
+    await load()
+    await add()
+  } catch (error) {
+    discardSourceCatalog(source.id)
+    throw error
+  }
+}
 
 interface FormState {
   mode: 'url' | 'file'
@@ -58,7 +77,6 @@ export function PlaylistImport() {
 
   const addSource = useStore((s) => s.addSource)
   const setActiveSource = useStore((s) => s.setActiveSource)
-  const replaceSourceCatalog = useStore((s) => s.replaceSourceCatalog)
 
   const handleUrlImport = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -100,12 +118,16 @@ export function PlaylistImport() {
         addedAt: Date.now()
       }
 
-      const parsed = await fetchAndParseM3U(normalizedUrl, source.id)
-      // The URL usually holds the account password: it goes to the secure
-      // store, and the source is only added once it is stored there.
-      await secureCredentialService.setM3uUrl(source.id, normalizedUrl)
-      addSource(source)
-      replaceSourceCatalog(source.id, m3uPlaylistToReplacement(parsed))
+      await importPlaylistSource(
+        source,
+        () => ingestM3uUrl(source.id, normalizedUrl),
+        async () => {
+          // The URL usually holds the account password: it goes to the secure
+          // store, and the source is only added once it is stored there.
+          await secureCredentialService.setM3uUrl(source.id, normalizedUrl)
+          addSource(source)
+        }
+      )
       setActiveSource(source.id)
       dispatch({ type: 'clearForm' })
       navigate('/')
@@ -143,9 +165,12 @@ export function PlaylistImport() {
         addedAt: Date.now()
       }
 
-      const parsed = parseM3U(result.content, source.id)
-      addSource(source)
-      replaceSourceCatalog(source.id, m3uPlaylistToReplacement(parsed))
+      // Parsed in the worker and cached now, not only at the next start.
+      await importPlaylistSource(
+        source,
+        () => ingestM3uText(source.id, result.content, result.path),
+        () => addSource(source)
+      )
       setActiveSource(source.id)
       dispatch({ type: 'clearForm' })
       navigate('/')

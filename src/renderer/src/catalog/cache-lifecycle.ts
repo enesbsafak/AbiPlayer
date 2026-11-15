@@ -2,13 +2,14 @@ import { useSyncExternalStore } from 'react'
 import { useStore } from '@/store'
 import { getCatalogCacheKey, readPickedFile } from '@/services/platform'
 import { ensureStagedSync } from '@/services/background-sync'
+import { secureCredentialService } from '@/services/secure-credentials'
 import { catalogWorker, type CatalogWorkerClient } from '@/workers/client'
 import type { PlaylistSource } from '@/types/playlist'
 import { catalog, type CatalogStore } from './catalog-store'
 import { forgetSourceMeta } from './source-meta'
 import { setCacheKeyPending } from './cache-key'
 import { CATALOG_TYPES } from './types'
-import { ingestFromCache, ingestM3uText, ingestM3uUrl, sourceIdentity, type IngestOutcome } from './worker-ingest'
+import { ingestDropped, ingestFromCache, ingestM3uText, ingestM3uUrl, sourceIdentity, type IngestOutcome } from './worker-ingest'
 
 /*
  * The disk cache's place in the app's life:
@@ -23,6 +24,11 @@ import { ingestFromCache, ingestM3uText, ingestM3uUrl, sourceIdentity, type Inge
  * - A removed source is dropped from disk (and late writes for it are
  *   refused); with no source left the database is emptied.
  * - Lists older than `catalogMaxAgeMs` are refreshed while the app is open.
+ * - The cache key lives in the encrypted credential file. When that file
+ *   could not be read at start (no key then) or was lost and replaced (a new
+ *   key: what the old one sealed is unreadable and dropped on read), the key
+ *   is fetched again. A source whose secret arrives later (the store was read
+ *   again, or the user entered the secret again) has its cache read then.
  */
 
 /** Complete lists older than this are refreshed while the app runs. */
@@ -101,6 +107,31 @@ function revalidate(sourceId: string): void {
   void ensureStagedSync(sourceId, 'live', creds)
 }
 
+/** Asks main for the M3U cache key and hands it to the worker; sealed jobs wait for it. */
+function handOverCacheKey(client: CatalogWorkerClient): Promise<void> {
+  const keyHandedOver = (async () => {
+    let key: ArrayBuffer | null = null
+    try {
+      key = await getCatalogCacheKey()
+    } catch (error) {
+      console.warn('[catalog-cache] no cache key; M3U lists are not cached:', error instanceof Error ? error.message : error)
+    }
+    client.setKey(key)
+  })()
+  setCacheKeyPending(keyHandedOver)
+  return keyHandedOver
+}
+
+/**
+ * Fetches the cache key again: once the secure store can be read after all,
+ * or after its file was lost (main then makes a new key). Called before the
+ * secrets that need it are applied, so the cache jobs they start wait for it.
+ */
+export function refreshCatalogCacheKey(): Promise<void> {
+  if (!started) return Promise.resolve()
+  return handOverCacheKey(worker())
+}
+
 function start(): void {
   if (started) return
   started = true
@@ -112,16 +143,8 @@ function start(): void {
   const toLoad = sources.filter((source) => source.type !== 'xtream' || source.id === activeSourceId)
   for (const source of toLoad) if (sourceIdentity(source)) setLoadState(source.id, 'loading')
 
-  const keyHandedOver = (async () => {
-    let key: ArrayBuffer | null = null
-    try {
-      key = await getCatalogCacheKey()
-    } catch (error) {
-      console.warn('[catalog-cache] no cache key; M3U lists are not cached:', error instanceof Error ? error.message : error)
-    }
-    client.setKey(key)
-  })()
-  setCacheKeyPending(keyHandedOver)
+  const keyHandedOver = handOverCacheKey(client)
+  secureCredentialService.onLost(() => void refreshCatalogCacheKey())
 
   // Best effort: without it the browser may evict the cache under storage pressure.
   void Promise.resolve(navigator.storage?.persist?.()).catch(() => undefined)
@@ -187,6 +210,17 @@ export function watchCatalogCache(): void {
       if (state.sources.length === 0 && previous.sources.length > 0) {
         void worker().run({ kind: 'cache-retain', sourceIds: [] }).catch(() => undefined)
       }
+      // A secret that arrived late (the store was read again, or the user
+      // entered it): the source's cache can be told apart now. Not on the
+      // first hydration: `start` reads those caches itself.
+      const before = new Map(previous.sources.map((source) => [source.id, source]))
+      for (const source of previous.credentialsHydrated ? state.sources : []) {
+        const earlier = before.get(source.id)
+        if (!earlier || sourceIdentity(earlier) || !sourceIdentity(source)) continue
+        if (source.type === 'xtream' && source.id !== state.activeSourceId) continue
+        loadStates.delete(source.id)
+        void loadSourceCache(source)
+      }
     }
 
     if (state.activeSourceId !== previous.activeSourceId && state.activeSourceId) {
@@ -202,26 +236,64 @@ export function watchCatalogCache(): void {
  * playlist is fetched (or its file read) again. For the certificate-trust
  * flow and the catalog banners. Rejects with a user-facing error.
  */
-export async function reloadSourceCatalog(sourceId: string): Promise<void> {
+export async function reloadSourceCatalog(sourceId: string, options: { onlyStale?: boolean } = {}): Promise<void> {
   const state = useStore.getState()
   const source = state.sources.find((item) => item.id === sourceId)
   if (!source) return
   if (source.type === 'xtream') {
     const creds = state.getXtreamCredentials(sourceId)
     if (!creds) throw new Error('Kayıtlı kimlik bilgileri bulunamadı.')
-    await ensureStagedSync(sourceId, 'live', creds, { refresh: true })
+    // `onlyStale`: lists that are complete and fresh from the provider stay.
+    await ensureStagedSync(sourceId, 'live', creds, { refresh: !options.onlyStale })
     return
   }
+  let outcome: IngestOutcome
   if (source.type === 'm3u_url') {
     if (!source.url) throw new Error('Kayıtlı liste adresi bulunamadı.')
-    await ingestM3uUrl(sourceId, source.url)
+    outcome = await ingestM3uUrl(sourceId, source.url)
   } else {
     if (!source.filePath) throw new Error('Liste dosyasının yolu kayıtlı değil. Dosyayı yeniden seçin.')
     const file = await readPickedFile(source.filePath)
     if (!file) return
-    await ingestM3uText(sourceId, file.content, file.path)
+    outcome = await ingestM3uText(sourceId, file.content, file.path)
+  }
+  // Refreshed again meanwhile: what this load fetched was not kept.
+  if (ingestDropped(outcome) && useStore.getState().sources.some((item) => item.id === sourceId)) {
+    throw new Error('Liste yüklenirken kaynak yeniden yüklendi. Tekrar deneyin.')
   }
   useStore.getState().setSourceError(sourceId, null)
+}
+
+/**
+ * Drops what was loaded for a source that never made it into the source
+ * list (an import that failed after the playlist was in): its lists in
+ * memory and on disk.
+ */
+export function discardSourceCatalog(sourceId: string): void {
+  catalog.removeSource(sourceId)
+  forgetSourceMeta(sourceId)
+  // Writes fetched at this revision or before (the import's) are refused.
+  void worker().run({ kind: 'cache-drop', sourceId, revision: catalog.getSourceRevision(sourceId) }).catch(() => undefined)
+}
+
+/**
+ * After the user trusted a certificate for a source: reloads what the
+ * reconnect alone does not retry. Every Xtream source (its sign-in may have
+ * worked while a list failed) fetches the lists that are not fresh; a
+ * connected M3U source loads its playlist again. An M3U source that is not
+ * connected yet is loaded by the reconnect itself.
+ */
+export function reloadAfterCertificateTrust(sourceId: string): Promise<void> {
+  const source = useStore.getState().sources.find((item) => item.id === sourceId)
+  if (!source) return Promise.resolve()
+  if (source.type !== 'xtream') {
+    const connected = CATALOG_TYPES.some((type) => {
+      const status = catalog.getStatus(sourceId, type)
+      return !!status?.loaded && !status.fromCache
+    })
+    if (!connected) return Promise.resolve()
+  }
+  return reloadSourceCatalog(sourceId, { onlyStale: source.type === 'xtream' })
 }
 
 /** Tests: forget every state of this module. */

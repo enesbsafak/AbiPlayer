@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { useStore } from '@/store'
-import { xtreamApi } from '@/services/xtream-api'
+import { forgetXtreamRequests, xtreamApi } from '@/services/xtream-api'
 import { ensureStagedSync } from '@/services/background-sync'
 import { classifyError, toUserMessage } from '@/services/user-error'
 import { perfMark } from '@/services/perf'
 import { catalog as defaultCatalog, type CatalogStore } from '@/catalog/catalog-store'
 import { useCatalogCacheSettled } from '@/catalog/cache-lifecycle'
+import { certificateAwareError } from '@/catalog/certificate-errors'
 import {
   xtreamCategoriesToRecords,
   xtreamLiveToRecords,
@@ -158,7 +159,7 @@ export async function runHomeBootstrap(options: RunHomeBootstrapOptions): Promis
     } catch (error) {
       if (isCancellation(error, signal)) return { type, status: 'cancelled' }
       // The preview may still work (it falls back to the whole list).
-      categoriesError = error
+      categoriesError = await certificateAwareError(error)
     }
 
     options.onPhase?.(type, 'preview')
@@ -173,7 +174,8 @@ export async function runHomeBootstrap(options: RunHomeBootstrapOptions): Promis
       return categoriesError ? { type, status: 'failed', error: categoriesError } : { type, status: 'empty' }
     } catch (error) {
       if (isCancellation(error, signal)) return { type, status: 'cancelled' }
-      return { type, status: 'failed', error }
+      // A refused certificate fails like a network error; main knows better.
+      return { type, status: 'failed', error: await certificateAwareError(error) }
     } finally {
       options.onPhase?.(type, 'done')
     }
@@ -192,13 +194,21 @@ export interface BootstrapFailure {
 }
 
 export interface BootstrapSummary {
-  /** Every type that was tried failed: nothing to show, offer "Yeniden Dene". */
+  /** Every type that was tried failed and no other type shows content: nothing to show, offer "Yeniden Dene". */
   allFailed: boolean
   failures: BootstrapFailure[]
   cancelled: boolean
 }
 
-export function summarizeBootstrap(outcomes: readonly BootstrapTypeOutcome[]): BootstrapSummary {
+/**
+ * `othersLoaded`: types that were not tried because they already show
+ * content (a retry after a partial failure tries only the rest). Then even
+ * failing every tried type is a partial failure, not "nothing to show".
+ */
+export function summarizeBootstrap(
+  outcomes: readonly BootstrapTypeOutcome[],
+  options: { othersLoaded?: boolean } = {}
+): BootstrapSummary {
   const failures: BootstrapFailure[] = []
   let cancelled = false
   for (const outcome of outcomes) {
@@ -211,7 +221,7 @@ export function summarizeBootstrap(outcomes: readonly BootstrapTypeOutcome[]): B
     })
   }
   return {
-    allFailed: !cancelled && outcomes.length > 0 && failures.length === outcomes.length,
+    allFailed: !cancelled && !options.othersLoaded && outcomes.length > 0 && failures.length === outcomes.length,
     failures,
     cancelled
   }
@@ -362,7 +372,7 @@ export function useHomeBootstrap(): HomeBootstrap {
           signal: run.controller.signal,
           onPhase: (type, phase) => dispatch({ kind: 'phase', runId: run.id, type, phase })
         })
-        summary = summarizeBootstrap(outcomes)
+        summary = summarizeBootstrap(outcomes, { othersLoaded: types.length < CATALOG_TYPES.length })
       } finally {
         if (isCurrent()) {
           run.failed = summary.allFailed
@@ -405,10 +415,17 @@ export function useHomeBootstrap(): HomeBootstrap {
   )
 
   const retry = useCallback(() => {
-    const sourceId = useStore.getState().activeSourceId
-    if (sourceId) {
+    const state = useStore.getState()
+    const sourceId = state.activeSourceId
+    const creds = sourceId ? state.getXtreamCredentials(sourceId) : null
+    // Only an Xtream source is loaded by the bootstrap. Invalidating an M3U
+    // source would throw away the playlist it is downloading, and nothing
+    // here would load it again: its connection attempt carries on instead.
+    if (sourceId && creds) {
       // Keeps what is on screen, cancels running syncs and marks the lists
-      // incomplete; the new revision lets the bootstrap and the full sync run again.
+      // incomplete; the new revision lets the bootstrap and the full sync run
+      // again, and they ask the panel, not the request cache.
+      forgetXtreamRequests(creds)
       replaceSourceCatalog(sourceId, null)
     }
     requestSourceReconnect()

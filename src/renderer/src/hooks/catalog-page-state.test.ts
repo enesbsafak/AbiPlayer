@@ -3,6 +3,7 @@ import type { CatalogStatus } from '@/catalog/types'
 import {
   buildCatalogRouteState,
   catalogBanner,
+  offlineCopyBannerText,
   parseCatalogRouteState,
   providerCategoryId,
   type CatalogBannerInput
@@ -44,6 +45,27 @@ describe('catalogBanner', () => {
   it('says whether a retry can help and whether anything is shown', () => {
     const auth = status({ count: 0, error: { kind: 'auth', message: 'Giriş reddedildi', retryable: false } })
     expect(catalogBanner({ ...base, status: auth })).toMatchObject({ kind: 'sync-error', retryable: false, partial: false })
+  })
+
+  it('says that a cached copy is shown while its refresh fails or the source cannot connect (C2c follow-up)', () => {
+    const fetchedAt = Date.UTC(2026, 10, 14, 18, 30)
+    const cached = status({ complete: true, fromCache: true, fetchedAt })
+    const failedRefresh = { ...cached, error: { kind: 'network' as const, message: 'Ağ', retryable: true } }
+    expect(catalogBanner({ ...base, status: failedRefresh })).toEqual({ kind: 'offline', since: fetchedAt, retryable: true })
+    const refused = { ...cached, error: { kind: 'auth' as const, message: 'Giriş reddedildi', retryable: false } }
+    expect(catalogBanner({ ...base, status: refused })).toMatchObject({ kind: 'offline', retryable: false })
+    // An M3U source whose playlist could not be fetched again.
+    expect(catalogBanner({ ...base, isXtream: false, status: cached, connectionFailed: true })).toMatchObject({ kind: 'offline' })
+    // Still refreshing, nothing failed: no banner.
+    expect(catalogBanner({ ...base, status: cached })).toBeNull()
+    expect(offlineCopyBannerText(fetchedAt)).toMatch(/^Çevrimdışı kopya, .+ tarihinde güncellendi$/)
+  })
+
+  it('shows why a source without its secret shows nothing, instead of a preview that never comes (K11)', () => {
+    expect(catalogBanner({ ...base, status: null, sourceError: 'Kayıtlı kullanıcı adı ve şifre bulunamadı.' })).toEqual({
+      kind: 'source-error',
+      message: 'Kayıtlı kullanıcı adı ve şifre bulunamadı.'
+    })
   })
 
   it('puts a failed foreground load first', () => {
@@ -90,10 +112,8 @@ describe('catalog route state', () => {
     ).toEqual({ detail: { itemId: 'src_series_42', sourceId: 'src', seriesId: 42, season: 2 } })
   })
 
-  it('reads the legacy film id', () => {
-    expect(parseCatalogRouteState({ restoreSelectedVODId: 's1_vod_9' }, 'vod')).toEqual({
-      detail: { itemId: 's1_vod_9', sourceId: '' }
-    })
+  it('no longer reads the legacy film id, which no screen sends (K14)', () => {
+    expect(parseCatalogRouteState({ restoreSelectedVODId: 's1_vod_9' }, 'vod')).toBeNull()
   })
 
   it('ignores what does not belong to the page or is malformed', () => {
