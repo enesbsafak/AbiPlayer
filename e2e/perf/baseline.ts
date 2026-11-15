@@ -18,7 +18,7 @@ import { CATALOG_PRESETS, KNOWN, type CatalogPreset } from '../mock-provider/cat
 import { ensureMedia } from '../mock-provider/media.ts'
 import { startMockProvider, type MockProvider } from '../mock-provider/server.ts'
 import { launchApp, newProfileDir, removeProfileDir, type AbiApp } from '../support/app.ts'
-import { addM3uSource, addXtreamSource, cardButton, expectHomeWithContent, leavePlayer, openRoute, playLiveChannel, timeToMpvProgress } from '../support/flows.ts'
+import { addM3uSource, addXtreamSource, cardButton, closeMiniPlayer, expectHomeWithContent, leavePlayer, openRoute, playLiveChannel, timeToMpvProgress } from '../support/flows.ts'
 import { helpersOf } from '../support/processes.ts'
 import { E2E_CACHE_DIR, E2E_OUTPUT_DIR, MPV_PATH, REPO_ROOT } from '../support/paths.ts'
 import type { MergedPerfMark, MergedPerfTimeline } from '../../src/shared/perf.ts'
@@ -201,8 +201,7 @@ async function clickAndTime(app: AbiApp, scenario: string, link: string, pathInc
 
 async function returnHome(page: Page) {
   await leavePlayer(page)
-  const stop = page.getByRole('button', { name: 'Oynatmayı durdur' })
-  if (await stop.count()) await stop.click()
+  await closeMiniPlayer(page)
 }
 
 async function playbackRuns(link: LinkProfile, runs: number): Promise<PlaybackSample[]> {

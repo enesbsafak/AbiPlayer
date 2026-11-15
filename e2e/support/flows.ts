@@ -111,6 +111,85 @@ export async function leavePlayer(page: Page): Promise<void> {
 }
 
 /**
+ * The card shown after leaving /player. Playback is suspended there (mpv is
+ * stopped), so the card says "Duraklatıldı" and offers "Devam et".
+ */
+export function miniPlayer(page: Page) {
+  return page.getByRole('region', { name: 'Mini oynatıcı' })
+}
+
+/** The mini card's "Devam et" button: its accessible name differs for live and VOD. */
+export function miniPlayerResume(page: Page, kind: 'live' | 'vod') {
+  return miniPlayer(page).getByRole('button', { name: kind === 'live' ? 'Yayına geri dön' : 'Kaldığın yerden devam et', exact: true })
+}
+
+/** Closes the suspended item from the mini card. */
+export async function closeMiniPlayer(page: Page): Promise<void> {
+  await miniPlayer(page).getByRole('button', { name: 'Oynatmayı kapat', exact: true }).click()
+  await expect(miniPlayer(page)).toHaveCount(0)
+}
+
+/** The mini card is honest: it says paused, offers "Devam et", and nothing claims to play. */
+export async function expectSuspendedMiniPlayer(page: Page, kind: 'live' | 'vod'): Promise<void> {
+  const card = miniPlayer(page)
+  await expect(card).toBeVisible()
+  await expect(card).toContainText('Duraklatıldı')
+  await expect(miniPlayerResume(page, kind)).toHaveText('Devam et')
+  // No pause control and no "now playing" wording: there is nothing running to pause.
+  await expect(card.getByRole('button', { name: /duraklat/i })).toHaveCount(0)
+  await expect(card).not.toContainText(/oynatılıyor|canlı yayında/i)
+  // mpv really is stopped, not just hidden: no file loaded, no position moving.
+  await expect.poll(async () => (await mpvState(page)).path, { timeout: 10_000 }).toBeNull()
+  const before = await mpvState(page)
+  await page.waitForTimeout(1000)
+  const after = await mpvState(page)
+  expect(after.path).toBeNull()
+  expect(after.phase ?? 'idle').toBe('idle')
+  expect(after.timePos).toBe(before.timePos)
+}
+
+/**
+ * Listens for keydown in the page and reports whether the app claimed the key
+ * (called preventDefault). The listener sits on window, so it runs after the
+ * app's document-level shortcut handler has seen the event.
+ */
+export async function installKeyProbe(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const scope = window as unknown as { __abiKeyProbe?: Array<{ key: string; prevented: boolean }> }
+    if (scope.__abiKeyProbe) return
+    const log: Array<{ key: string; prevented: boolean }> = []
+    scope.__abiKeyProbe = log
+    window.addEventListener('keydown', (event) => log.push({ key: event.key, prevented: event.defaultPrevented }))
+  })
+}
+
+export async function pressAndProbe(page: Page, key: string): Promise<boolean> {
+  await installKeyProbe(page)
+  await page.evaluate(() => {
+    ;(window as unknown as { __abiKeyProbe: unknown[] }).__abiKeyProbe.length = 0
+  })
+  await page.keyboard.press(key)
+  const log = await page.evaluate(() => (window as unknown as { __abiKeyProbe: Array<{ key: string; prevented: boolean }> }).__abiKeyProbe.slice())
+  const entry = log.find((item) => item.key === (key === 'Space' ? ' ' : key))
+  if (!entry) throw new Error(`keydown for ${key} never reached the page`)
+  return entry.prevented
+}
+
+/**
+ * Opens a settings tab and picks an entry from one of its dropdowns, through
+ * the same menu the viewer uses.
+ */
+export async function pickSetting(page: Page, tab: 'playback' | 'subtitles', dropdownId: string, item: RegExp): Promise<void> {
+  await page.evaluate((tab) => {
+    window.location.hash = `#/settings?tab=${tab}`
+  }, tab)
+  const trigger = page.locator(`#${dropdownId}`)
+  await trigger.click()
+  await page.getByRole('menuitemradio', { name: item }).click()
+  await expect(trigger).toContainText(item)
+}
+
+/**
  * Samples mpv state in the page at a fixed interval and returns the moment
  * (epoch ms) the requested stream first shows progress. Used for timing; see
  * createMpvProgressProbe in src/shared/perf.ts for why a bare timePos is not

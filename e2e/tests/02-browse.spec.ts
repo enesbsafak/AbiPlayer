@@ -3,7 +3,7 @@ import { test, expect } from '../support/fixtures.ts'
 import { KNOWN } from '../mock-provider/catalog.ts'
 import type { MockProvider } from '../mock-provider/server.ts'
 import { addXtreamSource, anyCard, cardButton, expectHomeWithContent, openRoute } from '../support/flows.ts'
-import { knownBug, observe } from '../support/known-bugs.ts'
+import { knownBug } from '../support/known-bugs.ts'
 
 /** A live category other than the first, and the first channel in it. */
 function secondLiveCategory(mock: MockProvider) {
@@ -63,7 +63,8 @@ test.describe('katalog gezintisi', () => {
       await seasonTwo.click()
       await expect(page.getByRole('button', { name: /^E1\. .*S02E01/ })).toBeVisible()
       await page.waitForTimeout(1000)
-      observe(`F1-23: get_series_info requests caused by one season click: ${(mock.stats().counts.get_series_info ?? 0) - seriesInfoBefore}`)
+      // F1-23: the series detail is already loaded; a season click must not fetch it again.
+      expect(mock.stats().counts.get_series_info ?? 0, 'get_series_info requests caused by one season click').toBe(seriesInfoBefore)
     }
 
     // Global search across all types.
@@ -87,7 +88,6 @@ test.describe('katalog gezintisi', () => {
   })
 
   test('F1-21: kanal kartındaki favori yıldızı tıklanınca güncellenir', async ({ launch, mock }) => {
-    knownBug('F1-21', 'Kanal kartında favori yıldızı güncellenmiyor')
     const app = await launch()
     const { page } = app
     await signIn(page, mock)
