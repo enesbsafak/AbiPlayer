@@ -59,14 +59,20 @@ export const INVOKE_METHODS = {
   checkForAppUpdates: 'app-update-check',
   installAppUpdate: 'app-update-install',
   getStoreBackup: 'store-backup-read',
-  deleteStoreBackup: 'store-backup-delete'
+  deleteStoreBackup: 'store-backup-delete',
+
+  tlsListTrusted: 'tls-list-trusted',
+  tlsListUntrusted: 'tls-list-untrusted',
+  tlsTrust: 'tls-trust',
+  tlsRevoke: 'tls-revoke'
 } as const satisfies Record<string, IpcInvokeChannel>
 
 /** `window.electron` subscribe function → event channel. Each returns an unsubscribe function. */
 export const EVENT_METHODS = {
   onAppUpdateStateChange: 'app-update-state',
   onWindowStateChange: 'window-state-changed',
-  onSecureCredentialsLost: 'secure-credentials-lost'
+  onSecureCredentialsLost: 'secure-credentials-lost',
+  onUntrustedCertificate: 'tls-untrusted-certificate'
 } as const satisfies Record<string, IpcEventChannel>
 
 type InvokeMethods = typeof INVOKE_METHODS

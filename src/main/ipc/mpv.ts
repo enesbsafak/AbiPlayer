@@ -68,6 +68,8 @@ export interface MpvHandlerDeps {
   controller: MpvControllerApi
   registry: Pick<PickedFileRegistry, 'wasPickedThisSession'>
   getWindow: (sender: Electron.WebContents) => BrowserWindow | null
+  /** TLS policy (src/main/tls): per-load verification options, or a refusal. */
+  tls?: { mpvLoadOptions(url: string): Promise<Record<string, string>> }
 }
 
 export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDeps): void {
@@ -77,9 +79,11 @@ export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDep
 
   registrar.handle('mpv-open', async (event, streamUrl) => {
     if (!isValidStreamUrl(streamUrl)) throw new Error('Geçersiz yayın URL')
+    // TLS (src/main/tls): options for this load only; rejects if the host is refused.
+    const fileOptions = deps.tls ? await deps.tls.mpvLoadOptions(streamUrl) : {}
     const window = deps.getWindow(event.sender)
     const nativeWindowId = window ? getNativeWindowId(window) : null
-    await controller.open(streamUrl, nativeWindowId ?? undefined)
+    await controller.open(streamUrl, nativeWindowId ?? undefined, { fileOptions })
   })
 
   registrar.handle('mpv-stop', () => controller.stopPlayback())

@@ -206,12 +206,14 @@ function jobKey(owner: string, jobId: string): string {
   return `${owner}\u0000${jobId}`
 }
 
-export function buildProbeArgs(streamUrl: string): string[] {
+/** `tlsArgs`: the TLS policy's arguments for this URL (src/main/tls), placed before the input. */
+export function buildProbeArgs(streamUrl: string, tlsArgs: readonly string[] = []): string[] {
   return [
     '-v',
     'error',
     '-protocol_whitelist',
     MEDIA_PROTOCOL_WHITELIST,
+    ...tlsArgs,
     '-show_streams',
     '-select_streams',
     's',
@@ -221,13 +223,14 @@ export function buildProbeArgs(streamUrl: string): string[] {
   ]
 }
 
-export function buildExtractArgs(streamUrl: string, streamIndex: number): string[] {
+export function buildExtractArgs(streamUrl: string, streamIndex: number, tlsArgs: readonly string[] = []): string[] {
   return [
     '-v',
     'error',
     '-nostdin',
     '-protocol_whitelist',
     MEDIA_PROTOCOL_WHITELIST,
+    ...tlsArgs,
     '-i',
     streamUrl,
     '-map',
@@ -295,16 +298,18 @@ export interface MediaServiceOptions {
   runner: MediaJobRunner
   ffprobePath: string | null
   ffmpegPath: string | null
+  /** TLS arguments for the URL; may reject to refuse the run (certificate policy). */
+  tlsArgs?: (streamUrl: string) => Promise<string[]>
 }
 
-export function createMediaService({ runner, ffprobePath, ffmpegPath }: MediaServiceOptions) {
+export function createMediaService({ runner, ffprobePath, ffmpegPath, tlsArgs }: MediaServiceOptions) {
   return {
     async probe(owner: string, streamUrl: string, options: MediaJobOptions = {}): Promise<EmbeddedSubtitleProbeTrack[]> {
       if (!ffprobePath) return []
       const result = await runner.run(
         {
           executable: ffprobePath,
-          args: buildProbeArgs(streamUrl),
+          args: buildProbeArgs(streamUrl, tlsArgs ? await tlsArgs(streamUrl) : []),
           timeoutMs: resolveMediaTimeout(options.timeoutMs),
           maxStdoutBytes: PROBE_MAX_STDOUT_BYTES,
           onLimit: 'fail'
@@ -326,7 +331,7 @@ export function createMediaService({ runner, ffprobePath, ffmpegPath }: MediaSer
       const result = await runner.run(
         {
           executable: ffmpegPath,
-          args: buildExtractArgs(streamUrl, streamIndex),
+          args: buildExtractArgs(streamUrl, streamIndex, tlsArgs ? await tlsArgs(streamUrl) : []),
           timeoutMs: resolveMediaTimeout(options.timeoutMs),
           maxStdoutBytes: EXTRACT_MAX_STDOUT_BYTES,
           onLimit: 'stop'

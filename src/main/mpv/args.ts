@@ -62,9 +62,10 @@ export function buildMpvLaunchArgs(options: MpvLaunchOptions): string[] {
     '--demuxer-max-back-bytes=50MiB',
     '--cache=yes',
     '--cache-secs=30',
-    // Accept self-signed / expired TLS certificates (common in IPTV)
-    '--tls-verify=no',
-    '--tls-ca-file=',
+    // Verify TLS against the system store. A host the user trusted gets its
+    // own options per load (loadfile file options, see src/main/tls/policy.ts),
+    // so relaxing one host never relaxes another.
+    '--tls-verify=yes',
     `--input-ipc-server=${options.socketPath}`
   ]
 

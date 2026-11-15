@@ -14,8 +14,9 @@ import {
   installProcessErrorLogging,
   installQuitHandling
 } from './ipc/lifecycle'
-import { isTrustedRendererUrl } from './ipc/register'
+import { isTrustedRendererUrl, type TrustedRendererLocation } from './ipc/register'
 import { readWindowStateInfo } from './ipc/window'
+import { getTlsPolicy } from './tls'
 import {
   isStateOnScreen,
   parseWindowState,
@@ -51,35 +52,19 @@ function saveWindowState(state: SavedWindowState): void {
 // Enable native audio track API in Chromium so multi-audio streams can be switched.
 app.commandLine.appendSwitch('enable-blink-features', 'AudioTracks')
 
-// IPTV providers routinely serve self-signed or expired certificates, so stream
-// and catalog requests must tolerate a broken chain. Update traffic must NOT:
-// electron-updater downloads through this same Chromium network stack, and the
-// Windows build is unsigned (`forceCodeSigning: false`), so a relaxed chain
-// there would let a network attacker hand us an arbitrary installer.
-const STRICT_TLS_HOSTS = new Set([
-  'github.com',
-  'api.github.com',
-  'codeload.github.com',
-  'objects.githubusercontent.com',
-  'raw.githubusercontent.com',
-  'release-assets.githubusercontent.com'
-])
-
-function isStrictTlsHost(hostname: string): boolean {
-  const host = hostname.toLowerCase()
-  if (STRICT_TLS_HOSTS.has(host)) return true
-  return host.endsWith('.githubusercontent.com')
-}
-
-function installCertificateVerifyProc(): void {
-  session.defaultSession.setCertificateVerifyProc((request, callback) => {
-    // 0 = trust, -3 = defer to Chromium's own verification result.
-    if (request.errorCode === 0) {
-      callback(0)
-      return
-    }
-
-    callback(isStrictTlsHost(request.hostname) ? -3 : 0)
+// IPTV providers often serve self-signed or expired certificates, but every
+// request also carries something worth protecting (the Xtream login, the TMDB
+// key, update downloads). So Chromium verifies strictly, and a failed
+// certificate is let through only when the user pinned exactly that
+// certificate for that host and port (src/main/tls/policy.ts). Chromium raises
+// 'certificate-error' per request, so a new trust or a revoke applies at once;
+// a setCertificateVerifyProc verdict would be cached by the network service.
+function installCertificateVerifyProc(trustedRendererLocation: TrustedRendererLocation): void {
+  const tls = getTlsPolicy()
+  app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+    event.preventDefault()
+    const fromApp = isTrustedRendererUrl(webContents.getURL(), trustedRendererLocation)
+    callback(fromApp && tls.handleCertificateError({ url, error, certificate: certificate.data }))
   })
 }
 
@@ -264,10 +249,10 @@ if (!hasSingleInstanceLock) {
       optimizer.watchWindowShortcuts(window)
     })
 
-    installCertificateVerifyProc()
     perfMark('main:ipc-register-start')
     const services = registerIpcHandlers()
     perfMark('main:ipc-register-done')
+    installCertificateVerifyProc(services.trustedRendererLocation)
     installPermissionPolicy(services)
 
     app.once('before-quit', () => setPreventDisplaySleep(false))

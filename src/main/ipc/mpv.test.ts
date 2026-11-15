@@ -92,3 +92,41 @@ describe('validators', () => {
     expect(isValidPlaybackTuning({ audioDelay: 0, subDelay: 0, speed: 1, aspectRatio: '21:9' })).toBe(false)
   })
 })
+
+describe('mpv-open and the TLS policy (F3-01)', () => {
+  function setupWithTls(mpvLoadOptions: (url: string) => Promise<Record<string, string>>) {
+    const handlers = new Map<string, AnyHandler>()
+    const controller = { open: vi.fn().mockResolvedValue(undefined) }
+    registerMpvHandlers(
+      {
+        handle<C extends IpcInvokeChannel>(channel: C, handler: IpcHandler<C>) {
+          handlers.set(channel, handler as unknown as AnyHandler)
+        }
+      },
+      {
+        controller: controller as unknown as MpvControllerApi,
+        registry: { wasPickedThisSession: () => false },
+        getWindow: () => null,
+        tls: { mpvLoadOptions }
+      }
+    )
+    const event = { sender: { id: 1 } } as unknown as IpcMainInvokeEvent
+    return { controller, open: (url: string) => handlers.get('mpv-open')!(event, url) }
+  }
+
+  it('hands the per-load TLS options to the controller', async () => {
+    const { controller, open } = setupWithTls(async () => ({ 'tls-verify': 'no' }))
+    await open('https://panel.example/movie/u/p/1.mp4')
+    expect(controller.open).toHaveBeenCalledWith('https://panel.example/movie/u/p/1.mp4', undefined, {
+      fileOptions: { 'tls-verify': 'no' }
+    })
+  })
+
+  it('does not open a stream the policy refuses', async () => {
+    const { controller, open } = setupWithTls(async () => {
+      throw new Error('Sunucunun güvenlik sertifikası değişti')
+    })
+    await expect(open('https://panel.example/movie/u/p/1.mp4')).rejects.toThrow('sertifika')
+    expect(controller.open).not.toHaveBeenCalled()
+  })
+})

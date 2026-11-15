@@ -34,6 +34,11 @@ describe('buildMpvLaunchArgs', () => {
     ).toBe(false)
   })
 
+  it('verifies TLS by default; nothing at launch relaxes it', () => {
+    expect(args).toContain('--tls-verify=yes')
+    expect(args.some((arg) => arg === '--tls-verify=no' || arg.startsWith('--tls-ca-file'))).toBe(false)
+  })
+
   it('uses the safe hardware decoder whitelist, or software decoding when off', () => {
     // `auto` would let mpv choose decoders known to misbehave on some drivers.
     expect(hwdecValue(true)).toBe('auto-safe')

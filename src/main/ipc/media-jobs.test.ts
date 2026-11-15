@@ -222,3 +222,47 @@ describe('job options', () => {
     expect(resolveMediaTimeout(120_000)).toBe(45_000)
   })
 })
+
+describe('media jobs and the TLS policy (F3-01)', () => {
+  function setupWithTls(tlsArgs: (url: string) => Promise<string[]>) {
+    const children: FakeChild[] = []
+    const spawn = vi.fn((_executable: string, _args: string[]) => {
+      const child = new FakeChild()
+      children.push(child)
+      return child as unknown as MediaChildProcess
+    })
+    const media = createMediaService({ runner: new MediaJobRunner(spawn), ffprobePath: 'ffprobe', ffmpegPath: 'ffmpeg', tlsArgs })
+    return { children, spawn, media }
+  }
+
+  const HTTPS_URL = 'https://p.example/movie/u/p/9.mkv'
+
+  it('puts the TLS arguments before the input of ffprobe and ffmpeg', async () => {
+    const { children, spawn, media } = setupWithTls(async () => ['-tls_verify', '1', '-ca_file', '/certs/ca.pem'])
+
+    const probe = media.probe('w1', HTTPS_URL)
+    await vi.waitFor(() => expect(children).toHaveLength(1))
+    const probeArgs = spawn.mock.calls[0][1]
+    expect(probeArgs.indexOf('-tls_verify')).toBeGreaterThan(-1)
+    expect(probeArgs.indexOf('-ca_file')).toBeLessThan(probeArgs.indexOf(HTTPS_URL))
+    children[0].out('{"streams":[]}')
+    children[0].exit(0)
+    await probe
+
+    const extract = media.extract('w1', HTTPS_URL, 2)
+    await vi.waitFor(() => expect(children).toHaveLength(2))
+    const extractArgs = spawn.mock.calls[1][1]
+    expect(extractArgs.indexOf('-tls_verify')).toBeLessThan(extractArgs.indexOf('-i'))
+    children[1].exit(0)
+    await extract
+  })
+
+  it('starts nothing when the policy refuses the URL', async () => {
+    const { spawn, media } = setupWithTls(async () => {
+      throw new Error('Sunucunun güvenlik sertifikası değişti')
+    })
+    await expect(media.probe('w1', HTTPS_URL)).rejects.toThrow('sertifika')
+    await expect(media.extract('w1', HTTPS_URL, 1)).rejects.toThrow('sertifika')
+    expect(spawn).not.toHaveBeenCalled()
+  })
+})
