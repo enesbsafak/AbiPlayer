@@ -51,7 +51,7 @@ async function watchFilmMidway(page: Page, mock: MockProvider): Promise<void> {
   await addXtreamSource(page, mock)
   await expectHomeWithContent(page)
   await openRoute(page, '/vod')
-  await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Kayıp Şehir')
+  await page.getByPlaceholder('Kanal ara...').fill('Kayıp Şehir')
   await cardButton(page, KNOWN.film).click()
   await page.getByRole('button', { name: 'Filmi Oynat' }).click()
   await expect(page).toHaveURL(/#\/player/)

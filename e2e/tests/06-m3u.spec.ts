@@ -95,7 +95,7 @@ test.describe('M3U kaynağı', () => {
     await addM3uSource(page, mock.m3uUrl('ts'), 'Sahte M3U')
     await expectHomeWithContent(page)
     await openRoute(page, '/vod')
-    await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Kayıp Şehir')
+    await page.getByPlaceholder('Kanal ara...').fill('Kayıp Şehir')
     await cardButton(page, KNOWN.film).click()
     await page.getByRole('button', { name: 'Filmi Oynat' }).click()
     await expect(page).toHaveURL(/#\/player/)
