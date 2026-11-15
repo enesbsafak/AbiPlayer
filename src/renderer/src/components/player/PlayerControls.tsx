@@ -15,6 +15,7 @@ import {
   mpvTogglePause,
   windowSetFullscreen
 } from '@/services/platform'
+import { toUserMessage } from '@/services/user-error'
 
 interface PlayerControlsProps {
   videoRef: RefObject<HTMLVideoElement | null>
@@ -102,13 +103,20 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
   const setMuted = useStore((s) => s.setMuted)
   const setPiP = useStore((s) => s.setPiP)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
+  const setPlayerError = useStore((s) => s.setPlayerError)
 
   const video = videoRef.current
+
+  // A new load of the stream: main decides its TLS options again and may
+  // refuse it (a certificate that changed since it was trusted).
+  const jumpMpvToLive = () => {
+    void mpvJumpToLive().catch((error: unknown) => setPlayerError(toUserMessage(error)))
+  }
 
   const togglePlay = () => {
     if (playbackEngine === 'mpv') {
       if (currentChannel?.type === 'live' && isPaused) {
-        void mpvJumpToLive().catch(() => undefined)
+        jumpMpvToLive()
         return
       }
       void mpvTogglePause().catch(() => undefined)
@@ -190,7 +198,7 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
 
   const jumpToLive = () => {
     if (playbackEngine === 'mpv') {
-      void mpvJumpToLive().catch(() => undefined)
+      jumpMpvToLive()
       return
     }
     const el = videoRef.current

@@ -213,6 +213,17 @@ describe('mpv load options', () => {
     expect(probe).toHaveBeenCalledWith(ENDPOINT)
   })
 
+  // M1: every load asks again, so a revoke applies to the very next one.
+  it('stops relaxing from the next load on once the trust is revoked', async () => {
+    const policy = createPolicy()
+    await trusted(policy, expired)
+    probeResult = presented(expired)
+    expect(await policy.mpvLoadOptions(`${SOURCE}/live/u/p/1.ts`)).toEqual({ 'tls-verify': 'no' })
+
+    await policy.revoke(ENDPOINT.host, ENDPOINT.port)
+    expect(await policy.mpvLoadOptions(`${SOURCE}/live/u/p/1.ts`)).toEqual({ 'tls-verify': 'yes' })
+  })
+
   it('refuses the load when a pinned host presents another certificate', async () => {
     const policy = createPolicy()
     await trusted(policy, expired)

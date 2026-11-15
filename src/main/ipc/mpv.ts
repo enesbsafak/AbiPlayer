@@ -239,7 +239,12 @@ export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDep
     await controller.seekTo(target)
   })
 
-  registrar.handle('mpv-jump-to-live', () => controller.jumpToLive())
+  // A new load of the same URL: its TLS options are decided again, never
+  // reused from the load it replaces (a revoked trust, a changed certificate).
+  registrar.handle('mpv-jump-to-live', () => {
+    const tls = deps.tls
+    return controller.jumpToLive(tls ? (url) => tls.mpvLoadOptions(url) : undefined)
+  })
 
   registrar.handle('mpv-set-volume', (_event, normalizedVolume) =>
     controller.setVolume(clampNormalizedVolume(normalizedVolume))

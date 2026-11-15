@@ -900,21 +900,72 @@ describe('MpvController per-load file options (F3-01)', () => {
     expect(fake.commands('loadfile').at(-1)).toEqual(['loadfile', URL_B, 'replace'])
   })
 
-  it('keeps the options when jumping to the live edge of the same playback', async () => {
+  // M1: a relaxed decision ('tls-verify=no') is granted per load after a
+  // probe; jumping to the live edge is a new load and must decide again.
+  it('asks for fresh options when jumping to the live edge, never reusing the previous load’s', async () => {
     const { mpv, controller } = setup()
-    await controller.open(URL_TLS, '100', { playbackId: 'T', fileOptions: { 'tls-verify': 'yes', 'tls-ca-file': '/certs/ca.pem' } })
+    await controller.open(URL_TLS, '100', { playbackId: 'T', fileOptions: { 'tls-verify': 'no' } })
     const fake = mpv.last
     fake.startFile()
     fake.fileLoaded()
     await settle()
 
+    // The trust was revoked meanwhile: the policy now says verify.
+    const decide = vi.fn(async () => ({ 'tls-verify': 'yes' }))
+    await controller.jumpToLive(decide)
+    expect(decide).toHaveBeenCalledWith(URL_TLS)
+    expect(fake.commands('loadfile').at(-1)).toEqual([
+      'loadfile',
+      URL_TLS,
+      'replace',
+      -1,
+      { 'tls-verify': 'yes', 'demuxer-lavf-o': 'live_start_index=-1' }
+    ])
+
+    // Without anyone to decide, the new load gets no relaxed options either.
     await controller.jumpToLive()
     expect(fake.commands('loadfile').at(-1)).toEqual([
       'loadfile',
       URL_TLS,
       'replace',
       -1,
-      { 'tls-verify': 'yes', 'tls-ca-file': '/certs/ca.pem', 'demuxer-lavf-o': 'live_start_index=-1' }
+      { 'demuxer-lavf-o': 'live_start_index=-1' }
     ])
+  })
+
+  it('leaves the current load alone when the policy refuses the jump', async () => {
+    const { mpv, controller } = setup()
+    await controller.open(URL_TLS, '100', { playbackId: 'T', fileOptions: { 'tls-verify': 'no' } })
+    const fake = mpv.last
+    fake.startFile()
+    fake.fileLoaded()
+    await settle()
+    const loads = fake.commands('loadfile').length
+    const loadId = controller.getState().loadId
+
+    await expect(
+      controller.jumpToLive(async () => {
+        throw new Error('Sunucunun güvenlik sertifikası, güvendiğiniz sertifikadan farklı.')
+      })
+    ).rejects.toThrow('sertifika')
+    expect(fake.commands('loadfile')).toHaveLength(loads)
+    expect(controller.getState()).toMatchObject({ loadId, phase: 'playing' })
+  })
+
+  it('drops a jump overtaken by another open while its options were being decided', async () => {
+    const { mpv, controller } = setup()
+    await controller.open(URL_TLS, '100', { playbackId: 'T' })
+    const fake = mpv.last
+    fake.startFile()
+    fake.fileLoaded()
+    await settle()
+
+    let decide!: (options: Record<string, string>) => void
+    const jumping = controller.jumpToLive(() => new Promise((resolve) => (decide = resolve)))
+    await controller.open(URL_B, '100', { playbackId: 'B' })
+    decide({ 'tls-verify': 'no' })
+    await jumping
+    expect(fake.commands('loadfile').at(-1)).toEqual(['loadfile', URL_B, 'replace'])
+    expect(controller.getState().playbackId).toBe('B')
   })
 })
