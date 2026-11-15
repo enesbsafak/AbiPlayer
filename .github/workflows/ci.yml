@@ -1,0 +1,51 @@
+# F0-01: her push ve PR'da lint, tür denetimi, birim testleri ve derleme.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, typecheck, test, build
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # lint:changed, PR tabanıyla karşılaştırmak için geçmişe ihtiyaç duyar.
+          fetch-depth: 0
+
+      - name: Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Lint changed files (zero warnings)
+        if: github.event_name == 'pull_request'
+        run: npm run lint:changed -- "origin/${{ github.base_ref }}"
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npx electron-vite build
