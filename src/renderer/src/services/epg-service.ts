@@ -1,3 +1,4 @@
+import { itemAt } from '../../../shared/checked'
 import type { EPGProgram } from '@/types/epg'
 import { normalizeLanguageCode } from './track-preferences'
 
@@ -137,7 +138,7 @@ export function findCurrentProgram(programs: EPGProgram[], now?: number): EPGPro
 
   while (low <= high) {
     const mid = Math.floor((low + high) / 2)
-    const prog = programs[mid]
+    const prog = itemAt(programs, mid)
     if (timestamp >= prog.start && timestamp < prog.end) return prog
     if (timestamp < prog.start) high = mid - 1
     else low = mid + 1

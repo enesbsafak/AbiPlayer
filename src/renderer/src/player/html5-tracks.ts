@@ -36,6 +36,16 @@ export function isSubtitleTextTrack(track: TextTrack): boolean {
   return track.label !== GENERATED_CAPTIONS_TRACK_LABEL && (track.kind === 'subtitles' || track.kind === 'captions')
 }
 
+/** Index and item of a DOM-style list; an index the list no longer has is skipped. */
+function listEntries<T>(list: { readonly length: number; readonly [index: number]: T | undefined }): Array<[number, T]> {
+  const entries: Array<[number, T]> = []
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i]
+    if (item !== undefined) entries.push([i, item])
+  }
+  return entries
+}
+
 function normalizeTrackMeta(value: string | undefined): string {
   return value?.trim().toLowerCase() || ''
 }
@@ -51,8 +61,7 @@ export function collectNativeSubtitleTracks(video: HTMLVideoElement): SubtitleTr
   if (!tracks || tracks.length === 0) return []
 
   const nativeTracks: SubtitleTrack[] = []
-  for (let i = 0; i < tracks.length; i++) {
-    const track = tracks[i]
+  for (const [i, track] of listEntries(tracks)) {
     if (!isSubtitleTextTrack(track)) continue
 
     nativeTracks.push({
@@ -97,8 +106,7 @@ export function collectNativeAudioTracks(video: HTMLVideoElement): AudioTrack[] 
   if (!tracks || tracks.length === 0) return []
 
   const nativeTracks: AudioTrack[] = []
-  for (let i = 0; i < tracks.length; i++) {
-    const track = tracks[i]
+  for (const [i, track] of listEntries(tracks)) {
     nativeTracks.push({
       id: trackId(NATIVE_AUDIO_PREFIX, i),
       name: track.label || track.language || `Ses ${i + 1}`,
@@ -139,14 +147,13 @@ export function syncActiveSubtitleCues(
   const nextCues: SubtitleCue[] = []
   const tracks = video.textTracks
 
-  for (let i = 0; i < tracks.length; i++) {
-    const track = tracks[i]
+  for (const [, track] of listEntries(tracks)) {
     if (!isSubtitleTextTrack(track)) continue
     if (track.mode !== 'hidden' && track.mode !== 'showing') continue
     if (!track.activeCues) continue
 
-    for (let j = 0; j < track.activeCues.length; j++) {
-      const cue = track.activeCues[j] as unknown as { startTime?: number; endTime?: number; text?: string }
+    for (const [, activeCue] of listEntries(track.activeCues)) {
+      const cue = activeCue as unknown as { startTime?: number; endTime?: number; text?: string }
       if (typeof cue.startTime !== 'number' || typeof cue.endTime !== 'number') continue
       nextCues.push({
         startTime: cue.startTime,
@@ -163,27 +170,21 @@ export function attachCueListeners(
   video: HTMLVideoElement,
   setActiveSubtitleCues: (cues: SubtitleCue[]) => void
 ): void {
-  const tracks = video.textTracks
-  for (let i = 0; i < tracks.length; i++) {
-    const track = tracks[i]
+  for (const [, track] of listEntries(video.textTracks)) {
     if (!isSubtitleTextTrack(track)) continue
     track.oncuechange = () => syncActiveSubtitleCues(video, setActiveSubtitleCues)
   }
 }
 
 export function disableAllNativeSubtitleTracks(video: HTMLVideoElement): void {
-  const tracks = video.textTracks
-  for (let i = 0; i < tracks.length; i++) {
-    const track = tracks[i]
+  for (const [, track] of listEntries(video.textTracks)) {
     if (!isSubtitleTextTrack(track)) continue
     track.mode = 'disabled'
   }
 }
 
 export function applyNativeSubtitleTrack(video: HTMLVideoElement, nativeTrackIndex: number): void {
-  const tracks = video.textTracks
-  for (let i = 0; i < tracks.length; i++) {
-    const track = tracks[i]
+  for (const [i, track] of listEntries(video.textTracks)) {
     if (!isSubtitleTextTrack(track)) continue
     // Keep selected track hidden and render all subtitles via custom overlay.
     track.mode = i === nativeTrackIndex ? 'hidden' : 'disabled'
@@ -194,8 +195,8 @@ export function applyNativeAudioTrack(video: HTMLVideoElement, nativeTrackIndex:
   const tracks = getNativeAudioTracks(video)
   if (!tracks) return
 
-  for (let i = 0; i < tracks.length; i++) {
-    tracks[i].enabled = i === nativeTrackIndex
+  for (const [i, track] of listEntries(tracks)) {
+    track.enabled = i === nativeTrackIndex
   }
 }
 
@@ -211,13 +212,12 @@ export function findNativeSubtitleTrackIndexForHls(
   const hlsTrack = hls.subtitleTracks?.[hlsTrackId]
   const targetLang = normalizeTrackMeta(hlsTrack?.lang)
   const targetName = normalizeTrackMeta(hlsTrack?.name)
-  const subtitleTrackIndices: number[] = []
+  const subtitleTracks: Array<[number, TextTrack]> = []
 
-  for (let i = 0; i < video.textTracks.length; i++) {
-    const nativeTrack = video.textTracks[i]
+  for (const [i, nativeTrack] of listEntries(video.textTracks)) {
     if (!isSubtitleTextTrack(nativeTrack)) continue
 
-    subtitleTrackIndices.push(i)
+    subtitleTracks.push([i, nativeTrack])
 
     const nativeLang = normalizeTrackMeta(nativeTrack.language)
     const nativeLabel = normalizeTrackMeta(nativeTrack.label)
@@ -227,24 +227,19 @@ export function findNativeSubtitleTrackIndexForHls(
   }
 
   if (targetLang) {
-    for (const index of subtitleTrackIndices) {
-      const nativeTrack = video.textTracks[index]
+    for (const [index, nativeTrack] of subtitleTracks) {
       if (normalizeTrackMeta(nativeTrack.language) === targetLang) return index
     }
   }
 
   if (targetName) {
-    for (const index of subtitleTrackIndices) {
-      const nativeTrack = video.textTracks[index]
+    for (const [index, nativeTrack] of subtitleTracks) {
       if (normalizeTrackMeta(nativeTrack.label) === targetName) return index
     }
   }
 
-  if (hlsTrackId >= 0 && hlsTrackId < subtitleTrackIndices.length) {
-    return subtitleTrackIndices[hlsTrackId]
-  }
-
-  return subtitleTrackIndices[0] ?? -1
+  // Then by position among the element's subtitle tracks, else the first one.
+  return (subtitleTracks[hlsTrackId] ?? subtitleTracks[0])?.[0] ?? -1
 }
 
 /** Returns false while the element has no text track for it yet. */

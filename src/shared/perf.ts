@@ -136,11 +136,12 @@ export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
 
 export function summarizeMarks(marks: readonly PerfMark[]): PerfSummaryRow[] {
   const sorted = [...marks].sort((a, b) => a.t - b.t)
-  return sorted.map((mark, index) => ({
-    name: mark.name,
-    t: mark.t,
-    sincePrevious: index === 0 ? mark.t : round(mark.t - sorted[index - 1].t)
-  }))
+  let previous: PerfMark | undefined
+  return sorted.map((mark) => {
+    const sincePrevious = previous ? round(mark.t - previous.t) : mark.t
+    previous = mark
+    return { name: mark.name, t: mark.t, sincePrevious }
+  })
 }
 
 export interface MergedPerfMark extends PerfMark {

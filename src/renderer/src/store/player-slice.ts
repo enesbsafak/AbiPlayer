@@ -78,11 +78,12 @@ function sameSubtitleCues(a: SubtitleCue[], b: SubtitleCue[]): boolean {
   return a.every((cue, index) => {
     const other = b[index]
     return (
-      cue === other ||
+      other !== undefined &&
+      (cue === other ||
       (cue.startTime === other.startTime &&
         cue.endTime === other.endTime &&
         cue.text === other.text &&
-        cue.style === other.style)
+        cue.style === other.style))
     )
   })
 }

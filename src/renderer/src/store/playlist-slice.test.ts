@@ -1,3 +1,4 @@
+import { itemAt } from '../../../shared/checked'
 import { describe, expect, it } from 'vitest'
 import { create } from 'zustand'
 import { createPlaylistSliceFor, selectedCategoryFor, type PlaylistSlice } from './playlist-slice'
@@ -158,7 +159,7 @@ describe('playlist-slice hidden categories per source', () => {
     store.setState({ hiddenCategoryIds: new Set(['s1_live_2']) })
 
     store.getState().replaceSourceCatalog('s1', {
-      live: { items: [m3uEntryToRecord(entry('a', 's1', 's1_live_2'))], categories: [categoryToRecord(categories[1])] }
+      live: { items: [m3uEntryToRecord(entry('a', 's1', 's1_live_2'))], categories: [categoryToRecord(itemAt(categories, 1))] }
     })
     store.getState().replaceSourceCatalog('s1', null)
 

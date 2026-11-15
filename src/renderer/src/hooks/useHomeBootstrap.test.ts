@@ -165,7 +165,7 @@ describe('summarizeBootstrap (F1-43)', () => {
       { type: 'series', status: 'failed', error: network }
     ])
     expect(summary.allFailed).toBe(true)
-    expect(summary.failures[0].message).toMatch(/Sunucuya ulaşılamadı/)
+    expect(summary.failures[0]?.message).toMatch(/Sunucuya ulaşılamadı/)
   })
 
   it('names what did not load when only some types failed', () => {
@@ -248,7 +248,7 @@ describe('useHomeBootstrap', () => {
   it('starts before the sign-in finished and is not restarted by it or by unrelated store writes', async () => {
     const { result } = renderHook(() => useHomeBootstrap())
     expect(xtreamApi.getLiveCategories).toHaveBeenCalledTimes(1)
-    const signal = vi.mocked(xtreamApi.getLiveCategories).mock.calls[0][1]?.signal
+    const signal = vi.mocked(xtreamApi.getLiveCategories).mock.calls[0]?.[1]?.signal
 
     act(() => {
       useStore.getState().setXtreamAuth('s', auth)

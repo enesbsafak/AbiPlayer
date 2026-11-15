@@ -12,6 +12,7 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
     "noUnusedLocals": true,
+    "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "lib": ["ES2023"]
   },

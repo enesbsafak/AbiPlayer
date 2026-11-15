@@ -1,3 +1,5 @@
+import { itemAt } from '../../../shared/checked'
+
 /**
  * Turning provider catalog names into TMDB searches, and deciding whether a
  * search result is really the same title. Pure functions, no network.
@@ -54,7 +56,7 @@ function stripProviderPrefixes(input: string): string {
     text = text.replace(/^\s*[A-Z0-9]{2,4}(?:-[A-Z0-9]{2,4})?\s*[:|]\s*/u, '')
     // Known language code with a dash: "TR - ", "EN- ".
     const dash = /^\s*([A-Za-z]{2,5})\s*[-–]\s+/u.exec(text)
-    if (dash && DASH_PREFIX_CODES.has(dash[1].toUpperCase())) text = text.slice(dash[0].length)
+    if (dash && DASH_PREFIX_CODES.has(itemAt(dash, 1).toUpperCase())) text = text.slice(dash[0].length)
     if (text === before) break
   }
   return text
@@ -79,7 +81,7 @@ export function cleanTitleForTmdbSearch(name: string | null | undefined): Cleane
     text = text.replace(/[._]+/g, ' ')
     const dottedYear = /(?:^|\s)((?:19|20)\d{2})(?=\s|$)/.exec(text)
     if (dottedYear && dottedYear.index > 0) {
-      year = dottedYear[1]
+      year = itemAt(dottedYear, 1)
       text = text.slice(0, dottedYear.index)
     }
   }
@@ -128,7 +130,7 @@ export interface TmdbMatchCandidate {
 
 function yearOf(date: string | undefined): number | null {
   const match = date ? /(\d{4})/.exec(date) : null
-  return match ? Number.parseInt(match[1], 10) : null
+  return match ? Number.parseInt(itemAt(match, 1), 10) : null
 }
 
 /**
@@ -152,8 +154,9 @@ export function pickConfidentTmdbMatch(
       normalizeTitleForMatch(candidate.title) === target ||
       normalizeTitleForMatch(candidate.originalTitle) === target
   )
-  if (exact.length === 0) return null
-  if (targetYear === null) return exact[0]
+  const [first] = exact
+  if (first === undefined) return null
+  if (targetYear === null) return first
 
   let best: TmdbMatchCandidate | null = null
   let bestDistance = Number.POSITIVE_INFINITY

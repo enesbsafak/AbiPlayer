@@ -1,3 +1,4 @@
+import { itemAt } from '../../../shared/checked'
 import type {
   XtreamCredentials,
   XtreamAuthResponse,
@@ -119,7 +120,7 @@ async function runWithConcurrency<T>(
     cursor += 1
     if (index >= items.length) return
 
-    await task(items[index], index)
+    await task(itemAt(items, index), index)
     await runWorker()
   }
 
@@ -153,7 +154,7 @@ async function collectPreviewFromCategories<T, K extends string | number>({
     maxConcurrency,
     async (categoryId) => {
       if (signal?.aborted || done) return
-      let items: T[] = []
+      let items: T[]
       try {
         items = await fetchByCategory(categoryId)
       } catch {

@@ -27,7 +27,9 @@ export function openPlayerFromRoute({
   setPlayerReturnTarget: (target: PlayerReturnTarget | null) => void
 }): void {
   setPlayerReturnTarget(createPlayerReturnTarget(location, returnState))
-  navigate('/player')
+  // A data router's navigate() resolves when the navigation settles and never
+  // rejects (route errors go to the route's error element).
+  void navigate('/player')
 }
 
 export function navigateToPlayerReturnTarget({
@@ -40,11 +42,11 @@ export function navigateToPlayerReturnTarget({
   target: PlayerReturnTarget | null
 }): void {
   if (!target) {
-    navigate(fallbackPath)
+    void navigate(fallbackPath)
     return
   }
 
-  navigate(
+  void navigate(
     {
       pathname: target.pathname,
       search: target.search || '',

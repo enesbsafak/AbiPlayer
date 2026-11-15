@@ -1,5 +1,6 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { itemAt } from '../../../shared/checked'
 import { useStore } from '@/store'
 import { createCatalogStore } from '@/catalog/catalog-store'
 import { m3uPlaylistToReplacement } from '@/catalog/convert'
@@ -29,7 +30,7 @@ afterEach(() => {
 describe('useDeferredPlayback (F3-02)', () => {
   it('waits for the playlist of a stored M3U item and plays it once it is in', async () => {
     const store = createCatalogStore()
-    const filmId = parseM3U(PLAYLIST, 'm').channels[0].id
+    const filmId = itemAt(parseM3U(PLAYLIST, 'm').channels, 0).id
     const play = vi.fn()
     const { result } = renderHook(() => useDeferredPlayback(store))
 
@@ -42,14 +43,14 @@ describe('useDeferredPlayback (F3-02)', () => {
       await Promise.resolve()
     })
     expect(play).toHaveBeenCalledTimes(1)
-    expect(play.mock.calls[0][0].streamUrl).toBe(FILM_URL)
+    expect(itemAt(play.mock.calls, 0)[0].streamUrl).toBe(FILM_URL)
     expect(result.current.notice).toBeNull()
   })
 
   // P8: the wait used to outlive another start and then replace it.
   it('drops the wait once something else is started', async () => {
     const store = createCatalogStore()
-    const filmId = parseM3U(PLAYLIST, 'm').channels[0].id
+    const filmId = itemAt(parseM3U(PLAYLIST, 'm').channels, 0).id
     const play = vi.fn()
     const { result } = renderHook(() => useDeferredPlayback(store))
     act(() => result.current.playWhenReady(request(store, filmId), play))

@@ -124,7 +124,7 @@ export const PERSIST_MIGRATIONS: readonly PersistMigration[] = [
 ]
 
 export function latestPersistVersion(migrations: readonly PersistMigration[]): number {
-  return migrations.length > 0 ? migrations[migrations.length - 1].version : 0
+  return migrations.at(-1)?.version ?? 0
 }
 
 /** Versions must start at 1 and go up by one; anything else is a programming error. */

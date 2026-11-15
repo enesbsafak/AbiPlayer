@@ -1,3 +1,4 @@
+import { itemAt } from '../../../../shared/checked'
 import type { CatalogCategory, CatalogItem, CatalogType } from '../types'
 import type { CacheBackend } from './backend'
 import { hash53, planChunks, slices, type ChunkingOptions, DEFAULT_CHUNKING } from './chunking'
@@ -196,13 +197,14 @@ export class CatalogCache {
         // same key, same encryption key): only the others are written.
         const existing = await this.backend.existingChunks(keys)
         const missing: CacheChunk[] = []
-        for (let i = 0; i < planned.length; i++) {
-          if (existing.has(keys[i]) || missing.some((chunk) => chunk.key === keys[i])) continue
-          const records = planned[i].records
+        for (const [i, plan] of planned.entries()) {
+          const chunkKeyOfPlan = itemAt(keys, i)
+          if (existing.has(chunkKeyOfPlan) || missing.some((chunk) => chunk.key === chunkKeyOfPlan)) continue
+          const records = plan.records
           missing.push(
             sealed
-              ? { key: keys[i], sourceId: request.sourceId, sealed: await cipher!.seal({ items: records }) }
-              : { key: keys[i], sourceId: request.sourceId, items: records }
+              ? { key: chunkKeyOfPlan, sourceId: request.sourceId, sealed: await cipher!.seal({ items: records }) }
+              : { key: chunkKeyOfPlan, sourceId: request.sourceId, items: records }
           )
           report.recordsWritten += records.length
         }

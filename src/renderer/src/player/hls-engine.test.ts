@@ -96,8 +96,8 @@ describe('startHlsEngine', () => {
     })
     expect(engine).not.toBeNull()
     expect(fake.created).toHaveLength(1)
-    expect(fake.created[0].loadSource).toHaveBeenCalledWith('http://p.test/live/u/p/1.m3u8')
-    expect(fake.created[0].attachMedia).toHaveBeenCalledWith(video)
+    expect(fake.created[0]?.loadSource).toHaveBeenCalledWith('http://p.test/live/u/p/1.m3u8')
+    expect(fake.created[0]?.attachMedia).toHaveBeenCalledWith(video)
     engine?.dispose()
   })
 

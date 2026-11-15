@@ -1,3 +1,4 @@
+import { itemAt } from '../../../shared/checked'
 import type { AudioTrack, SubtitleTrack, VideoQualityOption } from '@/types/player'
 import { AUTO_VIDEO_QUALITY_ID } from '@/services/quality'
 import { pickPreferredAudioTrackId, pickPreferredSubtitleTrackId } from '@/services/track-preferences'
@@ -79,7 +80,7 @@ export function reconcileAudioSelection(
 
   const fallback = has(tracks, engineSelected)
     ? engineSelected
-    : (tracks.find((track) => track.default) ?? tracks[0]).id
+    : (tracks.find((track) => track.default) ?? itemAt(tracks, 0)).id
   return fallback !== current ? { track: fallback, state } : { state }
 }
 
@@ -159,6 +160,7 @@ export function sameAudioTracks(a: AudioTrack[], b: AudioTrack[]): boolean {
   return a.every((track, index) => {
     const other = b[index]
     return (
+      other !== undefined &&
       track.id === other.id &&
       track.name === other.name &&
       track.lang === other.lang &&
@@ -173,6 +175,7 @@ export function sameSubtitleTracks(a: SubtitleTrack[], b: SubtitleTrack[]): bool
   return a.every((track, index) => {
     const other = b[index]
     return (
+      other !== undefined &&
       track.id === other.id &&
       track.name === other.name &&
       track.lang === other.lang &&
@@ -186,6 +189,6 @@ export function sameQualityOptions(a: VideoQualityOption[], b: VideoQualityOptio
   if (a.length !== b.length) return false
   return a.every((option, index) => {
     const other = b[index]
-    return option.id === other.id && option.label === other.label
+    return other !== undefined && option.id === other.id && option.label === other.label
   })
 }

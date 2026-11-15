@@ -77,7 +77,7 @@ export async function readLocalTextFile(
     size = (await ops.stat(filePath)).size
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
-      throw new Error(`Dosya bulunamadı: ${basename(filePath)}`)
+      throw new Error(`Dosya bulunamadı: ${basename(filePath)}`, { cause: error })
     }
     throw error
   }
@@ -206,9 +206,9 @@ export function registerFileHandlers(registrar: IpcRegistrar, deps: FileHandlerD
       properties: ['openFile'],
       filters: parsedFilters
     })
-    if (result.canceled || result.filePaths.length === 0) return null
+    const [filePath] = result.filePaths
+    if (result.canceled || filePath === undefined) return null
 
-    const filePath = result.filePaths[0]
     const content = await readText(filePath)
     await deps.registry.remember(filePath)
     return { path: filePath, content }

@@ -255,7 +255,7 @@ describe('player-slice setActiveSubtitleCues', () => {
     const store = createPlayerTestStore()
     store.getState().setActiveSubtitleCues([{ startTime: 1, endTime: 2, text: 'Bir' }])
     store.getState().setActiveSubtitleCues([{ startTime: 2, endTime: 3, text: 'İki' }])
-    expect(store.getState().activeSubtitleCues[0].text).toBe('İki')
+    expect(store.getState().activeSubtitleCues[0]?.text).toBe('İki')
   })
 })
 

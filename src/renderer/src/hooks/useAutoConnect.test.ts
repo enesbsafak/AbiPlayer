@@ -322,7 +322,7 @@ describe('useAutoConnect', () => {
     vi.mocked(readPickedFile).mockRejectedValueOnce(new Error('Dosya bulunamadı: a.m3u'))
     renderHook(() => useAutoConnect())
     await vi.waitFor(() => expect(useStore.getState().sourceErrors.mf).toMatchObject({ kind: 'file', retryAt: null }))
-    expect(useStore.getState().sourceErrors.mf.message).toMatch(/yeniden seçin/)
+    expect(useStore.getState().sourceErrors.mf?.message).toMatch(/yeniden seçin/)
   })
 })
 
@@ -342,13 +342,13 @@ describe('secret migration (F3-02, F1-56)', () => {
     const setM3uUrl = vi.spyOn(secureCredentialService, 'setM3uUrl').mockResolvedValue()
     vi.spyOn(secureCredentialService, 'getAllSecrets').mockResolvedValue({ xtream: {}, m3uUrls: {} })
     useStore.setState({ sources: [urlSource], legacySecretSourceIds: ['mu'] })
-    expect(partialize().sources[0].url).toBe(urlSource.url)
+    expect(partialize().sources[0]?.url).toBe(urlSource.url)
 
     await hydrateSecrets()
 
     expect(setM3uUrl).toHaveBeenCalledWith('mu', urlSource.url)
     expect(useStore.getState().legacySecretSourceIds).toEqual([])
-    expect(useStore.getState().sources[0].url).toBe(urlSource.url)
+    expect(useStore.getState().sources[0]?.url).toBe(urlSource.url)
     expect(partialize().sources[0]).not.toHaveProperty('url')
     expect(useStore.getState().secretMigrationError).toBeNull()
   })
@@ -423,7 +423,7 @@ describe('secret migration (F3-02, F1-56)', () => {
 
     await hydrateSecrets()
 
-    expect(useStore.getState().sources[0].url).toBe(urlSource.url)
+    expect(useStore.getState().sources[0]?.url).toBe(urlSource.url)
     expect(partialize().sources[0]).not.toHaveProperty('url')
   })
 })

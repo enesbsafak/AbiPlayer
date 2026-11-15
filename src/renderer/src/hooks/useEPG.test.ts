@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { itemAt } from '../../../shared/checked'
 import { useStore } from '@/store'
 import { createCatalogStore } from '@/catalog/catalog-store'
 import type { CatalogWorkerClient, JobHandlers } from '@/workers/client'
@@ -56,21 +57,21 @@ describe('EPG loading (F1-30)', () => {
     const first = loader.load('a')
     await flush()
     expect(worker.calls).toHaveLength(1)
-    expect(worker.calls[0].job).toMatchObject({ kind: 'epg', sourceId: 'a' })
+    expect(worker.calls[0]?.job).toMatchObject({ kind: 'epg', sourceId: 'a' })
 
     // Switching sources used to wait for A's download to finish.
     useStore.setState({ activeSourceId: 'b' })
     const second = loader.load('b')
     await flush()
-    expect(worker.calls[0].signal?.aborted).toBe(true)
+    expect(worker.calls[0]?.signal?.aborted).toBe(true)
     expect(worker.calls).toHaveLength(2)
-    expect(worker.calls[1].job).toMatchObject({ kind: 'epg', sourceId: 'b' })
+    expect(worker.calls[1]?.job).toMatchObject({ kind: 'epg', sourceId: 'b' })
 
-    answer(worker.calls[1], 'B programı')
+    answer(itemAt(worker.calls, 1), 'B programı')
     await second
     await first
     expect(useStore.getState().epgSourceId).toBe('b')
-    expect(useStore.getState().epgData?.programs['k'][0].title).toBe('B programı')
+    expect(useStore.getState().epgData?.programs['k']?.[0]?.title).toBe('B programı')
     expect(useStore.getState().epgLoading).toBe(false)
   })
 
@@ -80,7 +81,7 @@ describe('EPG loading (F1-30)', () => {
     const load = loader.load('a')
     await flush()
     useStore.setState({ activeSourceId: 'b' })
-    answer(worker.calls[0], 'Geç kalan')
+    answer(itemAt(worker.calls, 0), 'Geç kalan')
     await load
     expect(useStore.getState().epgData).toBeNull()
     expect(useStore.getState().epgLoading).toBe(false)
@@ -96,7 +97,7 @@ describe('EPG loading (F1-30)', () => {
     void loader.load('a', { force: true })
     await flush()
     expect(worker.calls).toHaveLength(2)
-    expect(worker.calls[0].signal?.aborted).toBe(true)
+    expect(worker.calls[0]?.signal?.aborted).toBe(true)
     loader.cancel()
   })
 })

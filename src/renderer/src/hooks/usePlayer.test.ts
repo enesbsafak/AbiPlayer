@@ -255,7 +255,7 @@ describe('usePlayer direct playback', () => {
       .mockResolvedValueOnce([])
     act(() => useStore.getState().playChannel(film('a')))
     renderPlayer()
-    const jobId = vi.mocked(probeEmbeddedSubtitles).mock.calls[0][1]?.jobId
+    const jobId = vi.mocked(probeEmbeddedSubtitles).mock.calls[0]?.[1]?.jobId
     expect(jobId).toEqual(expect.any(String))
 
     act(() => useStore.getState().playChannel(film('b')))

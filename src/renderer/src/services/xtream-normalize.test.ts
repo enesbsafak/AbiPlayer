@@ -128,9 +128,9 @@ describe('list normalizers', () => {
   })
 
   it('keeps tv archive on when the panel sends "1" instead of 1', () => {
-    const [stream] = normalizeXtreamLiveStreams([{ stream_id: 1, name: 'Arşivli', tv_archive: '1' }])
-    const [channel] = xtreamApi.liveStreamsToRecords([stream], 's')
-    expect(channel.tvArchive).toBe(true)
+    const streams = normalizeXtreamLiveStreams([{ stream_id: 1, name: 'Arşivli', tv_archive: '1' }])
+    const [channel] = xtreamApi.liveStreamsToRecords(streams, 's')
+    expect(channel?.tvArchive).toBe(true)
   })
 
   it('normalizes VOD streams and strips a leading dot from the extension', () => {

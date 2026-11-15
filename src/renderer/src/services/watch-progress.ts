@@ -1,3 +1,4 @@
+import { itemAt } from '../../../shared/checked'
 import type { Channel, SourceType } from '@/types/playlist'
 import type { PendingResume } from '@/types/player'
 import {
@@ -301,12 +302,12 @@ export function legacyEntryTarget(
   if (sourceType === 'xtream') {
     const match = storedUrl.match(XTREAM_STREAM_URL)
     if (!match) return null
-    const [, , kind, , , tail] = match
-    const parts = tail.match(XTREAM_TAIL)
+    const kind = match[2]
+    const parts = itemAt(match, 5).match(XTREAM_TAIL)
     if (!parts) return null
-    const streamId = Number(parts[1])
+    const streamId = Number(itemAt(parts, 1))
     if (!Number.isSafeInteger(streamId)) return null
-    const containerExtension = parts[2].toLowerCase()
+    const containerExtension = itemAt(parts, 2).toLowerCase()
     if (kind === 'movie') {
       return { target: { kind: 'movie', sourceId, streamId, containerExtension }, entryUrl: '' }
     }

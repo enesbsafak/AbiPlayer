@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { itemAt } from '../shared/checked'
 import type { MpvIdentifiedSnapshot } from '../shared/types/electron-ipc'
 import { MpvController, MPV_PASSTHROUGH_SETTLE_MS, type MpvControllerDeps } from './mpv-controller'
 import { MPV_UNEXPECTED_EXIT_MESSAGE } from './mpv/session'
@@ -98,7 +99,7 @@ describe('MpvController start-up and teardown', () => {
     const rejected = expect(first).rejects.toThrow('mpv IPC soketine bağlanılamadı')
     await vi.advanceTimersByTimeAsync(8000)
     await rejected
-    const abandoned = mpv.processes[0]
+    const abandoned = itemAt(mpv.processes, 0)
     expect(abandoned.signals).toEqual(['SIGTERM'])
     await vi.advanceTimersByTimeAsync(2000)
     // The SIGKILL fallback actually runs (it used to be gated on `killed`).
@@ -266,7 +267,7 @@ describe('MpvController start-up and teardown', () => {
     await controller.prewarm('100')
     await controller.prewarm('200')
     expect(mpv.processes).toHaveLength(2)
-    expect(mpv.processes[0].exited).toBe(true)
+    expect(itemAt(mpv.processes, 0).exited).toBe(true)
     expect(mpv.last.args).toContain('--wid=200')
 
     await controller.open(URL_A, '300')
@@ -761,7 +762,7 @@ describe('MpvController snapshots', () => {
       timePos: 42,
       tracks: [expect.objectContaining({ id: 1, type: 'audio' })]
     })
-    expect(again[0].seq).toBe(first[0].seq)
+    expect(again[0]?.seq).toBe(itemAt(first, 0).seq)
   })
 
   it('numbers snapshots monotonically and gives every load attempt its own loadId', async () => {
@@ -782,7 +783,7 @@ describe('MpvController snapshots', () => {
     expect(new Set([firstLoad, reload, reconnect]).size).toBe(3)
     expect(controller.getState().playbackId).toBe('A')
     const seqs = received.map((snapshot) => snapshot.seq)
-    for (let i = 1; i < seqs.length; i += 1) expect(seqs[i]).toBeGreaterThan(seqs[i - 1])
+    for (let i = 1; i < seqs.length; i += 1) expect(seqs[i]).toBeGreaterThan(itemAt(seqs, i - 1))
     // Unchanged state keeps its number.
     expect(controller.getState().seq).toBe(controller.getState().seq)
   })

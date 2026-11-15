@@ -123,7 +123,7 @@ export function useKeyboard() {
       switch (shortcut) {
         case 'search':
           e.preventDefault()
-          navigate('/search')
+          void navigate('/search')
           break
 
         case 'toggle-play':
@@ -132,7 +132,12 @@ export function useKeyboard() {
             void mpvTogglePause().catch(() => undefined)
           } else {
             const video = document.querySelector('video')
-            if (video) video.paused ? video.play() : video.pause()
+            if (video?.paused) {
+              // A refused play() (autoplay policy, a source swap) just leaves it paused.
+              void video.play().catch(() => undefined)
+            } else {
+              video?.pause()
+            }
           }
           break
 
@@ -145,12 +150,11 @@ export function useKeyboard() {
           } else {
             const container = document.querySelector('[data-player-container]') as HTMLElement
             if (container) {
+              // The store follows the browser only once it actually switched.
               if (!document.fullscreenElement) {
-                container.requestFullscreen()
-                setFullscreen(true)
+                void container.requestFullscreen().then(() => setFullscreen(true), () => undefined)
               } else {
-                document.exitFullscreen()
-                setFullscreen(false)
+                void document.exitFullscreen().then(() => setFullscreen(false), () => undefined)
               }
             }
           }
@@ -226,8 +230,7 @@ export function useKeyboard() {
             setFullscreen(false)
             void Promise.allSettled([windowSetFullscreen(false), mpvSetFullscreen(false)])
           } else if (document.fullscreenElement) {
-            document.exitFullscreen()
-            setFullscreen(false)
+            void document.exitFullscreen().then(() => setFullscreen(false), () => undefined)
           } else if (isPlayerRoute && currentChannel) {
             e.preventDefault()
             setMiniPlayer(true)

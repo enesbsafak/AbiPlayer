@@ -82,11 +82,11 @@ export default tseslint.config(
     }
   },
 
-  // Taban: src/ bugün bu kuralları ihlal ediyor (sayılar F0-02 raporunda).
-  // Düzeltildikçe ilgili satır silinir ve kural yukarıdaki "error" düzeyine döner.
-  // scripts/ ve e2e/ bu tabanın dışındadır; orada her kural "error".
+  // Taban: yalnızca arayüz bileşenleri ve sayfalar bu kuralları hâlâ ihlal
+  // ediyor; metin sözlüğü taşıması bitince bu iki blok silinir ve kurallar
+  // yukarıdaki "error" düzeyine döner. Geri kalan her yerde her kural "error".
   {
-    files: ['src/**/*.{ts,tsx}'],
+    files: ['src/renderer/src/components/**/*.{ts,tsx}', 'src/renderer/src/pages/**/*.{ts,tsx}'],
     rules: {
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-misused-promises': 'warn',
@@ -108,7 +108,7 @@ export default tseslint.config(
     }
   },
   {
-    files: ['src/renderer/**/*.{ts,tsx}'],
+    files: ['src/renderer/src/components/**/*.{ts,tsx}', 'src/renderer/src/pages/**/*.{ts,tsx}'],
     rules: {
       'react-hooks/exhaustive-deps': 'warn'
     }

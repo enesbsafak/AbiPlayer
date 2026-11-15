@@ -262,16 +262,22 @@ export async function setPreventDisplaySleep(prevented: boolean): Promise<void> 
   await window.electron.setPreventDisplaySleep(prevented)
 }
 
+// Title-bar buttons: nothing to show the viewer if main refuses (the window is
+// already going away), but say so in the console.
+function windowCommand(name: string, run: () => Promise<void>): void {
+  void run().catch((error: unknown) => console.warn(`[window] ${name} failed:`, error))
+}
+
 export function windowMinimize(): void {
-  if (isElectron()) window.electron!.windowMinimize()
+  if (isElectron()) windowCommand('minimize', () => window.electron!.windowMinimize())
 }
 
 export function windowMaximize(): void {
-  if (isElectron()) window.electron!.windowMaximize()
+  if (isElectron()) windowCommand('maximize', () => window.electron!.windowMaximize())
 }
 
 export function windowClose(): void {
-  if (isElectron()) window.electron!.windowClose()
+  if (isElectron()) windowCommand('close', () => window.electron!.windowClose())
 }
 
 export async function windowSetFullscreen(fullscreen: boolean): Promise<void> {

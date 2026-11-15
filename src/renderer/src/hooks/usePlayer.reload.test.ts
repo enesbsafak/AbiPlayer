@@ -1,6 +1,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type Hls from 'hls.js'
+import { itemAt } from '../../../shared/checked'
 import { useStore } from '@/store'
 import type { Channel } from '@/types/playlist'
 import { STALL_THRESHOLD_MS, reconnectDelayMs } from '@/player/reconnect-policy'
@@ -126,8 +127,8 @@ function withNativeAudioTracks(video: HTMLVideoElement) {
     tracks,
     /** A new source: the element starts on its default track again. */
     reset() {
-      tracks[0].enabled = true
-      tracks[1].enabled = false
+      itemAt(tracks, 0).enabled = true
+      itemAt(tracks, 1).enabled = false
     }
   }
 }
@@ -167,7 +168,7 @@ describe('usePlayer live reconnect with hls.js (P1)', () => {
     const videoRef = { current: element.video }
     renderHook(() => usePlayer(videoRef))
     await flush()
-    const [hls] = fake.created
+    const hls = itemAt(fake.created, 0)
     expect(hls.loadSource).toHaveBeenCalledTimes(1)
     act(() => hls.emit(EVENTS.MANIFEST_PARSED))
 
@@ -197,15 +198,15 @@ describe('usePlayer keeps the viewer’s audio choice on a new load (P2)', () =>
     const videoRef = { current: element.video }
     renderHook(() => usePlayer(videoRef))
     await flush()
-    act(() => fake.created[0].emit(EVENTS.MANIFEST_PARSED))
+    act(() => itemAt(fake.created, 0).emit(EVENTS.MANIFEST_PARSED))
     expect(useStore.getState().currentAudioTrack).toBe('hls-a:0')
 
     act(() => useStore.getState().setCurrentAudioTrack('hls-a:1'))
-    expect(fake.created[0].audioTrack).toBe(1)
+    expect(fake.created[0]?.audioTrack).toBe(1)
 
     act(() => useStore.getState().reloadPlayback())
     await flush()
-    const reloaded = fake.created[1]
+    const reloaded = itemAt(fake.created, 1)
     expect(reloaded.audioTrack).toBe(0)
     // hls.js settles on the stream's default before the manifest is reported.
     act(() => reloaded.emit(EVENTS.AUDIO_TRACK_SWITCHED))
@@ -228,7 +229,7 @@ describe('usePlayer keeps the viewer’s audio choice on a new load (P2)', () =>
       element.video.dispatchEvent(new Event('loadedmetadata'))
     })
     act(() => useStore.getState().setCurrentAudioTrack('native-a:1'))
-    expect(audio.tracks[1].enabled).toBe(true)
+    expect(audio.tracks[1]?.enabled).toBe(true)
 
     act(() => useStore.getState().reloadPlayback())
     await flush()

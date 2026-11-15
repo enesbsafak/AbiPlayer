@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { itemAt } from '../shared/checked'
 import { MpvController, type MpvControllerDeps } from './mpv-controller'
 import { FakeMpv, type FakeMpvProcess } from './mpv/testing/fake-mpv'
 
@@ -27,7 +28,7 @@ const settle = () => vi.advanceTimersByTimeAsync(0)
 
 function lastWrite(fake: FakeMpvProcess, name: string): unknown {
   const writes = fake.setProperties().filter(([key]) => key === name)
-  return writes.length > 0 ? writes[writes.length - 1][1] : undefined
+  return writes.length > 0 ? itemAt(writes, writes.length - 1)[1] : undefined
 }
 
 beforeEach(() => {

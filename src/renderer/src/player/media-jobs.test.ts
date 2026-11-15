@@ -56,7 +56,7 @@ describe('createMediaJobScope', () => {
     vi.mocked(probeEmbeddedSubtitles).mockReturnValue(new Promise(() => undefined))
     const scope = createMediaJobScope()
     void scope.probe('https://e.com/f.mkv')
-    const jobId = vi.mocked(probeEmbeddedSubtitles).mock.calls[0][1]?.jobId
+    const jobId = vi.mocked(probeEmbeddedSubtitles).mock.calls[0]?.[1]?.jobId
 
     scope.cancel()
     expect(vi.mocked(cancelMediaJob)).toHaveBeenCalledWith(jobId)

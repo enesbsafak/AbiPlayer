@@ -44,9 +44,7 @@ export function xtreamCategoriesToRecords(
 }
 
 export function xtreamLiveToRecords(streams: readonly XtreamLiveStream[], sourceId: string): CatalogItem[] {
-  const records: CatalogItem[] = new Array(streams.length)
-  for (let i = 0; i < streams.length; i++) {
-    const s = streams[i]
+  return streams.map((s) => {
     const record: CatalogItem = {
       id: xtreamItemId(sourceId, 'live', s.stream_id),
       name: s.name,
@@ -67,15 +65,12 @@ export function xtreamLiveToRecords(streams: readonly XtreamLiveStream[], source
     }
     const added = parseXtreamTimestamp(s.added)
     if (added !== null) record.added = added
-    records[i] = record
-  }
-  return records
+    return record
+  })
 }
 
 export function xtreamVodToRecords(streams: readonly XtreamVODStream[], sourceId: string): CatalogItem[] {
-  const records: CatalogItem[] = new Array(streams.length)
-  for (let i = 0; i < streams.length; i++) {
-    const s = streams[i]
+  return streams.map((s) => {
     const record: CatalogItem = {
       id: xtreamItemId(sourceId, 'vod', s.stream_id),
       name: s.name,
@@ -93,15 +88,12 @@ export function xtreamVodToRecords(streams: readonly XtreamVODStream[], sourceId
     if (s.rating) record.rating = s.rating
     const added = parseXtreamTimestamp(s.added)
     if (added !== null) record.added = added
-    records[i] = record
-  }
-  return records
+    return record
+  })
 }
 
 export function xtreamSeriesToRecords(streams: readonly XtreamSeriesStream[], sourceId: string): CatalogItem[] {
-  const records: CatalogItem[] = new Array(streams.length)
-  for (let i = 0; i < streams.length; i++) {
-    const s = streams[i]
+  return streams.map((s) => {
     const record: CatalogItem = {
       id: xtreamItemId(sourceId, 'series', s.series_id),
       name: s.name,
@@ -118,9 +110,8 @@ export function xtreamSeriesToRecords(streams: readonly XtreamSeriesStream[], so
     if (s.rating) record.rating = s.rating
     const lastModified = parseXtreamTimestamp(s.last_modified)
     if (lastModified !== null) record.lastModified = lastModified
-    records[i] = record
-  }
-  return records
+    return record
+  })
 }
 
 /**

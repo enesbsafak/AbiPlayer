@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { itemAt } from '../../../shared/checked'
 import {
   cleanTitleForTmdbSearch,
   normalizeTitleForMatch,
@@ -101,7 +102,7 @@ describe('resolveTmdb* with a mocked API', () => {
     expect(details).toBeNull()
     // Only the search ran; no details were fetched for the unrelated hit.
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    const searchUrl = new URL(fetchMock.mock.calls[0][0])
+    const searchUrl = new URL(itemAt(fetchMock.mock.calls, 0)[0])
     expect(searchUrl.searchParams.get('query')).toBe('Kayıp Film')
     expect(searchUrl.searchParams.get('year')).toBe('2019')
   })
