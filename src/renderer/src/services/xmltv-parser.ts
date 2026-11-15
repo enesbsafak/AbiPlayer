@@ -1,3 +1,4 @@
+import { itemAt } from '../../../shared/checked'
 import type { EPGData, EPGProgram, EPGChannel, EPGTruncation } from '@/types/epg'
 import { streamText } from './m3u-parser'
 import {
@@ -21,7 +22,7 @@ import {
  * guide page shows: channels, and programmes inside the time window. Nothing
  * here touches the DOM, so it runs in the catalog worker.
  *
- * Hardening kept from the fast-xml-parser version: no DOCTYPE entity is ever
+ * Hardening kept from the earlier tree parser: no DOCTYPE entity is ever
  * expanded (only the five predefined entities and numeric references are
  * decoded), and untrusted ids never become keys of an ordinary object.
  */
@@ -39,9 +40,9 @@ function parseXMLTVDate(str: string): number {
   const tzMatch = cleaned.match(/([+-]\d{4})$/)
   let offsetMs = 0
   if (tzMatch) {
-    const tzStr = tzMatch[1]
+    const tzStr = itemAt(tzMatch, 1)
     const tzHours = parseInt(tzStr.substring(0, 3))
-    const tzMinutes = parseInt(tzStr[0] + tzStr.substring(3))
+    const tzMinutes = parseInt(tzStr.charAt(0) + tzStr.substring(3))
     offsetMs = (tzHours * 60 + tzMinutes) * 60 * 1000
   }
 
@@ -475,7 +476,7 @@ export function createXmltvParser(options: XmltvParseOptions): { feed(text: stri
       // Cut mid-document: what was complete is kept, the rest is reported.
       if (rootIsTv && !rootClosed) truncated = 'cut-off'
       buffer = ''
-      for (const key of Object.keys(programs)) programs[key].sort((a, b) => a.start - b.start)
+      for (const list of Object.values(programs)) list.sort((a, b) => a.start - b.start)
       return { channels, programs, truncated }
     }
   }

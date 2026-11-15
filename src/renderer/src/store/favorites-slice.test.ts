@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { create } from 'zustand'
+import { itemAt } from '../../../shared/checked'
 import { createCatalogStore } from '@/catalog/catalog-store'
 import { m3uEntryToRecord, xtreamVodToRecords } from '@/catalog/convert'
 import { resolveFavoriteChannels } from '@/components/favorites/favorite-channels'
@@ -16,7 +17,7 @@ import {
 import { mergePersistedState, useStore } from './index'
 import { seedFavoriteSnapshots } from './persist-migrations'
 
-const film = xtreamVodToRecords(
+const film = itemAt(xtreamVodToRecords(
   [
     {
       num: 1, name: 'Film', stream_type: 'movie', stream_id: 7, stream_icon: 'http://img/f.jpg', rating: '7',
@@ -25,7 +26,7 @@ const film = xtreamVodToRecords(
     }
   ],
   'x'
-)[0]
+), 0)
 const entry = m3uEntryToRecord({
   id: 'm_ch_1',
   name: 'Liste Kanalı',
@@ -80,12 +81,12 @@ describe('favourite snapshots (F1-42)', () => {
     )
 
     expect(channels.map((channel) => channel.id)).toEqual([film.id, entry.id])
-    expect(isPlayableChannel(channels[0])).toBe(true)
-    expect(isM3uSnapshotChannel(channels[0])).toBe(false)
+    expect(isPlayableChannel(itemAt(channels, 0))).toBe(true)
+    expect(isM3uSnapshotChannel(itemAt(channels, 0))).toBe(false)
     // No URL to play yet: the card is shown and looks the entry up once loaded.
-    expect(isPlayableChannel(channels[1])).toBe(false)
-    expect(isM3uSnapshotChannel(channels[1])).toBe(true)
-    expect(targetFromChannel(channels[0])).toEqual({
+    expect(isPlayableChannel(itemAt(channels, 1))).toBe(false)
+    expect(isM3uSnapshotChannel(itemAt(channels, 1))).toBe(true)
+    expect(targetFromChannel(itemAt(channels, 0))).toEqual({
       kind: 'movie',
       sourceId: 'x',
       streamId: 7,

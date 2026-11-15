@@ -64,7 +64,7 @@ describe('auth-slice source state', () => {
       m3uUrls: { m: 'http://p/get.php' }
     })
     expect(store.getState().sources.map((source) => source.url)).toEqual(['http://p', 'http://p/get.php'])
-    expect(store.getState().sources[0].password).toBe('p')
+    expect(store.getState().sources[0]?.password).toBe('p')
     expect(store.getState().credentialsHydrated).toBe(true)
   })
 })

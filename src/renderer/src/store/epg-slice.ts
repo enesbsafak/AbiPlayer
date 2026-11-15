@@ -16,9 +16,7 @@ export interface EpgSlice {
   epgLastFetched: number | null
   /** The guide shown came from the disk cache and has not been refreshed yet. */
   epgFromCache: boolean
-  setEpgData: (sourceId: string, data: EPGData) => void
   setEpgLoading: (loading: boolean) => void
-  setEpgError: (error: string | null) => void
   beginEpgLoad: () => void
   completeEpgLoad: (sourceId: string, data: EPGData, meta?: EpgLoadMeta) => void
   failEpgLoad: (error: string) => void
@@ -33,10 +31,7 @@ export const createEpgSlice: StateCreator<EpgSlice, [], [], EpgSlice> = (set) =>
   epgLastFetched: null,
   epgFromCache: false,
 
-  setEpgData: (sourceId, data) =>
-    set({ epgSourceId: sourceId, epgData: data, epgLastFetched: Date.now(), epgError: null, epgFromCache: false }),
   setEpgLoading: (loading) => set({ epgLoading: loading }),
-  setEpgError: (error) => set({ epgError: error }),
   beginEpgLoad: () => set({ epgLoading: true, epgError: null }),
   completeEpgLoad: (sourceId, data, meta = {}) =>
     set({

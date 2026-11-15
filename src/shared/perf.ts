@@ -77,6 +77,16 @@ export function isPerfFlag(value: string | null | undefined): boolean {
   return ['1', 'true', 'on', 'yes'].includes(value.trim().toLowerCase())
 }
 
+/**
+ * Where main writes its timeline on quit (`ABI_PERF_OUT`). Only development
+ * builds honour it: a packaged app must not write to a path an environment
+ * variable chose.
+ */
+export function perfOutputPath(value: string | undefined, isPackaged: boolean): string | null {
+  if (isPackaged) return null
+  return value?.trim() || null
+}
+
 function round(value: number): number {
   return Math.round(value * 100) / 100
 }
@@ -136,11 +146,12 @@ export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
 
 export function summarizeMarks(marks: readonly PerfMark[]): PerfSummaryRow[] {
   const sorted = [...marks].sort((a, b) => a.t - b.t)
-  return sorted.map((mark, index) => ({
-    name: mark.name,
-    t: mark.t,
-    sincePrevious: index === 0 ? mark.t : round(mark.t - sorted[index - 1].t)
-  }))
+  let previous: PerfMark | undefined
+  return sorted.map((mark) => {
+    const sincePrevious = previous ? round(mark.t - previous.t) : mark.t
+    previous = mark
+    return { name: mark.name, t: mark.t, sincePrevious }
+  })
 }
 
 export interface MergedPerfMark extends PerfMark {
@@ -184,14 +195,6 @@ export function mergeTimelines(timelines: readonly PerfTimeline[]): MergedPerfTi
   marks.sort((a, b) => a.t - b.t)
   longTasks.sort((a, b) => a.start - b.start)
   return { version: 1, timeOrigin: origin, marks, longTasks, dropped }
-}
-
-/** First mark with this name at or after `after`, or null. */
-export function findMark<T extends PerfMark>(marks: readonly T[], name: string, after = -Infinity): T | null {
-  for (const mark of marks) {
-    if (mark.name === name && mark.t >= after) return mark
-  }
-  return null
 }
 
 /**

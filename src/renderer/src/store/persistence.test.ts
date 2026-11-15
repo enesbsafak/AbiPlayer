@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { itemAt } from '../../../shared/checked'
 import { createPersistController, type PersistBackend, type PersistTimers } from './persistence'
 
 interface State {
@@ -114,7 +115,7 @@ describe('persist controller', () => {
     }
 
     expect(writes.length).toBeGreaterThanOrEqual(1)
-    expect(JSON.parse(writes[0]).state.value).toBeLessThanOrEqual(6)
+    expect(JSON.parse(itemAt(writes, 0)).state.value).toBeLessThanOrEqual(6)
   })
 
   it('flushes a pending write on demand', () => {
@@ -160,7 +161,7 @@ describe('persist controller', () => {
     controller.setWriteVersion(3)
     write(controller, { value: 1 }, 5)
     controller.flush()
-    expect(JSON.parse(writes[0]).version).toBe(3)
+    expect(JSON.parse(itemAt(writes, 0)).version).toBe(3)
   })
 
   it('keeps a copy of an unreadable payload and starts fresh', () => {

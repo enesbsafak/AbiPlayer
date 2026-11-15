@@ -2,7 +2,7 @@ import type { BrowserWindow } from 'electron'
 import type { MpvController } from '../mpv-controller'
 import type { MpvStateSnapshot } from '../../shared/types/electron-ipc'
 import type { MpvOpenRequest } from '../../shared/ipc/contract'
-import { maskCredentials } from '../../shared/mask-credentials'
+import { credentialsInUrl, maskCredentials } from '../../shared/mask-credentials'
 import { sendEvent, type EventTarget } from './events'
 import type { IpcRegistrar } from './register'
 import { isValidFilePathArgument, type PickedFileRegistry } from './files'
@@ -63,10 +63,38 @@ export function getNativeWindowId(window: BrowserWindow): string | null {
   return null
 }
 
-export function maskSnapshotError(state: MpvStateSnapshot): MpvStateSnapshot {
+/**
+ * `knownSecrets`: the account in the URL this playback loaded, masked
+ * wherever mpv's error repeats it (a redirect target, a segment URL).
+ */
+export function maskSnapshotError(state: MpvStateSnapshot, knownSecrets: readonly string[] = []): MpvStateSnapshot {
   if (!state.error) return state
-  const masked = maskCredentials(state.error)
+  const masked = maskCredentials(state.error, knownSecrets)
   return masked === state.error ? state : { ...state, error: masked }
+}
+
+/**
+ * The credentials in the URL each recent playback opened, by `playbackId`.
+ * A snapshot names the playback its error belongs to; a few recent ones are
+ * kept because a superseded playback's last snapshot can still be in flight.
+ */
+export class PlaybackSecrets {
+  private readonly byPlayback = new Map<string, string[]>()
+
+  constructor(private readonly limit = 8) {}
+
+  remember(playbackId: string, url: string): void {
+    this.byPlayback.delete(playbackId)
+    this.byPlayback.set(playbackId, credentialsInUrl(url))
+    for (const oldest of this.byPlayback.keys()) {
+      if (this.byPlayback.size <= this.limit) break
+      this.byPlayback.delete(oldest)
+    }
+  }
+
+  of(state: Pick<MpvStateSnapshot, 'playbackId'>): readonly string[] {
+    return (state.playbackId && this.byPlayback.get(state.playbackId)) || []
+  }
 }
 
 const PLAYBACK_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
@@ -98,7 +126,10 @@ export interface MpvStateSubscriber extends EventTarget {
 export class MpvStateSubscriptions {
   private readonly active = new Map<number, { unsubscribe: () => void; onDestroyed: () => void }>()
 
-  constructor(private readonly controller: Pick<MpvControllerApi, 'subscribe' | 'getState'>) {}
+  constructor(
+    private readonly controller: Pick<MpvControllerApi, 'subscribe' | 'getState'>,
+    private readonly secrets: Pick<PlaybackSecrets, 'of'> = { of: () => [] }
+  ) {}
 
   /** Returns the current snapshot. */
   subscribe(target: MpvStateSubscriber): MpvStateSnapshot {
@@ -113,10 +144,11 @@ export class MpvStateSubscriptions {
       }
       this.active.set(target.id, entry)
       entry.unsubscribe = this.controller.subscribe((snapshot) => {
-        sendEvent(target, 'mpv-state', maskSnapshotError(snapshot))
+        sendEvent(target, 'mpv-state', maskSnapshotError(snapshot, this.secrets.of(snapshot)))
       })
     }
-    return maskSnapshotError(this.controller.getState())
+    const state = this.controller.getState()
+    return maskSnapshotError(state, this.secrets.of(state))
   }
 
   unsubscribe(target: MpvStateSubscriber): void {
@@ -197,7 +229,8 @@ export interface MpvHandlerDeps {
 
 export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDeps): void {
   const { controller } = deps
-  const subscriptions = new MpvStateSubscriptions(controller)
+  const secrets = new PlaybackSecrets()
+  const subscriptions = new MpvStateSubscriptions(controller, secrets)
   // TLS checks may wait on the network; a newer open or a stop meanwhile wins.
   let tlsOpenSeq = 0
 
@@ -206,6 +239,7 @@ export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDep
   registrar.handle('mpv-open', async (event, streamUrl, request) => {
     if (!isValidStreamUrl(streamUrl)) throw new Error('Geçersiz yayın URL')
     const { playbackId, tuning } = parseMpvOpenRequest(request)
+    secrets.remember(playbackId, streamUrl)
     // TLS (src/main/tls): options for this load only; rejects if the host is refused.
     const tlsSeq = ++tlsOpenSeq
     const fileOptions = deps.tls ? await deps.tls.mpvLoadOptions(streamUrl) : {}
@@ -322,7 +356,10 @@ export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDep
 
   // mpv pushes every property this snapshot exposes via `observe_property`,
   // so the cached state is already current.
-  registrar.handle('mpv-get-state', () => maskSnapshotError(controller.getState()))
+  registrar.handle('mpv-get-state', () => {
+    const state = controller.getState()
+    return maskSnapshotError(state, secrets.of(state))
+  })
 
   registrar.handle('mpv-subscribe', (event) => subscriptions.subscribe(event.sender))
   registrar.handle('mpv-unsubscribe', (event) => subscriptions.unsubscribe(event.sender))

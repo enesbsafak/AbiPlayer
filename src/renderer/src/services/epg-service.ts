@@ -1,3 +1,4 @@
+import { itemAt } from '../../../shared/checked'
 import type { EPGProgram } from '@/types/epg'
 import { normalizeLanguageCode } from './track-preferences'
 
@@ -59,12 +60,6 @@ export function decodeXmlEntities(value: string): string {
   })
 }
 
-function decodeXmlText(value: unknown): string | undefined {
-  if (typeof value === 'string') return decodeXmlEntities(value)
-  if (typeof value === 'number') return String(value)
-  return undefined
-}
-
 export interface LocalizedText {
   text: string
   /** The element's `lang` attribute as written, '' when absent. */
@@ -73,21 +68,6 @@ export interface LocalizedText {
 
 /** Languages tried in order before falling back to the first text. */
 export const PREFERRED_EPG_LANGUAGES: readonly string[] = ['tr']
-
-function collectLocalizedTexts(value: unknown): LocalizedText[] {
-  const items = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value]
-  return items.flatMap((item: unknown) => {
-    let raw: unknown = item
-    let lang = ''
-    if (typeof item === 'object' && item !== null) {
-      const record = item as Record<string, unknown>
-      raw = record['#text']
-      if (typeof record['@_lang'] === 'string') lang = record['@_lang']
-    }
-    const text = decodeXmlText(raw)?.trim()
-    return text ? [{ text, lang }] : []
-  })
-}
 
 /** The preferred entry of already decoded texts: Turkish first ("tr", "tur", "tr-TR"), else the first. */
 export function pickPreferred(texts: readonly LocalizedText[], preferredLanguages: readonly string[]): LocalizedText | undefined {
@@ -101,20 +81,6 @@ export function pickPreferred(texts: readonly LocalizedText[], preferredLanguage
     if (match) return match
   }
   return texts[0]
-}
-
-/**
- * XMLTV repeats <title>, <desc>, <category> and <display-name> once per
- * language (`<title lang="tr">…</title><title lang="en">…</title>`). Pick the
- * preferred language — Turkish first, matching "tr", "tur" or "tr-TR" alike —
- * and otherwise the first non-empty text. Takes the element shape of an XML
- * object tree (`{ '#text', '@_lang' }`, a plain string, or an array of them).
- */
-export function pickLocalizedText(
-  value: unknown,
-  preferredLanguages: readonly string[] = PREFERRED_EPG_LANGUAGES
-): LocalizedText | undefined {
-  return pickPreferred(collectLocalizedTexts(value), preferredLanguages)
 }
 
 export function normalizeEpgChannelKey(id: string | null | undefined): string | null {
@@ -137,7 +103,7 @@ export function findCurrentProgram(programs: EPGProgram[], now?: number): EPGPro
 
   while (low <= high) {
     const mid = Math.floor((low + high) / 2)
-    const prog = programs[mid]
+    const prog = itemAt(programs, mid)
     if (timestamp >= prog.start && timestamp < prog.end) return prog
     if (timestamp < prog.start) high = mid - 1
     else low = mid + 1

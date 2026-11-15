@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { decodeXmlEntities, normalizeEpgChannelKey, pickLocalizedText } from './epg-service'
+import { PREFERRED_EPG_LANGUAGES, decodeXmlEntities, normalizeEpgChannelKey, pickPreferred } from './epg-service'
 import { createXmltvParser, fetchAndParseEPG, parseEPGXml } from './xmltv-parser'
 
 describe('normalizeEpgChannelKey', () => {
@@ -102,8 +102,8 @@ describe('parseEPGXml prototype pollution protection', () => {
 
     const data = parseEPGXml(xml)
 
-    expect(data.channels['kanal'].displayName).toBe('Kanal & Co')
-    expect(data.programs['kanal'][0]).toEqual(
+    expect(data.channels['kanal']?.displayName).toBe('Kanal & Co')
+    expect(data.programs['kanal']?.[0]).toEqual(
       expect.objectContaining({
         title: 'Tom & Jerry "Ozel"',
         description: 'Bir <b>klasik</b>',
@@ -139,8 +139,8 @@ describe('parseEPGXml prototype pollution protection', () => {
 
     const data = parseEPGXml(xml)
 
-    expect(data.channels['kanal'].displayName).toBe('Kanal Bir')
-    expect(data.programs['kanal'][0]).toEqual(
+    expect(data.channels['kanal']?.displayName).toBe('Kanal Bir')
+    expect(data.programs['kanal']?.[0]).toEqual(
       expect.objectContaining({
         title: 'Akşam Haberleri',
         description: 'Günün haberleri.',
@@ -159,7 +159,7 @@ describe('parseEPGXml prototype pollution protection', () => {
   </programme>
 </tv>`
 
-    expect(parseEPGXml(xml).programs['kanal'][0].title).toBe('Nachrichten')
+    expect(parseEPGXml(xml).programs['kanal']?.[0]?.title).toBe('Nachrichten')
   })
 
   it('keeps numeric-looking titles exactly as written', () => {
@@ -168,27 +168,27 @@ describe('parseEPGXml prototype pollution protection', () => {
   <programme channel="kanal" start="${startStr}" stop="${endStr}"><title>007</title></programme>
 </tv>`
 
-    expect(parseEPGXml(xml).programs['kanal'][0].title).toBe('007')
+    expect(parseEPGXml(xml).programs['kanal']?.[0]?.title).toBe('007')
   })
 })
 
-describe('pickLocalizedText', () => {
+describe('pickPreferred', () => {
   it('matches three-letter and regional language codes', () => {
     expect(
-      pickLocalizedText([
-        { '#text': 'News', '@_lang': 'eng' },
-        { '#text': 'Haberler', '@_lang': 'tur' }
-      ])
+      pickPreferred(
+        [
+          { text: 'News', lang: 'eng' },
+          { text: 'Haberler', lang: 'tur' }
+        ],
+        PREFERRED_EPG_LANGUAGES
+      )
     ).toEqual({ text: 'Haberler', lang: 'tur' })
-    expect(pickLocalizedText([{ '#text': 'A', '@_lang': 'en' }, { '#text': 'B', '@_lang': 'tr-TR' }])?.text).toBe('B')
+    expect(pickPreferred([{ text: 'A', lang: 'en' }, { text: 'B', lang: 'tr-TR' }], PREFERRED_EPG_LANGUAGES)?.text).toBe('B')
   })
 
-  it('handles a plain string, an object without lang and empty values', () => {
-    expect(pickLocalizedText('Haber')).toEqual({ text: 'Haber', lang: '' })
-    expect(pickLocalizedText({ '#text': 'Spor' })).toEqual({ text: 'Spor', lang: '' })
-    expect(pickLocalizedText([{ '#text': '  ', '@_lang': 'tr' }, 'Yedek'])).toEqual({ text: 'Yedek', lang: '' })
-    expect(pickLocalizedText(undefined)).toBeUndefined()
-    expect(pickLocalizedText([])).toBeUndefined()
+  it('falls back to the first text, and to nothing for an empty list', () => {
+    expect(pickPreferred([{ text: 'News', lang: 'en' }, { text: 'Nachrichten', lang: 'de' }], PREFERRED_EPG_LANGUAGES)?.text).toBe('News')
+    expect(pickPreferred([], PREFERRED_EPG_LANGUAGES)).toBeUndefined()
   })
 })
 
@@ -241,14 +241,14 @@ describe('streaming XMLTV parser', () => {
     }
     expect(expected.truncated).toBeNull()
     expect(expected.channels['kanal.tr']).toEqual({ id: 'Kanal.TR', displayName: 'Kanal & Bir', icon: 'http://img/k.png' })
-    expect(expected.programs['kanal.tr'].map((p) => p.title)).toEqual(['Önce', 'Şimdi <canlı>', 'Tom & Jerry <özel>'])
-    expect(expected.programs['kanal.tr'][2].description).toBe('Açıklama')
+    expect(expected.programs['kanal.tr']?.map((p) => p.title)).toEqual(['Önce', 'Şimdi <canlı>', 'Tom & Jerry <özel>'])
+    expect(expected.programs['kanal.tr']?.[2]?.description).toBe('Açıklama')
   })
 
   it('drops programmes outside the time window while parsing', () => {
     const parser = createXmltvParser(WINDOW)
     parser.feed(`<tv>${programme('a', NOW - 5 * HOUR, 'Eski')}${programme('a', NOW, 'Şimdi')}${programme('a', NOW + 30 * HOUR, 'Uzak')}</tv>`)
-    expect(parser.end().programs['a'].map((p) => p.title)).toEqual(['Şimdi'])
+    expect(parser.end().programs['a']?.map((p) => p.title)).toEqual(['Şimdi'])
   })
 
   it('keeps only the channels asked for', () => {
@@ -262,7 +262,7 @@ describe('streaming XMLTV parser', () => {
   it('never expands DOCTYPE entities', () => {
     const parser = createXmltvParser(WINDOW)
     parser.feed(`<!DOCTYPE tv [<!ENTITY boom "PATLADI"><!ENTITY big "&boom;&boom;&boom;">]><tv>${programme('a', NOW, '&big; &amp;')}</tv>`)
-    expect(parser.end().programs['a'][0].title).toBe('&big; &')
+    expect(parser.end().programs['a']?.[0]?.title).toBe('&big; &')
   })
 
   it('survives malformed markup and keeps what is well formed after it', () => {
@@ -282,7 +282,7 @@ describe('streaming XMLTV parser', () => {
     parser.feed(`<tv>${programme('a', NOW, 'Bir')}${programme('a', NOW + HOUR, 'İki')}<programme channel="a" start="${xmltvTime(NOW + 2 * HOUR)}"><title>Ya`)
     const result = parser.end()
     expect(result.truncated).toBe('cut-off')
-    expect(result.programs['a'].map((p) => p.title)).toEqual(['Bir', 'İki'])
+    expect(result.programs['a']?.map((p) => p.title)).toEqual(['Bir', 'İki'])
   })
 
   it('reports a guide with more channels than are kept', () => {
@@ -305,7 +305,7 @@ describe('streaming XMLTV parser', () => {
     const data = await fetchAndParseEPG('https://epg.example/xmltv.php', { window: WINDOW })
 
     expect(data.truncated).toBeUndefined()
-    expect(data.programs['son'].map((p) => p.title)).toEqual(['Sonda'])
+    expect(data.programs['son']?.map((p) => p.title)).toEqual(['Sonda'])
     expect(data.programs['eski']).toBeUndefined()
     vi.unstubAllGlobals()
   })

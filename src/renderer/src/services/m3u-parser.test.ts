@@ -1,5 +1,6 @@
+import { itemAt } from '../../../shared/checked'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createM3uParser, fetchAndParseM3U, parseExtInf, parseHeaderEpgUrls, parseM3U } from './m3u-parser'
+import { createM3uParser, fetchM3uStreamed, parseExtInf, parseHeaderEpgUrls, parseM3U } from './m3u-parser'
 
 describe('M3U header guide URL and streamed parsing (C2c)', () => {
   it('reads url-tvg and x-tvg-url, several URLs included, http(s) only', () => {
@@ -47,8 +48,8 @@ https://cdn.example.com/media/movie.mp4`
     expect(categories[0]).toMatchObject({ name: 'Ulusal', sourceId: 'source_1', type: 'live' })
     expect(categories[1]).toMatchObject({ name: 'Filmler', sourceId: 'source_1', type: 'vod' })
     // IDs should be stable hash-based
-    expect(categories[0].id).toMatch(/^source_1_m3u_[0-9a-f]{8}$/)
-    expect(categories[1].id).toMatch(/^source_1_m3u_[0-9a-f]{8}$/)
+    expect(categories[0]?.id).toMatch(/^source_1_m3u_[0-9a-f]{8}$/)
+    expect(categories[1]?.id).toMatch(/^source_1_m3u_[0-9a-f]{8}$/)
 
     expect(channels).toEqual([
       {
@@ -57,7 +58,7 @@ https://cdn.example.com/media/movie.mp4`
         logo: 'https://img/logo.png',
         streamUrl: 'https://cdn.example.com/live/kanal.m3u8',
         sourceId: 'source_1',
-        categoryId: categories[0].id,
+        categoryId: categories[0]?.id,
         categoryName: 'Ulusal',
         epgChannelId: 'kanal.tr',
         group: 'Ulusal',
@@ -69,7 +70,7 @@ https://cdn.example.com/media/movie.mp4`
         name: 'Aksiyon Gecesi',
         streamUrl: 'https://cdn.example.com/media/movie.mp4',
         sourceId: 'source_1',
-        categoryId: categories[1].id,
+        categoryId: categories[1]?.id,
         categoryName: 'Filmler',
         epgChannelId: undefined,
         group: 'Filmler',
@@ -106,9 +107,9 @@ https://cdn.example.com/media/movie.mp4`
 https://stream.example.com/live.m3u8`
 
     const { channels } = parseM3U(playlist, 'src')
-    expect(channels[0].epgChannelId).toBe('kanal.tr')
-    expect(channels[0].logo).toBe('https://img.png')
-    expect(channels[0].group).toBe('Spor')
+    expect(channels[0]?.epgChannelId).toBe('kanal.tr')
+    expect(channels[0]?.logo).toBe('https://img.png')
+    expect(channels[0]?.group).toBe('Spor')
   })
 
   it('handles #EXTGRP tag for group assignment', () => {
@@ -118,9 +119,9 @@ https://stream.example.com/live.m3u8`
 https://stream.example.com/1.m3u8`
 
     const { channels, categories } = parseM3U(playlist, 'src')
-    expect(channels[0].group).toBe('Ulusal')
+    expect(channels[0]?.group).toBe('Ulusal')
     expect(categories).toHaveLength(1)
-    expect(categories[0].name).toBe('Ulusal')
+    expect(categories[0]?.name).toBe('Ulusal')
   })
 
   it('flags channels in an adult group, even when the channel name is clean', () => {
@@ -150,8 +151,8 @@ https://a.com/1.m3u8
 https://a.com/2.m3u8`
 
     const { channels } = parseM3U(playlist, 'src')
-    expect(channels[0].isAdult).toBe(true)
-    expect(channels[1].isAdult).toBe(false)
+    expect(channels[0]?.isAdult).toBe(true)
+    expect(channels[1]?.isAdult).toBe(false)
   })
 
   it('stable category IDs across same content', () => {
@@ -160,7 +161,7 @@ https://a.com/1.m3u8`
 
     const result1 = parseM3U(playlist, 'src')
     const result2 = parseM3U(playlist, 'src')
-    expect(result1.categories[0].id).toBe(result2.categories[0].id)
+    expect(itemAt(result1.categories, 0).id).toBe(itemAt(result2.categories, 0).id)
   })
 
   it('stable channel IDs across same content', () => {
@@ -169,7 +170,7 @@ https://a.com/1.m3u8`
 
     const result1 = parseM3U(playlist, 'src')
     const result2 = parseM3U(playlist, 'src')
-    expect(result1.channels[0].id).toBe(result2.channels[0].id)
+    expect(itemAt(result1.channels, 0).id).toBe(itemAt(result2.channels, 0).id)
   })
 
   it('keeps commas in the channel name and in quoted attributes', () => {
@@ -178,8 +179,8 @@ https://a.com/1.m3u8`
 https://a.com/movie/1.mp4`
 
     const [channel] = parseM3U(playlist, 'src').channels
-    expect(channel.name).toBe('Film, Bölüm 2')
-    expect(channel.group).toBe('Aksiyon, Macera')
+    expect(channel?.name).toBe('Film, Bölüm 2')
+    expect(channel?.group).toBe('Aksiyon, Macera')
   })
 
   it('does not read attributes that appear in the name', () => {
@@ -199,7 +200,7 @@ https://a.com/1.m3u8
 https://a.com/1.m3u8`, 'src')
 
     const ids = repeated.channels.map((c) => c.id)
-    expect(ids[0]).toBe(single.channels[0].id)
+    expect(ids[0]).toBe(itemAt(single.channels, 0).id)
     expect(ids).toEqual([ids[0], `${ids[0]}_2`, `${ids[0]}_3`])
     expect(new Set(ids).size).toBe(3)
 
@@ -252,7 +253,7 @@ https://a.com/series/u/p/1.mkv`
   })
 })
 
-describe('fetchAndParseM3U', () => {
+describe('fetchM3uStreamed', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -274,13 +275,13 @@ describe('fetchAndParseM3U', () => {
     })
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(body, { status: 200 }))))
 
-    const { channels } = await fetchAndParseM3U('https://example.com/list.m3u', 'src')
+    const { channels } = await fetchM3uStreamed('https://example.com/list.m3u', 'src')
     expect(channels.length).toBeGreaterThan(20 * 1024 * 1024 / entry.length)
   })
 
   it('names the host of a playlist that could not be reached', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))))
-    await expect(fetchAndParseM3U('https://Liste.Example/get.php?password=x', 'src')).rejects.toMatchObject({
+    await expect(fetchM3uStreamed('https://Liste.Example/get.php?password=x', 'src')).rejects.toMatchObject({
       kind: 'network',
       host: 'liste.example'
     })
@@ -288,7 +289,7 @@ describe('fetchAndParseM3U', () => {
 
   it('reports a failed download with a Turkish message', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('', { status: 404 }))))
-    await expect(fetchAndParseM3U('https://example.com/list.m3u', 'src')).rejects.toThrow(
+    await expect(fetchM3uStreamed('https://example.com/list.m3u', 'src')).rejects.toThrow(
       'M3U listesi indirilemedi (HTTP 404)'
     )
   })

@@ -229,8 +229,8 @@ describe('useMpvPlayer', () => {
     await advance(0)
 
     expect(vi.mocked(mpvOpen)).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(mpvOpen).mock.calls[1][0]).toBe(liveA.streamUrl)
-    expect(vi.mocked(mpvOpen).mock.calls[1][1].playbackId).not.toBe(first)
+    expect(vi.mocked(mpvOpen).mock.calls[1]?.[0]).toBe(liveA.streamUrl)
+    expect(vi.mocked(mpvOpen).mock.calls[1]?.[1].playbackId).not.toBe(first)
   })
 
   it('reconnects a failed live stream as the same playback, once per failed load', async () => {

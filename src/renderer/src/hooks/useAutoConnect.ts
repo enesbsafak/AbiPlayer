@@ -1,3 +1,4 @@
+import { itemAt } from '../../../shared/checked'
 import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
@@ -21,7 +22,7 @@ export const RECONNECT_DELAYS_MS = [3_000, 6_000, 12_000, 24_000, 48_000, 60_000
 
 export function reconnectDelayMs(failures: number): number {
   const index = Math.min(Math.max(failures, 1), RECONNECT_DELAYS_MS.length) - 1
-  return RECONNECT_DELAYS_MS[index]
+  return itemAt(RECONNECT_DELAYS_MS, index)
 }
 
 /**
@@ -107,9 +108,13 @@ export function connectionSummary(
   sources: readonly PlaylistSource[],
   errors: Readonly<Record<string, SourceConnectionError>>
 ): string | null {
-  const failures = sources.filter((source) => errors[source.id]).map((source) => `${source.name}: ${errors[source.id].message}`)
-  if (failures.length === 0) return null
-  if (failures.length === 1) return failures[0]
+  const failures = sources.flatMap((source) => {
+    const error = errors[source.id]
+    return error ? [`${source.name}: ${error.message}`] : []
+  })
+  const [only] = failures
+  if (only === undefined) return null
+  if (failures.length === 1) return only
   return `${failures.length} kaynağa bağlanılamadı — ${failures.join(' · ')}`
 }
 
@@ -448,7 +453,8 @@ export function useAutoConnect() {
   }, [connectRetryToken, runHydration])
 
   useEffect(() => {
-    if (!activeSourceId && sources.length > 0) useStore.getState().setActiveSource(sources[0].id)
+    const first = sources[0]
+    if (!activeSourceId && first) useStore.getState().setActiveSource(first.id)
   }, [activeSourceId, sources])
 
   useEffect(() => {

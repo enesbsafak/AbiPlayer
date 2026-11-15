@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "test:e2e": "tsc -p e2e/tsconfig.json && electron-vite build && playwright test -c e2e/playwright.config.ts",
     "test:e2e:packaged": "node e2e/smoke/packaged-smoke.ts",
+    "test:e2e:packaged-app": "playwright test -c e2e/playwright.packaged.config.ts",
     "perf:baseline": "electron-vite build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON e2e/perf/baseline.ts",
     "perf:mock": "node e2e/mock-provider/cli.ts",
     "lint": "eslint src scripts e2e",

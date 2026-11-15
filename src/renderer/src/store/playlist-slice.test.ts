@@ -1,3 +1,4 @@
+import { defined, itemAt } from '../../../shared/checked'
 import { describe, expect, it } from 'vitest'
 import { create } from 'zustand'
 import { createPlaylistSliceFor, selectedCategoryFor, type PlaylistSlice } from './playlist-slice'
@@ -158,7 +159,7 @@ describe('playlist-slice hidden categories per source', () => {
     store.setState({ hiddenCategoryIds: new Set(['s1_live_2']) })
 
     store.getState().replaceSourceCatalog('s1', {
-      live: { items: [m3uEntryToRecord(entry('a', 's1', 's1_live_2'))], categories: [categoryToRecord(categories[1])] }
+      live: { items: [m3uEntryToRecord(entry('a', 's1', 's1_live_2'))], categories: [categoryToRecord(itemAt(categories, 1))] }
     })
     store.getState().replaceSourceCatalog('s1', null)
 
@@ -283,7 +284,7 @@ describe('player-slice resume flag', () => {
     const store = createPlayerTestStore()
 
     store.getState().playChannel(movie)
-    store.getState().clearPendingResume()
+    store.getState().completeResume(defined(store.getState().pendingResume, 'the armed resume').playbackId)
 
     expect(store.getState().pendingResume).toBeNull()
   })
@@ -309,12 +310,14 @@ describe('player-slice', () => {
       type: 'vod'
     }
 
-    store.getState().setVideoQualityOptions([
-      { id: 'auto', label: 'Otomatik', shortLabel: 'Oto', auto: true },
-      { id: 'hls-v:0', label: '1080p · 5.6 Mbps', shortLabel: '1080p', height: 1080, bitrate: 5_600_000 }
-    ])
+    store.getState().applyPlayerPatch({
+      videoQualityOptions: [
+        { id: 'auto', label: 'Otomatik', shortLabel: 'Oto', auto: true },
+        { id: 'hls-v:0', label: '1080p · 5.6 Mbps', shortLabel: '1080p', height: 1080, bitrate: 5_600_000 }
+      ],
+      activeVideoQuality: 'hls-v:0'
+    })
     store.getState().setCurrentVideoQuality('hls-v:0')
-    store.getState().setActiveVideoQuality('hls-v:0')
 
     store.getState().playChannel(channel)
 
@@ -322,11 +325,11 @@ describe('player-slice', () => {
     expect(store.getState().currentVideoQuality).toBeNull()
     expect(store.getState().activeVideoQuality).toBeNull()
 
-    store.getState().setVideoQualityOptions([
-      { id: 'auto', label: 'Otomatik', shortLabel: 'Oto', auto: true }
-    ])
+    store.getState().applyPlayerPatch({
+      videoQualityOptions: [{ id: 'auto', label: 'Otomatik', shortLabel: 'Oto', auto: true }],
+      activeVideoQuality: 'hls-v:0'
+    })
     store.getState().setCurrentVideoQuality('auto')
-    store.getState().setActiveVideoQuality('hls-v:0')
 
     store.getState().stopPlayback()
 

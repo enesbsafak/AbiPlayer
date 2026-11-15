@@ -1,7 +1,5 @@
 import { cleanTitleForTmdbSearch, pickConfidentTmdbMatch, type TmdbMatchCandidate } from './tmdb-match'
 
-export { cleanTitleForTmdbSearch, normalizeTitleForMatch, pickConfidentTmdbMatch } from './tmdb-match'
-
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3'
 const TMDB_REQUEST_TIMEOUT_MS = 12_000
 const TMDB_CACHE_TTL_MS = 10 * 60 * 1000

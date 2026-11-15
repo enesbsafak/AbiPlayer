@@ -1,3 +1,4 @@
+import { itemAt } from '../../../shared/checked'
 import type { Channel, Category } from '@/types/playlist'
 import { isAdultLabel } from './adult-content'
 import { requestHost } from './xtream-errors'
@@ -36,9 +37,9 @@ const GROUP_TITLE = attributePatterns('group-title')
 
 function extractAttribute(section: string, [quoted, unquoted]: [RegExp, RegExp]): string {
   const quotedMatch = quoted.exec(section)
-  if (quotedMatch) return quotedMatch[1]
+  if (quotedMatch) return itemAt(quotedMatch, 1)
   const unquotedMatch = unquoted.exec(section)
-  return unquotedMatch ? unquotedMatch[1] : ''
+  return unquotedMatch ? itemAt(unquotedMatch, 1) : ''
 }
 
 /**
@@ -448,19 +449,12 @@ export async function fetchM3uStreamed(
   return parser.end()
 }
 
-type PlaylistOffloader = (url: string, sourceId: string) => Promise<ParsedPlaylist>
-let offloader: PlaylistOffloader | null = null
-
-/** The catalog worker's client registers itself here, so `fetchAndParseM3U` runs off the main thread. */
-export function setPlaylistOffloader(next: PlaylistOffloader | null): void {
-  offloader = next
-}
-
 /**
- * Downloads and parses a playlist: in the catalog worker once its client is
- * loaded (always, in the app), in this thread otherwise. No size limit.
+ * @deprecated Nothing in the app calls it: playlists are fetched by the
+ * catalog worker (`fetchM3uStreamed`). Kept only because
+ * components/auth/PlaylistImport.test.ts still mocks it; delete it together
+ * with that mock.
  */
-export async function fetchAndParseM3U(url: string, sourceId: string): Promise<ParsedPlaylist> {
-  checkPlaylistUrl(url)
-  return offloader ? offloader(url, sourceId) : fetchM3uStreamed(url, sourceId)
+export function fetchAndParseM3U(url: string, sourceId: string): Promise<ParsedPlaylist> {
+  return fetchM3uStreamed(url, sourceId)
 }

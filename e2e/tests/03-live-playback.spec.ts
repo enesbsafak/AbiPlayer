@@ -13,9 +13,10 @@ import {
   playLiveChannel,
   waitForMpvProgress
 } from '../support/flows.ts'
+import { defined, itemAt } from '../../src/shared/checked.ts'
 
 test.describe('canlı yayın mpv ile', () => {
-  test('kanal açılır, mpv konumu ilerler, kanal değiştirilir, çıkılıp geri dönülür', async ({ launch, mock, closeApp }) => {
+  test('kanal açılır, mpv konumu ilerler, kanal değiştirilir, çıkılıp geri dönülür', { tag: '@packaged' }, async ({ launch, mock, closeApp }) => {
     const app = await launch()
     const { page } = app
     await addXtreamSource(page, mock)
@@ -31,7 +32,7 @@ test.describe('canlı yayın mpv ile', () => {
     expect(first.last.muted || first.last.volume === 0, 'mpv is muted').toBe(true)
     const mpvProcesses = (await helpersOf(app.pid)).filter((proc) => proc.name === 'mpv.exe')
     expect(mpvProcesses).toHaveLength(1)
-    expect(await mainWindowHandle(mpvProcesses[0].pid), 'mpv has no top-level window').toBe(0)
+    expect(await mainWindowHandle(itemAt(mpvProcesses, 0).pid), 'mpv has no top-level window').toBe(0)
     await app.shot('first-channel')
 
     // Switch with the "next channel" control.
@@ -53,7 +54,7 @@ test.describe('canlı yayın mpv ile', () => {
     const before = await app.mpvState()
     const [victim] = (await helpersOf(app.pid)).filter((proc) => proc.name === 'mpv.exe')
     expect(victim, 'mpv is running').toBeDefined()
-    killQuietly(victim.pid)
+    killQuietly(defined(victim, 'the mpv process').pid)
     await expect.poll(async () => (await app.mpvState()).sessionId, { timeout: 30_000 }).not.toBe(before.sessionId)
     const recovered = await waitForMpvProgress(page, { pathIncludes: '/2.m3u8', advanceBy: 2, timeout: 45_000 })
     expect(recovered.last.error).toBeNull()

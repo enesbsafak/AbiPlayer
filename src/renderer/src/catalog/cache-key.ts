@@ -18,7 +18,3 @@ export function cacheKeyReady(): Promise<void> {
   return Promise.race([ready, new Promise<void>((resolve) => setTimeout(resolve, KEY_WAIT_MS))])
 }
 
-/** Tests. */
-export function resetCacheKeyForTests(): void {
-  ready = null
-}

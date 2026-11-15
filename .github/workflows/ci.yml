@@ -1,5 +1,6 @@
 # F0-01: her push ve PR'da lint, tür denetimi, birim testleri ve derleme;
-# ardından gerçek mpv ile uçtan uca testler (ayrı iş, önce ilki geçmeli).
+# ardından gerçek mpv ile uçtan uca testler ve paketlenmiş uygulama (ayrı
+# işler, önce ilki geçmeli).
 name: CI
 
 on:
@@ -12,6 +13,11 @@ permissions:
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+# One Node for every job. package.json "engines" is the floor (e2e/ runs .ts
+# files with Node's own type stripping); each job checks it before anything runs.
+env:
+  NODE_VERSION: '26'
 
 jobs:
   check:
@@ -29,12 +35,16 @@ jobs:
       - name: Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 26
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
       - name: Install
         run: npm ci
 
+      - name: Node satisfies package.json engines
+        run: node -e "const want = require('./package.json').engines.node; if (!require('semver').satisfies(process.version, want)) { console.error(process.version + ' does not satisfy ' + want); process.exit(1) }"
+
+      # src, scripts and e2e (package.json "lint").
       - name: Lint
         run: npm run lint
 
@@ -64,16 +74,20 @@ jobs:
       - name: Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 26
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
       - name: Install
         run: npm ci
 
+      - name: Node satisfies package.json engines
+        run: node -e "const want = require('./package.json').engines.node; if (!require('semver').satisfies(process.version, want)) { console.error(process.version + ' does not satisfy ' + want); process.exit(1) }"
+
       # The pinned, hash-checked mpv and ffmpeg (scripts/*-pin.json).
       - name: Fetch pinned mpv and ffmpeg
         run: npm run prepare:binaries:win
 
+      # Type-checks e2e/, builds, runs every scenario.
       - name: End-to-end tests
         run: npm run test:e2e
 
@@ -83,4 +97,44 @@ jobs:
         with:
           name: e2e-report
           path: e2e/.output/
+          retention-days: 14
+
+  packaged:
+    name: Packaged app (smoke and end-to-end)
+    needs: check
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Node satisfies package.json engines
+        run: node -e "const want = require('./package.json').engines.node; if (!require('semver').satisfies(process.version, want)) { console.error(process.version + ' does not satisfy ' + want); process.exit(1) }"
+
+      # Fetches both pinned binaries, type-checks, builds, packs dist/win-unpacked.
+      - name: Unpacked package
+        run: npm run build:unpack
+
+      - name: Package contents
+        run: npm run test:e2e:packaged
+
+      - name: End-to-end against the package
+        run: npm run test:e2e:packaged-app
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-e2e-report
+          path: e2e/.output/packaged/
           retention-days: 14

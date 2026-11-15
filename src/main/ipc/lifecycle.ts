@@ -1,5 +1,6 @@
 import { appendFileSync, mkdirSync, renameSync, statSync } from 'fs'
 import { dirname } from 'path'
+import { itemAt } from '../../shared/checked'
 import { maskCredentials } from '../../shared/mask-credentials'
 
 // ---------------------------------------------------------------------------
@@ -79,7 +80,7 @@ export function createReloadPolicy({
       // 'clean-exit' happens when the window is closing; nothing to recover.
       if (reason === 'clean-exit') return false
       const current = now()
-      while (reloads.length > 0 && current - reloads[0] > windowMs) reloads.shift()
+      while (reloads.length > 0 && current - itemAt(reloads, 0) > windowMs) reloads.shift()
       if (reloads.length >= maxReloads) return false
       reloads.push(current)
       return true

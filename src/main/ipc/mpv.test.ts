@@ -1,10 +1,12 @@
 // @vitest-environment node
 import type { IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it, vi } from 'vitest'
+import { itemAt } from '../../shared/checked'
 import type { IpcInvokeChannel } from '../../shared/ipc/contract'
 import type { MpvStateSnapshot } from '../../shared/types/electron-ipc'
 import {
   MpvStateSubscriptions,
+  PlaybackSecrets,
   SUBTITLE_NOT_PICKED_MESSAGE,
   createMpvPrewarmTrigger,
   maskSnapshotError,
@@ -30,7 +32,8 @@ function setup(pickedPaths: string[] = []) {
     addSubtitleFile: vi.fn().mockResolvedValue(4),
     setVolume: vi.fn().mockResolvedValue(undefined),
     seekTo: vi.fn().mockResolvedValue(undefined),
-    open: vi.fn().mockResolvedValue(undefined)
+    open: vi.fn().mockResolvedValue(undefined),
+    getState: vi.fn(() => snapshot())
   }
   registerMpvHandlers(
     {
@@ -85,6 +88,18 @@ describe('mpv handlers', () => {
 
     await expect(call('mpv-open', 'https://p.example/a.ts')).rejects.toThrow('Geçersiz oynatma isteği')
     expect(controller.open).toHaveBeenCalledTimes(2)
+  })
+
+  // A redirect or segment URL mpv prints has a layout the generic patterns do
+  // not know; the account from the URL this playback opened is masked there too.
+  it('masks the account of the opened URL in the error of that playback', async () => {
+    const { controller, call } = setup()
+    await call('mpv-open', 'http://p.example/live/ali/s3cret/1.ts', { playbackId: 'pb-1' })
+    const error = 'HTTP 403 for https://edge.example/seg/ali/s3cret/chunk-7.ts'
+    controller.getState.mockReturnValue(snapshot({ playbackId: 'pb-1', error }))
+    await expect(call('mpv-get-state')).resolves.toMatchObject({
+      error: 'HTTP 403 for https://edge.example/seg/***/***/chunk-7.ts'
+    })
   })
 })
 
@@ -279,6 +294,24 @@ describe('maskSnapshotError', () => {
     const clean = snapshot()
     expect(maskSnapshotError(clean)).toBe(clean)
   })
+
+  it('masks the known secrets wherever they sit in a URL', () => {
+    const state = snapshot({ error: 'failed: https://edge.example/seg/ali/s3cret/chunk-7.ts' })
+    expect(maskSnapshotError(state, ['ali', 's3cret']).error).toBe('failed: https://edge.example/seg/***/***/chunk-7.ts')
+  })
+})
+
+describe('PlaybackSecrets', () => {
+  it('serves the account of the URL each recent playback opened, forgetting the oldest', () => {
+    const secrets = new PlaybackSecrets(2)
+    secrets.remember('pb-1', 'http://p.example/live/ali/s3cret/1.ts')
+    secrets.remember('pb-2', 'http://p.example/get.php?username=veli&password=gizli')
+    expect(secrets.of({ playbackId: 'pb-1' })).toEqual(['ali', 's3cret'])
+    expect(secrets.of({ playbackId: null })).toEqual([])
+    secrets.remember('pb-3', 'http://p.example/movie/a/b/9.mp4')
+    expect(secrets.of({ playbackId: 'pb-1' })).toEqual([])
+    expect(secrets.of({ playbackId: 'pb-2' })).toEqual(['veli', 'gizli'])
+  })
 })
 
 describe('validators', () => {
@@ -342,16 +375,16 @@ describe('mpv-open and the TLS policy (F3-01)', () => {
     )
     const first = open('https://panel.example/live/u/p/1.ts')
     const second = open('https://panel.example/live/u/p/2.ts')
-    pending[1]({ 'tls-verify': 'yes' })
+    itemAt(pending, 1)({ 'tls-verify': 'yes' })
     await second
-    pending[0]({ 'tls-verify': 'no' })
+    itemAt(pending, 0)({ 'tls-verify': 'no' })
     await first
     expect(controller.open).toHaveBeenCalledTimes(1)
-    expect(controller.open.mock.calls[0][0]).toBe('https://panel.example/live/u/p/2.ts')
+    expect(controller.open.mock.calls[0]?.[0]).toBe('https://panel.example/live/u/p/2.ts')
 
     const third = open('https://panel.example/live/u/p/3.ts')
     await stop()
-    pending[2]({})
+    itemAt(pending, 2)({})
     await third
     expect(controller.open).toHaveBeenCalledTimes(1)
   })
@@ -384,7 +417,7 @@ describe('mpv-open and the TLS policy (F3-01)', () => {
     await handlers.get('mpv-jump-to-live')!(event)
     expect(mpvLoadOptions).toHaveBeenCalledTimes(2)
     expect(mpvLoadOptions).toHaveBeenCalledWith('https://panel.example/live/u/p/1.ts')
-    await expect(mpvLoadOptions.mock.results[1].value).resolves.toEqual({ 'tls-verify': 'yes' })
+    await expect(mpvLoadOptions.mock.results[1]?.value).resolves.toEqual({ 'tls-verify': 'yes' })
   })
 
   it('does not open a stream the policy refuses', async () => {

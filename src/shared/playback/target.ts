@@ -62,7 +62,6 @@ export type PlaybackTarget =
   | SeriesPlaybackTarget
   | M3uPlaybackTarget
 
-export type PlaybackKind = PlaybackTarget['kind']
 export type PlayableTarget = Exclude<PlaybackTarget, SeriesPlaybackTarget>
 
 export const DEFAULT_CONTAINER_EXTENSION = 'mp4'

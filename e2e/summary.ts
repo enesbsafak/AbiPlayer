@@ -39,7 +39,7 @@ for (const spec of specs(report.suites)) {
       const error = result?.errors?.[0]
       if (error) {
         const where = error.location ? `${error.location.file.split(/[\\/]/).pop()}:${error.location.line}` : '?'
-        console.log(`    failed at ${where}: ${stripVTControlCharacters(error.message ?? '').split('\n')[0].slice(0, 200)}`)
+        console.log(`    failed at ${where}: ${(stripVTControlCharacters(error.message ?? '').split('\n')[0] ?? '').slice(0, 200)}`)
       }
     }
   }

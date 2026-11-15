@@ -3,6 +3,7 @@ import { createCatalogStore } from '@/catalog/catalog-store'
 import { m3uPlaylistToReplacement } from '@/catalog/convert'
 import { parseM3U } from './m3u-parser'
 import { findM3uEntry, resolveStreamUrl } from './playback'
+import { itemAt } from '../../../shared/checked'
 import { m3uEntryId, type PlaybackTarget } from '../../../shared/playback'
 
 const FILM_URL = 'http://panel.test/movie/ali/s3cret/7.mkv'
@@ -30,7 +31,7 @@ describe('findM3uEntry (F3-02)', () => {
 
   it('finds the URL of a stored entry in the loaded playlist, by id first', () => {
     const store = loadedCatalog()
-    const film = store.getItems('m', 'vod')[0]
+    const film = itemAt(store.getItems('m', 'vod'), 0)
     expect(findM3uEntry(target, store, film.id)?.streamUrl).toBe(FILM_URL)
     // The stored id may be stale (the entry moved): the entry id still finds it.
     expect(findM3uEntry(target, store, 'm_m3u_ch_old')?.streamUrl).toBe(FILM_URL)

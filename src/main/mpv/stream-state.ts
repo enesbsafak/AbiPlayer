@@ -1,3 +1,4 @@
+import { itemAt } from '../../shared/checked'
 import type { MpvSubtitleStyle, MpvTrackInfo } from '../../shared/types/electron-ipc'
 
 /** Everything that belongs to the file currently loaded, and to nothing else. */
@@ -216,13 +217,14 @@ function parseCssColor(input: string): { r: number; g: number; b: number; a: num
 
   const shortHexMatch = value.match(/^#([0-9a-fA-F]{3})$/)
   if (shortHexMatch) {
-    const [r, g, b] = shortHexMatch[1].split('').map((ch) => Number.parseInt(ch + ch, 16))
-    return { r, g, b, a: 1 }
+    const digits = itemAt(shortHexMatch, 1)
+    const channel = (index: number): number => Number.parseInt(digits.charAt(index).repeat(2), 16)
+    return { r: channel(0), g: channel(1), b: channel(2), a: 1 }
   }
 
   const hexMatch = value.match(/^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/)
   if (hexMatch) {
-    const hex = hexMatch[1]
+    const hex = itemAt(hexMatch, 1)
     const alphaHex = hexMatch[2]
     return {
       r: Number.parseInt(hex.slice(0, 2), 16),
@@ -237,9 +239,9 @@ function parseCssColor(input: string): { r: number; g: number; b: number; a: num
   )
   if (!rgbMatch) return null
 
-  const r = Math.max(0, Math.min(255, Number.parseInt(rgbMatch[1], 10)))
-  const g = Math.max(0, Math.min(255, Number.parseInt(rgbMatch[2], 10)))
-  const b = Math.max(0, Math.min(255, Number.parseInt(rgbMatch[3], 10)))
+  const r = Math.max(0, Math.min(255, Number.parseInt(itemAt(rgbMatch, 1), 10)))
+  const g = Math.max(0, Math.min(255, Number.parseInt(itemAt(rgbMatch, 2), 10)))
+  const b = Math.max(0, Math.min(255, Number.parseInt(itemAt(rgbMatch, 3), 10)))
   const alphaRaw = rgbMatch[4] ? Number.parseFloat(rgbMatch[4]) : 1
   const a = Number.isFinite(alphaRaw) ? Math.max(0, Math.min(1, alphaRaw)) : 1
 

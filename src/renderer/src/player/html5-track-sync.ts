@@ -147,4 +147,3 @@ export function createHtml5TrackSync(deps: Html5TrackSyncDeps) {
   }
 }
 
-export type Html5TrackSync = ReturnType<typeof createHtml5TrackSync>

@@ -37,7 +37,6 @@ export type AppStore =
   & WatchProgressSlice
 
 export const STORE_NAME = 'iptv-player-store'
-export { PERSIST_VERSION }
 
 /**
  * What is written to storage. Everything else in the store is session state.

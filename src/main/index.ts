@@ -1,5 +1,5 @@
 import { perfLoadFileOptions, perfMark } from './perf'
-import { applyE2eWindowMode } from './e2e-mode'
+import { applyE2eWindowMode, e2eWindowOptions } from './e2e-mode'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { app, shell, BrowserWindow, Menu, dialog, screen, session } from 'electron'
 import { join } from 'path'
@@ -143,6 +143,8 @@ function createWindow(services: MainServices): void {
     transparent: process.platform === 'win32',
     backgroundColor: process.platform === 'win32' ? '#00000000' : '#0d0f12',
     ...(existsSync(windowIconPath) ? { icon: windowIconPath } : {}),
+    // ABI_E2E test mode: created off-screen and non-focusable (e2e-mode.ts).
+    ...e2eWindowOptions(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,

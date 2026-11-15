@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { itemAt } from '../../../shared/checked'
 import {
   assertMigrationOrder,
   PERSIST_MIGRATIONS,
@@ -29,7 +30,7 @@ describe('runPersistMigrations', () => {
 
   it('keeps the last good state when a step throws, and never throws itself', () => {
     const failing: PersistMigration[] = [
-      steps[0],
+      itemAt(steps, 0),
       {
         version: 2,
         name: 'broken',
@@ -38,7 +39,7 @@ describe('runPersistMigrations', () => {
           throw new Error('boom')
         }
       },
-      steps[2]
+      itemAt(steps, 2)
     ]
     const input = { keep: 'me' }
 
@@ -53,7 +54,7 @@ describe('runPersistMigrations', () => {
 
   it('resumes from the last good version on the next run', () => {
     const first = runPersistMigrations({}, 0, [
-      steps[0],
+      itemAt(steps, 0),
       { version: 2, name: 'broken', migrate: () => { throw new Error('boom') } }
     ])
     const second = runPersistMigrations(first.state, first.version, steps)
@@ -82,7 +83,7 @@ describe('migration list', () => {
   it('is numbered 1, 2, 3, ... and ends at PERSIST_VERSION', () => {
     expect(() => assertMigrationOrder(PERSIST_MIGRATIONS)).not.toThrow()
     expect(PERSIST_VERSION).toBe(PERSIST_MIGRATIONS.length)
-    expect(() => assertMigrationOrder([steps[0], steps[2]])).toThrow()
+    expect(() => assertMigrationOrder([itemAt(steps, 0), itemAt(steps, 2)])).toThrow()
   })
 
   it('v1 moves the watch history to media keys', () => {
@@ -102,7 +103,7 @@ describe('migration list', () => {
       0
     )
     expect(outcome.failure).toBeNull()
-    expect((outcome.state.watchProgress as Array<{ key: string }>)[0].key).toBe('movie:xt:55')
+    expect((outcome.state.watchProgress as Array<{ key: string }>)[0]?.key).toBe('movie:xt:55')
   })
 })
 
@@ -133,9 +134,9 @@ describe('strip-m3u-entry-urls (v3, F3-02)', () => {
     expect(JSON.stringify({ ...state, sources: [] })).not.toContain('s3cret')
     expect(state.favoriteSnapshots[0]).toEqual({ id: 'm_m3u_ch_1', name: 'Film', sourceId: 'm', type: 'vod', m3u: true })
     expect(state.favoriteSnapshots[1]).toEqual(v2Payload.favoriteSnapshots[1])
-    expect(state.watchProgress[0].channel.streamUrl).toBe('')
+    expect(state.watchProgress[0]?.channel.streamUrl).toBe('')
     // Copied to the secure store first, at runtime; dropped only once that worked.
-    expect(state.sources[0].url).toBe(v2Payload.sources[0].url)
+    expect(state.sources[0]?.url).toBe(itemAt(v2Payload.sources, 0).url)
   })
 
   it('is idempotent', () => {

@@ -37,7 +37,8 @@ test.describe('başlık çubuğu ve pencere durumu (F1-39)', () => {
     await expectHomeWithContent(page)
 
     const hwnd = await app.electron.evaluate(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows()[0]
+      const [window] = BrowserWindow.getAllWindows()
+      if (!window) throw new Error('the app has no window')
       let maximized = false
       const record = { maximizeCalls: 0, unmaximizeCalls: 0 }
       ;(globalThis as Record<string, unknown>).__abiTitleBarProbe = record

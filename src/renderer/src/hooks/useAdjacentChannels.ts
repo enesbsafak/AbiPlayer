@@ -22,8 +22,8 @@ export function positionInList(list: readonly Channel[], id: string): number {
   let index = positions.get(list)
   if (!index) {
     index = new Map()
-    for (let i = 0; i < list.length; i++) {
-      if (!index.has(list[i].id)) index.set(list[i].id, i)
+    for (const [i, item] of list.entries()) {
+      if (!index.has(item.id)) index.set(item.id, i)
     }
     positions.set(list, index)
   }
@@ -41,15 +41,17 @@ export function findAdjacent(lists: readonly (readonly Channel[])[], id: string)
     if (index < 0) continue
     let previous: Channel | null = null
     for (let i = index - 1; i >= 0; i--) {
-      if (isPlayableChannel(list[i])) {
-        previous = list[i]
+      const candidate = list[i]
+      if (candidate && isPlayableChannel(candidate)) {
+        previous = candidate
         break
       }
     }
     let next: Channel | null = null
     for (let i = index + 1; i < list.length; i++) {
-      if (isPlayableChannel(list[i])) {
-        next = list[i]
+      const candidate = list[i]
+      if (candidate && isPlayableChannel(candidate)) {
+        next = candidate
         break
       }
     }

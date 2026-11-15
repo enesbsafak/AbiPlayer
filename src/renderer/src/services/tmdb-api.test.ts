@@ -1,12 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  cleanTitleForTmdbSearch,
-  normalizeTitleForMatch,
-  pickConfidentTmdbMatch,
-  resolveTmdbMovieDetails,
-  resolveTmdbSeasonEpisodes,
-  resolveTmdbTvDetails
-} from './tmdb-api'
+import { itemAt } from '../../../shared/checked'
+import { resolveTmdbMovieDetails, resolveTmdbSeasonEpisodes, resolveTmdbTvDetails } from './tmdb-api'
+import { cleanTitleForTmdbSearch, normalizeTitleForMatch, pickConfidentTmdbMatch } from './tmdb-match'
 
 describe('cleanTitleForTmdbSearch', () => {
   it('removes provider prefixes, years and quality tags', () => {
@@ -101,7 +96,7 @@ describe('resolveTmdb* with a mocked API', () => {
     expect(details).toBeNull()
     // Only the search ran; no details were fetched for the unrelated hit.
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    const searchUrl = new URL(fetchMock.mock.calls[0][0])
+    const searchUrl = new URL(itemAt(fetchMock.mock.calls, 0)[0])
     expect(searchUrl.searchParams.get('query')).toBe('Kayıp Film')
     expect(searchUrl.searchParams.get('year')).toBe('2019')
   })

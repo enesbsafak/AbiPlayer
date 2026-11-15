@@ -2,7 +2,7 @@ import { test, expect } from '../support/fixtures.ts'
 import { addXtreamSource, anyCard, expectHomeWithContent } from '../support/flows.ts'
 
 test.describe('ilk açılış', () => {
-  test('boş profilden sahte Xtream kaynağıyla içerikli ana sayfaya', async ({ launch, mock, closeApp }) => {
+  test('boş profilden sahte Xtream kaynağıyla içerikli ana sayfaya', { tag: '@packaged' }, async ({ launch, mock, closeApp }) => {
     const app = await launch()
     const { page } = app
 

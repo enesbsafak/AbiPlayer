@@ -263,7 +263,11 @@ try {
 
 const all: Run[] = []
 for (const size of SIZES) {
-  for (const linkKey of LINKS) all.push(...(await scenario(size, LINK_PROFILES[linkKey])))
+  for (const linkKey of LINKS) {
+    const link = LINK_PROFILES[linkKey]
+    if (!link) throw new Error(`unknown link "${linkKey}"; known: ${Object.keys(LINK_PROFILES).join(', ')}`)
+    all.push(...(await scenario(size, link)))
+  }
 }
 writeFileSync(join(OUT_DIR, 'summary.json'), JSON.stringify({ commit, runs: all }, null, 2))
 const lines = [`Kod: ${commit}, etiket: ${args.label}`, '', ...table(all)]

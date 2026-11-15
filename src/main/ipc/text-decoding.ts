@@ -1,3 +1,5 @@
+import { itemAt } from '../../shared/checked'
+
 // Windows-1254 (Turkish) bytes 0x80–0x9F. Unassigned positions map to the C1
 // control of the same value, as the WHATWG Encoding standard does.
 const CP1254_80_9F = [
@@ -22,11 +24,10 @@ const CP1254_TURKISH_OVERRIDES: Record<number, number> = {
  */
 export function decodeWindows1254(bytes: Uint8Array): string {
   let out = ''
-  for (let i = 0; i < bytes.length; i++) {
-    const byte = bytes[i]
+  for (const byte of bytes) {
     let codePoint: number
     if (byte < 0x80) codePoint = byte
-    else if (byte < 0xa0) codePoint = CP1254_80_9F[byte - 0x80]
+    else if (byte < 0xa0) codePoint = itemAt(CP1254_80_9F, byte - 0x80)
     else codePoint = CP1254_TURKISH_OVERRIDES[byte] ?? byte
     out += String.fromCharCode(codePoint)
   }
@@ -49,8 +50,8 @@ export function decodeTextFile(bytes: Uint8Array): string {
     // 'utf-16be' is another ICU-dependent label; swap to LE instead.
     const swapped = new Uint8Array(bytes.length - 2 - ((bytes.length - 2) % 2))
     for (let i = 0; i < swapped.length; i += 2) {
-      swapped[i] = bytes[i + 3]
-      swapped[i + 1] = bytes[i + 2]
+      swapped[i] = itemAt(bytes, i + 3)
+      swapped[i + 1] = itemAt(bytes, i + 2)
     }
     return new TextDecoder('utf-16le').decode(swapped)
   }

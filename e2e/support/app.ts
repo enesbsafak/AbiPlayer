@@ -1,4 +1,5 @@
-// Launches the built app (out/) under Playwright's Electron support with a
+// Launches the built app (out/, or the unpacked package with
+// ABI_E2E_TARGET=packaged) under Playwright's Electron support with a
 // throwaway profile, the pinned mpv and timing marks switched on.
 
 import { _electron, type ElectronApplication, type Page } from '@playwright/test'
@@ -8,7 +9,7 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { mergeTimelines, type MergedPerfTimeline, type PerfTimeline } from '../../src/shared/perf.ts'
 import type { MpvStateSnapshot } from '../../src/shared/types/electron-ipc.ts'
-import { BUILT_MAIN, MPV_PATH, REPO_ROOT, electronBinary } from './paths.ts'
+import { BUILT_MAIN, E2E_TARGET, MPV_PATH, PACKAGED_DIR, PACKAGED_EXE, REPO_ROOT, electronBinary } from './paths.ts'
 import { helpersOf, killQuietly, type ProcessInfo } from './processes.ts'
 
 export interface LaunchOptions {
@@ -75,7 +76,11 @@ function seedSilentProfile(profileDir: string): void {
 }
 
 export async function launchApp(options: LaunchOptions): Promise<AbiApp> {
-  if (!existsSync(BUILT_MAIN)) {
+  const packaged = E2E_TARGET === 'packaged'
+  if (packaged && !existsSync(PACKAGED_EXE)) {
+    throw new Error(`${PACKAGED_EXE} is missing; run "npm run build:unpack" first.`)
+  }
+  if (!packaged && !existsSync(BUILT_MAIN)) {
     throw new Error(`${BUILT_MAIN} is missing; run "npx electron-vite build" first (npm run test:e2e does).`)
   }
   mkdirSync(options.outputDir, { recursive: true })
@@ -87,15 +92,16 @@ export async function launchApp(options: LaunchOptions): Promise<AbiApp> {
   // Never inherit a dev-server URL or node mode from the surrounding shell.
   delete env.ELECTRON_RENDERER_URL
   delete env.ELECTRON_RUN_AS_NODE
-  // ABI_E2E: off-screen, never-activated window (src/main/e2e-mode.ts).
-  Object.assign(env, { MPV_PATH, ABI_PERF: '1', ABI_E2E: '1' }, options.env ?? {})
+  // ABI_E2E: off-screen, never-activated window (src/main/e2e-mode.ts). A
+  // packaged app ignores MPV_PATH and uses the mpv it ships.
+  Object.assign(env, packaged ? {} : { MPV_PATH }, { ABI_PERF: '1', ABI_E2E: '1' }, options.env ?? {})
   seedSilentProfile(options.profileDir)
 
   const launchedAt = Date.now()
   const electron = await _electron.launch({
-    executablePath: electronBinary(),
-    args: [REPO_ROOT, `--user-data-dir=${options.profileDir}`],
-    cwd: REPO_ROOT,
+    executablePath: packaged ? PACKAGED_EXE : electronBinary(),
+    args: packaged ? [`--user-data-dir=${options.profileDir}`] : [REPO_ROOT, `--user-data-dir=${options.profileDir}`],
+    cwd: packaged ? PACKAGED_DIR : REPO_ROOT,
     env,
     timeout: 60_000
   })
@@ -133,7 +139,8 @@ export async function launchApp(options: LaunchOptions): Promise<AbiApp> {
     },
     windowPlacement() {
       return electron.evaluate(({ BrowserWindow, screen }) => {
-        const window = BrowserWindow.getAllWindows()[0]
+        const [window] = BrowserWindow.getAllWindows()
+        if (!window) throw new Error('the app has no window')
         const bounds = window.getBounds()
         const onAnyDisplay = screen.getAllDisplays().some(({ bounds: display }) =>
           bounds.x < display.x + display.width &&

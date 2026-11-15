@@ -1,8 +1,10 @@
+import { itemAt } from '../../src/shared/checked.ts'
+
 export function median(values: number[]): number | null {
   const sorted = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b)
   if (sorted.length === 0) return null
   const middle = Math.floor(sorted.length / 2)
-  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
+  return sorted.length % 2 ? itemAt(sorted, middle) : (itemAt(sorted, middle - 1) + itemAt(sorted, middle)) / 2
 }
 
 export function range(values: number[]): string {

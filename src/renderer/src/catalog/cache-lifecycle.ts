@@ -37,12 +37,7 @@ const AGE_CHECK_INTERVAL_MS = 10 * 60_000
 /** A cache read that has not finished by then no longer holds the home page back. */
 const CACHE_SETTLE_TIMEOUT_MS = 3_000
 
-let catalogMaxAgeMs = DEFAULT_CATALOG_MAX_AGE_MS
-
-/** How old a complete list may get before it is refreshed in the background. */
-export function setCatalogMaxAge(ms: number): void {
-  catalogMaxAgeMs = Math.max(60_000, ms)
-}
+const catalogMaxAgeMs = DEFAULT_CATALOG_MAX_AGE_MS
 
 type LoadState = 'loading' | 'settled'
 const loadStates = new Map<string, LoadState>()

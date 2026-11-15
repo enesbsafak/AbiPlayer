@@ -29,10 +29,10 @@ describe('watch-progress-slice', () => {
     store.getState().saveWatchProgress(movie, 900, 5400)
 
     const [entry] = store.getState().watchProgress
-    expect(entry.key).toBe(movieKey)
-    expect(entry.target).toEqual(movieTarget)
-    expect(entry.position).toBe(900)
-    expect(entry.channel.name).toBe('Bir Film')
+    expect(entry?.key).toBe(movieKey)
+    expect(entry?.target).toEqual(movieTarget)
+    expect(entry?.position).toBe(900)
+    expect(entry?.channel.name).toBe('Bir Film')
     // An Xtream URL would put the password into localStorage.
     expect(JSON.stringify(entry)).not.toContain('s3cret')
   })
@@ -66,7 +66,7 @@ describe('watch-progress-slice', () => {
     // wipe the position the resume is about to use.
     store.getState().saveWatchProgress(movie, 2, 5400)
 
-    expect(store.getState().watchProgress[0].position).toBe(900)
+    expect(store.getState().watchProgress[0]?.position).toBe(900)
   })
 
   it('keeps one entry per item and moves it to the front', () => {
@@ -82,8 +82,8 @@ describe('watch-progress-slice', () => {
 
     const list = store.getState().watchProgress
     expect(list).toHaveLength(2)
-    expect(list[0].key).toBe(movieKey)
-    expect(list[0].position).toBe(1200)
+    expect(list[0]?.key).toBe(movieKey)
+    expect(list[0]?.position).toBe(1200)
   })
 
   it('keeps the same film of two accounts on one host apart', () => {
@@ -96,7 +96,7 @@ describe('watch-progress-slice', () => {
     store.getState().saveWatchProgress(movie, 900, 5400)
     store.getState().saveWatchProgress(sameFilmOtherAccount, 300, 5400)
 
-    expect(store.getState().watchProgress.map((entry) => entry.position)).toEqual([300, 900])
+    expect(store.getState().watchProgress.map((entry) => entry?.position)).toEqual([300, 900])
   })
 
   it('takes over an unmigrated legacy entry for the same item instead of duplicating it', () => {
@@ -113,7 +113,7 @@ describe('watch-progress-slice', () => {
 
     store.getState().saveWatchProgress(movie, 900, 5400)
 
-    expect(store.getState().watchProgress.map((entry) => entry.key)).toEqual([movieKey])
+    expect(store.getState().watchProgress.map((entry) => entry?.key)).toEqual([movieKey])
   })
 
   it('removes and clears entries', () => {

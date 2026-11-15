@@ -1,4 +1,10 @@
 import type { SubtitleCue, SubtitleStyle } from '@/types/player'
+import { itemAt } from '../../../shared/checked'
+
+/** A time field of untrusted subtitle text; missing or garbled counts as 0. */
+function toInt(value: string | undefined): number {
+  return value ? parseInt(value) || 0 : 0
+}
 
 function parseTimeSRT(str: string): number {
   if (!str) return 0
@@ -7,9 +13,9 @@ function parseTimeSRT(str: string): number {
   // h:mm:ss,ms or, when the hour is left out, mm:ss,ms.
   const hasHours = parts.length >= 3
   const [sec, ms] = (parts[hasHours ? 2 : 1] || '0,0').split(/[,.]/)
-  const h = hasHours ? parseInt(parts[0]) || 0 : 0
-  const m = parseInt(parts[hasHours ? 1 : 0]) || 0
-  const s = parseInt(sec) || 0
+  const h = hasHours ? toInt(parts[0]) : 0
+  const m = toInt(parts[hasHours ? 1 : 0])
+  const s = toInt(sec)
   const msVal = parseInt((ms || '0').slice(0, 3).padEnd(3, '0')) || 0
   return h * 3600 + m * 60 + s + msVal / 1000
 }
@@ -35,21 +41,21 @@ function parseTimeVTT(str: string): number {
   const parts = clean.split(':')
   if (parts.length === 1) {
     const [sec, ms] = clean.split('.')
-    const s = parseInt(sec) || 0
+    const s = toInt(sec)
     const m = parseInt((ms || '0').padEnd(3, '0')) || 0
     return s + m / 1000
   }
   if (parts.length === 2) {
     const [sec, ms] = (parts[1] || '0.0').split('.')
-    const h = parseInt(parts[0]) || 0
-    const s = parseInt(sec) || 0
+    const h = toInt(parts[0])
+    const s = toInt(sec)
     const m = parseInt((ms || '0').padEnd(3, '0')) || 0
     return h * 60 + s + m / 1000
   }
   const [sec, ms] = (parts[2] || '0.0').split('.')
-  const h = parseInt(parts[0]) || 0
-  const m = parseInt(parts[1]) || 0
-  const s = parseInt(sec) || 0
+  const h = toInt(parts[0])
+  const m = toInt(parts[1])
+  const s = toInt(sec)
   const msVal = parseInt((ms || '0').padEnd(3, '0')) || 0
   return h * 3600 + m * 60 + s + msVal / 1000
 }
@@ -68,7 +74,7 @@ export function parseSRT(content: string): SubtitleCue[] {
 
     // Find the timing line (skip sequence number)
     let timingIdx = 0
-    if (/^\d+$/.test(lines[0].trim())) timingIdx = 1
+    if (/^\d+$/.test(itemAt(lines, 0).trim())) timingIdx = 1
 
     const timingLine = lines[timingIdx]
     if (!timingLine) continue
@@ -82,8 +88,8 @@ export function parseSRT(content: string): SubtitleCue[] {
       .trim()
 
     cues.push({
-      startTime: parseTimeSRT(match[1]),
-      endTime: parseTimeSRT(match[2]),
+      startTime: parseTimeSRT(itemAt(match, 1)),
+      endTime: parseTimeSRT(itemAt(match, 2)),
       text: stripHTMLTags(text)
     })
   }
@@ -102,15 +108,9 @@ export function parseVTT(content: string): SubtitleCue[] {
     if (lines.length < 2) continue
 
     // Find timing line
-    let timingIdx = 0
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes('-->')) {
-        timingIdx = i
-        break
-      }
-    }
+    const timingIdx = Math.max(0, lines.findIndex((line) => line.includes('-->')))
 
-    const timingLine = lines[timingIdx]
+    const timingLine = itemAt(lines, timingIdx)
     const match = timingLine.match(/([\d:.]+)\s*-->\s*([\d:.]+)/)
     if (!match) continue
 
@@ -120,8 +120,8 @@ export function parseVTT(content: string): SubtitleCue[] {
       .trim()
 
     cues.push({
-      startTime: parseTimeVTT(match[1]),
-      endTime: parseTimeVTT(match[2]),
+      startTime: parseTimeVTT(itemAt(match, 1)),
+      endTime: parseTimeVTT(itemAt(match, 2)),
       text: stripHTMLTags(text)
     })
   }
@@ -134,9 +134,9 @@ function parseASSTime(str: unknown): number {
   const parts = str.trim().split(':')
   if (parts.length < 3) return 0
   const [sec, cs] = (parts[2] || '0.0').split('.')
-  const h = parseInt(parts[0]) || 0
-  const m = parseInt(parts[1]) || 0
-  const s = parseInt(sec) || 0
+  const h = toInt(parts[0])
+  const m = toInt(parts[1])
+  const s = toInt(sec)
   const csVal = parseInt((cs || '0').padEnd(2, '0')) || 0
   return h * 3600 + m * 60 + s + csVal / 100
 }
@@ -156,6 +156,8 @@ function parseASSStyle(styleLine: string, formatLine: string): Map<string, Subti
 
     formatFields.forEach((field, i) => {
       const val = values[i]
+      // A style line shorter than its format line: the missing fields keep their defaults.
+      if (val === undefined) return
       switch (field) {
         case 'Name':
           name = val
@@ -194,7 +196,6 @@ export function parseASS(content: string): SubtitleCue[] {
   const cues: SubtitleCue[] = []
   const lines = normalizeSubtitleText(content).split('\n')
 
-  let eventFormatFields: string[] = []
   let eventFormatIndex = new Map<string, number>()
   let styles = new Map<string, SubtitleStyle>()
   let styleFormatLine = ''
@@ -229,7 +230,7 @@ export function parseASS(content: string): SubtitleCue[] {
 
     if (inEvents) {
       if (line.startsWith('Format:')) {
-        eventFormatFields = line
+        const eventFormatFields = line
           .replace('Format:', '')
           .split(',')
           .map((f) => f.trim())
@@ -259,7 +260,8 @@ export function parseASS(content: string): SubtitleCue[] {
 
         if (startIdx === -1 || endIdx === -1) continue
 
-        const style = styleIdx !== -1 ? styles.get(values[styleIdx]?.trim()) : undefined
+        const styleName = styleIdx !== -1 ? values[styleIdx]?.trim() : undefined
+        const style = styleName !== undefined ? styles.get(styleName) : undefined
 
         cues.push({
           startTime: parseASSTime(values[startIdx]),

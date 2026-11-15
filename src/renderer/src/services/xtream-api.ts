@@ -1,3 +1,4 @@
+import { itemAt } from '../../../shared/checked'
 import type {
   XtreamCredentials,
   XtreamAuthResponse,
@@ -34,11 +35,6 @@ import {
   normalizeXtreamVodStreams
 } from './xtream-normalize'
 import { perfXtreamMark } from './perf'
-
-export { XtreamRequestError, isXtreamRequestError, requestHost } from './xtream-errors'
-export { maskCredentialsInUrl, xtreamRetryDelayMs } from './xtream-request'
-export type { XtreamErrorKind } from './xtream-errors'
-export { getAllowedLiveFormats, pickLiveFormat } from './xtream-normalize'
 
 /** Responses larger than this (in UTF-16 code units) are not kept in the request cache. */
 const XTREAM_MAX_CACHEABLE_BODY_CHARS = 2 * 1024 * 1024
@@ -119,7 +115,7 @@ async function runWithConcurrency<T>(
     cursor += 1
     if (index >= items.length) return
 
-    await task(items[index], index)
+    await task(itemAt(items, index), index)
     await runWorker()
   }
 
@@ -153,7 +149,7 @@ async function collectPreviewFromCategories<T, K extends string | number>({
     maxConcurrency,
     async (categoryId) => {
       if (signal?.aborted || done) return
-      let items: T[] = []
+      let items: T[]
       try {
         items = await fetchByCategory(categoryId)
       } catch {

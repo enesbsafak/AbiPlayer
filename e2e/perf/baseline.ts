@@ -13,7 +13,7 @@
 // The app runs in the e2e test mode (ABI_E2E=1): off-screen, never focused,
 // muted, silent clips. Raw timelines go to e2e/.output/perf/.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { cpus, totalmem, release } from 'node:os'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
@@ -104,13 +104,20 @@ async function launch(profileDir: string, label: string): Promise<AbiApp> {
 
 // ---------------------------------------------------------------- startup ---
 
+type StartupMode = 'cold' | 'warm'
+
 interface StartupRun {
   size: CatalogPreset
   link: string
+  /** cold: no catalog on disk (the original baseline's only case); warm: the IndexedDB cache from the run before. */
+  mode: StartupMode
   firstPaint: number | null
   readyToShow: number | null
   authDone: number | null
   homeContent: number | null
+  /** Every type held a complete list, from the cache or the network, whichever came first. */
+  catalogInMemory: number | null
+  /** Every type's list came fresh from the provider (`sync:done`). */
   fullCatalog: number | null
   syncFailed: boolean
   longTaskCount: number
@@ -133,33 +140,41 @@ async function startupRuns(size: CatalogPreset, link: LinkProfile, runs: number)
     mock.update({ latencyMs: link.latencyMs, bandwidthBytesPerSec: link.bandwidthBytesPerSec })
 
     for (let run = 1; run <= runs; run += 1) {
-      log(`startup ${size}/${link.name}: run ${run}/${runs}`)
-      const app = await launch(profile, `startup-${size}-${run}`)
-      try {
-        await expectHomeWithContent(app.page, 120_000)
-        const timeline = await waitForTimeline(app, startupSettled, FULL_CATALOG_TIMEOUT_MS)
-        writeFileSync(join(RAW_DIR, `startup-${size}-${link.latencyMs}-${run}.json`), JSON.stringify(timeline, null, 2))
-        const syncMarks = timeline.marks.filter((item) => item.name.startsWith('sync:'))
-        const syncStart = syncMarks.find((item) => item.name === 'sync:start')?.t ?? null
-        const syncEnd = syncSettled(timeline) ? Math.max(...syncMarks.filter((item) => item.name !== 'sync:start').map((item) => item.t)) : null
-        const longTasks = syncStart !== null
-          ? timeline.longTasks.filter((task) => task.process === 'renderer' && task.start >= syncStart && task.start <= (syncEnd ?? Infinity))
-          : []
-        results.push({
-          size,
-          link: link.name,
-          firstPaint: mark(timeline, 'renderer:first-contentful-paint')?.t ?? null,
-          readyToShow: mark(timeline, 'main:ready-to-show')?.t ?? null,
-          authDone: mark(timeline, 'connect:auth-done')?.t ?? null,
-          homeContent: mark(timeline, 'renderer:home-first-content')?.t ?? null,
-          fullCatalog: syncEnd,
-          syncFailed: syncMarks.some((item) => item.name === 'sync:failed'),
-          longTaskCount: longTasks.length,
-          longTaskTotal: longTasks.reduce((sum, task) => sum + task.duration, 0),
-          longTaskMax: longTasks.reduce((max, task) => Math.max(max, task.duration), 0)
-        })
-      } finally {
-        await app.close()
+      for (const mode of ['cold', 'warm'] as const) {
+        log(`startup ${size}/${link.name}: ${mode} run ${run}/${runs}`)
+        // Cold: the catalog cache is removed, so the lists come from the provider as before the cache existed.
+        if (mode === 'cold') rmSync(join(profile, 'IndexedDB'), { recursive: true, force: true })
+        const app = await launch(profile, `startup-${size}-${mode}-${run}`)
+        try {
+          await expectHomeWithContent(app.page, 120_000)
+          const timeline = await waitForTimeline(app, startupSettled, FULL_CATALOG_TIMEOUT_MS)
+          writeFileSync(join(RAW_DIR, `startup-${size}-${link.latencyMs}-${mode}-${run}.json`), JSON.stringify(timeline, null, 2))
+          const syncMarks = timeline.marks.filter((item) => item.name.startsWith('sync:'))
+          const syncStart = syncMarks.find((item) => item.name === 'sync:start')?.t ?? null
+          const syncEnd = syncSettled(timeline) ? Math.max(...syncMarks.filter((item) => item.name !== 'sync:start').map((item) => item.t)) : null
+          const longTasks = syncStart !== null
+            ? timeline.longTasks.filter((task) => task.process === 'renderer' && task.start >= syncStart && task.start <= (syncEnd ?? Infinity))
+            : []
+          results.push({
+            size,
+            link: link.name,
+            mode,
+            firstPaint: mark(timeline, 'renderer:first-contentful-paint')?.t ?? null,
+            readyToShow: mark(timeline, 'main:ready-to-show')?.t ?? null,
+            authDone: mark(timeline, 'connect:auth-done')?.t ?? null,
+            homeContent: mark(timeline, 'renderer:home-first-content')?.t ?? null,
+            catalogInMemory: catalogCompleteAt(timeline),
+            fullCatalog: syncEnd,
+            syncFailed: syncMarks.some((item) => item.name === 'sync:failed'),
+            longTaskCount: longTasks.length,
+            longTaskTotal: longTasks.reduce((sum, task) => sum + task.duration, 0),
+            longTaskMax: longTasks.reduce((max, task) => Math.max(max, task.duration), 0)
+          })
+          // Let the cache write finish (after the measurement) so the warm run that follows has it all.
+          if (mode === 'cold') await app.page.waitForTimeout(3000)
+        } finally {
+          await app.close()
+        }
       }
     }
   } finally {
@@ -167,6 +182,17 @@ async function startupRuns(size: CatalogPreset, link: LinkProfile, runs: number)
     removeProfileDir(profile)
   }
   return results
+}
+
+/** When the last of the three types first held a complete list (`cache:committed` or `sync:done`). */
+function catalogCompleteAt(timeline: MergedPerfTimeline): number | null {
+  const times = ['live', 'vod', 'series'].map((type) => {
+    const candidates = timeline.marks
+      .filter((item) => (item.name === 'sync:done' || item.name === 'cache:committed') && item.detail?.type === type)
+      .map((item) => item.t)
+    return candidates.length ? Math.min(...candidates) : null
+  })
+  return times.every((time) => time !== null) ? Math.max(...(times as number[])) : null
 }
 
 // --------------------------------------------------------------- playback ---
@@ -276,9 +302,7 @@ async function playbackRuns(link: LinkProfile, runs: number): Promise<PlaybackSa
           if (protocol === 'HLS') {
             await returnHome(page)
             await openRoute(page, '/vod')
-            // The live category selected above leaks into this page (F1-20).
-            await page.getByRole('button', { name: 'Tüm Filmler' }).click()
-            await page.getByPlaceholder('Kanal ara...').fill('Kayıp Şehir')
+            await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Kayıp Şehir')
             await cardButton(page, KNOWN.film).click()
             const playButton = page.getByRole('button', { name: 'Filmi Oynat' })
             await playButton.waitFor()
@@ -309,7 +333,7 @@ function environment(): string[] {
     // ignore
   }
   try {
-    mpvVersion = execFileSync(MPV_PATH, ['--version']).toString().split('\n')[0].trim()
+    mpvVersion = execFileSync(MPV_PATH, ['--version']).toString().split('\n')[0]?.trim() ?? ''
   } catch {
     // ignore
   }
@@ -330,15 +354,15 @@ function environment(): string[] {
 function startupTable(results: StartupRun[]): string[] {
   const groups = new Map<string, StartupRun[]>()
   for (const result of results) {
-    const key = `${result.size}|${result.link}`
+    const key = `${result.size}|${result.link}|${result.mode}`
     groups.set(key, [...(groups.get(key) ?? []), result])
   }
   const lines = [
-    '| Katalog | Bağlantı | n | İlk boyama | Pencere hazır | Giriş yanıtı | Ana sayfada ilk içerik | Tam katalog | Eşitlemede uzun görev (adet / toplam / en uzun) |',
-    '|---|---|---|---|---|---|---|---|---|'
+    '| Katalog | Bağlantı | Açılış | n | İlk boyama | Pencere hazır | Giriş yanıtı | Ana sayfada ilk içerik | Tam katalog bellekte | Tam katalog sağlayıcıdan | Eşitlemede uzun görev (adet / toplam / en uzun) |',
+    '|---|---|---|---|---|---|---|---|---|---|---|'
   ]
   for (const [key, group] of groups) {
-    const [size, link] = key.split('|')
+    const [size, link, mode] = key.split('|')
     const total = CATALOG_PRESETS[size as CatalogPreset]
     const pick = (fn: (run: StartupRun) => number | null) => group.map(fn).filter((value): value is number => value !== null)
     const cell = (fn: (run: StartupRun) => number | null) => {
@@ -347,7 +371,7 @@ function startupTable(results: StartupRun[]): string[] {
     }
     const failed = group.some((run) => run.syncFailed) ? ' (eşitleme hatası var)' : ''
     lines.push(
-      `| ${size} (${(total.live + total.vod + total.series).toLocaleString('tr-TR')}) | ${link} | ${group.length} | ${cell((run) => run.firstPaint)} | ${cell((run) => run.readyToShow)} | ${cell((run) => run.authDone)} | ${cell((run) => run.homeContent)} | ${cell((run) => run.fullCatalog)}${failed} | ${fmt(median(pick((run) => run.longTaskCount)))} / ${fmt(median(pick((run) => run.longTaskTotal)), ' ms')} / ${fmt(median(pick((run) => run.longTaskMax)), ' ms')} |`
+      `| ${size} (${(total.live + total.vod + total.series).toLocaleString('tr-TR')}) | ${link} | ${mode === 'cold' ? 'soğuk' : 'sıcak'} | ${group.length} | ${cell((run) => run.firstPaint)} | ${cell((run) => run.readyToShow)} | ${cell((run) => run.authDone)} | ${cell((run) => run.homeContent)} | ${cell((run) => run.catalogInMemory)} | ${cell((run) => run.fullCatalog)}${failed} | ${fmt(median(pick((run) => run.longTaskCount)))} / ${fmt(median(pick((run) => run.longTaskTotal)), ' ms')} / ${fmt(median(pick((run) => run.longTaskMax)), ' ms')} |`
     )
   }
   return lines
@@ -413,7 +437,8 @@ const report = [
   '',
   '## Yöntem',
   '',
-  '- Her katalog boyutu için önce bir kurulum açılışında sahte Xtream kaynağı giriş formundan eklenir ve ilk tam eşitleme bitirilir. Ölçülen açılışlar bu profille yapılan yeniden açılışlardır: kaynak kayıtlı, katalog diskte yok (bugün her açılışta yeniden indiriliyor).',
+  '- Her katalog boyutu için önce bir kurulum açılışında sahte Xtream kaynağı giriş formundan eklenir ve ilk tam eşitleme bitirilir. Ölçülen açılışlar bu profille yapılan yeniden açılışlardır, kaynak kayıtlı. **Soğuk:** IndexedDB katalog önbelleği her açılıştan önce silinir, listeler sağlayıcıdan gelir (önbellekten önceki taban yöntemiyle aynı). **Sıcak:** bir önceki açılışın bıraktığı önbellekle; liste önbellekten gelir, arkada sağlayıcıdan tazelenir.',
+  '- **Tam katalog bellekte:** üç türün tam listesinin önbellekten ya da ağdan (hangisi önce) bellekte olduğu an (`cache:committed` / `sync:done`). **Tam katalog sağlayıcıdan:** üç türün de sağlayıcıdan taze gelmesi (`sync:done`); taban raporundaki "Tam katalog" sütunu budur.',
   '- Süreler main sürecin başlangıcına göredir (`ABI_PERF=1` ile açılan `perfMark` zaman çizelgesi, bkz. `src/shared/perf.ts`). Değerler ortanca; parantez içinde en küçük ve en büyük.',
   '- **İlk boyama:** renderer `first-contentful-paint`. **Ana sayfada ilk içerik:** ana sayfanın kanal listesiyle ilk çizildiği an (`renderer:home-first-content`). **Tam katalog:** canlı, film ve dizi tam listelerinin üçünün de eklenmesi (`sync:done`). Küçük katalogda veri, pencere ilk kez boyanmadan önce gelebilir; kullanıcının içeriği gördüğü an ikisinden geç olanıdır. **Uzun görev:** renderer ana iş parçacığında 50 ms üstü görevler (Long Tasks API), ilk `sync:start` ile son `sync:done` arasında.',
   '- Oynatmada "tıklamadan oynamaya", tıklama anından, sayfanın içinden 40 ms aralıkla `mpv-get-state` okunarak yeni yayının konumunun ilk kez ilerlediği ana kadardır (önceki kanalın konumu yeni yola sızdığı için yalnızca `timePos > 0` yetmez; bkz. `createMpvProgressProbe`). Bu, mpv\'nin ilk kareyi göstermesini en çok bir örnekleme aralığı kadar geç yakalar.',

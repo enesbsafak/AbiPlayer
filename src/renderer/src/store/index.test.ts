@@ -4,12 +4,12 @@ import type { PlaylistSource } from '@/types/playlist'
 import {
   createPartialize,
   mergePersistedState,
-  PERSIST_VERSION,
   STORE_NAME,
   storePersistence,
   useStore,
   type AppStore
 } from './index'
+import { PERSIST_VERSION } from './persist-migrations'
 
 const xtreamSource: PlaylistSource = {
   id: 'xt',
@@ -250,7 +250,7 @@ describe('persisted store', () => {
     useStore.getState().updateSettings({ subtitleFontSize: 30 })
     storePersistence.flush()
     expect(stored().version).toBe(PERSIST_VERSION)
-    expect((stored().state.watchProgress as Array<{ key: string }>)[0].key).toBe('movie:xt:55')
+    expect((stored().state.watchProgress as Array<{ key: string }>)[0]?.key).toBe('movie:xt:55')
   })
 
   it('does not touch storage for playback ticks', async () => {

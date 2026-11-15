@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { itemAt } from '../../shared/checked'
 import { MpvIpcClient, MpvIpcClosedError, MpvLineDecoder, type MpvMessage } from './protocol'
 import { FakeMpvPeer } from './testing/fake-mpv'
 
@@ -62,7 +63,7 @@ describe('MpvIpcClient', () => {
   it('rejects with mpv error strings', async () => {
     const { written, peer, client } = setup()
     const pending = client.request(['get_property', 'nope'])
-    peer.send({ request_id: written[0].request_id, error: 'property not found' })
+    peer.send({ request_id: itemAt(written, 0).request_id, error: 'property not found' })
     await expect(pending).rejects.toThrow('property not found')
   })
 
@@ -84,7 +85,7 @@ describe('MpvIpcClient', () => {
     await vi.advanceTimersByTimeAsync(1000)
     await assertion
     // A reply after the timeout must not resolve anything or throw.
-    peer.send({ request_id: written[0].request_id, error: 'success', data: 1 })
+    peer.send({ request_id: itemAt(written, 0).request_id, error: 'success', data: 1 })
   })
 
   it('rejects everything pending when the peer hangs up, and reports it once', async () => {

@@ -7,6 +7,7 @@ import {
   PERF_QUERY_PARAM,
   createPerfRecorder,
   isPerfFlag,
+  perfOutputPath,
   type PerfDetail,
   type PerfTimeline
 } from '../shared/perf'
@@ -22,10 +23,6 @@ const recorder = createPerfRecorder({
 
 export function perfMark(name: string, detail?: PerfDetail): void {
   recorder.mark(name, detail)
-}
-
-export function isPerfEnabled(): boolean {
-  return recorder.enabled
 }
 
 export function getMainPerfTimeline(): PerfTimeline {
@@ -59,7 +56,7 @@ if (recorder.enabled) {
 
   app.on('browser-window-created', (_event, window) => watchWindow(window))
   app.once('will-quit', () => {
-    const outPath = process.env[PERF_OUT_ENV_VAR]
+    const outPath = perfOutputPath(process.env[PERF_OUT_ENV_VAR], app.isPackaged)
     if (outPath) {
       try {
         writeMainPerfTimeline(outPath)

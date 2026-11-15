@@ -6,6 +6,7 @@ import { KNOWN } from '../mock-provider/catalog.ts'
 import { helpersOf } from '../support/processes.ts'
 import { addXtreamSource, expectHomeWithContent, miniPlayer, mpvState, playLiveChannel, waitForMpvProgress } from '../support/flows.ts'
 import type { AbiApp } from '../support/app.ts'
+import { itemAt } from '../../src/shared/checked.ts'
 
 // Plan F2-15 (decision K1), experimental and off by default: with the setting
 // on, leaving the player keeps mpv playing in a corner of the window. The
@@ -68,8 +69,8 @@ function alphaAt(png: Buffer, x: number, y: number): number {
     if (type === 'IHDR') {
       width = data.readUInt32BE(0)
       height = data.readUInt32BE(4)
-      colorType = data[9]
-      if (data[8] !== 8 || data[12] !== 0) throw new Error('unexpected PNG format')
+      colorType = data.readUInt8(9)
+      if (data.readUInt8(8) !== 8 || data.readUInt8(12) !== 0) throw new Error('unexpected PNG format')
     } else if (type === 'IDAT') idat.push(data)
     offset += 12 + length
   }
@@ -79,14 +80,14 @@ function alphaAt(png: Buffer, x: number, y: number): number {
   const raw = inflateSync(Buffer.concat(idat))
   const rows: Buffer[] = []
   for (let row = 0; row < height; row += 1) {
-    const filter = raw[row * (stride + 1)]
+    const filter = raw.readUInt8(row * (stride + 1))
     const line = Buffer.from(raw.subarray(row * (stride + 1) + 1, (row + 1) * (stride + 1)))
     const previous = rows[row - 1]
     for (let i = 0; i < stride; i += 1) {
-      const a = i >= bpp ? line[i - bpp] : 0
-      const b = previous ? previous[i] : 0
-      const c = previous && i >= bpp ? previous[i - bpp] : 0
-      let value = line[i]
+      const a = i >= bpp ? line.readUInt8(i - bpp) : 0
+      const b = previous ? previous.readUInt8(i) : 0
+      const c = previous && i >= bpp ? previous.readUInt8(i - bpp) : 0
+      let value = line.readUInt8(i)
       if (filter === 1) value += a
       else if (filter === 2) value += b
       else if (filter === 3) value += Math.floor((a + b) / 2)
@@ -101,7 +102,7 @@ function alphaAt(png: Buffer, x: number, y: number): number {
     }
     rows.push(line)
   }
-  return rows[y][x * bpp + 3]
+  return itemAt(rows, y).readUInt8(x * bpp + 3)
 }
 
 async function cornerBox(page: Page) {

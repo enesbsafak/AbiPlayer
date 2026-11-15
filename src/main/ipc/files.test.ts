@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { IpcMainInvokeEvent } from 'electron'
@@ -155,6 +155,37 @@ describe('file handlers', () => {
     await expect(call('read-picked-file', playlist)).resolves.toEqual({ path: playlist, content: '#EXTM3U\n' })
     await expect(call('read-picked-file', secret)).rejects.toThrow(NOT_PICKED_MESSAGE)
     await expect(call('read-picked-file', 42)).rejects.toThrow('Geçersiz dosya yolu')
+  })
+
+  // Since Electron 43 the dialog starts in Downloads every time.
+  it('opens the dialog in the folder of the last pick, also after a restart', async () => {
+    const folder = join(dir, 'Listeler')
+    const playlist = join(folder, 'liste.m3u')
+    await mkdir(folder)
+    await writeFile(playlist, '#EXTM3U\n', 'utf-8')
+    const storePath = join(dir, 'picked-files.json')
+
+    const showOpenDialog = vi.fn().mockResolvedValue({ canceled: false, filePaths: [playlist] })
+    const first = captureHandlers()
+    registerFileHandlers(first.registrar, {
+      registry: new PickedFileRegistry({ storePath }),
+      getWindow: () => ({}) as Electron.BrowserWindow,
+      showOpenDialog
+    })
+    await first.call('pick-file-content')
+    await first.call('pick-file-content')
+    expect(showOpenDialog.mock.calls[0]?.[1]).not.toHaveProperty('defaultPath')
+    expect(showOpenDialog.mock.calls[1]?.[1]).toMatchObject({ defaultPath: folder })
+
+    const afterRestart = captureHandlers()
+    const restartedDialog = vi.fn().mockResolvedValue({ canceled: true, filePaths: [] })
+    registerFileHandlers(afterRestart.registrar, {
+      registry: new PickedFileRegistry({ storePath }),
+      getWindow: () => ({}) as Electron.BrowserWindow,
+      showOpenDialog: restartedDialog
+    })
+    await afterRestart.call('pick-file-content')
+    expect(restartedDialog.mock.calls[0]?.[1]).toMatchObject({ defaultPath: folder })
   })
 
   it('returns null when the dialog is cancelled', async () => {

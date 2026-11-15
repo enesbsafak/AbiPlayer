@@ -1,3 +1,4 @@
+import { itemAt } from '../../../shared/checked'
 import { GITHUB_REPO } from '@/constants/app-info'
 
 const RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=8`
@@ -56,7 +57,7 @@ export function parseReleaseBody(body: string): ReleaseNoteBlock[] {
   }
 
   for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index].trim()
+    const line = itemAt(lines, index).trim()
 
     if (!line) {
       flushList()

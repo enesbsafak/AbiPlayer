@@ -3,6 +3,7 @@ import { test, expect } from '../support/fixtures.ts'
 import type { MockProvider } from '../mock-provider/server.ts'
 import { addXtreamSource, anyCard, cardButton, closeMiniPlayer, expectHomeWithContent, leavePlayer, openRoute } from '../support/flows.ts'
 import { focusedName, grid, gridScrollTop, renderedCardNames, scrollGridTo } from '../support/catalog.ts'
+import { defined } from '../../src/shared/checked.ts'
 
 async function signIn(page: Page, mock: MockProvider) {
   await addXtreamSource(page, mock)
@@ -162,7 +163,7 @@ test.describe('katalog sayfaları', () => {
     expect(failedRequests).toBeGreaterThan(0)
     await app.shot('full-sync-failed')
 
-    const lastFilm = String(mock.catalog.vod[mock.catalog.vod.length - 1].name)
+    const lastFilm = String(defined(mock.catalog.vod.at(-1), 'the last film').name)
     await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill(lastFilm)
     await expect(page.getByText(/^0 sonuç/)).toBeVisible()
     await expect(cardButton(page, lastFilm)).toHaveCount(0)

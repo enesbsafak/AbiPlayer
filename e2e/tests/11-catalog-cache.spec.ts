@@ -91,7 +91,7 @@ function marksNamed(timeline: MergedPerfTimeline, name: string) {
 }
 
 test.describe('katalog önbelleği', () => {
-  test('ikinci açılışta katalog sağlayıcı yanıt vermeden önbellekten gelir', async ({ launch, mock, closeApp }) => {
+  test('ikinci açılışta katalog sağlayıcı yanıt vermeden önbellekten gelir', { tag: '@packaged' }, async ({ launch, mock, closeApp }) => {
     const first = await launch({ label: 'first' })
     await addXtreamSource(first.page, mock, { name: 'Önbellekli Panel' })
     await expectHomeWithContent(first.page)
@@ -111,6 +111,7 @@ test.describe('katalog önbelleği', () => {
 
     const timeline = await second.perf()
     expect(marksNamed(timeline, 'cache:committed').map((mark) => mark.detail?.type).sort()).toEqual(['live', 'series', 'vod'])
+    expect(marksNamed(timeline, 'cache:committed').map((mark) => mark.detail?.isolated), 'read in the Worker').toEqual([true, true, true])
     expect(marksNamed(timeline, 'sync:done'), 'no list came from the provider yet').toHaveLength(0)
 
     // The whole catalog is there, categories included, not just a preview.

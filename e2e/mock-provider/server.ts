@@ -21,6 +21,7 @@ import {
 import type { MediaSet } from './media.ts'
 import { artworkPng } from './png.ts'
 import { generateSelfSignedCertificate, type GeneratedCertificate } from '../../src/main/tls/testing/self-signed.ts'
+import { itemAt } from '../../src/shared/checked.ts'
 
 export type FailureMode =
   | 'timeout'
@@ -128,7 +129,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 function parseHlsDurations(media: MediaSet): number[] {
   try {
-    const index = readFileSync(join(dirname(media.hlsSegments[0]), 'index.m3u8'), 'utf8')
+    const index = readFileSync(join(dirname(itemAt(media.hlsSegments, 0)), 'index.m3u8'), 'utf8')
     const durations = [...index.matchAll(/#EXTINF:([\d.]+)/g)].map((match) => Number(match[1]))
     if (durations.length === media.hlsSegments.length) return durations
   } catch {
@@ -413,20 +414,20 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
     const vodNames = names(current.vodCategories)
     const seriesNames = names(current.seriesCategories)
     const lines = ['#EXTM3U x-tvg-url="' + `${baseUrl}/xmltv.php?username=${credentials.replace('/', '&password=')}` + '"']
-    const attr = (value: Json) => String(value ?? '').replace(/"/g, "'")
+    const attr = (value: Json | undefined) => String(value ?? '').replace(/"/g, "'")
 
     current.live.forEach((item, index) => {
-      const group = liveNames.get(current.liveCategoryOf[index]) ?? ''
+      const group = liveNames.get(current.liveCategoryOf[index] ?? '') ?? ''
       lines.push(`#EXTINF:-1 tvg-id="${attr(item.epg_channel_id)}" tvg-name="${attr(item.name)}" tvg-logo="${attr(item.stream_icon)}" group-title="${attr(group)}",${item.name}`)
       lines.push(`${baseUrl}/live/${credentials}/${item.stream_id}.${liveExt}`)
     })
     current.vod.forEach((item, index) => {
-      const group = vodNames.get(current.vodCategoryOf[index]) ?? ''
+      const group = vodNames.get(current.vodCategoryOf[index] ?? '') ?? ''
       lines.push(`#EXTINF:-1 tvg-id="" tvg-name="${attr(item.name)}" tvg-logo="${attr(item.stream_icon)}" group-title="${attr(group)}",${item.name}`)
       lines.push(`${baseUrl}/movie/${credentials}/${item.stream_id}.${item.container_extension}`)
     })
     current.series.forEach((item, index) => {
-      const group = seriesNames.get(current.seriesCategoryOf[index]) ?? ''
+      const group = seriesNames.get(current.seriesCategoryOf[index] ?? '') ?? ''
       const episodeId = Number(item.series_id) * 100 + 11
       lines.push(`#EXTINF:-1 tvg-id="" tvg-name="${attr(item.name)} S01 E01" tvg-logo="${attr(item.cover)}" group-title="${attr(group)}",${item.name} S01 E01`)
       lines.push(`${baseUrl}/series/${credentials}/${episodeId}.mp4`)
@@ -518,7 +519,7 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
     ]
     for (let n = first; n < available; n += 1) {
       if (n > 0 && n % count === 0) lines.push('#EXT-X-DISCONTINUITY')
-      lines.push(`#EXTINF:${hlsDurations[n % count].toFixed(3)},`)
+      lines.push(`#EXTINF:${itemAt(hlsDurations, n % count).toFixed(3)},`)
       lines.push(`/hls/${encodeURIComponent(streamId)}/${n}.ts`)
     }
     headers(res, 'application/vnd.apple.mpegurl')
@@ -658,7 +659,11 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
         record.status = 200
         send(res, Buffer.from(xmltv()), record)
       } else if (positional) {
-        const [, kind, user, pass, id, extension] = positional
+        const [, kind] = positional
+        const user = itemAt(positional, 2)
+        const pass = itemAt(positional, 3)
+        const id = itemAt(positional, 4)
+        const extension = itemAt(positional, 5)
         record.route = kind === 'live' ? (extension === 'm3u8' ? 'live-hls' : 'live-ts') : kind === 'movie' ? 'movie' : 'series-episode'
         const rule = failureFor(record.route)
         if (rule && applyFailure(rule, res, record)) return
@@ -680,7 +685,7 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
         const rule = failureFor('hls-segment')
         if (rule && applyFailure(rule, res, record)) return
         const n = Number(segment[2])
-        staticFile(req, res, record, media.hlsSegments[n % media.hlsSegments.length], 'video/mp2t', rule)
+        staticFile(req, res, record, itemAt(media.hlsSegments, n % media.hlsSegments.length), 'video/mp2t', rule)
       } else if (image) {
         record.route = 'img'
         const rule = failureFor('img')

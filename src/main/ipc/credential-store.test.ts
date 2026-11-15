@@ -11,14 +11,15 @@ const PREFIX = 'enc:'
 // Stand-in for Electron's safeStorage: reversible, and decryption fails for
 // anything it did not encrypt, like DPAPI with another user's blob.
 const fakeSafeStorage: SafeStorageLike = {
-  isEncryptionAvailable: () => true,
-  encryptString: (plain) => Buffer.from(PREFIX + plain, 'utf-8'),
-  decryptString: (encrypted) => {
+  isAsyncEncryptionAvailable: () => Promise.resolve(true),
+  encryptStringAsync: (plain) => Promise.resolve(Buffer.from(PREFIX + plain, 'utf-8')),
+  decryptStringAsync: (encrypted) => {
     const text = encrypted.toString('utf-8')
-    if (!text.startsWith(PREFIX)) throw new Error('Error while decrypting the ciphertext provided to safeStorage.decryptString.')
-    return text.slice(PREFIX.length)
+    if (!text.startsWith(PREFIX)) return Promise.reject(new Error('Error while decrypting the ciphertext provided to safeStorage.decryptString.'))
+    return Promise.resolve({ result: text.slice(PREFIX.length), shouldReEncrypt: false })
   }
 }
+const unavailableSafeStorage: SafeStorageLike = { ...fakeSafeStorage, isAsyncEncryptionAvailable: () => Promise.resolve(false) }
 
 const CRED = { url: 'http://p.example', username: 'ali', password: 's3cret' }
 
@@ -81,7 +82,7 @@ describe('CredentialStore', () => {
   })
 
   it('quarantines a file that decrypts to something other than a JSON object', async () => {
-    await writeFile(filePath, fakeSafeStorage.encryptString('[1,2').toString('base64'), 'utf-8')
+    await writeFile(filePath, (await fakeSafeStorage.encryptStringAsync('[1,2')).toString('base64'), 'utf-8')
     const store = new CredentialStore({ filePath, safeStorage: fakeSafeStorage })
 
     await expect(store.getAll()).resolves.toEqual({})
@@ -109,9 +110,29 @@ describe('CredentialStore', () => {
   it('refuses to work without OS encryption', async () => {
     const store = new CredentialStore({
       filePath,
-      safeStorage: { ...fakeSafeStorage, isEncryptionAvailable: () => false }
+      safeStorage: unavailableSafeStorage
     })
     await expect(store.set('src-1', CRED)).rejects.toThrow('Güvenli kimlik bilgisi saklama')
+  })
+
+  // safeStorage may rotate its key; data it says to re-encrypt is written back with the new one.
+  it('re-encrypts the file when safeStorage asks for it, keeping every entry', async () => {
+    const rotating: SafeStorageLike = {
+      isAsyncEncryptionAvailable: () => Promise.resolve(true),
+      encryptStringAsync: (plain) => Promise.resolve(Buffer.from(`new:${plain}`, 'utf-8')),
+      decryptStringAsync: (encrypted) => {
+        const text = encrypted.toString('utf-8')
+        return Promise.resolve({ result: text.slice(4), shouldReEncrypt: text.startsWith('old:') })
+      }
+    }
+    await writeFile(filePath, Buffer.from(`old:${JSON.stringify({ 'src-1': CRED })}`).toString('base64'), 'utf-8')
+
+    const store = new CredentialStore({ filePath, safeStorage: rotating })
+    expect(await store.getAll()).toEqual({ 'src-1': CRED })
+    const rewritten = Buffer.from(await readFile(filePath, 'utf-8'), 'base64').toString('utf-8')
+    expect(rewritten.startsWith('new:')).toBe(true)
+    expect(await new CredentialStore({ filePath, safeStorage: rotating }).getAll()).toEqual({ 'src-1': CRED })
+    expect(store.getLossNotice()).toBeNull()
   })
 
   it('serialises concurrent writes so none is lost', async () => {
@@ -169,7 +190,7 @@ describe('catalog cache key (C2c)', () => {
   })
 
   it('is not handed out when secure storage is unavailable', async () => {
-    const store = new CredentialStore({ filePath, safeStorage: { ...fakeSafeStorage, isEncryptionAvailable: () => false } })
+    const store = new CredentialStore({ filePath, safeStorage: unavailableSafeStorage })
     await expect(store.getCacheKey()).rejects.toThrow('Güvenli kimlik bilgisi saklama')
   })
 })

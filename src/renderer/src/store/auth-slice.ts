@@ -70,7 +70,6 @@ export interface AuthSlice {
   setSecretMigrationError: (message: string | null) => void
   setSecretStoreError: (message: string | null) => void
   requestSourceReconnect: () => void
-  getActiveSource: () => PlaylistSource | null
   getXtreamCredentials: (sourceId: string) => XtreamCredentials | null
 }
 
@@ -208,11 +207,6 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
 
   requestSourceReconnect: () =>
     set((state) => ({ connectRetryToken: state.connectRetryToken + 1, error: null })),
-
-  getActiveSource: () => {
-    const { sources, activeSourceId } = get()
-    return sources.find((s) => s.id === activeSourceId) || null
-  },
 
   getXtreamCredentials: (sourceId) => {
     const source = get().sources.find((s) => s.id === sourceId)

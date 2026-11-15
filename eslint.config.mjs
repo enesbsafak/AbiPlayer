@@ -80,37 +80,5 @@ export default tseslint.config(
     rules: {
       'no-empty-pattern': ['error', { allowObjectPatternsAsParameters: true }]
     }
-  },
-
-  // Taban: src/ bugün bu kuralları ihlal ediyor (sayılar F0-02 raporunda).
-  // Düzeltildikçe ilgili satır silinir ve kural yukarıdaki "error" düzeyine döner.
-  // scripts/ ve e2e/ bu tabanın dışındadır; orada her kural "error".
-  {
-    files: ['src/**/*.{ts,tsx}'],
-    rules: {
-      '@typescript-eslint/no-floating-promises': 'warn',
-      '@typescript-eslint/no-misused-promises': 'warn',
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': [
-        'warn',
-        {
-          argsIgnorePattern: '^_',
-          varsIgnorePattern: '^_',
-          caughtErrorsIgnorePattern: '^_',
-          destructuredArrayIgnorePattern: '^_'
-        }
-      ],
-      '@typescript-eslint/no-unused-expressions': 'warn',
-      '@typescript-eslint/ban-ts-comment': 'warn',
-      'no-empty': 'warn',
-      'no-useless-assignment': 'warn',
-      'preserve-caught-error': 'warn'
-    }
-  },
-  {
-    files: ['src/renderer/**/*.{ts,tsx}'],
-    rules: {
-      'react-hooks/exhaustive-deps': 'warn'
-    }
   }
 )

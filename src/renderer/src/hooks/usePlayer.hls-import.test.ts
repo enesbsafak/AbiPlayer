@@ -108,6 +108,6 @@ describe('usePlayer loading hls.js on demand', () => {
     expect(hlsModule.created).toEqual([{ url: 'https://iptv.test/b/index.m3u8', destroyed: false }])
 
     first.unmount()
-    expect(hlsModule.created[0].destroyed).toBe(true)
+    expect(hlsModule.created[0]?.destroyed).toBe(true)
   })
 })

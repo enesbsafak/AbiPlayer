@@ -1,7 +1,6 @@
 import { catalogWorker, type CatalogWorkerClient, type JobHandlers } from '@/workers/client'
 import type { JobResult, ListMeta } from '@/workers/protocol'
 import { perfMark } from '@/services/perf'
-import { setPlaylistOffloader } from '@/services/m3u-parser'
 import type { PlaylistSource } from '@/types/playlist'
 import type { XtreamCredentials } from '@/types/xtream'
 import type { SourceIdentity } from './cache/catalog-cache'
@@ -11,7 +10,6 @@ import { cacheKeyReady } from './cache-key'
 import {
   CATALOG_TYPES,
   type CatalogCategory,
-  type CatalogItem,
   type CatalogType,
   type CommitResult,
   type GenerationToken
@@ -39,8 +37,17 @@ export interface IngestOutcome {
   job: JobResult
 }
 
-/** Handlers that stage each partition's batches and swap them in on `list-end`. */
-function stagingHandlers(store: CatalogStore, tokens: Map<CatalogType, GenerationToken>, outcome: IngestOutcome): JobHandlers {
+/**
+ * Handlers that stage each partition's batches and swap them in on `list-end`.
+ * `worker` only labels the timing mark: whether the job ran in a real Worker
+ * or in the in-page fallback (the packaged end-to-end run checks it).
+ */
+function stagingHandlers(
+  store: CatalogStore,
+  tokens: Map<CatalogType, GenerationToken>,
+  outcome: IngestOutcome,
+  worker: Pick<CatalogWorkerClient, 'isolated'>
+): JobHandlers {
   const stages = new Map<CatalogType, StagedReplace>()
   const categories = new Map<CatalogType, CatalogCategory[]>()
   const stageFor = (type: CatalogType): StagedReplace | null => {
@@ -72,7 +79,11 @@ function stagingHandlers(store: CatalogStore, tokens: Map<CatalogType, Generatio
         outcome.results[type] = result
         outcome.counts[type] = stage.count
         if (result === 'committed') {
-          perfMark(meta.origin === 'cache' ? 'cache:committed' : 'ingest:committed', { type, items: stage.count })
+          perfMark(meta.origin === 'cache' ? 'cache:committed' : 'ingest:committed', {
+            type,
+            items: stage.count,
+            isolated: worker.isolated
+          })
         }
         stages.delete(type)
       }
@@ -102,7 +113,7 @@ export async function ingestXtreamList(
   const status = store.getStatus(args.sourceId, args.type)
   const categories = status?.categoriesLoaded ? [...store.getCategories(args.sourceId, args.type)] : null
   const outcome = emptyOutcome()
-  const handlers = stagingHandlers(store, new Map([[args.type, args.token]]), outcome)
+  const handlers = stagingHandlers(store, new Map([[args.type, args.token]]), outcome, worker)
   outcome.job = await worker.run(
     {
       kind: 'xtream-list',
@@ -133,7 +144,7 @@ export async function ingestM3uUrl(sourceId: string, url: string, options: Inges
   await cacheKeyReady()
   outcome.job = await worker.run(
     { kind: 'm3u-url', sourceId, url, revision: store.getSourceRevision(sourceId), cache: true },
-    stagingHandlers(store, tokens, outcome),
+    stagingHandlers(store, tokens, outcome, worker),
     options.signal
   )
   if (outcome.results.live === 'committed') setSourceEpgUrls(sourceId, outcome.epgUrls)
@@ -155,40 +166,12 @@ export async function ingestM3uText(
   await cacheKeyReady()
   outcome.job = await worker.run(
     { kind: 'm3u-text', sourceId, text, path, revision: store.getSourceRevision(sourceId), cache: true },
-    stagingHandlers(store, tokens, outcome),
+    stagingHandlers(store, tokens, outcome, worker),
     options.signal
   )
   if (outcome.results.live === 'committed') setSourceEpgUrls(sourceId, outcome.epgUrls)
   return outcome
 }
-
-/**
- * `fetchAndParseM3U` (the source manager's refresh, the import form) runs in
- * the worker too, and caches what it fetched. The parsed entries come back
- * as records, which the callers' `m3uPlaylistToReplacement` takes as is.
- */
-setPlaylistOffloader(async (url, sourceId) => {
-  const channels: CatalogItem[] = []
-  const categories: CatalogCategory[] = []
-  let epgUrls: string[] = []
-  await cacheKeyReady()
-  await catalogWorker().run(
-    { kind: 'm3u-url', sourceId, url, revision: defaultCatalog.getSourceRevision(sourceId), cache: true },
-    {
-      onItems: (_type, items) => {
-        for (const item of items) channels.push(item)
-      },
-      onCategories: (_type, list) => {
-        for (const category of list) categories.push(category)
-      },
-      onListEnd: (_types, _meta, urls) => {
-        epgUrls = urls
-      }
-    }
-  )
-  setSourceEpgUrls(sourceId, epgUrls)
-  return { channels, categories, epgUrls }
-})
 
 /** What the cache knows a source by, or null when it cannot be told yet (secret not loaded). */
 export function sourceIdentity(source: PlaylistSource): SourceIdentity | null {
@@ -217,7 +200,7 @@ export async function ingestFromCache(
   if (source.type !== 'xtream') await cacheKeyReady()
   outcome.job = await worker.run(
     { kind: 'cache-read', sourceId: source.id, identity, types: [...types], revision: store.getSourceRevision(source.id) },
-    stagingHandlers(store, tokens, outcome),
+    stagingHandlers(store, tokens, outcome, worker),
     options.signal
   )
   if (outcome.epgUrls.length > 0 && Object.values(outcome.results).includes('committed')) setSourceEpgUrls(source.id, outcome.epgUrls)

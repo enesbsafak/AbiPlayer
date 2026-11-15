@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeSearchText } from '@/services/text-normalize'
 import { parseM3U } from '@/services/m3u-parser'
+import { defined } from '../../../shared/checked'
 import { targetFromCatalogItem } from '../../../shared/playback'
 import type { XtreamSeriesStream, XtreamVODStream } from '@/types/xtream'
 import {
   m3uPlaylistToReplacement,
-  toCatalogItem,
   xtreamCategoriesToRecords,
   xtreamLiveToRecords,
   xtreamSeriesToRecords,
@@ -50,7 +50,7 @@ describe('Xtream converters', () => {
       tvArchiveDuration: 3,
       added: 1_700_000_000
     })
-    expect(targetFromCatalogItem(record)).toEqual({ kind: 'live', sourceId: 'src', streamId: 10 })
+    expect(targetFromCatalogItem(defined(record, 'record'))).toEqual({ kind: 'live', sourceId: 'src', streamId: 10 })
   })
 
   it('gives films the container extension playback needs, mp4 by default', () => {
@@ -63,8 +63,8 @@ describe('Xtream converters', () => {
     const [fallback] = xtreamVodToRecords([vod('')], 'src')
     expect(mkv).toMatchObject({ id: 'src_vod_7', containerExtension: 'mkv', rating: '7.1', streamUrl: '' })
     expect(mkv).not.toHaveProperty('added')
-    expect(fallback.containerExtension).toBe('mp4')
-    expect(targetFromCatalogItem(mkv)).toMatchObject({ kind: 'movie', streamId: 7, containerExtension: 'mkv' })
+    expect(fallback?.containerExtension).toBe('mp4')
+    expect(targetFromCatalogItem(defined(mkv, 'mkv'))).toMatchObject({ kind: 'movie', streamId: 7, containerExtension: 'mkv' })
   })
 
   it('keeps series detail text out of the list records', () => {
@@ -132,7 +132,7 @@ http://cdn.test/gece.m3u8`
       epgChannelId: 'haber.tr'
     })
     expect(haber).not.toHaveProperty('streamId')
-    expect(targetFromCatalogItem(haber)?.kind).toBe('m3u')
+    expect(targetFromCatalogItem(defined(haber, 'haber'))?.kind).toBe('m3u')
   })
 
   it('splits the playlist into complete lists per type, categories included', () => {
@@ -144,19 +144,6 @@ http://cdn.test/gece.m3u8`
       ['Haber', false],
       ['XXX', true]
     ])
-    expect(replacement.live!.items[1].isAdult).toBe(true)
-  })
-
-  it('turns an Xtream-shaped legacy channel into a record without its URL', () => {
-    const record = toCatalogItem({
-      id: 'x_live_1',
-      name: 'Kanal',
-      streamUrl: 'http://panel/live/user/pass/1.m3u8',
-      streamId: 1,
-      sourceId: 'x',
-      type: 'live'
-    })
-    expect(record.streamUrl).toBe('')
-    expect(record.searchName).toBe('kanal')
+    expect(replacement.live!.items[1]?.isAdult).toBe(true)
   })
 })

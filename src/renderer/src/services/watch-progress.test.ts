@@ -159,7 +159,7 @@ describe('upsertProgress', () => {
     const list = upsertProgress([entry('a'), entry('b')], entry('b', 900, 2))
 
     expect(list.map((item) => item.key)).toEqual(['b', 'a'])
-    expect(list[0].position).toBe(900)
+    expect(list[0]?.position).toBe(900)
   })
 
   it('caps the list so localStorage cannot grow without bound', () => {
@@ -169,7 +169,7 @@ describe('upsertProgress', () => {
     }
 
     expect(list).toHaveLength(MAX_ENTRIES)
-    expect(list[0].key).toBe(`k${MAX_ENTRIES + 4}`)
+    expect(list[0]?.key).toBe(`k${MAX_ENTRIES + 4}`)
   })
 
   it('drops the legacy entry it replaces', () => {
@@ -227,15 +227,15 @@ describe('sanitizeProgressEntries', () => {
       { key: XTREAM_URL, position: 100, duration: 3600, channel: { name: 'Film', streamUrl: XTREAM_URL, type: 'vod' } }
     ])
 
-    expect(restored.channel.streamUrl).toBe(REDACTED_URL)
+    expect(restored?.channel.streamUrl).toBe(REDACTED_URL)
   })
 
   it('never keeps a URL on an Xtream entry and re-keys it by its target', () => {
     const [restored] = sanitizeProgressEntries([
       { ...targetEntry(movieTarget), key: 'stale', channel: { name: 'Film', streamUrl: XTREAM_URL, type: 'vod' } }
     ])
-    expect(restored.key).toBe('movie:s1:1234')
-    expect(restored.channel.streamUrl).toBe('')
+    expect(restored?.key).toBe('movie:s1:1234')
+    expect(restored?.channel.streamUrl).toBe('')
   })
 
   it('fills missing optional channel fields rather than dropping the entry', () => {
@@ -243,10 +243,10 @@ describe('sanitizeProgressEntries', () => {
       { key: 'http://x/1.mkv', position: 100, duration: 3600, channel: { name: 'Film', streamUrl: 'http://x/1.mkv', type: 'vod' } }
     ])
 
-    expect(restored.channel.id).toBe('http://x/1.mkv')
-    expect(restored.channel.sourceId).toBe('')
-    expect(restored.updatedAt).toBe(0)
-    expect(restored.target).toBeNull()
+    expect(restored?.channel.id).toBe('http://x/1.mkv')
+    expect(restored?.channel.sourceId).toBe('')
+    expect(restored?.updatedAt).toBe(0)
+    expect(restored?.target).toBeNull()
   })
 
   it('keeps only the newest entry per key', () => {
@@ -277,19 +277,19 @@ describe('migrateProgressEntriesToMediaKeys', () => {
       sources
     ) as WatchProgressEntry[]
 
-    expect(film.key).toBe('movie:xt:55')
-    expect(film.target).toEqual({ kind: 'movie', sourceId: 'xt', streamId: 55, containerExtension: 'mkv' })
-    expect(film.channel.streamUrl).toBe('')
-    expect(film.position).toBe(700)
-    expect(episode.key).toBe('episode:xt:77')
-    expect(episode.target).toMatchObject({ kind: 'episode', streamId: 77, seriesId: null })
+    expect(film?.key).toBe('movie:xt:55')
+    expect(film?.target).toEqual({ kind: 'movie', sourceId: 'xt', streamId: 55, containerExtension: 'mkv' })
+    expect(film?.channel.streamUrl).toBe('')
+    expect(film?.position).toBe(700)
+    expect(episode?.key).toBe('episode:xt:77')
+    expect(episode?.target).toMatchObject({ kind: 'episode', streamId: 77, seriesId: null })
   })
 
   it('maps an M3U entry whose URL was stored as is', () => {
     const url = 'http://cdn.example.com/vod/film.mp4'
     const [migrated] = migrateProgressEntriesToMediaKeys([legacy(url, 'm3u')], sources) as WatchProgressEntry[]
-    expect(migrated.target).toEqual({ kind: 'm3u', sourceId: 'm3u', entryId: m3uEntryId(url), mediaType: 'vod' })
-    expect(migrated.channel.streamUrl).toBe(url)
+    expect(migrated?.target).toEqual({ kind: 'm3u', sourceId: 'm3u', entryId: m3uEntryId(url), mediaType: 'vod' })
+    expect(migrated?.channel.streamUrl).toBe(url)
   })
 
   it('keeps what it cannot map: a redacted M3U URL, or a source that is gone', () => {
@@ -325,7 +325,7 @@ describe('selectContinueWatching', () => {
   it('shows an M3U entry whose URL looks like an Xtream URL (F1-47)', () => {
     const items = selectContinueWatching([m3uXtreamLooking], { hasCredentials: () => false, limit: 10 })
     expect(items).toHaveLength(1)
-    expect(items[0].channel.streamUrl).toBe(XTREAM_URL)
+    expect(items[0]?.channel.streamUrl).toBe(XTREAM_URL)
   })
 
   it('lists Xtream items only while their source has credentials', () => {
@@ -346,8 +346,8 @@ describe('selectContinueWatching', () => {
     })
 
     expect(items).toHaveLength(1)
-    expect(items[0].channel).toBe(catalogItem)
-    expect(items[0].target).toMatchObject({ kind: 'm3u', entryId: m3uEntryId(XTREAM_URL) })
+    expect(items[0]?.channel).toBe(catalogItem)
+    expect(items[0]?.target).toMatchObject({ kind: 'm3u', entryId: m3uEntryId(XTREAM_URL) })
   })
 
   it('stops at the limit', () => {
@@ -403,8 +403,8 @@ describe('stored M3U entry URLs (F3-02)', () => {
     const [restored] = sanitizeProgressEntries([
       { ...targetEntry(m3uTarget), channel: { id: 'm1', name: 'Film', streamUrl: XTREAM_URL, sourceId: 'm', type: 'vod' } }
     ])
-    expect(restored.channel.streamUrl).toBe('')
-    expect(restored.target).toEqual(m3uTarget)
+    expect(restored?.channel.streamUrl).toBe('')
+    expect(restored?.target).toEqual(m3uTarget)
   })
 
   it('lists an M3U entry without its URL while its source exists', () => {
