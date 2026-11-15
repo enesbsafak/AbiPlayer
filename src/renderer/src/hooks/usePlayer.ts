@@ -2,7 +2,11 @@ import { useEffect, useRef, type RefObject } from 'react'
 import Hls from 'hls.js'
 import { useStore } from '@/store'
 import type { AudioTrack, SubtitleCue, SubtitleTrack } from '@/types/player'
-import { extractEmbeddedSubtitle, probeEmbeddedSubtitles } from '@/services/platform'
+import {
+  extractEmbeddedSubtitle,
+  probeEmbeddedSubtitles,
+  type EmbeddedSubtitleExtractionResult
+} from '@/services/platform'
 import {
   AUTO_VIDEO_QUALITY_ID,
   buildVideoQualityOptions,
@@ -21,6 +25,93 @@ const NATIVE_TRACK_PREFIX = 'native:'
 const PROBED_TRACK_PREFIX = 'probe:'
 const HLS_AUDIO_TRACK_PREFIX = 'hls-a:'
 const NATIVE_AUDIO_TRACK_PREFIX = 'native-a:'
+
+export const HLS_MAX_CONSECUTIVE_FATAL_ERRORS = 8
+/**
+ * ffprobe runs before direct VOD playback so the two never hold a provider
+ * connection at the same time, but its own limit is 45 s. Past this cap playback
+ * starts anyway and a late probe result is merged in when it arrives.
+ */
+export const SUBTITLE_PROBE_TIMEOUT_MS = 4_000
+export const TRUNCATED_SUBTITLE_NOTICE =
+  'Altyazının yalnızca bir bölümü alınabildi; ilerleyen sahnelerde altyazı görünmeyebilir.'
+
+export type HlsRecoveryStep =
+  | { kind: 'restart-load'; delayMs: number }
+  | { kind: 'reload-source'; delayMs: number }
+  | { kind: 'recover-media' }
+  | { kind: 'fail'; message: string }
+
+// After a fatal manifest failure hls.js has no playlist to resume from, so
+// `startLoad()` does nothing; only `loadSource()` fetches it again.
+const HLS_MANIFEST_ERROR_DETAILS = new Set<string>([
+  Hls.ErrorDetails.MANIFEST_LOAD_ERROR,
+  Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT,
+  Hls.ErrorDetails.MANIFEST_PARSING_ERROR
+])
+
+/**
+ * Retry budget for fatal hls.js errors. The budget is for errors in a row:
+ * `noteProgress()` (called whenever media is actually buffered) refills it, so a
+ * long session with occasional hiccups is never given up on.
+ */
+export function createHlsErrorRecovery(maxConsecutive = HLS_MAX_CONSECUTIVE_FATAL_ERRORS) {
+  let consecutive = 0
+  return {
+    noteProgress(): void {
+      consecutive = 0
+    },
+    nextStep(error: { type: string; details: string }): HlsRecoveryStep {
+      if (consecutive >= maxConsecutive) {
+        return { kind: 'fail', message: `Oynatma başarısız: ${error.details}` }
+      }
+      consecutive++
+      const delayMs = Math.min(1000 * Math.pow(1.5, consecutive - 1), 10000)
+      if (error.type === Hls.ErrorTypes.NETWORK_ERROR) {
+        return HLS_MANIFEST_ERROR_DETAILS.has(error.details)
+          ? { kind: 'reload-source', delayMs }
+          : { kind: 'restart-load', delayMs }
+      }
+      if (error.type === Hls.ErrorTypes.MEDIA_ERROR) return { kind: 'recover-media' }
+      return { kind: 'fail', message: `Oynatma hatası: ${error.details}` }
+    }
+  }
+}
+
+export function waitAtMost<T>(
+  promise: Promise<T>,
+  timeoutMs: number
+): Promise<{ timedOut: false; value: T } | { timedOut: true }> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve({ timedOut: true }), timeoutMs)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve({ timedOut: false, value })
+      },
+      (error: unknown) => {
+        clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
+}
+
+/** `truncated` is optional on the IPC result; absent means complete. */
+export function isTruncatedSubtitleExtraction(result: EmbeddedSubtitleExtractionResult): boolean {
+  return 'truncated' in result && result.truncated === true
+}
+
+/**
+ * Detaching the element alone does not stop a direct (mp4/mkv) download: the
+ * old film keeps playing and holding a provider connection until its `src` is
+ * dropped and the element reloaded empty.
+ */
+export function releaseMediaElementSource(video: HTMLVideoElement): void {
+  if (!video.hasAttribute('src') && !video.currentSrc) return
+  video.removeAttribute('src')
+  video.load()
+}
 
 type NativeAudioTrackLike = {
   enabled?: boolean
@@ -65,7 +156,7 @@ function collectNativeSubtitleTracks(video: HTMLVideoElement): SubtitleTrack[] {
 
     nativeTracks.push({
       id: `${NATIVE_TRACK_PREFIX}${i}`,
-      name: track.label || track.language || `Subtitle ${i + 1}`,
+      name: track.label || track.language || `Altyazı ${i + 1}`,
       lang: track.language || undefined,
       type: 'embedded'
     })
@@ -78,7 +169,7 @@ function collectHlsSubtitleTracks(hls: Hls): SubtitleTrack[] {
   const tracks = hls.subtitleTracks || []
   return tracks.map((track, index) => ({
     id: `${HLS_TRACK_PREFIX}${index}`,
-    name: track.name || track.lang || `Subtitle ${index + 1}`,
+    name: track.name || track.lang || `Altyazı ${index + 1}`,
     lang: track.lang,
     type: 'embedded'
   }))
@@ -94,7 +185,7 @@ function collectProbedSubtitleTracks(
     const nameParts = [lang ? lang.toUpperCase() : '', title || '', codec ? `(${codec})` : ''].filter(Boolean)
     return {
       id: `${PROBED_TRACK_PREFIX}${track.index}`,
-      name: nameParts.join(' ') || `Subtitle ${index + 1}`,
+      name: nameParts.join(' ') || `Altyazı ${index + 1}`,
       lang: lang || undefined,
       type: 'embedded'
     }
@@ -110,7 +201,7 @@ function collectNativeAudioTracks(video: HTMLVideoElement): AudioTrack[] {
     const track = tracks[i]
     nativeTracks.push({
       id: `${NATIVE_AUDIO_TRACK_PREFIX}${i}`,
-      name: track.label || track.language || `Audio ${i + 1}`,
+      name: track.label || track.language || `Ses ${i + 1}`,
       lang: track.language || undefined,
       default: !!track.enabled
     })
@@ -123,7 +214,7 @@ function collectHlsAudioTracks(hls: Hls): AudioTrack[] {
   const tracks = hls.audioTracks || []
   return tracks.map((track, index) => ({
     id: `${HLS_AUDIO_TRACK_PREFIX}${index}`,
-    name: track.name || track.lang || `Audio ${index + 1}`,
+    name: track.name || track.lang || `Ses ${index + 1}`,
     lang: track.lang,
     default: !!track.default
   }))
@@ -279,6 +370,7 @@ export function usePlayer(
   // Select individually: a bare `useStore()` re-runs this hook on every store
   // write, and playback pushes several per second.
   const currentChannel = useStore((s) => s.currentChannel)
+  const playbackReloadToken = useStore((s) => s.playbackReloadToken)
   const volume = useStore((s) => s.volume)
   const isMuted = useStore((s) => s.isMuted)
   const currentAudioTrack = useStore((s) => s.currentAudioTrack)
@@ -559,30 +651,28 @@ export function usePlayer(
           syncActiveSubtitleCues(video, setActiveSubtitleCues)
         })
 
-        let retryCount = 0
-        const MAX_HLS_RETRIES = 8
+        const recovery = createHlsErrorRecovery()
+        hls.on(Hls.Events.FRAG_BUFFERED, () => {
+          recovery.noteProgress()
+        })
         hls.on(Hls.Events.ERROR, (_, data) => {
-          if (data.fatal) {
-            if (retryCount >= MAX_HLS_RETRIES) {
-              applyPlayerPatch({ playerError: `Oynatma başarısız: ${data.details}` })
-              return
-            }
-            retryCount++
-            const delay = Math.min(1000 * Math.pow(1.5, retryCount - 1), 10000)
-            switch (data.type) {
-              case Hls.ErrorTypes.NETWORK_ERROR:
-                // Tracked so cleanup can cancel it: the backoff reaches 10s and
-                // a channel switch in between destroys `hls`, leaving this timer
-                // to call startLoad() on a dead instance.
-                hlsRetryTimers.push(window.setTimeout(() => hls.startLoad(), delay))
-                break
-              case Hls.ErrorTypes.MEDIA_ERROR:
-                hls.recoverMediaError()
-                break
-              default:
-                applyPlayerPatch({ playerError: `Oynatma hatası: ${data.details}` })
-                break
-            }
+          if (!data.fatal) return
+          const step = recovery.nextStep(data)
+          switch (step.kind) {
+            // Retry timers are tracked so cleanup can cancel them: the backoff
+            // reaches 10s and a channel switch in between destroys `hls`.
+            case 'restart-load':
+              hlsRetryTimers.push(window.setTimeout(() => hls.startLoad(), step.delayMs))
+              break
+            case 'reload-source':
+              hlsRetryTimers.push(window.setTimeout(() => hls.loadSource(url), step.delayMs))
+              break
+            case 'recover-media':
+              hls.recoverMediaError()
+              break
+            case 'fail':
+              applyPlayerPatch({ playerError: step.message })
+              break
           }
         })
 
@@ -629,16 +719,28 @@ export function usePlayer(
       // connections that can exceed provider max-connection limits.
       const shouldProbeBeforePlayback = currentChannel.type !== 'live'
       if (shouldProbeBeforePlayback) {
+        const probe = probeEmbeddedSubtitles(url)
         void (async () => {
           try {
-            const tracks = await probeEmbeddedSubtitles(url)
-            if (disposed || tracks.length === 0) {
-              if (!disposed) startDirectPlayback()
-              return
-            }
+            const outcome = await waitAtMost(probe, SUBTITLE_PROBE_TIMEOUT_MS)
+            if (disposed) return
 
-            probedTracks = collectProbedSubtitleTracks(tracks)
-            applyPlayerPatch({ subtitleTracks: mergeSubtitleTracks([], [], probedTracks) })
+            if (outcome.timedOut) {
+              // Playback goes ahead; the probe's answer is still worth having.
+              // A late failure is dropped on purpose: playback is already
+              // running and there is nothing for the viewer to act on.
+              probe.then(
+                (tracks) => {
+                  if (disposed || tracks.length === 0) return
+                  probedTracks = collectProbedSubtitleTracks(tracks)
+                  refreshSubtitleTracks(null)
+                },
+                () => undefined
+              )
+            } else if (outcome.value.length > 0) {
+              probedTracks = collectProbedSubtitleTracks(outcome.value)
+              applyPlayerPatch({ subtitleTracks: mergeSubtitleTracks([], [], probedTracks) })
+            }
           } catch (error) {
             console.warn('Failed to probe embedded subtitles', error)
           }
@@ -676,9 +778,12 @@ export function usePlayer(
         hlsRef.current.destroy()
         hlsRef.current = null
       }
+      releaseMediaElementSource(video)
     }
   }, [
     currentChannel,
+    // Not read in the body: bumping it is how "Yeniden Bağlan" reloads.
+    playbackReloadToken,
     videoRef,
     setActiveSubtitleCues,
     applyPlayerPatch,
@@ -788,7 +893,11 @@ export function usePlayer(
             return
           }
           const cues = parseSubtitles(extracted.content, `embedded.${extracted.format}`)
-          applyPlayerPatch({ subtitleCues: cues })
+          applyPlayerPatch(
+            isTruncatedSubtitleExtraction(extracted)
+              ? { subtitleCues: cues, playerNotice: TRUNCATED_SUBTITLE_NOTICE }
+              : { subtitleCues: cues }
+          )
         } catch (error) {
           if (!cancelled) console.warn('Failed to extract embedded subtitle track', error)
         }
@@ -874,7 +983,7 @@ export function usePlayer(
     const onTimeUpdate = () => applyPlayerPatch({ currentTime: video.currentTime })
     const onDurationChange = () => applyPlayerPatch({ duration: video.duration })
     const onError = () => {
-      const message = video.error?.message || 'Oynatma hatasi'
+      const message = video.error?.message || 'Oynatma hatası'
       const isDirectStream = !!currentChannel?.streamUrl && !(urlIsHlsOrTs(currentChannel.streamUrl))
       const isReadPipelineError =
         message.includes('PIPELINE_ERROR_READ') || message.includes('FFmpegDemuxer: data source error')
@@ -1005,7 +1114,7 @@ export function usePlayer(
       video.removeEventListener('timeupdate', onStallTimeUpdate)
       window.clearInterval(stallCheck)
     }
-  }, [currentChannel, videoRef, applyPlayerPatch, disabled])
+  }, [currentChannel, playbackReloadToken, videoRef, applyPlayerPatch, disabled])
 
   // Cue matching for parsed subtitle sources (external files + extracted embedded tracks)
   useEffect(() => {
