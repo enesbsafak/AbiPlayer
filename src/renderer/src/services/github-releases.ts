@@ -18,15 +18,16 @@ export type ReleaseNoteBlock =
   | { kind: 'list'; items: string[] }
   | { kind: 'paragraph'; text: string }
 
+/** A release entry with the required fields checked; the rest is unverified. */
 interface GithubReleaseResponse {
   id: number
   tag_name: string
-  name: string | null
-  body: string | null
-  published_at: string | null
-  prerelease: boolean
-  draft: boolean
   html_url: string
+  name?: unknown
+  body?: unknown
+  published_at?: unknown
+  prerelease?: unknown
+  draft?: unknown
 }
 
 function isListLine(line: string): boolean {
@@ -103,22 +104,46 @@ async function requestReleases(): Promise<ReleaseNote[]> {
       throw new Error(`GitHub sürüm listesi alınamadı (${response.status})`)
     }
 
-    const data = (await response.json()) as GithubReleaseResponse[]
-
-    return data
-      .filter((release) => !release.draft)
-      .map((release) => ({
-        id: release.id,
-        tag: release.tag_name,
-        title: release.name || release.tag_name,
-        publishedAt: release.published_at,
-        isPrerelease: release.prerelease,
-        url: release.html_url,
-        blocks: parseReleaseBody(release.body ?? '')
-      }))
+    const data: unknown = await response.json().catch(() => null)
+    return parseReleaseList(data)
   } finally {
     window.clearTimeout(timer)
   }
+}
+
+function isGithubRelease(value: unknown): value is GithubReleaseResponse {
+  if (typeof value !== 'object' || value === null) return false
+  const release = value as Record<string, unknown>
+  return (
+    typeof release.id === 'number' &&
+    typeof release.tag_name === 'string' &&
+    release.tag_name.length > 0 &&
+    typeof release.html_url === 'string'
+  )
+}
+
+/**
+ * Turn the GitHub releases response into notes. The response is checked
+ * rather than cast: a non-list answer (rate-limit or error object) is an
+ * error, and entries missing the fields the UI needs are skipped.
+ */
+export function parseReleaseList(data: unknown): ReleaseNote[] {
+  if (!Array.isArray(data)) {
+    throw new Error('GitHub sürüm listesi okunamadı: beklenmeyen yanıt')
+  }
+
+  return data
+    .filter(isGithubRelease)
+    .filter((release) => release.draft !== true)
+    .map((release) => ({
+      id: release.id,
+      tag: release.tag_name,
+      title: typeof release.name === 'string' && release.name ? release.name : release.tag_name,
+      publishedAt: typeof release.published_at === 'string' ? release.published_at : null,
+      isPrerelease: release.prerelease === true,
+      url: release.html_url,
+      blocks: parseReleaseBody(typeof release.body === 'string' ? release.body : '')
+    }))
 }
 
 let cached: Promise<ReleaseNote[]> | null = null
