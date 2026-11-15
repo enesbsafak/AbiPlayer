@@ -154,6 +154,66 @@ describe('player-slice suspendPlayback', () => {
   })
 })
 
+// P6: the return from the mini card is a new load of the same item, like a
+// reload; the viewer's choices survive both the same way.
+describe('player-slice viewer choices across suspend and resume', () => {
+  it('keeps the audio and subtitle choice, including "off"', () => {
+    const store = createPlayerTestStore()
+    store.getState().playChannel(movie)
+    store.getState().applyPlayerPatch({ currentAudioTrack: 'mpv-a:2', audioTracks: [{ id: 'mpv-a:2', name: 'TR' }] })
+    store.getState().selectSubtitleTrack(null)
+
+    store.getState().suspendPlayback()
+    store.getState().resumeSuspendedPlayback()
+
+    const state = store.getState()
+    expect(state.currentAudioTrack).toBe('mpv-a:2')
+    expect(state.currentSubtitleTrack).toBeNull()
+    expect(state.isSubtitleTrackUserChoice).toBe(true)
+    // The track lists belong to the load and come back with the new one.
+    expect(state.audioTracks).toEqual([])
+  })
+
+  it('keeps a subtitle file the viewer loaded, on either engine', () => {
+    const store = createPlayerTestStore()
+    store.getState().playChannel(movie)
+    const cues = [{ startTime: 1, endTime: 2, text: 'Merhaba' }]
+    store.getState().applyPlayerPatch({ subtitleCues: cues })
+    store.getState().selectSubtitleTrack('external')
+    store.getState().suspendPlayback()
+    expect(store.getState().currentSubtitleTrack).toBe('external')
+    expect(store.getState().subtitleCues).toEqual(cues)
+
+    const mediaKey = store.getState().currentPlayback!.mediaKey
+    const file = { mediaKey, path: 'C:/a.srt', trackId: 'mpv-s:3' }
+    store.getState().resumeSuspendedPlayback()
+    store.getState().applyPlayerPatch({ externalSubtitle: file })
+    store.getState().selectSubtitleTrack('mpv-s:3')
+    store.getState().suspendPlayback()
+    store.getState().resumeSuspendedPlayback()
+    expect(store.getState().externalSubtitle).toEqual(file)
+    expect(store.getState().currentSubtitleTrack).toBe('mpv-s:3')
+  })
+
+  it('drops the choices when something else is played', () => {
+    const store = createPlayerTestStore()
+    store.getState().playChannel(movie)
+    store.getState().applyPlayerPatch({
+      currentAudioTrack: 'mpv-a:2',
+      externalSubtitle: { mediaKey: store.getState().currentPlayback!.mediaKey, path: 'C:/a.srt', trackId: 'mpv-s:3' }
+    })
+    store.getState().selectSubtitleTrack('mpv-s:3')
+    store.getState().suspendPlayback()
+    store.getState().playChannel(live)
+
+    const state = store.getState()
+    expect(state.currentAudioTrack).toBeNull()
+    expect(state.currentSubtitleTrack).toBeNull()
+    expect(state.isSubtitleTrackUserChoice).toBe(false)
+    expect(state.externalSubtitle).toBeNull()
+  })
+})
+
 describe('player-slice subtitle choice', () => {
   it('marks a viewer choice, including "off", and forgets it on the next channel', () => {
     const store = createPlayerTestStore()

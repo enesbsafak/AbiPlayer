@@ -93,6 +93,10 @@ export interface RecoveryWindow {
     id: number
     reload(): void
     on(event: 'render-process-gone', listener: (event: unknown, details: { reason: string; exitCode: number }) => void): unknown
+    on(
+      event: 'did-start-navigation',
+      listener: (details: { isMainFrame: boolean; isSameDocument: boolean }) => void
+    ): unknown
   }
   on(event: 'unresponsive' | 'responsive', listener: () => void): unknown
 }
@@ -117,6 +121,14 @@ export function attachRendererRecovery(window: RecoveryWindow, deps: RecoveryDep
     deps.cancelMediaJobs(window.webContents.id)
     void deps.stopPlayback().catch((error) => deps.log('stopPlayback', error))
   }
+
+  // A new document in the main frame (a reload from any source: the
+  // keyboard, DevTools, the recoveries below) ends the page that owned the
+  // playback, and nothing on the next one knows about it. mpv draws over the
+  // window from its own process and would play on over the new page.
+  window.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) haltPlayback()
+  })
 
   window.webContents.on('render-process-gone', (_event, details) => {
     deps.log('render-process-gone', new Error(`reason=${details.reason} exitCode=${details.exitCode}`))
@@ -147,6 +159,25 @@ export function attachRendererRecovery(window: RecoveryWindow, deps: RecoveryDep
   window.on('responsive', () => {
     unresponsivePrompt?.abort()
   })
+}
+
+// ---------------------------------------------------------------------------
+// Application menu
+
+export type ApplicationMenuPlan = 'electron-default' | 'none' | 'edit-only'
+
+/**
+ * Without a menu of its own the app gets Electron's default one. The window
+ * is frameless, so nobody sees it, but its accelerators work: Reload, Force
+ * Reload and Toggle Developer Tools. A packaged build has no use for them
+ * (a reload drops the page that owns the playback); development builds and
+ * the end-to-end harness, which runs the unpackaged build, keep them. macOS
+ * needs the Edit menu for copy and paste in text fields; Windows and Linux
+ * handle those keys in the page without one.
+ */
+export function applicationMenuPlan(options: { isPackaged: boolean; platform: NodeJS.Platform }): ApplicationMenuPlan {
+  if (!options.isPackaged) return 'electron-default'
+  return options.platform === 'darwin' ? 'edit-only' : 'none'
 }
 
 // ---------------------------------------------------------------------------

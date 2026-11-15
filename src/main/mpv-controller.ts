@@ -355,17 +355,25 @@ export class MpvController {
    * serve from "now" regardless of seek attempts — the origin has no seekable
    * range. Reloading the URL is the only universally reliable way to snap back
    * to the live edge, so this is a fresh load of the same playback.
+   *
+   * Being a new load, it gets its own per-file options: `fileOptions` is asked
+   * for them (the TLS policy, which may probe the host again or refuse it),
+   * and nothing is carried over from the previous load. A rejection leaves
+   * the current load as it is and rejects the call.
    */
-  async jumpToLive(): Promise<void> {
+  async jumpToLive(fileOptions?: (url: string) => Promise<Record<string, string>>): Promise<void> {
     const previous = this.playback
     if (!previous || !this.current) return
+    const options = fileOptions ? await fileOptions(previous.url) : {}
+    // Another open, a reconnect or a stop came first while the options were decided.
+    if (this.playback !== previous || !this.current) return
     const playback = this.beginPlayback({
       playbackId: previous.playbackId,
       url: previous.url,
       parentWid: previous.parentWid,
       tuning: previous.tuning,
       liveEdge: true,
-      fileOptions: previous.fileOptions
+      fileOptions: { ...options }
     })
     const handed = this.waitFor(playback)
     void this.kick()
@@ -645,6 +653,11 @@ export class MpvController {
     }
 
     if (this.playback !== playback) return
+    // Again now that the new file replaced the old one: a file that reached
+    // its end is held paused by --keep-open, and mpv pauses it once more when
+    // unpaused there, so the unpause sent ahead of loadfile is lost and the
+    // next load (a live reconnect, the next film) would start paused.
+    void session.request(['set_property', 'pause', false]).catch(() => undefined)
     this.resolveWaiters(playback)
 
     // Re-verified per stream, not just when the setting is toggled: whether

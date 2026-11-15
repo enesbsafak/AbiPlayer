@@ -201,9 +201,10 @@ function SidebarBody({ sourceId, type, currentChannel, typeLabel, isOpen, select
   const handleSelect = useCallback(
     (ch: Channel) => {
       const { currentPlayback, playerError, reloadPlayback } = useStore.getState()
-      // `playChannel` on what is already playing wipes its track state without
-      // reloading anything. A broken stream gets a real reload; a healthy one
-      // is left alone. Identity is the media key, never the URL.
+      // `playChannel` on what is already playing would start it over as a new
+      // item and drop the viewer's track choices. A broken stream gets a
+      // reload instead (same item, same choices); a healthy one is left
+      // alone. Identity is the media key, never the URL.
       if (isPlayingItem(currentPlayback?.mediaKey, ch)) {
         if (playerError) reloadPlayback()
         return

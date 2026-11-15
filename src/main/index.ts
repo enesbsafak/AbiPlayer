@@ -1,7 +1,7 @@
 import { perfLoadFileOptions, perfMark } from './perf'
 import { applyE2eWindowMode } from './e2e-mode'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
-import { app, shell, BrowserWindow, dialog, screen, session } from 'electron'
+import { app, shell, BrowserWindow, Menu, dialog, screen, session } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { cleanupStoreBackupIfUnneeded, initializeAppUpdater } from './app-updater'
@@ -9,6 +9,7 @@ import { setPreventDisplaySleep } from './display-sleep'
 import { registerIpcHandlers, type MainServices } from './ipc-handlers'
 import { sendEvent } from './ipc/events'
 import {
+  applicationMenuPlan,
   attachRendererRecovery,
   createMainLogger,
   installProcessErrorLogging,
@@ -89,6 +90,19 @@ function installPermissionPolicy(services: MainServices): void {
     const fromApp = isTrustedRendererUrl(details.requestingUrl, services.trustedRendererLocation)
     callback(fromApp && permission === 'fullscreen')
   })
+}
+
+function installApplicationMenu(): void {
+  switch (applicationMenuPlan({ isPackaged: app.isPackaged, platform: process.platform })) {
+    case 'electron-default':
+      return
+    case 'none':
+      Menu.setApplicationMenu(null)
+      return
+    case 'edit-only':
+      Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'windowMenu' }]))
+      return
+  }
 }
 
 function askReloadUnresponsive(window: BrowserWindow, signal: AbortSignal): Promise<boolean> {
@@ -251,6 +265,7 @@ if (!hasSingleInstanceLock) {
   void app.whenReady().then(() => {
     perfMark('main:when-ready')
     electronApp.setAppUserModelId('com.abiplayer.beta')
+    installApplicationMenu()
 
     app.on('browser-window-created', (_, window) => {
       optimizer.watchWindowShortcuts(window)

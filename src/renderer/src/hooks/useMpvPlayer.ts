@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  mpvAddSubtitleFile,
   mpvOpen,
   mpvSetAudioPassthrough,
   mpvSetAudioTrack,
@@ -36,25 +37,15 @@ import {
   MPV_STARTUP_OVERLAY_TIMEOUT_MS,
   isNewerSnapshot,
   isSnapshotForPlayback,
+  externalSubtitleToRestore,
   isSnapshotLoaded,
+  mpvReconnectObservation,
   reconcileMpvSnapshot,
   shouldKeepStartupOverlay
 } from '@/player/mpv-snapshot'
 import { createReconnectDriver, type ReconnectDriver } from '@/player/reconnect-policy'
-import { MPV_AUDIO_PREFIX, MPV_SUBTITLE_PREFIX, trackIndex } from '@/player/track-ids'
+import { MPV_AUDIO_PREFIX, MPV_SUBTITLE_PREFIX, trackId, trackIndex } from '@/player/track-ids'
 import { FRESH_TRACK_PREFERENCES, type TrackPreferenceState } from '@/player/track-reconciler'
-
-export {
-  MPV_STARTUP_OVERLAY_TIMEOUT_MS,
-  isNewerSnapshot,
-  isSnapshotForPlayback,
-  reconcileMpvSnapshot,
-  shouldKeepStartupOverlay
-} from '@/player/mpv-snapshot'
-export {
-  CONNECTION_LOST_MESSAGE as MPV_CONNECTION_LOST_MESSAGE,
-  MAX_RECONNECT_ATTEMPTS as MAX_AUTO_RECONNECT
-} from '@/player/reconnect-policy'
 
 function clampVolume(value: number): number {
   return Math.max(0, Math.min(1, value))
@@ -136,6 +127,8 @@ export function useMpvPlayer(enabled: boolean, options: MpvPlayerOptions = {}) {
   const currentSnapshotRef = useRef<MpvStateSnapshot | null>(null)
   /** Load whose track selections were last pushed back to mpv. */
   const assertedLoadRef = useRef<number | null>(null)
+  /** Load the viewer's subtitle file was last added back to. */
+  const restoringLoadRef = useRef<number | null>(null)
   const windowFullscreenRef = useRef(false)
   const reconnectRef = useRef<ReconnectDriver | null>(null)
   const startupStartedAtRef = useRef<number | null>(null)
@@ -241,6 +234,22 @@ export function useMpvPlayer(enabled: boolean, options: MpvPlayerOptions = {}) {
 
       const result = reconcileMpvSnapshot(snapshot, store, preferencesRef.current, windowFullscreenRef.current)
       preferencesRef.current = result.preferences
+      const restorePath = externalSubtitleToRestore(
+        store.externalSubtitle,
+        playback.mediaKey,
+        store.currentSubtitleTrack,
+        snapshot
+      )
+      if (restorePath !== null) {
+        // The viewer's file is not in this load yet: keep the choice while it
+        // goes back in instead of letting the reconciler drop it.
+        delete result.patch.currentSubtitleTrack
+        result.disableMpvSubtitles = false
+        if (restoringLoadRef.current !== snapshot.loadId) {
+          restoringLoadRef.current = snapshot.loadId
+          restoreExternalSubtitle(restorePath, playback.playbackId)
+        }
+      }
       if (Object.keys(result.patch).length > 0) applyPlayerPatch(result.patch)
       if (result.disableMpvSubtitles) void mpvSetSubtitleTrack(null).catch(() => undefined)
 
@@ -252,15 +261,7 @@ export function useMpvPlayer(enabled: boolean, options: MpvPlayerOptions = {}) {
       // mpv has this load's file open: a resume seek can run.
       if (isSnapshotLoaded(snapshot)) store.markPlaybackLoaded(playback.playbackId)
 
-      reconnectRef.current?.observe({
-        isLive: isLiveTarget(playback.target),
-        // Time-pos is unreliable as a liveness signal (many live feeds hold
-        // it or reset it while healthy); mpv's demuxer underrun flag is not.
-        progressing: snapshot.phase === 'playing' && !snapshot.buffering && !snapshot.paused,
-        expectingProgress: !snapshot.paused && (snapshot.phase === 'loading' || snapshot.phase === 'playing'),
-        error: snapshot.error,
-        errorKey: snapshot.loadId
-      })
+      reconnectRef.current?.observe(mpvReconnectObservation(snapshot, isLiveTarget(playback.target)))
     }
 
     const applyWindowFullscreen = (fullscreen: boolean) => {
@@ -467,6 +468,34 @@ function reassertSelections(snapshot: MpvStateSnapshot, subtitlesOffByDefault: b
     // Subtitles were turned off (by the viewer or the setting); keep them off.
     void mpvSetSubtitleTrack(null).catch(() => undefined)
   }
+}
+
+/**
+ * Adds the viewer's subtitle file to the current load again and points the
+ * selection at its track there. A file mpv no longer accepts is forgotten, and
+ * the reconciler then drops the selection like any track that is gone.
+ */
+function restoreExternalSubtitle(path: string, playbackId: PlaybackId): void {
+  void mpvAddSubtitleFile(path)
+    .catch(() => null)
+    .then((id) => {
+      const state = useStore.getState()
+      const file = state.externalSubtitle
+      if (state.currentPlayback?.playbackId !== playbackId || !file || file.path !== path) return
+      if (id === null) {
+        state.applyPlayerPatch({ externalSubtitle: null })
+        return
+      }
+      const restored = trackId(MPV_SUBTITLE_PREFIX, id)
+      if (state.currentSubtitleTrack !== file.trackId) {
+        // The viewer chose something else meanwhile; that choice stands.
+        state.applyPlayerPatch({ externalSubtitle: { ...file, trackId: restored } })
+        const chosen = trackIndex(state.currentSubtitleTrack, MPV_SUBTITLE_PREFIX)
+        void mpvSetSubtitleTrack(chosen).catch(() => undefined)
+        return
+      }
+      state.applyPlayerPatch({ currentSubtitleTrack: restored, externalSubtitle: { ...file, trackId: restored } })
+    })
 }
 
 function hasTrack(snapshot: MpvStateSnapshot, type: 'audio' | 'sub', id: number): boolean {

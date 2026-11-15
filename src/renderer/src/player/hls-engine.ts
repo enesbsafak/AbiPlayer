@@ -118,6 +118,12 @@ export interface HlsEngineEvents {
 
 export interface HlsEngine {
   readonly hls: Hls
+  /**
+   * Fetches the playlist again and starts over from it: the player-level
+   * reconnect of a frozen live stream. `startLoad()` would do nothing after a
+   * fatal manifest failure, which is exactly when a reconnect is needed.
+   */
+  reload(): void
   /** Cancels pending retries and destroys hls.js. */
   dispose(): void
 }
@@ -166,19 +172,40 @@ export async function startHlsEngine(
     }
   })
   // The backoff reaches 10 s; a channel switch in between destroys `hls`.
-  const retryTimers: number[] = []
+  const retryTimers = new Set<number>()
+  const retryLater = (action: () => void, delayMs: number): void => {
+    const timer = window.setTimeout(() => {
+      retryTimers.delete(timer)
+      action()
+    }, delayMs)
+    retryTimers.add(timer)
+  }
+  const cancelRetries = (): void => {
+    for (const timer of retryTimers) window.clearTimeout(timer)
+    retryTimers.clear()
+  }
 
   hls.loadSource(url)
   hls.attachMedia(video)
 
+  // Until a load's manifest has been reported, a track switch is hls.js
+  // settling on the stream's default, not a selection to mirror into the
+  // store: that would overwrite the viewer's choice before it is pushed back.
+  let manifestReported = false
+  hls.on(Hls.Events.MANIFEST_LOADING, () => {
+    manifestReported = false
+  })
   hls.on(Hls.Events.MANIFEST_PARSED, () => {
     video.play().catch(() => {})
     events.manifestParsed(hls)
+    manifestReported = true
   })
   hls.on(Hls.Events.LEVELS_UPDATED, () => events.levelsChanged(hls))
   hls.on(Hls.Events.LEVEL_SWITCHED, () => events.levelsChanged(hls))
   hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => events.audioTracksChanged(hls))
-  hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => events.audioTrackSwitched(hls))
+  hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => {
+    if (manifestReported) events.audioTrackSwitched(hls)
+  })
   hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => events.subtitleTracksChanged(hls))
   hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, () => events.subtitleTrackSwitched(hls))
 
@@ -189,10 +216,10 @@ export async function startHlsEngine(
     const step = recovery.nextStep(data)
     switch (step.kind) {
       case 'restart-load':
-        retryTimers.push(window.setTimeout(() => hls.startLoad(), step.delayMs))
+        retryLater(() => hls.startLoad(), step.delayMs)
         break
       case 'reload-source':
-        retryTimers.push(window.setTimeout(() => hls.loadSource(url), step.delayMs))
+        retryLater(() => hls.loadSource(url), step.delayMs)
         break
       case 'recover-media':
         hls.recoverMediaError()
@@ -205,9 +232,13 @@ export async function startHlsEngine(
 
   return {
     hls,
+    reload() {
+      // Its own retries belong to the load being replaced.
+      cancelRetries()
+      hls.loadSource(url)
+    },
     dispose() {
-      for (const timer of retryTimers) window.clearTimeout(timer)
-      retryTimers.length = 0
+      cancelRetries()
       hls.destroy()
     }
   }

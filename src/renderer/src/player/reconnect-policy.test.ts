@@ -126,6 +126,50 @@ describe('createReconnectDriver', () => {
     expect(reconnect).toHaveBeenCalledWith(1)
   })
 
+  // P1: a frozen stream reports nothing at all. The last report on record is
+  // then the one from before the freeze, which said "progressing".
+  it('takes silence after progress for a stall: one progress report, then nothing', async () => {
+    const reconnect = vi.fn()
+    const showMessage = vi.fn()
+    const driver = createReconnectDriver({ reconnect, showMessage })
+    driver.observe(healthy)
+
+    await vi.advanceTimersByTimeAsync(STALL_THRESHOLD_MS + 1)
+    expect(showMessage).toHaveBeenLastCalledWith(reconnectingMessage(1))
+    await vi.advanceTimersByTimeAsync(reconnectDelayMs(1))
+    expect(reconnect).toHaveBeenCalledTimes(1)
+
+    // Still silent after the attempt: the next one follows, and the old
+    // progress report does not reset the count in between.
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(reconnect).toHaveBeenCalledTimes(MAX_RECONNECT_ATTEMPTS)
+    expect(reconnect.mock.calls.map(([attempt]) => attempt)).toEqual([1, 2, 3, 4, 5])
+    expect(showMessage).toHaveBeenLastCalledWith(CONNECTION_LOST_MESSAGE)
+    driver.dispose()
+  })
+
+  it('never reconnects a stream that keeps reporting progress', async () => {
+    const reconnect = vi.fn()
+    const driver = createReconnectDriver({ reconnect, showMessage: vi.fn() })
+    for (let elapsed = 0; elapsed < 120_000; elapsed += 250) {
+      driver.observe(healthy)
+      await vi.advanceTimersByTimeAsync(250)
+    }
+    expect(reconnect).not.toHaveBeenCalled()
+    driver.dispose()
+  })
+
+  it('keeps the error of a load it already acted on when looking again', async () => {
+    const reconnect = vi.fn()
+    const driver = createReconnectDriver({ reconnect, showMessage: vi.fn() })
+    driver.observe(healthy)
+    driver.observe({ ...stuck, expectingProgress: false, error: 'Yayın açılamadı.', errorKey: 3 })
+    await vi.advanceTimersByTimeAsync(60_000)
+    // One attempt for load 3; the replay after it is not a new failure.
+    expect(reconnect).toHaveBeenCalledTimes(1)
+    driver.dispose()
+  })
+
   it('fires nothing after dispose', async () => {
     const reconnect = vi.fn()
     const driver = createReconnectDriver({ reconnect, showMessage: vi.fn() })

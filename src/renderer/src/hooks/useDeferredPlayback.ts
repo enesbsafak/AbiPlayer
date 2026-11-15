@@ -106,6 +106,14 @@ export function useDeferredPlayback(store: CatalogStore = defaultCatalog) {
         })
       })
       const unsubscribeStore = useStore.subscribe((state, previous) => {
+        // Something else started meanwhile: the viewer moved on, and playing
+        // this one later would replace what they chose.
+        const started = state.currentPlayback
+        if (started && started.mediaKey !== previous.currentPlayback?.mediaKey) {
+          finish()
+          setNotice(null)
+          return
+        }
         if (state.sourceErrors === previous.sourceErrors && state.sources === previous.sources) return
         if (check()) finish()
       })

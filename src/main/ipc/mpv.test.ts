@@ -356,6 +356,37 @@ describe('mpv-open and the TLS policy (F3-01)', () => {
     expect(controller.open).toHaveBeenCalledTimes(1)
   })
 
+  // M1: the jump reloads the stream, and every load decides its TLS options.
+  it('decides the options again for a jump to the live edge, from the policy as it is now', async () => {
+    const handlers = new Map<string, AnyHandler>()
+    const jumpToLive = vi.fn(async (decide?: (url: string) => Promise<Record<string, string>>) => {
+      await decide?.('https://panel.example/live/u/p/1.ts')
+    })
+    const mpvLoadOptions = vi
+      .fn<(url: string) => Promise<Record<string, string>>>()
+      .mockResolvedValueOnce({ 'tls-verify': 'no' })
+      .mockResolvedValueOnce({ 'tls-verify': 'yes' })
+    registerMpvHandlers(
+      {
+        handle<C extends IpcInvokeChannel>(channel: C, handler: IpcHandler<C>) {
+          handlers.set(channel, handler as unknown as AnyHandler)
+        }
+      },
+      {
+        controller: { jumpToLive } as unknown as MpvControllerApi,
+        registry: { wasPickedThisSession: () => false },
+        getWindow: () => null,
+        tls: { mpvLoadOptions }
+      }
+    )
+    const event = { sender: { id: 1 } } as unknown as IpcMainInvokeEvent
+    await handlers.get('mpv-jump-to-live')!(event)
+    await handlers.get('mpv-jump-to-live')!(event)
+    expect(mpvLoadOptions).toHaveBeenCalledTimes(2)
+    expect(mpvLoadOptions).toHaveBeenCalledWith('https://panel.example/live/u/p/1.ts')
+    await expect(mpvLoadOptions.mock.results[1].value).resolves.toEqual({ 'tls-verify': 'yes' })
+  })
+
   it('does not open a stream the policy refuses', async () => {
     const { controller, open } = setupWithTls(async () => {
       throw new Error('Sunucunun güvenlik sertifikası değişti')
