@@ -3,6 +3,7 @@
 - **Tarih:** 15 Kasım 2026
 - **Taban:** v0.4.15-beta (`c7f23c9`)
 - **Kapsam:** iki tur kod taramasında bulunan tüm sorunların düzeltme planı
+- **Durum:** uygulandı (15 Kasım 2026). Ne yapıldığı, ölçümler, davranış değişiklikleri ve doğrulanmayanlar: [iyilestirme-durum.md](iyilestirme-durum.md)
 
 ## 1. Kanıt tabanı
 
