@@ -46,6 +46,27 @@ describe('useDeferredPlayback (F3-02)', () => {
     expect(result.current.notice).toBeNull()
   })
 
+  // P8: the wait used to outlive another start and then replace it.
+  it('drops the wait once something else is started', async () => {
+    const store = createCatalogStore()
+    const filmId = parseM3U(PLAYLIST, 'm').channels[0].id
+    const play = vi.fn()
+    const { result } = renderHook(() => useDeferredPlayback(store))
+    act(() => result.current.playWhenReady(request(store, filmId), play))
+
+    act(() => {
+      useStore.getState().playChannel({ id: 'x', name: 'Başka', streamUrl: 'http://cdn.test/x.m3u8', sourceId: 'k', type: 'live' })
+    })
+    expect(result.current.notice).toBeNull()
+
+    await act(async () => {
+      store.replaceSource('m', m3uPlaylistToReplacement(parseM3U(PLAYLIST, 'm')))
+      await Promise.resolve()
+    })
+    expect(play).not.toHaveBeenCalled()
+    useStore.getState().stopPlayback()
+  })
+
   it('says the entry is gone when the loaded playlist no longer lists it', () => {
     const store = createCatalogStore()
     store.replaceSource('m', m3uPlaylistToReplacement(parseM3U(PLAYLIST, 'm')))
