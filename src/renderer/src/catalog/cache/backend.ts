@@ -1,4 +1,5 @@
 import { CACHE_DB_NAME, type CacheChunk, type CacheManifest } from './schema'
+import { requests } from '@/strings/requests'
 
 /**
  * Storage under the catalog cache: two key-value stores (manifests, chunks).
@@ -23,7 +24,7 @@ export interface CacheBackend {
 
 export class CacheQuotaError extends Error {
   constructor(cause?: unknown) {
-    super('Önbellek için disk alanı yetmedi', cause === undefined ? undefined : { cause })
+    super(requests.cache.quota, cause === undefined ? undefined : { cause })
     this.name = 'CacheQuotaError'
   }
 }

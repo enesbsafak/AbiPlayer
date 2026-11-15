@@ -12,6 +12,7 @@ import {
   type CacheManifest,
   type CachePartition
 } from './schema'
+import { requests } from '@/strings/requests'
 
 /** What the cache knows a source by; turned into a fingerprint (never stored in clear). */
 export type SourceIdentity =
@@ -348,7 +349,7 @@ export class CatalogCache {
     for (const keys of slices(manifest.chunks, chunksPerStep)) {
       const chunks = await this.backend.getChunks(keys)
       for (const chunk of chunks) {
-        if (!chunk) throw new Error('Önbellek parçası eksik')
+        if (!chunk) throw new Error(requests.cache.chunkMissing)
         yield chunk.sealed ? (await this.cipher!.open<{ items: CatalogItem[] }>(chunk.sealed)).items : (chunk.items ?? [])
       }
     }
@@ -357,7 +358,7 @@ export class CatalogCache {
   async readCategories(manifest: CacheManifest): Promise<CatalogCategory[] | null> {
     if (!manifest.categoriesChunk) return null
     const [chunk] = await this.backend.getChunks([manifest.categoriesChunk])
-    if (!chunk) throw new Error('Önbellek parçası eksik')
+    if (!chunk) throw new Error(requests.cache.chunkMissing)
     return chunk.sealed ? (await this.cipher!.open<{ categories: CatalogCategory[] }>(chunk.sealed)).categories : (chunk.categories ?? [])
   }
 

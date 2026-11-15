@@ -1,3 +1,5 @@
+import { requests } from '@/strings/requests'
+
 /*
  * Encryption of cached M3U data.
  *
@@ -35,7 +37,7 @@ function hex(bytes: ArrayBuffer, length: number): string {
 
 export async function createCacheCipher(rawKey: ArrayBuffer | Uint8Array): Promise<CacheCipher> {
   const material = rawKey instanceof Uint8Array ? rawKey : new Uint8Array(rawKey)
-  if (material.byteLength < 32) throw new Error('Önbellek anahtarı geçersiz')
+  if (material.byteLength < 32) throw new Error(requests.cache.badKey)
   const subtle = globalThis.crypto.subtle
   const base = await subtle.importKey('raw', material as BufferSource, 'HKDF', false, ['deriveKey'])
   const salt = encoder.encode('abi-player catalog cache v1')

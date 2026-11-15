@@ -7,6 +7,8 @@
  * "Error invoking remote method '…': Error: …" wrapper around an IPC error.
  */
 
+import { errors } from '@/strings/errors'
+
 export type UserErrorKind =
   | 'network'
   | 'timeout'
@@ -19,15 +21,13 @@ export type UserErrorKind =
   | 'generic'
 
 export const USER_ERROR_MESSAGES: Record<Exclude<UserErrorKind, 'http' | 'too-large'>, string> = {
-  network: 'Sunucuya ulaşılamadı. İnternet bağlantınızı ve sunucu adresini kontrol edin.',
-  timeout: 'Sunucu zamanında yanıt vermedi. Biraz sonra tekrar deneyin.',
-  cancelled: 'İstek tamamlanmadan durduruldu. Tekrar deneyin.',
-  auth: 'Kullanıcı adı veya şifre kabul edilmedi.',
-  'bad-response': 'Sunucudan beklenmeyen bir yanıt geldi.',
-  certificate:
-    'Sunucunun güvenlik sertifikası doğrulanamadı ya da daha önce güvendiğiniz sertifikadan farklı. ' +
-      'Açılan onay penceresinden ya da Ayarlar > Kaynaklar > Sunucu sertifikaları bölümünden bu sunucuya güvenebilirsiniz.',
-  generic: 'Beklenmeyen bir hata oluştu.'
+  network: errors.kinds.network,
+  timeout: errors.kinds.timeout,
+  cancelled: errors.kinds.cancelled,
+  auth: errors.kinds.auth,
+  'bad-response': errors.kinds.badResponse,
+  certificate: errors.kinds.certificate,
+  generic: errors.kinds.generic
 }
 
 const ELECTRON_IPC_PREFIX = /^Error invoking remote method '[^']*':\s*/i
@@ -163,14 +163,10 @@ export function classifyError(error: unknown): UserErrorKind {
 
 function messageForKind(kind: UserErrorKind, error: unknown, message: string): string {
   if (kind === 'http') {
-    const status = httpStatusOf(error, message)
-    return status !== null
-      ? `Sunucu isteği reddetti (HTTP ${status}).`
-      : 'Sunucu isteği reddetti.'
+    return errors.kinds.httpRefused(httpStatusOf(error, message))
   }
   if (kind === 'too-large') {
-    const limit = message.match(SIZE_LIMIT_PATTERN)?.[1]
-    return limit ? `Liste veya dosya çok büyük (en fazla ${limit}).` : 'Liste veya dosya çok büyük.'
+    return errors.kinds.tooLarge(message.match(SIZE_LIMIT_PATTERN)?.[1] ?? null)
   }
   return USER_ERROR_MESSAGES[kind]
 }

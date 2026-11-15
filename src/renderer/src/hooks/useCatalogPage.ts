@@ -32,6 +32,7 @@ import {
   type CatalogDetailRef,
   type CatalogRouteState
 } from './catalog-page-state'
+import { strings } from '@/strings'
 
 type Signal = { signal: AbortSignal }
 
@@ -255,7 +256,7 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
       .catch(async (error: unknown) => {
         if (controller.signal.aborted) return
         console.error(`Failed to load ${type} categories:`, error)
-        const message = toUserMessage(await certificateAwareError(error), 'Kategori listesi alınamadı.')
+        const message = toUserMessage(await certificateAwareError(error), strings.catalog.page.categoryListFailed)
         if (!controller.signal.aborted) setCategoriesError(message)
       })
     return () => controller.abort()
@@ -271,7 +272,7 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
     const controller = new AbortController()
     const token = catalog.beginGeneration(sourceId, type)
     const scope = selectionScope(sourceId, selectedCategoryId)
-    dispatch({ type: 'start', message: 'Seçili kategori yükleniyor...' })
+    dispatch({ type: 'start', message: strings.catalog.page.categoryLoading })
     void XTREAM_LOADERS[type]
       .category(creds, rawCategoryId, sourceId, { signal: controller.signal })
       .then((items) => {
@@ -359,7 +360,7 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
     status,
     // An error of another category (or of "all") does not belong here.
     loadError: foreground.errorScope === selectionScope(sourceId, selectedCategoryId) ? foreground.error : null,
-    sourceError: missingSecret ? (sourceError?.message ?? 'Bu kaynağın giriş bilgileri yüklenemedi.') : null,
+    sourceError: missingSecret ? (sourceError?.message ?? strings.sources.connect.secretsLoadFailed) : null,
     connectionFailed: !!sourceError
   })
 

@@ -67,19 +67,19 @@ describe('scalar coercion', () => {
 
 describe('toXtreamList', () => {
   it('passes arrays through and unwraps index-keyed objects', () => {
-    expect(toXtreamList([1, 2], 'x')).toEqual([1, 2])
-    expect(toXtreamList({ 0: 'a', 1: 'b' }, 'x')).toEqual(['a', 'b'])
-    expect(toXtreamList({}, 'x')).toEqual([])
+    expect(toXtreamList([1, 2], 'live')).toEqual([1, 2])
+    expect(toXtreamList({ 0: 'a', 1: 'b' }, 'live')).toEqual(['a', 'b'])
+    expect(toXtreamList({}, 'live')).toEqual([])
   })
 
   it('rejects anything else as a bad response', () => {
     for (const raw of [null, 'html', 5, { error: 'x' }]) {
-      expect(errorOf(() => toXtreamList(raw, 'kanal')).kind).toBe('bad-response')
+      expect(errorOf(() => toXtreamList(raw, 'live')).kind).toBe('bad-response')
     }
   })
 
   it('reports an auth error when the panel answers a list call with a rejected login', () => {
-    const error = errorOf(() => toXtreamList({ user_info: { auth: 0 } }, 'kanal'))
+    const error = errorOf(() => toXtreamList({ user_info: { auth: 0 } }, 'live'))
     expect(error.kind).toBe('auth')
     expect(error.message).toContain('Kimlik doğrulama başarısız')
   })

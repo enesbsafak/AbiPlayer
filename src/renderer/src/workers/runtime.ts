@@ -38,6 +38,7 @@ import {
   type WorkerJob,
   type WorkerToMain
 } from './protocol'
+import { requests } from '@/strings/requests'
 
 /*
  * The catalog worker's logic, independent of where it runs: inside the Web
@@ -80,7 +81,7 @@ interface JobContext {
 }
 
 function throwIfAborted(signal: AbortSignal): void {
-  if (signal.aborted) throw new DOMException('İş iptal edildi', 'AbortError')
+  if (signal.aborted) throw new DOMException(requests.worker.jobCancelled, 'AbortError')
 }
 
 export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
@@ -255,7 +256,7 @@ export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
     const wanted = new Set(job.partitions.map((partition) => partition.type))
     await new Promise<void>((resolve, reject) => {
       const check = () => {
-        if (ctx.signal.aborted) reject(new DOMException('İş iptal edildi', 'AbortError'))
+        if (ctx.signal.aborted) reject(new DOMException(requests.worker.jobCancelled, 'AbortError'))
         else if ([...wanted].every((type) => ctx.incomingDone.has(type))) resolve()
       }
       ctx.onIncoming = check

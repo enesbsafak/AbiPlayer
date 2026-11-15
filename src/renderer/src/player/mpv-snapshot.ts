@@ -17,6 +17,7 @@ import {
   type TrackPreferenceState,
   type TrackSelectionContext
 } from './track-reconciler'
+import { strings } from '@/strings'
 
 export const MPV_STARTUP_OVERLAY_TIMEOUT_MS = 15_000
 
@@ -107,7 +108,7 @@ export function mapMpvAudioTracks(tracks: MpvTrackInfo[]): AudioTrack[] {
     if (track.type !== 'audio') continue
     audioTracks.push({
       id: trackId(MPV_AUDIO_PREFIX, track.id),
-      name: track.title || track.lang || `Ses ${audioTracks.length + 1}`,
+      name: track.title || track.lang || strings.player.audio.fallback(audioTracks.length + 1),
       lang: track.lang,
       default: track.selected
     })
@@ -121,7 +122,7 @@ export function mapMpvSubtitleTracks(tracks: MpvTrackInfo[]): SubtitleTrack[] {
     if (track.type !== 'sub') continue
     subtitleTracks.push({
       id: trackId(MPV_SUBTITLE_PREFIX, track.id),
-      name: track.title || track.lang || `Altyazı ${subtitleTracks.length + 1}`,
+      name: track.title || track.lang || strings.player.subtitles.fallback(subtitleTracks.length + 1),
       lang: track.lang,
       type: track.external ? 'external' : 'embedded'
     })

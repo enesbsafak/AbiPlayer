@@ -1,4 +1,5 @@
 import { cleanTitleForTmdbSearch, pickConfidentTmdbMatch, type TmdbMatchCandidate } from './tmdb-match'
+import { errors } from '@/strings/errors'
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3'
 const TMDB_REQUEST_TIMEOUT_MS = 12_000
@@ -96,7 +97,7 @@ function optionalString(value: unknown): string | undefined {
 }
 
 function invalidTmdbResponse(): Error {
-  return new Error('TMDB geçersiz bir yanıt döndürdü')
+  return new Error(errors.tmdb.badResponse)
 }
 
 /** A details response is only usable when it is an object with a numeric id. */
@@ -213,7 +214,7 @@ async function fetchTmdb(
       })
 
       if (!response.ok) {
-        throw new Error(`TMDB isteği başarısız oldu (HTTP ${response.status})`)
+        throw new Error(errors.tmdb.requestFailed(response.status))
       }
 
       const data: unknown = await response.json().catch(() => {

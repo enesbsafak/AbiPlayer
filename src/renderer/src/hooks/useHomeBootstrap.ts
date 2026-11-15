@@ -16,20 +16,21 @@ import {
 import { CATALOG_TYPES, type CatalogCategory, type CatalogItem, type CatalogType } from '@/catalog/types'
 import type { CatalogStatusMap } from '@/store/playlist-slice'
 import type { XtreamCategory, XtreamCredentials } from '@/types/xtream'
+import { formatDateTime, strings } from '@/strings'
+
+const text = strings.catalog.home
 
 // Message and progress bar come from one source so they can never drift apart.
 export const BOOTSTRAP_STAGES = {
-  idle: { message: 'İçerikler taranıyor...', progress: 0.1 },
-  categories: { message: 'Kategoriler yükleniyor...', progress: 0.4 },
-  preview: { message: 'Ön izleme yükleniyor...', progress: 0.75 },
-  catalog: { message: 'Tam katalog arka planda yükleniyor...', progress: 0.95 }
+  idle: { message: text.stages.idle, progress: 0.1 },
+  categories: { message: text.stages.categories, progress: 0.4 },
+  preview: { message: text.stages.preview, progress: 0.75 },
+  catalog: { message: text.stages.catalog, progress: 0.95 }
 } as const
 
 export type BootstrapStage = keyof typeof BOOTSTRAP_STAGES
 
 export const PREVIEW_LIMITS: Record<CatalogType, number> = { live: 50, vod: 30, series: 30 }
-
-const TYPE_LABELS: Record<CatalogType, string> = { live: 'Canlı TV', vod: 'Filmler', series: 'Diziler' }
 
 /** Every type of the source holds a complete list. */
 export function sourceCatalogComplete(status: CatalogStatusMap, sourceId: string | null): boolean {
@@ -57,8 +58,7 @@ export function offlineCopySince(status: CatalogStatusMap, sourceId: string | nu
 
 /** The home page's notice for a provider that is down while a cached copy is shown. */
 export function offlineCopyMessage(since: number): string {
-  const when = new Date(since).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })
-  return `Kaynağa bağlanılamadı: çevrimdışı kopya gösteriliyor (${when} tarihinde güncellendi). Bağlantı otomatik olarak yeniden denenecek.`
+  return text.offlineCopy(formatDateTime(since))
 }
 
 /** Requests the bootstrap makes; injectable for tests. */
@@ -210,8 +210,8 @@ export function summarizeBootstrap(
     if (outcome.status !== 'failed') continue
     failures.push({
       type: outcome.type,
-      label: TYPE_LABELS[outcome.type],
-      message: toUserMessage(outcome.error, 'İçerikler yüklenemedi.')
+      label: strings.catalog.types[outcome.type].section,
+      message: toUserMessage(outcome.error, text.typeLoadFailed)
     })
   }
   return {
@@ -224,9 +224,8 @@ export function summarizeBootstrap(
 /** One line for a partial failure: what did not load and why. */
 export function partialFailureMessage(failures: readonly BootstrapFailure[]): string | null {
   if (failures.length === 0) return null
-  const labels = failures.map((failure) => failure.label).join(', ')
   const reasons = [...new Set(failures.map((failure) => failure.message))].join(' ')
-  return `${labels} yüklenemedi. ${reasons}`
+  return text.partialFailure(failures.map((failure) => failure.label).join(', '), reasons)
 }
 
 export function bootstrapStageOf(phases: Partial<Record<CatalogType, BootstrapPhase | 'done'>>, running: boolean): BootstrapStage {
@@ -373,7 +372,7 @@ export function useHomeBootstrap(): HomeBootstrap {
           dispatch({
             kind: 'finish',
             runId: run.id,
-            error: summary.allFailed ? summary.failures[0]?.message ?? 'Ana sayfa içerikleri yüklenemedi.' : null,
+            error: summary.allFailed ? summary.failures[0]?.message ?? text.loadFailed : null,
             partialError: summary.allFailed ? null : partialFailureMessage(summary.failures)
           })
           setPlaylistLoading(false)

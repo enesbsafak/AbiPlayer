@@ -19,6 +19,7 @@ export const security = {
     fingerprint: 'Parmak izi (SHA-256)',
     issuer: 'Düzenleyen',
     validity: 'Geçerlilik',
+    appOnly: 'Sertifika onayı yalnızca uygulamada yapılabilir',
     manageHint: `Güvendiğiniz sunucuları ${settingsPath('sources')} bölümünden kaldırabilirsiniz.`
   },
 

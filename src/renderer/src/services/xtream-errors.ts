@@ -1,6 +1,8 @@
+import { requests } from '@/strings/requests'
+
 export type XtreamErrorKind = 'network' | 'timeout' | 'auth' | 'http' | 'bad-response' | 'aborted' | 'certificate'
 
-export const XTREAM_REQUEST_CANCELLED_MESSAGE = 'İstek iptal edildi'
+export const XTREAM_REQUEST_CANCELLED_MESSAGE = requests.cancelled
 
 /**
  * Every failure of an Xtream request surfaces as this one class, so callers

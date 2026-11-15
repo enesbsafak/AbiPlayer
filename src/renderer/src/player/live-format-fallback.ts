@@ -2,6 +2,7 @@ import type { XtreamLiveFormat } from '@/types/xtream'
 import { liveFormatLabel } from '@/services/playback'
 import type { MpvStateSnapshot } from '@/services/platform'
 import { isSnapshotLoaded } from './mpv-snapshot'
+import { strings } from '@/strings'
 
 /**
  * One playback's live format with mpv: the format it was opened in, whether
@@ -62,5 +63,5 @@ export function stepLiveFormat(
 }
 
 export function liveFormatFallbackNotice(failed: XtreamLiveFormat, next: XtreamLiveFormat): string {
-  return `Kanal ${liveFormatLabel(failed)} biçiminde açılamadı; ${liveFormatLabel(next)} ile deneniyor.`
+  return strings.player.errors.liveFormatFallback(liveFormatLabel(failed), liveFormatLabel(next))
 }

@@ -1,6 +1,7 @@
 import { isXtreamRequestError } from '@/services/xtream-errors'
 import { toUserMessage } from '@/services/user-error'
 import type { CatalogSyncError } from './types'
+import { strings } from '@/strings'
 
 function isAbortError(error: unknown): boolean {
   return (
@@ -27,7 +28,7 @@ export function toCatalogSyncError(error: unknown): CatalogSyncError | null {
   }
   return {
     kind: 'unknown',
-    message: toUserMessage(error, 'İçerik senkronizasyonu başarısız oldu.'),
+    message: toUserMessage(error, strings.catalog.page.contentSyncFailed),
     retryable: true
   }
 }

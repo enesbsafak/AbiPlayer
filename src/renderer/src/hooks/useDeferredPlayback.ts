@@ -3,6 +3,7 @@ import { useStore } from '@/store'
 import { catalog as defaultCatalog, type CatalogStore } from '@/catalog/catalog-store'
 import { CATALOG_TYPES } from '@/catalog/types'
 import type { Channel } from '@/types/playlist'
+import { strings } from '@/strings'
 
 export interface DeferredPlayRequest {
   sourceId: string
@@ -18,7 +19,7 @@ export interface DeferredPlayNotice {
   pending: boolean
 }
 
-export const ENTRY_GONE_MESSAGE = 'Bu içerik artık oynatma listesinde bulunmuyor.'
+export const ENTRY_GONE_MESSAGE = strings.player.deferred.entryGone
 
 function sourceLoaded(store: CatalogStore, sourceId: string): boolean {
   return CATALOG_TYPES.some((type) => store.getStatus(sourceId, type)?.loaded === true)
@@ -38,7 +39,7 @@ export function deferredPlayStep(
 ): DeferredPlayStep {
   const channel = request.resolve()
   if (channel) return { kind: 'play', channel }
-  if (!sourceExists) return { kind: 'final', message: 'Bu içeriğin kaynağı artık kayıtlı değil.' }
+  if (!sourceExists) return { kind: 'final', message: strings.player.deferred.sourceGone }
   if (sourceLoaded(store, request.sourceId)) return { kind: 'final', message: ENTRY_GONE_MESSAGE }
   // Not retried on a timer: the source needs the user (wrong password, missing file).
   if (sourceError && sourceError.retryAt === null) return { kind: 'final', message: sourceError.message }
@@ -82,7 +83,7 @@ export function useDeferredPlayback(store: CatalogStore = defaultCatalog) {
       }
       if (check()) return
 
-      setNotice({ message: `“${request.name}” için oynatma listesi yükleniyor…`, pending: true })
+      setNotice({ message: strings.player.deferred.loading(request.name), pending: true })
       // A source that is waiting for its next automatic attempt is asked to try now.
       if (useStore.getState().sourceErrors[request.sourceId]) useStore.getState().requestSourceReconnect()
 

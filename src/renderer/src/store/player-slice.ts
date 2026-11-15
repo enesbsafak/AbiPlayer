@@ -27,6 +27,7 @@ import {
   type PlaybackId
 } from '../../../shared/playback'
 import { EXTERNAL_SUBTITLE_ID } from '@/player/track-ids'
+import { strings } from '@/strings'
 
 export const DEFAULT_PLAYBACK_TUNING: MpvPlaybackTuning = {
   audioDelay: 0,
@@ -127,7 +128,7 @@ function viewerSelections(state: PlayerSlice): Partial<PlayerSlice> {
   }
 }
 
-const NOT_PLAYABLE_MESSAGE = 'Seçilen içerik doğrudan oynatılamıyor.'
+const NOT_PLAYABLE_MESSAGE = strings.player.errors.notPlayable
 
 function armResume(playback: CurrentPlayback): PendingResume | null {
   if (!isTrackableTarget(playback.target)) return null

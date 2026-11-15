@@ -36,6 +36,8 @@ import {
   MAX_RECONNECT_ATTEMPTS as MAX_AUTO_RECONNECT,
   STALL_THRESHOLD_MS
 } from '@/player/reconnect-policy'
+import { strings } from '@/strings'
+import { mainStrings } from '../../../shared/main-strings'
 import { useMpvPlayer } from './useMpvPlayer'
 
 let seq = 0
@@ -362,6 +364,24 @@ describe('useMpvPlayer', () => {
     await advance(10_000)
     expect(useStore.getState().playerError).toBe('Dosya açılamadı')
     expect(vi.mocked(mpvOpen)).not.toHaveBeenCalled()
+  })
+
+  it('shows a failed start in plain words, without the IPC wrapper', async () => {
+    vi.mocked(mpvOpen).mockRejectedValueOnce(
+      new Error(`Error invoking remote method 'mpv:open': Error: ${mainStrings.mpv.binaryMissing}`)
+    )
+    act(() => useStore.getState().playChannel(film))
+    renderHook(() => useMpvPlayer(true))
+    await advance(0)
+    expect(useStore.getState().playerError).toBe(mainStrings.mpv.binaryMissing)
+  })
+
+  it('falls back to its own sentence when a failed start says nothing usable', async () => {
+    vi.mocked(mpvOpen).mockRejectedValueOnce('boom')
+    act(() => useStore.getState().playChannel(film))
+    renderHook(() => useMpvPlayer(true))
+    await advance(0)
+    expect(useStore.getState().playerError).toBe(strings.player.errors.mpvStartFailed)
   })
 
   it('takes window fullscreen from the window-state event', async () => {

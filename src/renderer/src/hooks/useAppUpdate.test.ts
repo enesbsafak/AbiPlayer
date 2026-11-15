@@ -17,6 +17,7 @@ vi.mock('@/store', () => store)
 
 import { useAppUpdate } from './useAppUpdate'
 import { describeCheckOutcome } from '@/components/layout/TitleBar'
+import { strings } from '@/strings'
 
 function updateState(overrides: Partial<AppUpdateState> = {}): AppUpdateState {
   return {
@@ -112,7 +113,7 @@ describe('describeCheckOutcome', () => {
       describeCheckOutcome(updateState({ status: 'error', message: 'Sunucu yanıt vermedi' }), null)
         ?.text
     ).toBe('Sunucu yanıt vermedi')
-    expect(describeCheckOutcome(null, 'Güncelleme denetlenemedi.')?.tone).toBe('error')
+    expect(describeCheckOutcome(null, strings.settings.updates.checkFailed)?.tone).toBe('error')
     expect(describeCheckOutcome(updateState({ status: 'idle' }), null)).toBeNull()
   })
 })

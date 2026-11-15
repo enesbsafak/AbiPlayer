@@ -41,11 +41,12 @@ import {
   trackIndex
 } from '@/player/track-ids'
 import { FRESH_TRACK_PREFERENCES, type TrackPreferenceState } from '@/player/track-reconciler'
+import { strings } from '@/strings'
 
 const HLS_SUBTITLE_RETRY_ATTEMPTS = 8
 const HLS_SUBTITLE_RETRY_STEP_MS = 250
 const PARSED_CUE_TICK_MS = 100
-export const HLS_LOAD_FAILED_MESSAGE = 'Oynatıcı bileşeni yüklenemedi.'
+export const HLS_LOAD_FAILED_MESSAGE = strings.player.errors.engineLoadFailed
 
 /**
  * The HTML5 engine: hls.js or the `<video>` element playing the current
@@ -441,7 +442,7 @@ export function usePlayer(
         if (playbackId && Number.isFinite(video.duration) && video.duration > 0) markPlaybackLoaded(playbackId)
       },
       error: () => {
-        const message = video.error?.message || 'Oynatma hatası'
+        const message = video.error?.message || strings.player.errors.playbackError
         const retry = planDirectReadRetry({
           streamUrl,
           message,
