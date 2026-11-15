@@ -31,7 +31,43 @@ type PlayerPatch = Partial<{
   activeVideoQuality: string | null
   subtitleCues: SubtitleCue[]
   activeSubtitleCues: SubtitleCue[]
+  playerNotice: string | null
 }>
+
+function sameSubtitleCues(a: SubtitleCue[], b: SubtitleCue[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  return a.every((cue, index) => {
+    const other = b[index]
+    return (
+      cue === other ||
+      (cue.startTime === other.startTime &&
+        cue.endTime === other.endTime &&
+        cue.text === other.text &&
+        cue.style === other.style)
+    )
+  })
+}
+
+/** Everything that describes the stream currently loaded into an engine. */
+const EMPTY_STREAM_STATE = {
+  isBuffering: false,
+  currentTime: 0,
+  duration: 0,
+  demuxerCacheDuration: 0,
+  playerError: null,
+  audioTracks: [],
+  currentAudioTrack: null,
+  subtitleTracks: [],
+  currentSubtitleTrack: null,
+  isSubtitleTrackUserChoice: false,
+  videoQualityOptions: [],
+  currentVideoQuality: null,
+  activeVideoQuality: null,
+  subtitleCues: [],
+  activeSubtitleCues: [],
+  playerNotice: null
+} satisfies Partial<PlayerSlice>
 
 export interface PlayerSlice {
   playbackEngine: 'html5' | 'mpv'
@@ -61,11 +97,26 @@ export interface PlayerSlice {
   /** Session-scoped lip-sync / speed / aspect corrections; reset per channel. */
   playbackTuning: MpvPlaybackTuning
   /**
-   * Stream awaiting a resume seek, set only when playback is actually started.
-   * Tied to the action rather than to the player mounting, so returning from the
-   * mini player cannot drag the viewer back to a stored position.
+   * Stream awaiting a resume seek, armed by the actions that start a stream
+   * from scratch (play, reload, and suspend — the mini player does not keep
+   * playing, so expanding it loads the stream again).
    */
   pendingResumeStreamUrl: string | null
+  /**
+   * Bumped by `reloadPlayback`. Both engines' load paths depend on it, so the
+   * same channel can be loaded again without pretending it is a new one.
+   */
+  playbackReloadToken: number
+  /**
+   * The player route was left while something was selected. Neither engine
+   * runs in that state (mpv is stopped, the <video> is unmounted): the mini
+   * card shows the item as paused and expanding it starts it again.
+   */
+  isPlaybackSuspended: boolean
+  /** The viewer picked the subtitle track (or "off") for the current stream. */
+  isSubtitleTrackUserChoice: boolean
+  /** Short, non-fatal message shown over the player (e.g. incomplete subtitles). */
+  playerNotice: string | null
   showControls: boolean
   isMiniPlayer: boolean
   isPlayerSidebarOpen: boolean
@@ -74,6 +125,9 @@ export interface PlayerSlice {
   resetPlaybackTuning: () => void
   playChannel: (channel: Channel) => void
   stopPlayback: () => void
+  reloadPlayback: () => void
+  suspendPlayback: () => void
+  resumeSuspendedPlayback: () => void
   clearPendingResume: () => void
   setPlaying: (playing: boolean) => void
   setPaused: (paused: boolean) => void
@@ -90,6 +144,9 @@ export interface PlayerSlice {
   setCurrentAudioTrack: (id: string | null) => void
   setSubtitleTracks: (tracks: SubtitleTrack[]) => void
   setCurrentSubtitleTrack: (id: string | null) => void
+  /** A subtitle choice made by the viewer; engines must not override it. */
+  selectSubtitleTrack: (id: string | null) => void
+  setPlayerNotice: (notice: string | null) => void
   setVideoQualityOptions: (options: VideoQualityOption[]) => void
   setCurrentVideoQuality: (id: string | null) => void
   setActiveVideoQuality: (id: string | null) => void
@@ -128,6 +185,10 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
   activeSubtitleCues: [],
   playbackTuning: DEFAULT_PLAYBACK_TUNING,
   pendingResumeStreamUrl: null,
+  playbackReloadToken: 0,
+  isPlaybackSuspended: false,
+  isSubtitleTrackUserChoice: false,
+  playerNotice: null,
   showControls: true,
   isMiniPlayer: false,
   isPlayerSidebarOpen: false,
@@ -154,23 +215,11 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
       }
 
       return {
+        ...EMPTY_STREAM_STATE,
         currentChannel: channel,
         isPlaying: true,
         isPaused: false,
-        isBuffering: false,
-        playerError: null,
-        currentTime: 0,
-        duration: 0,
-        demuxerCacheDuration: 0,
-        audioTracks: [],
-        currentAudioTrack: null,
-        subtitleTracks: [],
-        currentSubtitleTrack: null,
-        videoQualityOptions: [],
-        currentVideoQuality: null,
-        activeVideoQuality: null,
-        subtitleCues: [],
-        activeSubtitleCues: [],
+        isPlaybackSuspended: false,
         // Live has no position to return to; everything else may.
         pendingResumeStreamUrl: channel.type === 'live' ? null : channel.streamUrl,
         // A lip-sync offset that fixed the previous broadcast is wrong for this
@@ -181,27 +230,51 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
 
   stopPlayback: () =>
     set({
+      ...EMPTY_STREAM_STATE,
       currentChannel: null,
       isPlaying: false,
       isPaused: false,
-      isBuffering: false,
-      currentTime: 0,
-      duration: 0,
-      demuxerCacheDuration: 0,
-      playerError: null,
-      audioTracks: [],
-      currentAudioTrack: null,
-      subtitleTracks: [],
-      currentSubtitleTrack: null,
-      videoQualityOptions: [],
-      currentVideoQuality: null,
-      activeVideoQuality: null,
-      subtitleCues: [],
-      activeSubtitleCues: [],
       playbackTuning: DEFAULT_PLAYBACK_TUNING,
       pendingResumeStreamUrl: null,
+      isPlaybackSuspended: false,
       isPlayerSidebarOpen: false
     }),
+
+  // Same channel, same selections: only the engines start over. Position and
+  // duration are zeroed so a resume waits for the fresh load instead of firing
+  // on the stale duration.
+  reloadPlayback: () =>
+    set((state) => {
+      if (!state.currentChannel) return state
+      return {
+        playbackReloadToken: state.playbackReloadToken + 1,
+        playerError: null,
+        isBuffering: false,
+        currentTime: 0,
+        duration: 0,
+        demuxerCacheDuration: 0,
+        pendingResumeStreamUrl:
+          state.currentChannel.type === 'live' ? null : state.currentChannel.streamUrl
+      }
+    }),
+
+  suspendPlayback: () =>
+    set((state) => {
+      if (!state.currentChannel || state.isPlaybackSuspended) return state
+      return {
+        ...EMPTY_STREAM_STATE,
+        isPlaying: false,
+        isPaused: true,
+        isPlaybackSuspended: true,
+        // Coming back starts the stream again, so a film or episode has to be
+        // put back where it was. Live simply restarts.
+        pendingResumeStreamUrl:
+          state.currentChannel.type === 'live' ? null : state.currentChannel.streamUrl
+      }
+    }),
+
+  resumeSuspendedPlayback: () =>
+    set((state) => (state.isPlaybackSuspended ? { isPlaybackSuspended: false } : state)),
 
   clearPendingResume: () => set({ pendingResumeStreamUrl: null }),
 
@@ -220,11 +293,18 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
   setCurrentAudioTrack: (id) => set({ currentAudioTrack: id }),
   setSubtitleTracks: (tracks) => set({ subtitleTracks: tracks }),
   setCurrentSubtitleTrack: (id) => set({ currentSubtitleTrack: id }),
+  selectSubtitleTrack: (id) => set({ currentSubtitleTrack: id, isSubtitleTrackUserChoice: true }),
+  setPlayerNotice: (notice) => set({ playerNotice: notice }),
   setVideoQualityOptions: (options) => set({ videoQualityOptions: options }),
   setCurrentVideoQuality: (id) => set({ currentVideoQuality: id }),
   setActiveVideoQuality: (id) => set({ activeVideoQuality: id }),
   setSubtitleCues: (cues) => set({ subtitleCues: cues }),
-  setActiveSubtitleCues: (cues) => set({ activeSubtitleCues: cues }),
+  // Called on every cue tick (up to 10x/s); an identical list must not wake
+  // every subscriber.
+  setActiveSubtitleCues: (cues) =>
+    set((state) =>
+      sameSubtitleCues(state.activeSubtitleCues, cues) ? state : { activeSubtitleCues: cues }
+    ),
   setShowControls: (show) => set({ showControls: show }),
   setMiniPlayer: (mini) => set({ isMiniPlayer: mini }),
   setPlayerSidebarOpen: (open) => set({ isPlayerSidebarOpen: open }),
