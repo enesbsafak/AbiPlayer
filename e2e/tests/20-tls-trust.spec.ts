@@ -129,7 +129,7 @@ test.describe('TLS sertifika politikası', () => {
 
     // mpv, verifying against the old pin, refuses the new certificate too.
     const liveUrl = `${mock.url}/live/${mock.username}/${mock.password}/2.m3u8`
-    await page.evaluate((url) => window.electron!.mpvOpen(url), liveUrl)
+    await page.evaluate((url) => window.electron!.mpvOpen(url, { playbackId: 'e2e-tls-changed' }), liveUrl)
     await expect.poll(async () => (await app.mpvState()).error, { timeout: 30_000 }).not.toBeNull()
     expect((await app.mpvState()).timePos ?? 0).toBe(0)
     await page.evaluate(() => window.electron!.mpvStop())
