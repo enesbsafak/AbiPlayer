@@ -2,8 +2,8 @@ import type { StateCreator } from 'zustand'
 import type { UserSettings } from '@/types/settings'
 import { DEFAULT_SETTINGS } from '@/types/settings'
 
-const MIN_EPG_REFRESH_MINUTES = 5
-const MAX_EPG_REFRESH_MINUTES = 1440
+export const MIN_EPG_REFRESH_MINUTES = 5
+export const MAX_EPG_REFRESH_MINUTES = 1440
 const MIN_SUBTITLE_FONT_SIZE = 16
 const MAX_SUBTITLE_FONT_SIZE = 48
 const MAX_LANGUAGE_TAG_LENGTH = 16
@@ -24,6 +24,39 @@ function sanitizeLanguageTag(value: string, fallback: 'auto' | ''): string {
   return normalized
 }
 
+export function clampEpgRefreshInterval(value: number): number {
+  return clamp(Math.floor(value), MIN_EPG_REFRESH_MINUTES, MAX_EPG_REFRESH_MINUTES)
+}
+
+const EPG_TIME_FORMATS: ReadonlyArray<UserSettings['epgTimeFormat']> = ['12h', '24h']
+const SETTINGS_KEYS = Object.keys(DEFAULT_SETTINGS) as Array<keyof UserSettings>
+
+/**
+ * Keep only keys UserSettings still declares, each with the type its default
+ * has. Settings persisted by older builds carry fields that were removed since
+ * (theme, language, autoPlay, channelViewMode, bufferLength); dropping them here
+ * stops them from riding along in the store forever.
+ */
+function pickKnownSettings(input: Record<string, unknown>): Partial<UserSettings> {
+  const picked: Record<string, unknown> = {}
+  for (const key of SETTINGS_KEYS) {
+    const value = input[key]
+    if (typeof value !== typeof DEFAULT_SETTINGS[key]) continue
+    if (typeof value === 'number' && !Number.isFinite(value)) continue
+    if (key === 'epgTimeFormat' && !EPG_TIME_FORMATS.includes(value as UserSettings['epgTimeFormat'])) {
+      continue
+    }
+    picked[key] = value
+  }
+  return picked as Partial<UserSettings>
+}
+
+/** Full, valid settings from whatever was persisted (or nothing). */
+export function normalizeSettings(raw: unknown): UserSettings {
+  const input = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  return { ...DEFAULT_SETTINGS, ...sanitizeSettings(pickKnownSettings(input)) }
+}
+
 function sanitizeSettings(partial: Partial<UserSettings>): Partial<UserSettings> {
   const next: Partial<UserSettings> = { ...partial }
 
@@ -32,11 +65,7 @@ function sanitizeSettings(partial: Partial<UserSettings>): Partial<UserSettings>
   }
 
   if (typeof next.epgRefreshInterval === 'number' && Number.isFinite(next.epgRefreshInterval)) {
-    next.epgRefreshInterval = clamp(
-      Math.floor(next.epgRefreshInterval),
-      MIN_EPG_REFRESH_MINUTES,
-      MAX_EPG_REFRESH_MINUTES
-    )
+    next.epgRefreshInterval = clampEpgRefreshInterval(next.epgRefreshInterval)
   }
 
   if (typeof next.subtitleFontSize === 'number' && Number.isFinite(next.subtitleFontSize)) {
@@ -70,7 +99,14 @@ export interface SettingsSlice {
 
 export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSlice> = (set) => ({
   settings: DEFAULT_SETTINGS,
+  // Rebuilt from known keys on every write, so leftovers from an older
+  // persisted shape disappear the first time anything is changed.
   updateSettings: (partial) =>
-    set((state) => ({ settings: { ...state.settings, ...sanitizeSettings(partial) } })),
-  resetSettings: () => set({ settings: DEFAULT_SETTINGS })
+    set((state) => ({
+      settings: normalizeSettings({ ...state.settings, ...sanitizeSettings(partial) })
+    })),
+  // The TMDB key is something the user pasted from another site, not a
+  // preference; a reset that silently threw it away was data loss.
+  resetSettings: () =>
+    set((state) => ({ settings: { ...DEFAULT_SETTINGS, tmdbApiKey: state.settings.tmdbApiKey } }))
 })

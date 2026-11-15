@@ -114,6 +114,7 @@ export function CategoryVisibility() {
             value={filterQuery}
             onChange={(e) => setFilterQuery(e.target.value)}
             placeholder="Kategori ara..."
+            aria-label="Kategori ara"
           />
         </div>
 

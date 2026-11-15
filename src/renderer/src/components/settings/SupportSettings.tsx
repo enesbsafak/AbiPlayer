@@ -7,6 +7,7 @@ import {
   GITHUB_REPO_URL
 } from '@/constants/app-info'
 import { fetchReleaseNotes, type ReleaseNote } from '@/services/github-releases'
+import { toUserMessage } from '@/services/user-error'
 
 const CARD = 'rounded-lg border border-surface-800 bg-surface-900 p-5'
 const LINK =
@@ -79,7 +80,7 @@ function ReleaseNotes() {
       })
       .catch((cause: unknown) => {
         if (!mounted) return
-        setError(cause instanceof Error ? cause.message : 'Sürüm notları alınamadı')
+        setError(toUserMessage(cause, 'Sürüm notları alınamadı.'))
       })
 
     return () => {

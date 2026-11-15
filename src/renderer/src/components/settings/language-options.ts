@@ -25,17 +25,24 @@ export function formatLanguageLabel(code: string): string {
   }
 }
 
+const NON_LANGUAGE_VALUES = new Set(['', 'auto', 'off'])
+
 /**
  * Language codes offered in the preference dropdowns: the common ones, plus
  * whatever the currently loaded stream actually carries. Reading the live track
  * lists is why a provider's own language tags show up as choices at all.
+ *
+ * `savedCode` is the stored preference. It is always offered: a tag picked from
+ * an earlier stream is otherwise missing once that stream stops, and the
+ * dropdown fell back to its placeholder as if nothing were saved.
  */
-export function useLanguageCodes(): string[] {
+export function useLanguageCodes(savedCode?: string): string[] {
   const audioTracks = useStore((s) => s.audioTracks)
   const subtitleTracks = useStore((s) => s.subtitleTracks)
 
   return useMemo(() => {
     const trackLanguages = collectTrackLanguages([...audioTracks, ...subtitleTracks])
-    return Array.from(new Set([...trackLanguages, ...COMMON_LANGUAGE_CODES]))
-  }, [audioTracks, subtitleTracks])
+    const saved = savedCode && !NON_LANGUAGE_VALUES.has(savedCode) ? [savedCode] : []
+    return Array.from(new Set([...trackLanguages, ...COMMON_LANGUAGE_CODES, ...saved]))
+  }, [audioTracks, subtitleTracks, savedCode])
 }

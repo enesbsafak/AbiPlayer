@@ -18,7 +18,7 @@ export function SubtitleSettings() {
   const updateSettings = useStore((s) => s.updateSettings)
 
   const subtitleOpacity = parseSubtitleBackgroundOpacity(settings.subtitleBackground)
-  const languageCodes = useLanguageCodes()
+  const languageCodes = useLanguageCodes(settings.preferredSubtitleLanguage)
 
   const subtitleLanguageItems = useMemo(
     () => [
