@@ -1,5 +1,6 @@
 import type { Channel, Category } from '@/types/playlist'
 import { isAdultLabel } from './adult-content'
+import { perfMark } from './perf'
 
 interface M3UEntry {
   name: string
@@ -113,6 +114,7 @@ function detectChannelType(url: string): 'live' | 'vod' | 'series' {
 }
 
 export function parseM3U(content: string, sourceId: string): { channels: Channel[]; categories: Category[] } {
+  perfMark('m3u:parse-start', { chars: content.length })
   const lines = content.split(/\r?\n/)
   const entries: M3UEntry[] = []
   let currentEntry: Omit<M3UEntry, 'url'> | null = null
@@ -203,6 +205,7 @@ export function parseM3U(content: string, sourceId: string): { channels: Channel
     }
   })
 
+  perfMark('m3u:parse-done', { channels: channels.length })
   return { channels, categories }
 }
 

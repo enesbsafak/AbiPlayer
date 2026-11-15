@@ -1,6 +1,7 @@
 import { xtreamApi } from './xtream-api'
 import { useStore } from '@/store'
 import type { XtreamCredentials } from '@/types/xtream'
+import { perfMark } from './perf'
 
 /**
  * Module-level background sync that persists across page navigation.
@@ -39,6 +40,7 @@ export function ensureFullSync(
 
   const promise = (async () => {
     try {
+      perfMark('sync:start', { type })
       if (type === 'live') {
         const streams = await xtreamApi.getLiveStreams(creds)
         addChannels(xtreamApi.liveStreamsToChannels(streams, creds, sourceId))
@@ -49,9 +51,11 @@ export function ensureFullSync(
         const streams = await xtreamApi.getSeries(creds)
         addChannels(xtreamApi.seriesToChannels(streams, sourceId))
       }
+      perfMark('sync:done', { type })
       markSourceTypeHydrated(sourceId, type)
       setSyncError(sourceId, null)
     } catch (error) {
+      perfMark('sync:failed', { type })
       const message = error instanceof Error ? error.message : 'İçerik senkronizasyonu başarısız'
       console.warn(`[background-sync] ${type} sync failed for ${sourceId}:`, message)
       setSyncError(sourceId, message)

@@ -29,6 +29,7 @@ import {
   pickPreferredSubtitleTrackId
 } from '@/services/track-preferences'
 import { useStore } from '@/store'
+import { perfMark, perfMpvOpen, perfMpvSnapshot } from '@/services/perf'
 
 const MPV_AUDIO_TRACK_PREFIX = 'mpv-a:'
 const MPV_SUBTITLE_TRACK_PREFIX = 'mpv-s:'
@@ -258,7 +259,9 @@ export function useMpvPlayer(enabled: boolean) {
         startupUrlRef.current = currentChannel.streamUrl
         startupStartedAtRef.current = Date.now()
         if (isFirstLaunch) updateStartupVisibility(true)
+        perfMpvOpen(currentChannel.streamUrl)
         await mpvOpen(currentChannel.streamUrl)
+        perfMark('mpv:open-resolved')
         if (cancelled) return
 
         await Promise.allSettled([mpvSetVolume(safeVolume), mpvSetMute(currentMuted)])
@@ -292,6 +295,7 @@ export function useMpvPlayer(enabled: boolean) {
         windowIsFullscreen().catch(() => false)
       ])
       if (!snapshot) return
+      perfMpvSnapshot(snapshot)
 
       const now = Date.now()
       // Poll can only CLEAR the startup overlay, never re-enable it

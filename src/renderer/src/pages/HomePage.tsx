@@ -13,6 +13,8 @@ import { isPlayableChannel } from '@/services/playback'
 import { applyCatalogView } from '@/services/catalog-view'
 import { openPlayerFromRoute } from '@/services/player-navigation'
 import { restoreStreamUrl, type WatchProgressEntry } from '@/services/watch-progress'
+import { perfMark, usePerfMarkOnce } from '@/services/perf'
+perfMark('renderer:home-chunk-loaded')
 
 const MAX_LIVE = 12
 const MAX_OTHER = 6
@@ -36,6 +38,7 @@ export default function HomePage() {
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
 
   const bootstrap = useHomeBootstrap()
+  usePerfMarkOnce('renderer:home-first-content', channels.length > 0)
 
   const handlePlay = useCallback(
     (channel: Channel) => {

@@ -1,6 +1,7 @@
 import type { XtreamCredentials, XtreamAuthResponse, XtreamCategory, XtreamLiveStream, XtreamVODStream, XtreamVODInfo, XtreamSeriesStream, XtreamSeriesInfo } from '@/types/xtream'
 import type { Channel, Category } from '@/types/playlist'
 import { isAdultLabel } from './adult-content'
+import { perfXtreamMark } from './perf'
 
 const XTREAM_REQUEST_TIMEOUT_MS = 20_000
 const PREVIEW_SCAN_CATEGORY_LIMIT = 12
@@ -198,12 +199,14 @@ async function fetchJSON<T>(
 
     // Use cache: no-store to avoid stale responses, and don't auto-upgrade HTTP
     try {
+      perfXtreamMark('xtream:request', url)
       const res = await fetch(url, {
         cache: 'no-store',
         signal: controller.signal,
         // @ts-ignore - Electron supports this to prevent HTTP->HTTPS upgrade
         mode: 'cors'
       })
+      perfXtreamMark('xtream:response', url)
 
       // Status first: `fetch` resolves on 4xx/5xx, so the body is only ever a
       // JSON payload once we know the request succeeded.
@@ -216,9 +219,11 @@ async function fetchJSON<T>(
       }
 
       const body = await res.text()
+      perfXtreamMark('xtream:body', url)
 
       try {
         const data = JSON.parse(body) as T
+        perfXtreamMark('xtream:parsed', url)
         if (!bypassCache && cacheTtlMs > 0) {
           requestCache.set(url, { data, expiresAt: Date.now() + cacheTtlMs })
           evictCacheIfNeeded()

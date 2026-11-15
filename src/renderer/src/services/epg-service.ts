@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser'
 import type { EPGData, EPGProgram, EPGChannel } from '@/types/epg'
+import { perfMark } from './perf'
 
 function parseXMLTVDate(str: string): number {
   if (!str) return 0
@@ -150,6 +151,7 @@ function normalizeChannelKey(id: string): string | null {
 }
 
 export function parseEPGXml(xml: string): EPGData {
+  perfMark('epg:parse-start', { chars: xml.length })
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
@@ -227,6 +229,7 @@ export function parseEPGXml(xml: string): EPGData {
     programs[channelId].sort((a, b) => a.start - b.start)
   }
 
+  perfMark('epg:parse-done', { channels: Object.keys(channels).length })
   return { channels, programs, lastUpdated: Date.now() }
 }
 

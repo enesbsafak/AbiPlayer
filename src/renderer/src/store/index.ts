@@ -10,6 +10,7 @@ import { createNavigationSlice, type NavigationSlice } from './navigation-slice'
 import { createWatchProgressSlice, type WatchProgressSlice } from './watch-progress-slice'
 import { sanitizeProgressEntries } from '@/services/watch-progress'
 import type { PlaylistSource } from '@/types/playlist'
+import { perfMark, perfWatchStore } from '@/services/perf'
 
 export type AppStore =
   & SettingsSlice
@@ -93,6 +94,7 @@ function createBackupFallbackStorage(): StateStorage {
   }
 }
 
+perfMark('renderer:store-create')
 export const useStore = create<AppStore>()(
   persist(
     (...a) => ({
@@ -173,3 +175,4 @@ export const useStore = create<AppStore>()(
     }
   )
 )
+perfWatchStore(useStore)
