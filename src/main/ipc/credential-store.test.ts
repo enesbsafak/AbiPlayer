@@ -174,6 +174,35 @@ describe('catalog cache key (C2c)', () => {
   })
 })
 
+describe('CredentialStore TMDB key (K10)', () => {
+  const TMDB_KEY = 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIxMjMifQ.c2lnbmF0dXJl'
+
+  it('keeps the key encrypted next to the logins and the cache key, never as a source', async () => {
+    const store = new CredentialStore({ filePath, safeStorage: fakeSafeStorage })
+    await store.set('src-1', CRED)
+    const cacheKey = await store.getCacheKey()
+    await store.setTmdbApiKey(TMDB_KEY)
+
+    expect(await readFile(filePath, 'utf-8')).not.toContain('eyJ')
+    const reopened = new CredentialStore({ filePath, safeStorage: fakeSafeStorage })
+    expect(await reopened.getTmdbApiKey()).toBe(TMDB_KEY)
+    expect(await reopened.getCacheKey()).toBe(cacheKey)
+    expect(await reopened.getAll()).toEqual({ 'src-1': CRED })
+
+    await reopened.setTmdbApiKey(null)
+    expect(await new CredentialStore({ filePath, safeStorage: fakeSafeStorage }).getTmdbApiKey()).toBeNull()
+    expect(await new CredentialStore({ filePath, safeStorage: fakeSafeStorage }).getAll()).toEqual({ 'src-1': CRED })
+  })
+
+  it('survives writes of the logins', async () => {
+    const store = new CredentialStore({ filePath, safeStorage: fakeSafeStorage })
+    await store.setTmdbApiKey(TMDB_KEY)
+    await store.set('src-1', CRED)
+    await store.delete('src-1')
+    expect(await new CredentialStore({ filePath, safeStorage: fakeSafeStorage }).getTmdbApiKey()).toBe(TMDB_KEY)
+  })
+})
+
 describe('writeFileAtomic', () => {
   it('leaves the previous file intact and no temp file behind when the write fails', async () => {
     await writeFile(filePath, 'previous', 'utf-8')

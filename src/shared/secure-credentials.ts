@@ -33,6 +33,19 @@ export function isValidM3uSecret(value: unknown): value is SecureM3uSourceSecret
   )
 }
 
+/** Longest TMDB key the store accepts (v4 read tokens are a few hundred characters). */
+export const MAX_SECURE_TMDB_API_KEY_LENGTH = 512
+
+/** A TMDB v3 API key (hex) or v4 read token (a JWT): printable, no whitespace. */
+export function isValidTmdbApiKey(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= MAX_SECURE_TMDB_API_KEY_LENGTH &&
+    /^[A-Za-z0-9._~+/=-]+$/.test(value)
+  )
+}
+
 export function isM3uSecret(value: SecureSourceSecret): value is SecureM3uSourceSecret {
   return (value as SecureM3uSourceSecret).kind === 'm3u_url'
 }

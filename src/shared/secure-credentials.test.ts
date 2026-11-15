@@ -4,7 +4,9 @@ import {
   isValidCredential,
   isValidM3uSecret,
   isValidSourceSecret,
+  isValidTmdbApiKey,
   MAX_SECURE_M3U_URL_LENGTH,
+  MAX_SECURE_TMDB_API_KEY_LENGTH,
   sanitizeCredentialMap
 } from './secure-credentials'
 
@@ -40,5 +42,17 @@ describe('secure source secrets (F3-02)', () => {
     expect(isValidSourceSecret(XTREAM)).toBe(true)
     expect(isValidSourceSecret(M3U)).toBe(true)
     expect(isValidSourceSecret(null)).toBe(false)
+  })
+})
+
+describe('TMDB API key validator (K10)', () => {
+  it('accepts a v3 key and a v4 read token, and nothing with spaces, controls or excess length', () => {
+    expect(isValidTmdbApiKey('0123456789abcdef0123456789abcdef')).toBe(true)
+    expect(isValidTmdbApiKey('eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIxMjMifQ.c2ln-_bmF0dXJl')).toBe(true)
+    expect(isValidTmdbApiKey('')).toBe(false)
+    expect(isValidTmdbApiKey('abc def')).toBe(false)
+    expect(isValidTmdbApiKey('abc\n')).toBe(false)
+    expect(isValidTmdbApiKey({ key: 'abc' })).toBe(false)
+    expect(isValidTmdbApiKey('a'.repeat(MAX_SECURE_TMDB_API_KEY_LENGTH + 1))).toBe(false)
   })
 })

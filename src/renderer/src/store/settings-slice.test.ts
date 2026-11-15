@@ -4,7 +4,9 @@ import { DEFAULT_SETTINGS } from '@/types/settings'
 import { clampEpgRefreshInterval, normalizeSettings } from './settings-slice'
 import { useStore } from './index'
 
-const REMOVED_KEYS = ['theme', 'language', 'autoPlay', 'channelViewMode', 'bufferLength']
+// defaultVolume (K6): it never set the volume a playback started with; the
+// remembered volume does that, so the setting went.
+const REMOVED_KEYS = ['theme', 'language', 'autoPlay', 'channelViewMode', 'bufferLength', 'defaultVolume']
 
 describe('normalizeSettings', () => {
   it('drops keys that settings no longer declare', () => {
@@ -14,6 +16,7 @@ describe('normalizeSettings', () => {
       autoPlay: false,
       channelViewMode: 'list',
       bufferLength: 90,
+      defaultVolume: 0.5,
       epgRefreshInterval: 120,
       tmdbApiKey: 'abc'
     })
@@ -26,13 +29,13 @@ describe('normalizeSettings', () => {
   it('replaces values of the wrong type with defaults', () => {
     const normalized = normalizeSettings({
       epgRefreshInterval: 'often',
-      defaultVolume: Number.NaN,
+      subtitleFontSize: Number.NaN,
       epgTimeFormat: '36h',
       hardwareAcceleration: 'yes'
     })
 
     expect(normalized.epgRefreshInterval).toBe(DEFAULT_SETTINGS.epgRefreshInterval)
-    expect(normalized.defaultVolume).toBe(DEFAULT_SETTINGS.defaultVolume)
+    expect(normalized.subtitleFontSize).toBe(DEFAULT_SETTINGS.subtitleFontSize)
     expect(normalized.epgTimeFormat).toBe(DEFAULT_SETTINGS.epgTimeFormat)
     expect(normalized.hardwareAcceleration).toBe(DEFAULT_SETTINGS.hardwareAcceleration)
   })

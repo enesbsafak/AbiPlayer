@@ -167,6 +167,10 @@ export interface IpcInvokeContract {
    * was lost makes the old cache unreadable, which is the point.
    */
   'secure-credentials-get-cache-key': Invoke<[], string>
+  /** The TMDB API key, kept in the same encrypted file; null when none is stored. */
+  'secure-credentials-get-tmdb-key': Invoke<[], string | null>
+  /** Stores the TMDB API key; null removes it. */
+  'secure-credentials-set-tmdb-key': Invoke<[apiKey: string | null], void>
 
   'embedded-subtitles-probe': Invoke<
     [streamUrl: string, options?: MediaJobOptions],

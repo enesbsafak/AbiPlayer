@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/Button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Dropdown } from '@/components/ui/Dropdown'
 import { Input } from '@/components/ui/Input'
+import { toUserMessage } from '@/services/user-error'
+import { saveTmdbApiKey } from './tmdb-api-key'
 
 /**
  * Edits a local draft and commits on blur or Enter. Clamping on every
@@ -57,9 +59,63 @@ export function EpgRefreshIntervalInput() {
   )
 }
 
+/**
+ * The TMDB key, edited as a draft and saved on blur or Enter to the secure
+ * credential store (not localStorage).
+ */
+export function TmdbApiKeyInput() {
+  const tmdbApiKey = useStore((s) => s.settings.tmdbApiKey)
+  const [draft, setDraft] = useState(tmdbApiKey)
+  const [status, setStatus] = useState<{ kind: 'saving' | 'saved' | 'error'; message: string } | null>(null)
+
+  // Follow outside changes (read from the secure store at start) while not being edited.
+  useEffect(() => {
+    setDraft(tmdbApiKey)
+  }, [tmdbApiKey])
+
+  const commit = async () => {
+    if (draft.trim() === tmdbApiKey) return
+    setStatus({ kind: 'saving', message: 'Kaydediliyor…' })
+    try {
+      await saveTmdbApiKey(draft)
+      setStatus({ kind: 'saved', message: 'Anahtar güvenli depoya kaydedildi.' })
+    } catch (error) {
+      setStatus({ kind: 'error', message: `Anahtar kaydedilemedi: ${toUserMessage(error)}` })
+    }
+  }
+
+  return (
+    <>
+      <Input
+        id="tmdb-api-key"
+        label="TMDB API Anahtarı (opsiyonel)"
+        type="password"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            void commit()
+          }
+        }}
+        placeholder="TMDB v3 anahtarı veya v4 bearer token girin"
+      />
+      <p className="mt-1 text-xs text-surface-500">
+        Film ve dizi detayları ile bölüm adlarını zenginleştirmek için kullanılır. Kaynak şifreleriyle birlikte
+        şifreli olarak saklanır.
+      </p>
+      {status && (
+        <p className={`mt-1 text-xs ${status.kind === 'error' ? 'text-red-400' : 'text-surface-400'}`} role={status.kind === 'error' ? 'alert' : 'status'}>
+          {status.message}
+        </p>
+      )}
+    </>
+  )
+}
+
 export function GeneralSettings() {
   const epgTimeFormat = useStore((s) => s.settings.epgTimeFormat)
-  const tmdbApiKey = useStore((s) => s.settings.tmdbApiKey)
   const updateSettings = useStore((s) => s.updateSettings)
   const resetSettings = useStore((s) => s.resetSettings)
   const watchProgressCount = useStore((s) => s.watchProgress.length)
@@ -93,17 +149,7 @@ export function GeneralSettings() {
       </div>
 
       <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
-        <Input
-          id="tmdb-api-key"
-          label="TMDB API Anahtarı (opsiyonel)"
-          type="password"
-          value={tmdbApiKey}
-          onChange={(e) => updateSettings({ tmdbApiKey: e.target.value })}
-          placeholder="TMDB v3 anahtarı veya v4 bearer token girin"
-        />
-        <p className="mt-1 text-xs text-surface-500">
-          Film ve dizi detayları ile bölüm adlarını zenginleştirmek için kullanılır.
-        </p>
+        <TmdbApiKeyInput />
       </div>
 
       <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">

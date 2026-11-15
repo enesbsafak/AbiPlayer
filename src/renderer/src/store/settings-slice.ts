@@ -67,10 +67,6 @@ export function normalizeSettings(raw: unknown): UserSettings {
 function sanitizeSettings(partial: Partial<UserSettings>): Partial<UserSettings> {
   const next: Partial<UserSettings> = { ...partial }
 
-  if (typeof next.defaultVolume === 'number') {
-    next.defaultVolume = clamp(next.defaultVolume, 0, 1)
-  }
-
   if (typeof next.epgRefreshInterval === 'number' && Number.isFinite(next.epgRefreshInterval)) {
     next.epgRefreshInterval = clampEpgRefreshInterval(next.epgRefreshInterval)
   }
@@ -100,12 +96,20 @@ function sanitizeSettings(partial: Partial<UserSettings>): Partial<UserSettings>
 
 export interface SettingsSlice {
   settings: UserSettings
+  /**
+   * The TMDB key in `settings` came from the plain persisted settings of an
+   * older version and is not in the secure store yet: it keeps being
+   * persisted in plain text until the secure write succeeded.
+   */
+  tmdbKeyPlainPending: boolean
   updateSettings: (partial: Partial<UserSettings>) => void
   resetSettings: () => void
+  setTmdbKeyPlainPending: (pending: boolean) => void
 }
 
 export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSlice> = (set) => ({
   settings: DEFAULT_SETTINGS,
+  tmdbKeyPlainPending: false,
   // Rebuilt from known keys on every write, so leftovers from an older
   // persisted shape disappear the first time anything is changed.
   updateSettings: (partial) =>
@@ -115,5 +119,6 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
   // The TMDB key is something the user pasted from another site, not a
   // preference; a reset that silently threw it away was data loss.
   resetSettings: () =>
-    set((state) => ({ settings: { ...DEFAULT_SETTINGS, tmdbApiKey: state.settings.tmdbApiKey } }))
+    set((state) => ({ settings: { ...DEFAULT_SETTINGS, tmdbApiKey: state.settings.tmdbApiKey } })),
+  setTmdbKeyPlainPending: (pending) => set((state) => (state.tmdbKeyPlainPending === pending ? state : { tmdbKeyPlainPending: pending }))
 })

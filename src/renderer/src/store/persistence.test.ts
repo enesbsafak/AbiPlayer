@@ -35,7 +35,7 @@ function fakeTimers(): PersistTimers & { advance(ms: number): void } {
   }
 }
 
-function setup(initial: string | null = null) {
+function setup(initial: string | null = null, redactCopy?: (raw: string) => string) {
   const disk = new Map<string, string>()
   if (initial !== null) disk.set('store', initial)
   const writes: string[] = []
@@ -51,7 +51,13 @@ function setup(initial: string | null = null) {
   const controller = createPersistController<State>({
     name: 'store',
     backend,
-    sideStorage: { getItem: (name) => disk.get(name) ?? null, setItem: (name, value) => void disk.set(name, value) },
+    sideStorage: {
+      getItem: (name) => disk.get(name) ?? null,
+      setItem: (name, value) => void disk.set(name, value),
+      removeItem: (name) => void disk.delete(name),
+      keys: () => [...disk.keys()]
+    },
+    redactCopy,
     delayMs: 100,
     maxDelayMs: 400,
     timers
@@ -176,5 +182,30 @@ describe('persist controller', () => {
     controller.preserveStoredCopy('v9')
 
     expect(disk.get('store:v9')).toBe(stored)
+  })
+
+  it('redacts a side copy before it is written, and redacts copies of older builds on request (K10)', () => {
+    const redact = (raw: string) => raw.replace(/s3cret/g, '***')
+    const { controller, disk } = setup(JSON.stringify({ state: { password: 's3cret' }, version: 1 }), redact)
+    disk.set('store:unloaded', 'old s3cret copy')
+    disk.set('other:key', 's3cret')
+    void controller.storage.getItem('store')
+
+    controller.preserveStoredCopy('v1-before-migration')
+    expect(disk.get('store:v1-before-migration')).toBe('{"state":{"password":"***"},"version":1}')
+
+    controller.redactStoredCopies()
+    expect(disk.get('store:unloaded')).toBe('old *** copy')
+    // Only this store's copies.
+    expect(disk.get('other:key')).toBe('s3cret')
+  })
+
+  it('discards the side copies asked for and no others (K10)', () => {
+    const { controller, disk } = setup()
+    disk.set('store:v1-before-migration', 'a')
+    disk.set('store:v2-before-migration', 'b')
+    disk.set('store:unreadable', 'c')
+    controller.discardStoredCopies((suffix) => suffix.endsWith('-before-migration'))
+    expect([...disk.keys()].sort()).toEqual(['store:unreadable'])
   })
 })

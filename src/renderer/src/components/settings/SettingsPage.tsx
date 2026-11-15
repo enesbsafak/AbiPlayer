@@ -9,7 +9,7 @@ import { GeneralSettings } from './GeneralSettings'
 import { UpdateSettings } from './UpdateSettings'
 import { SupportSettings } from './SupportSettings'
 
-type SettingsTabId =
+export type SettingsTabId =
   | 'sources'
   | 'playback'
   | 'subtitles'
@@ -27,13 +27,18 @@ interface SettingsTab {
 
 const TABS: SettingsTab[] = [
   { id: 'sources', label: 'Kaynaklar', description: 'Xtream ve M3U kaynaklarınızı yönetin', icon: Database },
-  { id: 'playback', label: 'Oynatma', description: 'Ses, dublaj dili, donanım hızlandırma ve ses passthrough', icon: Play },
+  { id: 'playback', label: 'Oynatma', description: 'Dublaj dili, canlı yayın biçimi, donanım hızlandırma ve ses passthrough', icon: Play },
   { id: 'subtitles', label: 'Altyazı', description: 'Altyazı dili ve görünümü', icon: Captions },
   { id: 'catalog', label: 'Katalog', description: 'Hangi kategorilerin listelerde görüneceği', icon: LayoutGrid },
   { id: 'general', label: 'Genel', description: 'Saat, EPG, TMDB ve sıfırlama', icon: SlidersHorizontal },
   { id: 'updates', label: 'Güncelleme', description: 'Sürüm bilgisi ve güncelleme kontrolü', icon: Download },
   { id: 'support', label: 'Destek', description: 'Projeye katkı, geri bildirim ve sürüm notları', icon: Heart }
 ]
+
+/** The label a settings tab is shown with, for texts that send the user there. */
+export function settingsTabLabel(id: SettingsTabId): string {
+  return TABS.find((tab) => tab.id === id)?.label ?? id
+}
 
 function renderTab(tabId: SettingsTabId) {
   switch (tabId) {
