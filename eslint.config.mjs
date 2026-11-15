@@ -11,7 +11,17 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ['out/**', 'dist/**', 'node_modules/**', 'resources/**', 'build/**', '.react-doctor/**']
+    ignores: [
+      'out/**',
+      'dist/**',
+      'node_modules/**',
+      'resources/**',
+      'build/**',
+      '.react-doctor/**',
+      // Generated test media (its .ts files are MPEG-TS segments) and reports.
+      'e2e/.cache/**',
+      'e2e/.output/**'
+    ]
   },
 
   js.configs.recommended,
@@ -19,10 +29,10 @@ export default tseslint.config(
 
   // Tür bilgisi gerektiren kurallar: her dosya kendi tsconfig'i ile çözülür.
   {
-    files: ['src/**/*.{ts,tsx}', 'scripts/**/*.{mjs,ts}'],
+    files: ['src/**/*.{ts,tsx}', 'scripts/**/*.{mjs,ts}', 'e2e/**/*.ts'],
     languageOptions: {
       parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.web.json', './tsconfig.scripts.json'],
+        project: ['./tsconfig.node.json', './tsconfig.web.json', './tsconfig.scripts.json', './e2e/tsconfig.json'],
         tsconfigRootDir: import.meta.dirname
       }
     },
@@ -56,15 +66,25 @@ export default tseslint.config(
   },
 
   {
-    files: ['src/main/**/*.ts', 'src/preload/**/*.ts', 'scripts/**/*.{mjs,ts}'],
+    files: ['src/main/**/*.ts', 'src/preload/**/*.ts', 'scripts/**/*.{mjs,ts}', 'e2e/**/*.ts'],
     languageOptions: {
       globals: { ...globals.node }
     }
   },
 
+  // Playwright reads a fixture's dependencies from its first parameter and
+  // rejects anything but an object pattern, so a fixture without dependencies
+  // has to be written `async ({}, use) => ...`.
+  {
+    files: ['e2e/**/*.ts'],
+    rules: {
+      'no-empty-pattern': ['error', { allowObjectPatternsAsParameters: true }]
+    }
+  },
+
   // Taban: src/ bugün bu kuralları ihlal ediyor (sayılar F0-02 raporunda).
   // Düzeltildikçe ilgili satır silinir ve kural yukarıdaki "error" düzeyine döner.
-  // scripts/ bu tabanın dışındadır; orada her kural "error".
+  // scripts/ ve e2e/ bu tabanın dışındadır; orada her kural "error".
   {
     files: ['src/**/*.{ts,tsx}'],
     rules: {

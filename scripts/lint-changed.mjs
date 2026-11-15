@@ -9,7 +9,7 @@
 import { spawnSync } from 'child_process'
 import { existsSync } from 'fs'
 
-const LINTABLE = /^(src|scripts)\/.+\.(ts|tsx|mjs)$/
+const LINTABLE = /^(src|scripts|e2e)\/.+\.(ts|tsx|mjs)$/
 
 const base = process.argv[2] || 'origin/main'
 

@@ -1,4 +1,5 @@
-# F0-01: her push ve PR'da lint, tür denetimi, birim testleri ve derleme.
+# F0-01: her push ve PR'da lint, tür denetimi, birim testleri ve derleme;
+# ardından gerçek mpv ile uçtan uca testler (ayrı iş, önce ilki geçmeli).
 name: CI
 
 on:
@@ -49,3 +50,37 @@ jobs:
 
       - name: Build
         run: npx electron-vite build
+
+  e2e:
+    name: End-to-end (real mpv)
+    needs: check
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # The pinned, hash-checked mpv and ffmpeg (scripts/*-pin.json).
+      - name: Fetch pinned mpv and ffmpeg
+        run: npm run prepare:binaries:win
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: e2e/.output/
+          retention-days: 14
