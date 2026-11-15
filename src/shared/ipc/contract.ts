@@ -26,10 +26,26 @@ export interface PickedFile {
   content: string
 }
 
-/** Files read for the renderer (playlists, subtitles) are capped at this size. */
-export const MAX_LOCAL_FILE_SIZE_BYTES = 25 * 1024 * 1024
+/**
+ * Files read for the renderer (playlists, subtitles) are capped at this size.
+ * Not below what the playlist parser accepts from a URL (128 MB), so a list
+ * that imports from the web also imports from disk.
+ */
+export const MAX_LOCAL_FILE_SIZE_BYTES = 128 * 1024 * 1024
 
-export type SecureCredentialMap = Record<string, SecureXtreamCredentials>
+/**
+ * The playlist URL of an `m3u_url` source. Such URLs usually carry the account
+ * name and password, so they are stored next to the Xtream credentials.
+ */
+export interface SecureM3uSourceSecret {
+  kind: 'm3u_url'
+  url: string
+}
+
+/** What the secure store keeps per source: Xtream credentials or an M3U URL. */
+export type SecureSourceSecret = SecureXtreamCredentials | SecureM3uSourceSecret
+
+export type SecureCredentialMap = Record<string, SecureSourceSecret>
 
 /**
  * Sent when the encrypted credential file could not be read and was moved
@@ -81,7 +97,7 @@ export interface IpcInvokeContract {
   'read-picked-file': Invoke<[filePath: string], PickedFile>
 
   'secure-credentials-get-all': Invoke<[], SecureCredentialMap>
-  'secure-credentials-set': Invoke<[sourceId: string, credential: SecureXtreamCredentials], void>
+  'secure-credentials-set': Invoke<[sourceId: string, credential: SecureSourceSecret], void>
   'secure-credentials-delete': Invoke<[sourceId: string], void>
   'secure-credentials-get-loss': Invoke<[], SecureCredentialsLossNotice | null>
 

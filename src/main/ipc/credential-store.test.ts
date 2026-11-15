@@ -44,6 +44,19 @@ describe('CredentialStore', () => {
     expect(await new CredentialStore({ filePath, safeStorage: fakeSafeStorage }).getAll()).toEqual({ 'src-1': CRED })
   })
 
+  it('keeps an M3U playlist URL next to the Xtream credentials (F3-02)', async () => {
+    const store = new CredentialStore({ filePath, safeStorage: fakeSafeStorage })
+    const playlist = { kind: 'm3u_url' as const, url: 'http://p.example/get.php?username=ali&password=s3cret' }
+    await store.set('src-1', CRED)
+    await store.set('m3u-1', playlist)
+
+    expect(await readFile(filePath, 'utf-8')).not.toContain('get.php')
+    expect(await new CredentialStore({ filePath, safeStorage: fakeSafeStorage }).getAll()).toEqual({
+      'src-1': CRED,
+      'm3u-1': playlist
+    })
+  })
+
   // Regression: an undecryptable file made every read throw, and set/delete
   // read first, so saving was locked out permanently.
   it('moves an undecryptable file aside, reports the loss once and keeps saving working', async () => {
