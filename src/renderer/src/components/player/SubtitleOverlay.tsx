@@ -11,7 +11,11 @@ interface SubtitleOverlayProps {
 }
 
 export function SubtitleOverlay({ playerSize }: SubtitleOverlayProps) {
-  const { activeSubtitleCues, currentSubtitleTrack, settings } = useStore()
+  const activeSubtitleCues = useStore((s) => s.activeSubtitleCues)
+  const currentSubtitleTrack = useStore((s) => s.currentSubtitleTrack)
+  const subtitleFontSizeSetting = useStore((s) => s.settings.subtitleFontSize)
+  const subtitleColor = useStore((s) => s.settings.subtitleColor)
+  const subtitleBackground = useStore((s) => s.settings.subtitleBackground)
 
   const subtitleScale = useMemo(() => {
     const scaleByHeight = playerSize.height / 720
@@ -20,7 +24,7 @@ export function SubtitleOverlay({ playerSize }: SubtitleOverlayProps) {
     return Math.max(0.7, Math.min(1.8, Number.isFinite(rawScale) ? rawScale : 1))
   }, [playerSize.height, playerSize.width])
 
-  const subtitleFontSize = Math.max(10, Math.round(settings.subtitleFontSize * subtitleScale))
+  const subtitleFontSize = Math.max(10, Math.round(subtitleFontSizeSetting * subtitleScale))
   const subtitleBottomOffset = Math.max(44, Math.round(playerSize.height * 0.085))
   const subtitleHorizontalPadding = Math.max(12, Math.round(playerSize.width * 0.03))
 
@@ -38,8 +42,8 @@ export function SubtitleOverlay({ playerSize }: SubtitleOverlayProps) {
           className="rounded px-3 py-1 text-center leading-relaxed max-w-[80%]"
           style={{
             fontSize: `${subtitleFontSize}px`,
-            color: cue.style?.color || settings.subtitleColor,
-            backgroundColor: settings.subtitleBackground,
+            color: cue.style?.color || subtitleColor,
+            backgroundColor: subtitleBackground,
             fontWeight: cue.style?.bold ? 'bold' : 'normal',
             fontStyle: cue.style?.italic ? 'italic' : 'normal',
             textShadow: '1px 1px 2px rgba(0,0,0,0.8)',

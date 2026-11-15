@@ -136,6 +136,14 @@ export function PlayerSidebar() {
 
   const handleSelect = useCallback(
     (ch: Channel) => {
+      const { currentChannel: playing, playerError, reloadPlayback } = useStore.getState()
+      // `playChannel` on what is already playing wipes its track state without
+      // reloading anything. A broken stream gets a real reload; a healthy one
+      // is left alone.
+      if (playing && playing.id === ch.id && playing.streamUrl === ch.streamUrl) {
+        if (playerError) reloadPlayback()
+        return
+      }
       playChannel(ch)
     },
     [playChannel]
