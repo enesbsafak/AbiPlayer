@@ -271,9 +271,12 @@ describe('createMpvPrewarmTrigger', () => {
 
 describe('maskSnapshotError', () => {
   it('masks credentials in the mpv error text only', () => {
-    const state = { error: 'http://p.example/live/ali/s3cret/1.ts: 403', path: 'http://p.example/live/ali/s3cret/1.ts' } as MpvStateSnapshot
-    expect(maskSnapshotError(state)).toEqual({ error: 'http://p.example/live/***/***/1.ts: 403', path: state.path })
-    const clean = { error: null } as MpvStateSnapshot
+    const state = snapshot({
+      error: 'http://p.example/live/ali/s3cret/1.ts: 403',
+      path: 'http://p.example/live/ali/s3cret/1.ts'
+    })
+    expect(maskSnapshotError(state)).toEqual({ ...state, error: 'http://p.example/live/***/***/1.ts: 403' })
+    const clean = snapshot()
     expect(maskSnapshotError(clean)).toBe(clean)
   })
 })
