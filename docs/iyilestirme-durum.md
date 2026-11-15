@@ -12,7 +12,7 @@ Planın altı fazı uygulandı ve `iyilestirme` dalında birleştirildi. Hiçbir
 
 - Typecheck temiz; TypeScript'in sıkı seçenekleri her yerde açık.
 - Lint 0 hata ve 0 uyarı. Başlangıçta lint yoktu; kurulduğunda 62 uyarı vardı, kurallar artık her yerde hata düzeyinde.
-- 1.218 birim testi (başlangıçta 150).
+- 1.231 birim testi (başlangıçta 150).
 - 41 uçtan uca test, gerçek mpv ile Electron 45 üzerinde.
 - Paketlenmiş uygulama çalıştırılıp doğrulandı (4 senaryo).
 
@@ -86,7 +86,7 @@ Paket: `app.asar` 72,4 MB → 2,6 MB; arayüz paketi 2,63 MB → 1,31 MB; oynat�
 | D | D5 Testler ve belgeler | F5-10, F5-12, F3-10 | Birleştirildi (D2, FD içinde) |
 | E | Bağımsız inceleme ve düzeltmeleri | 29 bulgu | Birleştirildi (FA, FB, FC) |
 | F | Son sağlamlaştırma ve metin sözlüğü | FD, FE | Birleştirildi |
-| F | FG Kalan metinler | hook ve servislerdeki metinler | Sürüyor |
+| F | FG Kalan metinler | hook, servis ve main süreç metinleri | Birleştirildi |
 
 ## Mimari kararlar
 
@@ -124,3 +124,4 @@ Paket: `app.asar` 72,4 MB → 2,6 MB; arayüz paketi 2,63 MB → 1,31 MB; oynat�
 - 2026-11-15: FC birleştirildi: katalog incelemesinin 16 bulgusu ele alındı (13'ü doğrulanıp düzeltildi, 3'ü EPG paketiyle zaten kapanmıştı) ve önbellek entegrasyonunun kalanı yapıldı. Öne çıkanlar: ana sayfadaki yeniden dene düğmesi inen M3U listesini artık boşa düşürmüyor; güvenli depo okunamazsa kaynak silinmeden bilgiler yerinde yeniden girilebiliyor; TMDB anahtarı güvenli depoda; localStorage'daki yedek kopyalar kimlik bilgisinden arındırılıyor; katalog sayfalarında çevrimdışı kopya şeridi; içe aktarma worker üzerinden. Varsayılan ses düzeyi ayarı kaldırıldı (hatırlanan ses düzeyiyle çelişiyordu). 1.197 birim testi geçiyor.
 - 2026-11-15: FE birleştirildi: bileşen ve sayfalardaki tüm arayüz metinleri tipli bir Türkçe sözlükte (src/renderer/src/strings, 463 kayıt); terimler birleştirildi (Tekrar Dene, giriş bilgileri, adres, yayın akışı, biçim, ön izleme, ayrıntı, kur); film ve dizi arama kutularının yer tutucusu düzeltildi; bileşen ve sayfalarda lint uyarısı ve sıkı derleme hatası kalmadı. Hook, servis ve depo katmanındaki kullanıcıya görünen metinler henüz sözlükte değil (liste FE raporunda). Ara sıra düşen TLS testinin kök nedeni bulundu: test sertifikası üreticisi yaklaşık birkaç yüz sertifikada bir geçersiz seri numarası kodluyordu. 1.202 birim testi geçiyor.
 - 2026-11-15: FD birleştirildi (paketlenmiş çalıştırma doğrulandı, lint uyarıları sıfırlandı, sıkı TypeScript her yerde, kararsız testin kök nedeni giderildi, son ölçüm). Sonuç bölümü yazıldı.
+- 2026-11-15: FG birleştirildi: bileşen dışındaki arayüz metinleri ve main süreç metinleri de sözlükte (renderer 564 kayıt, main 86 kayıt); sözlük dışında Türkçe metin eklenmesini yakalayan bekçi test; playbackReloadToken ve fetchAndParseM3U silindi. 1.231 birim testi, 41 uçtan uca test, lint 0 uyarı.
