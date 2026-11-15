@@ -11,6 +11,9 @@ import {
 import type { AppUpdateState } from '@/services/platform'
 import { useAppUpdate } from '@/hooks/useAppUpdate'
 import { APP_NAME, APP_VERSION_LABEL } from '@/constants/app-info'
+import { strings } from '@/strings'
+
+const text = strings.shell
 
 const BADGE_BASE =
   'flex items-center gap-1.5 rounded border px-1.5 py-0.5 text-caption font-medium transition-colors'
@@ -33,13 +36,13 @@ export function describeCheckOutcome(
   if (checkError) return { tone: 'error', text: checkError }
   switch (state?.status) {
     case 'not-available':
-      return { tone: 'ok', text: 'Güncel' }
+      return { tone: 'ok', text: text.update.upToDate }
     case 'available':
     case 'downloading':
     case 'downloaded':
-      return { tone: 'update', text: 'Güncelleme var' }
+      return { tone: 'update', text: text.update.available }
     case 'error':
-      return { tone: 'error', text: state.message || 'Güncelleme denetlenemedi' }
+      return { tone: 'error', text: state.message || text.update.checkFailed }
     default:
       return null
   }
@@ -81,11 +84,11 @@ function UpdateBadge() {
         type="button"
         onClick={() => void install()}
         disabled={isInstalling}
-        title="Güncellemeyi kurmak için yeniden başlat"
+        title={text.update.installTitle}
         className={`${BADGE_BASE} border-accent/45 bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-60`}
       >
         <Download size={11} />
-        {isInstalling ? 'Yeniden başlatılıyor...' : 'Güncelle'}
+        {isInstalling ? text.update.restarting : text.update.install}
       </button>
     )
   }
@@ -93,7 +96,7 @@ function UpdateBadge() {
   if (state?.status === 'downloading') {
     return (
       <span className={`${BADGE_BASE} border-accent/35 bg-accent/10 text-accent`}>
-        %{Math.round((state.progress ?? 0) * 100)} indiriliyor
+        {text.update.downloading(state.progress ?? 0)}
       </span>
     )
   }
@@ -112,8 +115,8 @@ function UpdateBadge() {
       title={
         outcome?.text ??
         (canCheck
-          ? 'Güncellemeleri kontrol et'
-          : 'Otomatik güncelleme yalnızca kurulu uygulamada çalışır')
+          ? text.update.checkTitle
+          : text.update.installedOnly)
       }
       aria-live="polite"
       className={`${BADGE_BASE} ${outcome ? OUTCOME_CLASSES[outcome.tone] : BADGE_IDLE} ${
@@ -122,7 +125,7 @@ function UpdateBadge() {
     >
       {checking && <Loader2 size={11} className="animate-spin" />}
       <span className="max-w-[260px] truncate">
-        {checking ? 'Kontrol ediliyor' : (outcome?.text ?? APP_VERSION_LABEL)}
+        {checking ? text.update.checking : (outcome?.text ?? APP_VERSION_LABEL)}
       </span>
     </button>
   )
@@ -162,8 +165,8 @@ export function useWindowMaximized(): boolean {
 /** The maximize button's label follows what a click would do. */
 export function maximizeButtonText(maximized: boolean): { title: string; label: string } {
   return maximized
-    ? { title: 'Önceki Boyut', label: 'Pencereyi önceki boyutuna getir' }
-    : { title: 'Büyüt', label: 'Pencereyi büyüt' }
+    ? { title: text.window.restoreTitle, label: text.window.restoreLabel }
+    : { title: text.window.maximizeTitle, label: text.window.maximizeLabel }
 }
 
 /**
@@ -181,8 +184,8 @@ export function WindowControls() {
       <button
         type="button"
         onClick={windowMinimize}
-        title="Aşağı Al"
-        aria-label="Pencereyi aşağı al"
+        title={text.window.minimizeTitle}
+        aria-label={text.window.minimizeLabel}
         className={CONTROL_BUTTON}
       >
         <Minus size={14} />
@@ -200,8 +203,8 @@ export function WindowControls() {
       <button
         type="button"
         onClick={windowClose}
-        title="Kapat"
-        aria-label="Pencereyi kapat"
+        title={text.window.closeTitle}
+        aria-label={text.window.closeLabel}
         className="flex h-8 w-10 items-center justify-center text-surface-400 transition-colors hover:bg-red-600 hover:text-white"
       >
         <X size={14} />

@@ -1,12 +1,15 @@
 import { FastForward, Pause, Play, Rewind, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { useStore } from '@/store'
 import { useAdjacentChannels } from '@/hooks/useAdjacentChannels'
+import { strings } from '@/strings'
+
+const text = strings.player.transport
 
 const ICON_BUTTON = 'rounded-lg p-2 transition-colors duration-normal hover:bg-white/10'
 const ICON_BUTTON_SKIP = `${ICON_BUTTON} disabled:cursor-not-allowed disabled:opacity-35`
 
-const SEEK_BACK_LABEL = '10 saniye geri sar'
-const SEEK_FORWARD_LABEL = '10 saniye ileri sar'
+const SEEK_BACK_LABEL = text.seekBack
+const SEEK_FORWARD_LABEL = text.seekForward
 
 interface VolumeControlProps {
   isMuted: boolean
@@ -16,7 +19,7 @@ interface VolumeControlProps {
 }
 
 function VolumeControl({ isMuted, volume, onToggleMute, onVolumeChange }: VolumeControlProps) {
-  const muteLabel = isMuted ? 'Sesi Aç' : 'Sesi Kapat'
+  const muteLabel = isMuted ? text.unmute : text.mute
 
   return (
     <div className="ml-2 flex items-center gap-1">
@@ -31,7 +34,7 @@ function VolumeControl({ isMuted, volume, onToggleMute, onVolumeChange }: Volume
         value={isMuted ? 0 : volume}
         onChange={onVolumeChange}
         className="h-1 w-20 cursor-pointer appearance-none rounded-full bg-surface-600 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
-        aria-label="Ses seviyesi"
+        aria-label={text.volume}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
@@ -87,10 +90,10 @@ export function PlayerTransportControls({
     if (target) playChannel(target)
   }
 
-  const previousLabel = previousChannel ? `Önceki: ${previousChannel.name}` : 'Önceki içerik yok'
-  const nextLabel = nextChannel ? `Sonraki: ${nextChannel.name}` : 'Sonraki içerik yok'
-  const playLabel = isPaused || !isPlaying ? 'Oynat' : 'Duraklat'
-  const liveLabel = isBehindLive ? 'Canlıya dön' : 'Canlı yayındasın'
+  const previousLabel = previousChannel ? text.previous(previousChannel.name) : text.noPrevious
+  const nextLabel = nextChannel ? text.next(nextChannel.name) : text.noNext
+  const playLabel = isPaused || !isPlaying ? text.play : text.pause
+  const liveLabel = isBehindLive ? text.jumpToLive : text.atLive
 
   return (
     <div className="flex items-center gap-1">
@@ -111,7 +114,7 @@ export function PlayerTransportControls({
         </button>
       )}
 
-      <button type="button" onClick={onTogglePlay} className={ICON_BUTTON} title="Oynat/Duraklat" aria-label={playLabel}>
+      <button type="button" onClick={onTogglePlay} className={ICON_BUTTON} title={text.playPauseTitle} aria-label={playLabel}>
         {isPaused || !isPlaying ? <Play size={22} fill="white" /> : <Pause size={22} fill="white" />}
       </button>
 
@@ -145,7 +148,7 @@ export function PlayerTransportControls({
           aria-label={liveLabel}
         >
           <span className={`inline-block h-2 w-2 rounded-full ${isBehindLive ? 'bg-white/70' : 'bg-white'}`} />
-          CANLI
+          {text.liveBadge}
         </button>
       )}
 

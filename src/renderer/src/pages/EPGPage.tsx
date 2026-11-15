@@ -11,6 +11,9 @@ import { LazyImage } from '@/components/ui/LazyImage'
 import type { CatalogItem } from '@/catalog/types'
 import type { EPGData, EPGProgram } from '@/types/epg'
 import type { UserSettings } from '@/types/settings'
+import { LOCALE, strings } from '@/strings'
+
+const text = strings.epg
 
 /** Height of one channel row; rows are virtualized, so only the visible ones exist. */
 const ROW_HEIGHT = 76
@@ -40,7 +43,7 @@ export function buildEpgRows(channels: readonly CatalogItem[], guide: EPGData | 
 
 /** "14:05" or, with the 12-hour setting, "2:05 ÖS". */
 export function createTimeFormatter(format: UserSettings['epgTimeFormat']): (ts: number) => string {
-  const formatter = new Intl.DateTimeFormat('tr-TR', {
+  const formatter = new Intl.DateTimeFormat(LOCALE, {
     hour: format === '12h' ? 'numeric' : '2-digit',
     minute: '2-digit',
     hour12: format === '12h'
@@ -58,23 +61,17 @@ export function epgNotice(input: {
 }): { tone: 'warning' | 'info'; text: string } | null {
   const { guide, fromCache, error, fetchedAt, loading } = input
   if (!guide) return null
-  const when = fetchedAt ? new Date(fetchedAt).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' }) : null
+  const when = fetchedAt ? new Date(fetchedAt).toLocaleString(LOCALE, { dateStyle: 'short', timeStyle: 'short' }) : null
   if (error) {
-    return {
-      tone: 'warning',
-      text: `Yayın akışı güncellenemedi: ${error}${when ? ` ${when} tarihli kopya gösteriliyor.` : ''}`
-    }
+    return { tone: 'warning', text: text.updateFailed(error, when) }
   }
   if (guide.truncated) {
     return {
       tone: 'warning',
-      text:
-        guide.truncatedReason === 'limit'
-          ? 'Yayın akışı çok büyük: kanal ya da program sınırına ulaşıldı, bazı kanalların programları eksik.'
-          : 'Yayın akışının tamamı yüklenemedi: indirme yarıda kesildi, bazı kanalların programları eksik.'
+      text: guide.truncatedReason === 'limit' ? text.truncatedLimit : text.truncatedCut
     }
   }
-  if (fromCache && when) return { tone: 'info', text: `${when} tarihli kayıtlı yayın akışı gösteriliyor${loading ? ', güncelleniyor…' : '.'}` }
+  if (fromCache && when) return { tone: 'info', text: text.cachedCopy(when, loading) }
   return null
 }
 
@@ -119,7 +116,7 @@ const EpgRowView = memo(function EpgRowView({
         {current ? (
           <div className="flex-1 min-w-0 px-4 py-2.5 border-r border-surface-800/50">
             <div className="flex items-center gap-2 mb-1">
-              <span className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-caption font-medium text-accent">Şimdi</span>
+              <span className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-caption font-medium text-accent">{text.now}</span>
               <span className="text-xs text-surface-500">
                 {formatTime(current.start)} - {formatTime(current.end)}
               </span>
@@ -129,7 +126,7 @@ const EpgRowView = memo(function EpgRowView({
             <div
               className="mt-1.5 h-1 w-full rounded-full bg-surface-700"
               role="progressbar"
-              aria-label={`${current.title} ilerlemesi`}
+              aria-label={text.progress(current.title)}
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={Math.round(progress)}
@@ -139,7 +136,7 @@ const EpgRowView = memo(function EpgRowView({
           </div>
         ) : (
           <div className="flex-1 min-w-0 px-4 py-3 border-r border-surface-800/50 flex items-center">
-            <span className="text-xs text-surface-600">Program bilgisi yok</span>
+            <span className="text-xs text-surface-600">{text.noProgram}</span>
           </div>
         )}
 
@@ -152,7 +149,7 @@ const EpgRowView = memo(function EpgRowView({
               </div>
             ))
           ) : (
-            <span className="text-xs text-surface-600">Sonraki program yok</span>
+            <span className="text-xs text-surface-600">{text.noUpcoming}</span>
           )}
         </div>
       </div>
@@ -217,7 +214,7 @@ export default function EPGPage() {
       {/* Sidebar: categories */}
       <div className="w-56 shrink-0 flex flex-col overflow-hidden rounded-lg border border-surface-800 bg-surface-900">
         <div className="px-3 pt-3 pb-2">
-          <p className="text-xs font-medium text-surface-500">Kategoriler</p>
+          <p className="text-xs font-medium text-surface-500">{text.categories}</p>
         </div>
         <div className="flex-1 overflow-y-auto px-2 pb-2 flex flex-col gap-0.5">
           <button
@@ -227,7 +224,7 @@ export default function EPGPage() {
               !selectedCategoryId ? 'bg-surface-800 text-surface-50 font-medium' : 'text-surface-400 hover:bg-surface-800/50'
             }`}
           >
-            Tüm Kanallar
+            {text.allChannels}
           </button>
           {liveCategories.map((cat) => (
             <button
@@ -249,7 +246,7 @@ export default function EPGPage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-lg border border-surface-800 bg-surface-900">
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-surface-800 px-4 py-3">
-          <h1 className="text-lg font-semibold shrink-0">Yayın Akışı</h1>
+          <h1 className="text-lg font-semibold shrink-0">{text.title}</h1>
           <div className="flex-1" />
 
           {/* Search */}
@@ -259,15 +256,15 @@ export default function EPGPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              aria-label="EPG kanallarında ara"
-              placeholder="Kanal ara..."
+              aria-label={text.searchLabel}
+              placeholder={text.searchPlaceholder}
               className="w-full rounded-lg border border-surface-700 bg-surface-800 py-1.5 pl-8 pr-8 text-sm text-surface-50 placeholder:text-surface-500 focus:border-surface-600 focus:outline-none"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                aria-label="EPG aramasını temizle"
+                aria-label={text.clearSearch}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300"
               >
                 <X size={14} />
@@ -275,11 +272,11 @@ export default function EPGPage() {
             )}
           </div>
 
-          <span className="text-xs text-surface-500 shrink-0">{rows.length.toLocaleString('tr-TR')} kanal</span>
+          <span className="text-xs text-surface-500 shrink-0">{text.channelCount(rows.length)}</span>
 
           <Button variant="secondary" size="sm" onClick={refetchEPG} disabled={epgLoading}>
             {epgLoading ? <Spinner size={14} /> : <RefreshCw size={14} />}
-            Yenile
+            {strings.common.refresh}
           </Button>
         </div>
 
@@ -302,29 +299,30 @@ export default function EPGPage() {
           {epgLoading && !sourceEpgData && (
             <div className="flex flex-col items-center justify-center py-20 text-surface-500">
               <Spinner size={24} />
-              <p className="text-sm mt-3">EPG verisi yükleniyor…</p>
+              <p className="text-sm mt-3">{text.loading}</p>
             </div>
           )}
 
           {epgError && !sourceEpgData && !epgLoading && (
             <div className="flex flex-col items-center justify-center py-20">
               <p className="text-sm text-red-400">{epgError}</p>
-              <p className="text-xs text-surface-500 mt-1">Yenile butonuyla tekrar deneyebilirsiniz</p>
+              <p className="text-xs text-surface-500 mt-1">{text.retryHint}</p>
             </div>
           )}
 
           {sourceEpgData && rows.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-surface-500">
               <p className="text-sm">
-                {searchQuery ? 'Aramayla eşleşen kanal bulunamadı' : 'Bu kategoride EPG verisi olan kanal yok'}
+                {searchQuery ? text.noSearchMatch : text.noGuideInCategory}
               </p>
             </div>
           )}
 
           {rows.length > 0 && (
-            <div role="list" aria-label="Kanal yayın akışı" style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+            <div role="list" aria-label={text.listLabel} style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
               {virtualizer.getVirtualItems().map((item) => {
                 const row = rows[item.index]
+                if (!row) return null
                 return (
                   <div
                     key={row.channel.id}

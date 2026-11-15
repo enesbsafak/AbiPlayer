@@ -1,6 +1,9 @@
 import { Star } from 'lucide-react'
 import { useStore } from '@/store'
 import type { Channel } from '@/types/playlist'
+import { strings } from '@/strings'
+
+const text = strings.common
 
 interface FavoriteToggleProps {
   channelId: string
@@ -28,8 +31,8 @@ interface FavoriteToggleProps {
 export function FavoriteToggle({ channelId, item, itemName, variant = 'icon', className = '', tabIndex }: FavoriteToggleProps) {
   const isFavorite = useStore((s) => s.favoriteIds.has(channelId))
   const toggleFavorite = useStore((s) => s.toggleFavorite)
-  const action = isFavorite ? 'Favorilerden çıkar' : 'Favorilere ekle'
-  const label = itemName ? `${action}: ${itemName}` : action
+  const action = isFavorite ? text.removeFromFavorites : text.addToFavorites
+  const label = itemName ? text.favoriteActionFor(action, itemName) : action
 
   if (variant === 'button') {
     return (
@@ -40,7 +43,7 @@ export function FavoriteToggle({ channelId, item, itemName, variant = 'icon', cl
         className={`inline-flex items-center gap-2 rounded-lg border border-surface-700 bg-surface-900 px-4 py-2 text-sm font-medium text-surface-200 transition-colors hover:bg-surface-800 hover:text-surface-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${className}`}
       >
         <Star size={16} className={isFavorite ? 'fill-amber-400 text-amber-400' : ''} aria-hidden="true" />
-        {isFavorite ? 'Favorilerden Çıkar' : 'Favorilere Ekle'}
+        {isFavorite ? text.removeFromFavoritesButton : text.addToFavoritesButton}
       </button>
     )
   }

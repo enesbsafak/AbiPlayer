@@ -1,6 +1,7 @@
 import { Heart } from 'lucide-react'
 import { ChannelGrid } from '@/components/channels/ChannelGrid'
 import type { Channel } from '@/types/playlist'
+import { strings } from '@/strings'
 import { useFavoriteChannels } from './favorite-channels'
 
 interface FavoritesViewProps {
@@ -14,8 +15,8 @@ export function FavoritesView({ onPlay }: FavoritesViewProps) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-surface-400">
         <Heart size={48} className="mb-4" />
-        <p className="text-lg">Henüz favori yok</p>
-        <p className="text-sm mt-1">Kanal, film ve dizilerdeki yıldıza basarak favorilere ekleyin</p>
+        <p className="text-lg">{strings.catalog.favorites.empty}</p>
+        <p className="text-sm mt-1">{strings.catalog.favorites.emptyHint}</p>
       </div>
     )
   }

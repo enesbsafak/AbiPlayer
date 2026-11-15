@@ -11,13 +11,11 @@ import {
   type UntrustedCertificateNotice
 } from '@/services/platform'
 import { toUserMessage } from '@/services/user-error'
-import { describeProblems, endpointLabel, hostOf, shortFingerprint } from './certificate-trust'
+import { strings } from '@/strings'
+import { describeProblems, endpointLabel, formatCertificateDate, hostOf, shortFingerprint } from './certificate-trust'
 import { notifyTrustChanged, onTrustChanged, requestTrustPrompt } from './trust-prompts'
 
-function formatDate(iso: string): string {
-  const time = Date.parse(iso)
-  return Number.isFinite(time) ? new Date(time).toLocaleDateString('tr-TR') : iso
-}
+const text = strings.security.trusted
 
 /**
  * Settings > Kaynaklar: servers the user trusted despite a certificate
@@ -55,7 +53,7 @@ export function TrustedCertificates() {
       await tlsRevoke(pin.host, pin.port)
       notifyTrustChanged()
     } catch (cause) {
-      setError(toUserMessage(cause, 'Güven kaldırılamadı.'))
+      setError(toUserMessage(cause, text.revokeFailed))
     }
   }
 
@@ -67,15 +65,14 @@ export function TrustedCertificates() {
       aria-labelledby="trusted-certificates-title"
     >
       <h3 id="trusted-certificates-title" className="font-semibold">
-        Sunucu sertifikaları
+        {text.title}
       </h3>
       <p className="mt-1 text-xs text-surface-400">
-        Sertifikası doğrulanamayan sunuculara yalnızca burada listelenen sertifikayla bağlanılır. Sertifika değişirse
-        yeniden sorulur.
+        {text.hint}
       </p>
 
       {waiting.length > 0 && (
-        <ul className="mt-4 flex flex-col gap-2" aria-label="Onay bekleyen sertifikalar">
+        <ul className="mt-4 flex flex-col gap-2" aria-label={text.waitingList}>
           {waiting.map((notice) => (
             <li
               key={`${endpointLabel(notice.host, notice.port)}|${notice.fingerprint256}`}
@@ -86,13 +83,13 @@ export function TrustedCertificates() {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{endpointLabel(notice.host, notice.port)}</p>
                   <p className="text-xs text-surface-400">
-                    {notice.changed ? 'Sertifika değişti. ' : ''}
+                    {notice.changed ? text.changed : ''}
                     {describeProblems(notice).join(' ')}
                   </p>
                 </div>
               </div>
               <Button size="sm" variant="secondary" onClick={() => requestTrustPrompt(notice)}>
-                İncele
+                {text.review}
               </Button>
             </li>
           ))}
@@ -100,7 +97,7 @@ export function TrustedCertificates() {
       )}
 
       {trusted.length > 0 && (
-        <ul className="mt-4 flex flex-col gap-2" aria-label="Güvenilen sunucular">
+        <ul className="mt-4 flex flex-col gap-2" aria-label={text.trustedList}>
           {trusted.map((pin) => (
             <li
               key={endpointLabel(pin.host, pin.port)}
@@ -114,7 +111,7 @@ export function TrustedCertificates() {
                     {shortFingerprint(pin.fingerprint256)}…
                   </p>
                   <p className="text-xs text-surface-500">
-                    Geçerlilik: {formatDate(pin.validFrom)} – {formatDate(pin.validTo)}
+                    {text.validity(formatCertificateDate(pin.validFrom), formatCertificateDate(pin.validTo))}
                   </p>
                 </div>
               </div>
@@ -122,9 +119,9 @@ export function TrustedCertificates() {
                 size="sm"
                 variant="secondary"
                 onClick={() => void revoke(pin)}
-                aria-label={`${endpointLabel(pin.host, pin.port)} için güveni kaldır`}
+                aria-label={text.revokeFor(endpointLabel(pin.host, pin.port))}
               >
-                Güveni kaldır
+                {text.revoke}
               </Button>
             </li>
           ))}

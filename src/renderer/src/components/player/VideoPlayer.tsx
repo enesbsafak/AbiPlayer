@@ -14,6 +14,7 @@ import { mpvIsAvailable, mpvSetFullscreen, windowSetFullscreen } from '@/service
 import { GENERATED_CAPTIONS_TRACK_LABEL, GENERATED_CAPTIONS_TRACK_LANGUAGE } from '@/constants/captions'
 import type { SubtitleCue } from '@/types/player'
 import { perfMark, usePerfTransition } from '@/services/perf'
+import { strings } from '@/strings'
 
 interface VideoPlayerProps {
   className?: string
@@ -180,12 +181,17 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
     }
   }, [isFullscreen, mpvEnabled, setFullscreen])
 
+  // The browser may refuse fullscreen (no user gesture, a policy); nothing changes then.
+  const toggleFullscreenDetached = useCallback(() => {
+    void toggleFullscreen().catch(() => undefined)
+  }, [toggleFullscreen])
+
   const handleContainerDoubleClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null
     if (!target) return
     if (target.closest('[data-player-controls]') || target.closest('[data-player-sidebar]')) return
-    void toggleFullscreen()
-  }, [toggleFullscreen])
+    toggleFullscreenDetached()
+  }, [toggleFullscreenDetached])
 
   useEffect(() => {
     if (mpvEnabled) return
@@ -210,7 +216,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
       ) : (
         <video
           ref={videoRef}
-          aria-label={`${currentChannel.name} oynatıcı`}
+          aria-label={strings.player.videoLabel(currentChannel.name)}
           className="h-full w-full"
           playsInline
         >
@@ -240,7 +246,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
               className="mt-2 flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20 transition-colors"
             >
               <RefreshCw size={14} />
-              Yeniden Bağlan
+              {strings.player.reconnect}
             </button>
           )}
         </div>
@@ -249,19 +255,19 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
       <div className="absolute left-1/2 top-6 flex -translate-x-1/2 flex-col items-center gap-2">
         {resumedFrom !== null && (
           <div className="flex items-center gap-3 rounded-lg border border-surface-700 bg-surface-950/95 px-4 py-2.5 text-sm text-surface-200 shadow-lg">
-            <span>{formatTime(resumedFrom)} konumundan devam ediliyor</span>
+            <span>{strings.player.resumedFrom(formatTime(resumedFrom))}</span>
             <button
               type="button"
               onClick={restartFromStart}
               className="flex items-center gap-1.5 rounded-md border border-surface-700 px-2.5 py-1 text-xs text-surface-300 transition-colors hover:border-surface-600 hover:text-surface-50"
             >
               <RotateCcw size={13} />
-              Baştan başla
+              {strings.player.restartFromStart}
             </button>
             <button
               type="button"
               onClick={dismissResumeNotice}
-              aria-label="Bildirimi kapat"
+              aria-label={strings.common.dismissNotice}
               className="text-surface-500 transition-colors hover:text-surface-200"
             >
               <X size={14} />
@@ -279,7 +285,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
             <button
               type="button"
               onClick={() => useStore.getState().setPlayerNotice(null)}
-              aria-label="Bildirimi kapat"
+              aria-label={strings.common.dismissNotice}
               className="text-surface-500 transition-colors hover:text-surface-200"
             >
               <X size={14} />
@@ -295,7 +301,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
       <div className={`absolute inset-x-0 bottom-0 transition-opacity duration-300 ${showControls || isPlayerSidebarOpen ? 'opacity-100' : 'opacity-0'}`}>
         <PlayerControls
           videoRef={videoRef}
-          onToggleFullscreen={toggleFullscreen}
+          onToggleFullscreen={toggleFullscreenDetached}
         />
       </div>
     </div>

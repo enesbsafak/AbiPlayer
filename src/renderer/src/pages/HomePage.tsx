@@ -21,6 +21,7 @@ import {
   type ContinueWatchingItem
 } from '@/services/watch-progress'
 import { perfMark, usePerfMarkOnce } from '@/services/perf'
+import { strings } from '@/strings'
 perfMark('renderer:home-chunk-loaded')
 
 /** Items the source holds in every type, before any view rule. */
@@ -156,7 +157,7 @@ export default function HomePage() {
       <HomeError
         message={blockingError}
         onRetry={bootstrap.retry}
-        detail={activeSourceRetryAt !== null ? 'Bağlantı otomatik olarak yeniden denenecek.' : undefined}
+        detail={activeSourceRetryAt !== null ? strings.catalog.home.autoRetry : undefined}
       />
     )
   }
@@ -183,14 +184,14 @@ export default function HomePage() {
       />
 
       <HomeSection
-        title="Favoriler"
+        title={strings.catalog.favorites.title}
         icon={Star}
         viewAllTo="/favorites"
         channels={favChannels}
         onPlay={handleFavorite}
       />
       <HomeSection
-        title="Canlı TV"
+        title={strings.catalog.types.live.section}
         icon={Tv}
         viewAllTo="/live"
         channels={recentLive}
@@ -198,7 +199,7 @@ export default function HomePage() {
         onPlay={handlePlay}
       />
       <HomeSection
-        title="Filmler"
+        title={strings.catalog.types.vod.section}
         icon={Film}
         iconClassName="text-signal"
         viewAllTo="/vod"
@@ -207,7 +208,7 @@ export default function HomePage() {
         onPlay={handlePlay}
       />
       <HomeSection
-        title="Diziler"
+        title={strings.catalog.types.series.section}
         icon={Clapperboard}
         iconClassName="text-signal"
         viewAllTo="/series"

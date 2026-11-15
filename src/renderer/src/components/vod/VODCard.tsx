@@ -6,6 +6,9 @@ import { FavoriteToggle } from '@/components/ui/FavoriteToggle'
 import { CARD_FOCUS_CLASS, type CardFocusProps } from '@/components/catalog/card-focus'
 import { inferContentQualityLabel } from '@/services/quality'
 import type { Channel } from '@/types/playlist'
+import { strings } from '@/strings'
+
+const text = strings.catalog.cards
 
 interface VODCardProps extends CardFocusProps {
   item: Channel
@@ -22,7 +25,7 @@ export const VODCard = memo(function VODCard({
 }: VODCardProps) {
   const artwork = item.coverUrl || item.logo
   const qualityLabel = inferContentQualityLabel(item)
-  const fallbackGroup = item.type === 'series' ? 'Dizi' : 'Film'
+  const fallbackGroup = item.type === 'series' ? text.seriesFallbackGroup : text.filmFallbackGroup
 
   // A wrapper rather than one big button: the favourite toggle is a second
   // control on the card and buttons cannot be nested.
@@ -32,7 +35,7 @@ export const VODCard = memo(function VODCard({
         type="button"
         className="flex w-full flex-1 flex-col text-left outline-none"
         onClick={() => onPlay(item)}
-        aria-label={`${item.name} oynat`}
+        aria-label={strings.common.playItem(item.name)}
         {...focusProps}
       >
         <div className="relative aspect-[2/3] w-full bg-surface-800">

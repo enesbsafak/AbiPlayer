@@ -4,22 +4,18 @@ import { KeyRound, X } from 'lucide-react'
 import { useStore } from '@/store'
 import { Button } from '@/components/ui/Button'
 import { secureCredentialService, type SecureCredentialsLossNotice } from '@/services/secure-credentials'
+import { strings } from '@/strings'
 
-export const CREDENTIAL_LOSS_TITLE = 'Kayıtlı giriş bilgileri okunamadı'
+const text = strings.sources.credentials
+
+export const CREDENTIAL_LOSS_TITLE = text.lossTitle
 
 /** What the loss notice says; the quarantined file name is mentioned when main kept a copy. */
 export function credentialLossMessage(notice: SecureCredentialsLossNotice): string {
-  const kept = notice.quarantinedAs
-    ? ` Okunamayan dosya "${notice.quarantinedAs}" adıyla saklandı.`
-    : ''
-  return (
-    'Şifreli kimlik bilgisi dosyası bu bilgisayarda açılamadı, bu yüzden kayıtlı Xtream şifreleri, M3U liste adresleri ve TMDB anahtarı kullanılamıyor. ' +
-    'Ayarlar > Kaynaklar bölümünde her kaynağın bilgilerini "Bilgileri Gir" ile yeniden girin; kaynakları silmeyin, böylece favorileriniz, izleme geçmişiniz ve gizlediğiniz kategoriler korunur.' +
-    kept
-  )
+  return text.lossMessage(notice.quarantinedAs ?? null)
 }
 
-export const SECRET_STORE_NOTICE_TITLE = 'Kayıtlı giriş bilgileri okunamıyor'
+export const SECRET_STORE_NOTICE_TITLE = text.storeTitle
 
 /**
  * Shown over the shell when the saved sign-ins are gone (main moved an
@@ -65,7 +61,7 @@ export function CredentialNotice() {
           title={CREDENTIAL_LOSS_TITLE}
           message={credentialLossMessage(loss)}
           onDismiss={() => setLossDismissed(true)}
-          action={{ label: 'Bilgileri Yeniden Gir', onClick: () => void navigate('/settings') }}
+          action={{ label: text.lossAction, onClick: () => void navigate('/settings') }}
         />
       )}
       {showStoreError && secretStoreError && (
@@ -73,12 +69,12 @@ export function CredentialNotice() {
           title={SECRET_STORE_NOTICE_TITLE}
           message={secretStoreError}
           onDismiss={() => setStoreErrorDismissed(secretStoreError)}
-          action={{ label: 'Tekrar Dene', onClick: requestSourceReconnect }}
+          action={{ label: strings.common.retry, onClick: requestSourceReconnect }}
         />
       )}
       {migrationError && (
         <NoticeCard
-          title="Giriş bilgileri taşınamadı"
+          title={text.migrationTitle}
           message={migrationError}
           onDismiss={() => setSecretMigrationError(null)}
         />
@@ -113,7 +109,7 @@ function NoticeCard({
           </Button>
         )}
       </div>
-      <Button variant="ghost" size="sm" onClick={onDismiss} aria-label="Bildirimi kapat">
+      <Button variant="ghost" size="sm" onClick={onDismiss} aria-label={strings.common.dismissNotice}>
         <X size={14} />
       </Button>
     </div>

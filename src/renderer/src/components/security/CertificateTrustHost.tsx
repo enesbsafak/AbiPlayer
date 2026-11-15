@@ -13,10 +13,12 @@ import {
 import { toUserMessage } from '@/services/user-error'
 import { reloadAfterCertificateTrust } from '@/catalog/cache-lifecycle'
 import type { PlaylistSource } from '@/types/playlist'
+import { strings } from '@/strings'
 import {
   DISMISS_QUIET_MS,
   describeProblems,
   endpointLabel,
+  formatCertificateDate,
   hostOf,
   noticeKey,
   noticeOwner,
@@ -24,6 +26,8 @@ import {
   type NoticeOwner
 } from './certificate-trust'
 import { notifyTrustChanged, onTrustPromptRequest, pendingSources, useTrustPrompts } from './trust-prompts'
+
+const text = strings.security.trust
 
 function ownerName(owner: NoticeOwner): string | null {
   if (owner.kind === 'source') return owner.source.name
@@ -35,11 +39,6 @@ function sourceIdOf(owner: NoticeOwner): string | undefined {
   if (owner.kind === 'source') return owner.source.id
   if (owner.kind === 'playback') return owner.source?.id
   return undefined
-}
-
-function formatDate(iso: string): string {
-  const time = Date.parse(iso)
-  return Number.isFinite(time) ? new Date(time).toLocaleDateString('tr-TR') : iso
 }
 
 let startupNoticesRecovered = false
@@ -128,7 +127,7 @@ export function CertificateTrustHost() {
         sourceId: sourceIdOf(owner)
       })
     } catch (cause) {
-      setError(toUserMessage(cause, 'Sunucuya güvenilemedi.'))
+      setError(toUserMessage(cause, text.trustFailed))
       return
     } finally {
       setBusy(false)
@@ -159,8 +158,8 @@ export function CertificateTrustHost() {
   return (
     <ConfirmDialog
       isOpen
-      title={notice.changed ? 'Sunucunun sertifikası değişti' : 'Sunucunun sertifikası doğrulanamadı'}
-      confirmLabel={busy ? 'Kaydediliyor…' : 'Bu sunucuya güven'}
+      title={notice.changed ? text.changedTitle : text.unverifiedTitle}
+      confirmLabel={busy ? strings.common.saving : text.confirm}
       onConfirm={() => void handleConfirm()}
       onCancel={handleCancel}
     >
@@ -169,13 +168,13 @@ export function CertificateTrustHost() {
           <ShieldAlert size={18} className="mt-0.5 shrink-0 text-amber-400" aria-hidden />
           <span>
             <strong className="text-surface-50">{endpointLabel(notice.host, notice.port)}</strong>
-            {name ? ` (${name})` : ''} kimliğini kanıtlayan güvenlik sertifikası doğrulanamadı.
+            {name ? text.ownerSuffix(name) : ''}
+            {text.unverifiedBody}
           </span>
         </p>
         {notice.changed && (
           <p className="text-amber-300">
-            Bu sunucu için daha önce güvendiğiniz sertifika değişti. Sağlayıcınız sertifikasını yenilemiş olabilir;
-            ama bu, bağlantınıza birinin araya girdiği anlamına da gelebilir.
+            {text.changedWarning}
           </p>
         )}
         <ul className="list-disc pl-5">
@@ -184,21 +183,19 @@ export function CertificateTrustHost() {
           ))}
         </ul>
         <p>
-          Güvenirseniz uygulama bu sunucuda yalnızca bu sertifikayı kabul eder; sertifika değişirse yeniden sorar.
-          Bağlantı şifreli kalır, ama sunucunun gerçekten sağlayıcınıza ait olduğu doğrulanamaz: aynı ağdaki biri
-          araya girerse kullanıcı adınızı ve şifrenizi görebilir. Bu sertifikayı beklemiyorsanız güvenmeyin.
+          {text.explanation}
         </p>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md bg-surface-950 p-3 text-xs">
-          <dt className="text-surface-500">Parmak izi (SHA-256)</dt>
+          <dt className="text-surface-500">{text.fingerprint}</dt>
           <dd className="break-all font-mono text-surface-300">{notice.fingerprint256}</dd>
-          <dt className="text-surface-500">Düzenleyen</dt>
+          <dt className="text-surface-500">{text.issuer}</dt>
           <dd className="break-all text-surface-300">{notice.issuer || '—'}</dd>
-          <dt className="text-surface-500">Geçerlilik</dt>
+          <dt className="text-surface-500">{text.validity}</dt>
           <dd className="text-surface-300">
-            {formatDate(notice.validFrom)} – {formatDate(notice.validTo)}
+            {formatCertificateDate(notice.validFrom)} – {formatCertificateDate(notice.validTo)}
           </dd>
         </dl>
-        <p className="text-xs text-surface-500">Güvendiğiniz sunucuları Ayarlar &gt; Kaynaklar bölümünden kaldırabilirsiniz.</p>
+        <p className="text-xs text-surface-500">{text.manageHint}</p>
         {error && (
           <p className="text-sm text-red-400" role="alert">
             {error}

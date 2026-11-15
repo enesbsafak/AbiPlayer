@@ -2,6 +2,7 @@ import type { Ref } from 'react'
 import { VirtualCardGrid, type CardGridLayout, type CardRenderProps, type VirtualCardGridHandle } from '@/components/catalog/VirtualCardGrid'
 import { ChannelCard } from './ChannelCard'
 import type { Channel } from '@/types/playlist'
+import { strings } from '@/strings'
 
 /** 16:9 artwork plus two title lines and the group line. */
 export const CHANNEL_GRID_LAYOUT: CardGridLayout = {
@@ -29,8 +30,8 @@ export function renderChannelCard({ item, onOpen, eagerImage, focusProps, second
 export function ChannelGridEmpty() {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-surface-400">
-      <p className="text-lg">Kanal bulunamadı</p>
-      <p className="text-sm mt-1">Farklı bir kategori seçmeyi veya kaynak eklemeyi deneyin</p>
+      <p className="text-lg">{strings.catalog.cards.noChannels}</p>
+      <p className="text-sm mt-1">{strings.catalog.cards.noChannelsHint}</p>
     </div>
   )
 }
@@ -44,7 +45,7 @@ interface ChannelGridProps {
   handleRef?: Ref<VirtualCardGridHandle>
 }
 
-export function ChannelGrid({ channels, onPlay, scrollElement, ariaLabel = 'Kanallar', handleRef }: ChannelGridProps) {
+export function ChannelGrid({ channels, onPlay, scrollElement, ariaLabel = strings.catalog.types.live.plural, handleRef }: ChannelGridProps) {
   return (
     <VirtualCardGrid
       items={channels}

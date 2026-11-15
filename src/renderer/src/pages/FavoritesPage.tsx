@@ -3,6 +3,7 @@ import { useOpenFavorite } from '@/components/favorites/favorite-channels'
 import { HomeNotice } from '@/components/home/HomeStates'
 import { useDeferredPlayback } from '@/hooks/useDeferredPlayback'
 import { useOpenCatalogItem } from '@/hooks/useOpenCatalogItem'
+import { strings } from '@/strings'
 
 export default function FavoritesPage() {
   const handlePlay = useOpenCatalogItem()
@@ -12,7 +13,7 @@ export default function FavoritesPage() {
   return (
     <div className="h-full p-3">
       <div className="rounded-lg border border-surface-800 bg-surface-900 h-full overflow-y-auto p-5">
-        <h1 className="text-lg font-semibold text-white">Favoriler</h1>
+        <h1 className="text-lg font-semibold text-white">{strings.catalog.favorites.title}</h1>
         {deferred.notice && (
           <div className="mt-4">
             <HomeNotice

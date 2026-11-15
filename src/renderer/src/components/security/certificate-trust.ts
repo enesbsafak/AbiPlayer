@@ -1,5 +1,6 @@
 import type { CertificateProblem, TrustedCertificateHost, UntrustedCertificateNotice } from '@/services/platform'
 import type { PlaylistSource } from '@/types/playlist'
+import { LOCALE, strings } from '@/strings'
 
 /** How long a submitted add-source form counts as "being added". */
 export const PENDING_SOURCE_TTL_MS = 2 * 60_000
@@ -87,20 +88,21 @@ export function enqueuePrompt(queue: TrustPrompt[], prompt: TrustPrompt): TrustP
   return queue.map((entry, position) => (position === index ? prompt : entry))
 }
 
-function formatDate(iso: string): string {
+/** A certificate's date as the user reads it; an unparseable value is shown as it came. */
+export function formatCertificateDate(iso: string): string {
   const time = Date.parse(iso)
-  return Number.isFinite(time) ? new Date(time).toLocaleDateString('tr-TR') : iso
+  return Number.isFinite(time) ? new Date(time).toLocaleDateString(LOCALE) : iso
 }
 
-/** One plain Turkish sentence per problem. */
+/** One plain sentence per problem. */
 export function describeProblems(notice: Pick<UntrustedCertificateNotice, 'problems' | 'validFrom' | 'validTo'>): string[] {
+  const problemText = strings.security.problems
   const text: Record<CertificateProblem, string> = {
-    authority:
-      'Sertifikayı tanınmış bir sertifika yetkilisi imzalamamış; büyük olasılıkla sunucu kendi sertifikasını kendisi imzalamış.',
-    expired: `Sertifikanın süresi ${formatDate(notice.validTo)} tarihinde dolmuş.`,
-    'not-yet-valid': `Sertifika ${formatDate(notice.validFrom)} tarihinden önce geçerli değil.`,
-    'name-mismatch': 'Sertifika bu adres için değil, başka bir sunucu adı için düzenlenmiş.',
-    other: 'Sertifika doğrulanamadı.'
+    authority: problemText.authority,
+    expired: problemText.expired(formatCertificateDate(notice.validTo)),
+    'not-yet-valid': problemText.notYetValid(formatCertificateDate(notice.validFrom)),
+    'name-mismatch': problemText.nameMismatch,
+    other: problemText.other
   }
   const problems = notice.problems.length > 0 ? notice.problems : (['other'] as CertificateProblem[])
   return problems.map((problem) => text[problem])

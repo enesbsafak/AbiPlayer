@@ -9,7 +9,10 @@ import { isTextEntryTarget } from '@/hooks/useKeyboard'
 import type { CatalogPageModel } from '@/hooks/useCatalogPage'
 import { offlineCopyBannerText, type CatalogBanner } from '@/hooks/catalog-page-state'
 import type { Channel } from '@/types/playlist'
+import { strings } from '@/strings'
 import { VirtualCardGrid, type CardGridLayout, type CardRenderProps } from './VirtualCardGrid'
+
+const text = strings.catalog.page
 
 export interface CatalogPageLabels {
   /** The "all" entry of the category list, e.g. "Tüm Kanallar". */
@@ -22,6 +25,8 @@ export interface CatalogPageLabels {
   loading: string
   /** Accessible name of the search box. */
   search: string
+  /** Placeholder of the search box. */
+  searchPlaceholder: string
 }
 
 interface CatalogPageProps {
@@ -112,10 +117,15 @@ export function CatalogPage({ page, labels, layout, renderCard, onOpen, empty, d
         aria-hidden={detailOpen || undefined}
       >
         <div className="shrink-0 px-5 pt-5">
-          <ChannelSearch value={page.searchQuery} onSearch={page.setSearchQuery} ariaLabel={labels.search} />
+          <ChannelSearch
+            value={page.searchQuery}
+            onSearch={page.setSearchQuery}
+            ariaLabel={labels.search}
+            placeholder={labels.searchPlaceholder}
+          />
           {page.appliedQuery.trim() && (
             <p className="mt-2 flex items-center gap-2 text-xs text-surface-400" aria-live="polite">
-              {page.matchCount.toLocaleString('tr-TR')} sonuç
+              {strings.common.resultCount(page.matchCount)}
               {isSearchPending && <Spinner size={12} />}
             </p>
           )}
@@ -124,7 +134,7 @@ export function CatalogPage({ page, labels, layout, renderCard, onOpen, empty, d
             {showInlineLoader && (
               <div className="flex items-center gap-2 rounded-lg border border-surface-800 bg-surface-900 px-4 py-3 text-sm text-surface-200">
                 <Spinner size={16} />
-                <span>{page.loadingMessage || 'İçerikler yükleniyor...'}</span>
+                <span>{page.loadingMessage || text.contentLoading}</span>
               </div>
             )}
           </div>
@@ -199,13 +209,13 @@ function Banner({
           <div className="min-w-0">
             <p className="font-medium">{offlineCopyBannerText(banner.since)}</p>
             <p className="mt-0.5 text-xs leading-5 text-amber-100/80">
-              Kaynağa şu an ulaşılamıyor; liste kayıtlı kopyadan gösteriliyor.
+              {text.offlineDetail}
             </p>
           </div>
         </div>
         {banner.retryable && (
           <Button size="sm" variant="secondary" className="shrink-0" onClick={onRetry}>
-            Tekrar Dene
+            {strings.common.retry}
           </Button>
         )}
       </div>
@@ -223,7 +233,7 @@ function Banner({
           <p className="min-w-0">{banner.message}</p>
         </div>
         <Button size="sm" variant="secondary" className="shrink-0" onClick={onOpenSourceSettings}>
-          Kaynak Ayarları
+          {strings.common.sourceSettings}
         </Button>
       </div>
     )
@@ -236,12 +246,10 @@ function Banner({
           {(banner.syncing || foregroundLoading) && <Spinner size={16} className="mt-0.5 text-sky-200" />}
           <div>
             <p className="font-medium">
-              {banner.syncing
-                ? `Ön izleme listesi gösteriliyor, tam ${noun} listesi arka planda yükleniyor`
-                : 'Bu sayfa önce hızlı bir ön izleme listesiyle açılıyor'}
+              {banner.syncing ? text.previewSyncing(noun) : text.previewFirst}
             </p>
             <p className="mt-1 text-xs leading-5 text-sky-100/80">
-              Tam liste gelene kadar arama ve sonuç sayısı eksik olabilir.
+              {text.previewIncomplete}
             </p>
           </div>
         </div>
@@ -259,21 +267,19 @@ function Banner({
       <div className="flex min-w-0 items-start gap-2">
         <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
         <div className="min-w-0">
-          {isSync && <p className="font-medium">Tam {noun} listesi yüklenemedi</p>}
+          {isSync && <p className="font-medium">{text.syncFailed(noun)}</p>}
           <p className={isSync ? 'mt-0.5 text-xs leading-5 text-red-200/85' : ''}>{banner.message}</p>
           {isSync && (
             <p className="mt-0.5 text-xs leading-5 text-red-200/85">
-              {banner.partial
-                ? 'Şimdilik yalnızca yüklenen kısım gösteriliyor; arama ve sonuç sayısı eksik.'
-                : 'Liste şu an boş.'}
-              {!banner.retryable && ' Kaynak bilgilerini Ayarlar bölümünden kontrol edin.'}
+              {banner.partial ? text.partialShown : text.listEmpty}
+              {!banner.retryable && text.checkSourceSettings}
             </p>
           )}
         </div>
       </div>
       {canRetry && (
         <Button size="sm" variant="secondary" className="shrink-0" onClick={onRetry}>
-          Tekrar Dene
+          {strings.common.retry}
         </Button>
       )}
     </div>

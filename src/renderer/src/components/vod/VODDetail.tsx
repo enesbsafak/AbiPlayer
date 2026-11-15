@@ -14,6 +14,9 @@ import { QualityBadge } from '@/components/ui/QualityBadge'
 import { Spinner } from '@/components/ui/Spinner'
 import { inferContentQualityLabel } from '@/services/quality'
 import type { Channel } from '@/types/playlist'
+import { strings } from '@/strings'
+
+const text = strings.catalog.detail
 
 // The interface is Turkish only; there is no language setting to follow.
 const TMDB_LANGUAGE = resolveTmdbLanguage('tr')
@@ -114,7 +117,7 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
               director: tmdbDetails.directors.join(', ') || baseInfo.director,
               genre: tmdbDetails.genres.join(', ') || baseInfo.genre,
               releaseDate: tmdbDetails.releaseDate || baseInfo.releaseDate,
-              duration: tmdbDetails.runtime ? `${tmdbDetails.runtime} dk` : baseInfo.duration,
+              duration: tmdbDetails.runtime ? text.minutes(tmdbDetails.runtime) : baseInfo.duration,
               rating:
                 typeof tmdbDetails.rating === 'number'
                   ? tmdbDetails.rating.toFixed(1)
@@ -150,7 +153,7 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
   return (
     <div className="flex flex-col gap-6">
       <Button variant="ghost" size="sm" onClick={onBack} className="self-start">
-        <ArrowLeft size={16} /> Geri
+        <ArrowLeft size={16} /> {strings.common.back}
       </Button>
 
       <div className="flex flex-col md:flex-row gap-6">
@@ -191,14 +194,14 @@ export function VODDetail({ item, onBack, onPlay }: VODDetailProps) {
           )}
 
           <div className="flex flex-col gap-1 text-xs text-surface-500 mt-1">
-            {detail.director && <span>Yönetmen: {detail.director}</span>}
-            {detail.cast && <span>Oyuncular: {detail.cast}</span>}
-            {detail.releaseDate && <span>Yayın Tarihi: {detail.releaseDate}</span>}
+            {detail.director && <span>{text.director(detail.director)}</span>}
+            {detail.cast && <span>{text.cast(detail.cast)}</span>}
+            {detail.releaseDate && <span>{text.releaseDate(detail.releaseDate)}</span>}
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <Button onClick={() => onPlay(item)}>
-              <Play size={16} fill="currentColor" /> Filmi Oynat
+              <Play size={16} fill="currentColor" /> {text.playFilm}
             </Button>
             <FavoriteToggle channelId={item.id} item={item} variant="button" />
           </div>

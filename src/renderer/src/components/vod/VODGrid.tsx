@@ -2,6 +2,7 @@ import type { Ref } from 'react'
 import { VirtualCardGrid, type CardGridLayout, type CardRenderProps, type VirtualCardGridHandle } from '@/components/catalog/VirtualCardGrid'
 import { VODCard } from './VODCard'
 import type { Channel } from '@/types/playlist'
+import { strings } from '@/strings'
 
 /**
  * 2:3 poster plus two title lines, the group / year line and the border;
@@ -33,7 +34,7 @@ export function renderPosterCard({ item, onOpen, eagerImage, focusProps, seconda
 export function PosterGridEmpty() {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-surface-400">
-      <p className="text-lg">İçerik bulunamadı</p>
+      <p className="text-lg">{strings.catalog.cards.noContent}</p>
     </div>
   )
 }
@@ -46,7 +47,7 @@ interface VODGridProps {
   handleRef?: Ref<VirtualCardGridHandle>
 }
 
-export function VODGrid({ items, onPlay, scrollElement, ariaLabel = 'İçerikler', handleRef }: VODGridProps) {
+export function VODGrid({ items, onPlay, scrollElement, ariaLabel = strings.catalog.cards.contentGrid, handleRef }: VODGridProps) {
   return (
     <VirtualCardGrid
       items={items}

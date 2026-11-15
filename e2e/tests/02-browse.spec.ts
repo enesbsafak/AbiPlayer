@@ -41,7 +41,7 @@ test.describe('katalog gezintisi', () => {
     await page.getByRole('button', { name: 'Tüm Filmler' }).click()
     await page.getByRole('button', { name: KNOWN.vodCategory, exact: true }).click()
     await expect(cardButton(page, KNOWN.film)).toBeVisible()
-    await page.getByPlaceholder('Kanal ara...').fill('Çift Dilli')
+    await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Çift Dilli')
     await expect(cardButton(page, KNOWN.dualAudioFilm)).toBeVisible()
     await app.shot('vod-search')
     await cardButton(page, KNOWN.dualAudioFilm).click()
@@ -51,7 +51,7 @@ test.describe('katalog gezintisi', () => {
     // Series: open the detail, switch season.
     await openRoute(page, '/series')
     await page.getByRole('button', { name: 'Tüm Diziler' }).click()
-    await page.getByPlaceholder('Kanal ara...').fill('Sessiz Liman')
+    await page.getByRole('textbox', { name: 'Dizi ara', exact: true }).fill('Sessiz Liman')
     await cardButton(page, KNOWN.series).click()
     await expect(page.getByRole('heading', { name: KNOWN.series })).toBeVisible()
     await expect(page.getByRole('button', { name: /^E1\. / })).toBeVisible()

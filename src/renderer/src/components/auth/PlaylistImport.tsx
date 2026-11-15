@@ -11,6 +11,9 @@ import { toUserMessage } from '@/services/user-error'
 import { ingestM3uText, ingestM3uUrl } from '@/catalog/worker-ingest'
 import { discardSourceCatalog } from '@/catalog/cache-lifecycle'
 import type { PlaylistSource } from '@/types/playlist'
+import { strings } from '@/strings'
+
+const { fields, validation, m3u: text } = strings.sources
 
 /**
  * Loads the playlist of a source that is not added yet through the catalog
@@ -94,11 +97,11 @@ export function PlaylistImport() {
       try {
         parsedUrl = new URL(normalizedUrl)
       } catch {
-        throw new Error('Geçersiz URL adresi')
+        throw new Error(validation.invalidPlaylistUrl)
       }
 
       if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-        throw new Error('Yalnızca HTTP/HTTPS oynatma listesi adresleri destekleniyor')
+        throw new Error(validation.httpOnlyPlaylist)
       }
       normalizedUrl = parsedUrl.toString()
 
@@ -107,7 +110,7 @@ export function PlaylistImport() {
         (s) => s.type === 'm3u_url' && s.url === normalizedUrl
       )
       if (existing) {
-        throw new Error(`Bu URL zaten "${existing.name}" olarak ekli`)
+        throw new Error(validation.duplicatePlaylistUrl(existing.name))
       }
 
       const source: PlaylistSource = {
@@ -130,9 +133,9 @@ export function PlaylistImport() {
       )
       setActiveSource(source.id)
       dispatch({ type: 'clearForm' })
-      navigate('/')
+      void navigate('/')
     } catch (err) {
-      dispatch({ type: 'importError', message: toUserMessage(err, 'İçe aktarma başarısız oldu.') })
+      dispatch({ type: 'importError', message: toUserMessage(err, text.importFailed) })
     } finally {
       dispatch({ type: 'importDone' })
     }
@@ -143,7 +146,7 @@ export function PlaylistImport() {
 
     try {
       const result = await pickAndReadFile([
-        { name: 'Oynatma Listesi Dosyaları', extensions: ['m3u', 'm3u8', 'txt'] }
+        { name: text.fileFilter, extensions: ['m3u', 'm3u8', 'txt'] }
       ])
       if (!result) { dispatch({ type: 'importDone' }); return }
 
@@ -152,10 +155,10 @@ export function PlaylistImport() {
         (s) => s.type === 'm3u_file' && s.filePath === result.path
       )
       if (existingFile) {
-        throw new Error(`Bu dosya zaten "${existingFile.name}" olarak ekli`)
+        throw new Error(validation.duplicateFile(existingFile.name))
       }
 
-      const fileName = result.path.split(/[\\/]/).pop() || 'Yerel Liste'
+      const fileName = result.path.split(/[\\/]/).pop() || text.localListName
 
       const source: PlaylistSource = {
         id: `m3u_file_${Date.now()}`,
@@ -173,9 +176,9 @@ export function PlaylistImport() {
       )
       setActiveSource(source.id)
       dispatch({ type: 'clearForm' })
-      navigate('/')
+      void navigate('/')
     } catch (err) {
-      dispatch({ type: 'importError', message: toUserMessage(err, 'İçe aktarma başarısız oldu.') })
+      dispatch({ type: 'importError', message: toUserMessage(err, text.importFailed) })
     } finally {
       dispatch({ type: 'importDone' })
     }
@@ -188,35 +191,35 @@ export function PlaylistImport() {
           <FileText className="text-emerald-400" size={20} />
         </div>
         <div>
-          <h3 className="font-semibold">M3U Oynatma Listesi</h3>
-          <p className="text-xs text-surface-400">URL veya yerel dosyadan içe aktar</p>
+          <h3 className="font-semibold">{text.title}</h3>
+          <p className="text-xs text-surface-400">{text.subtitle}</p>
         </div>
       </div>
 
       <div className="flex gap-2">
         <Button variant={mode === 'url' ? 'primary' : 'secondary'} size="sm" onClick={() => dispatch({ type: 'setMode', mode: 'url' })}>
-          <Link size={14} /> URL
+          <Link size={14} /> {text.modeUrl}
         </Button>
         <Button variant={mode === 'file' ? 'primary' : 'secondary'} size="sm" onClick={() => dispatch({ type: 'setMode', mode: 'file' })}>
-          <Upload size={14} /> Dosya
+          <Upload size={14} /> {text.modeFile}
         </Button>
       </div>
 
-      <Input id="m3u-name" label="Görünen Ad (opsiyonel)" placeholder="Benim Liste" value={name} onChange={(e) => dispatch({ type: 'setName', value: e.target.value })} />
+      <Input id="m3u-name" label={fields.displayName} placeholder={text.namePlaceholder} value={name} onChange={(e) => dispatch({ type: 'setName', value: e.target.value })} />
 
       {mode === 'url' ? (
-        <form onSubmit={handleUrlImport} className="flex flex-col gap-4">
-          <Input id="m3u-url" label="Liste URL" placeholder="https://example.com/playlist.m3u" value={url} onChange={(e) => dispatch({ type: 'setUrl', value: e.target.value })} required />
+        <form onSubmit={(event) => void handleUrlImport(event)} className="flex flex-col gap-4">
+          <Input id="m3u-url" label={fields.playlistUrl} placeholder={text.urlPlaceholder} value={url} onChange={(e) => dispatch({ type: 'setUrl', value: e.target.value })} required />
           {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
           <Button type="submit" disabled={loading}>
-            {loading ? <><Spinner size={16} /> İçe aktarılıyor…</> : 'Listeyi İçe Aktar'}
+            {loading ? <><Spinner size={16} /> {text.importing}</> : text.import}
           </Button>
         </form>
       ) : (
         <div className="flex flex-col gap-4">
           {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
-          <Button onClick={handleFileImport} disabled={loading}>
-            {loading ? <><Spinner size={16} /> Okunuyor…</> : <><Upload size={16} /> Dosya Seç</>}
+          <Button onClick={() => void handleFileImport()} disabled={loading}>
+            {loading ? <><Spinner size={16} /> {text.reading}</> : <><Upload size={16} /> {text.pickFile}</>}
           </Button>
         </div>
       )}

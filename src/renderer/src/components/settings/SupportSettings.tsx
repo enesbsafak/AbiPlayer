@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Bug, ChevronDown, ExternalLink, Loader2, Star } from 'lucide-react'
 import {
+  APP_NAME,
   APP_VERSION,
   GITHUB_NEW_ISSUE_URL,
   GITHUB_RELEASES_URL,
@@ -8,6 +9,9 @@ import {
 } from '@/constants/app-info'
 import { fetchReleaseNotes, type ReleaseNote } from '@/services/github-releases'
 import { toUserMessage } from '@/services/user-error'
+import { LOCALE, strings } from '@/strings'
+
+const text = strings.settings.support
 
 const CARD = 'rounded-lg border border-surface-800 bg-surface-900 p-5'
 const LINK =
@@ -17,12 +21,12 @@ function formatReleaseDate(value: string | null): string | null {
   if (!value) return null
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return null
-  return parsed.toLocaleDateString('tr-TR')
+  return parsed.toLocaleDateString(LOCALE)
 }
 
 function ReleaseBlocks({ release }: { release: ReleaseNote }) {
   if (release.blocks.length === 0) {
-    return <p className="text-sm text-surface-500">Bu sürüm için not yazılmamış.</p>
+    return <p className="text-sm text-surface-500">{text.noNotes}</p>
   }
 
   return (
@@ -80,7 +84,7 @@ function ReleaseNotes() {
       })
       .catch((cause: unknown) => {
         if (!mounted) return
-        setError(toUserMessage(cause, 'Sürüm notları alınamadı.'))
+        setError(toUserMessage(cause, text.notesFailed))
       })
 
     return () => {
@@ -92,7 +96,7 @@ function ReleaseNotes() {
     return (
       <p className="flex items-center gap-2 text-sm text-surface-500">
         <Loader2 size={14} className="animate-spin" />
-        Sürüm notları yükleniyor...
+        {text.notesLoading}
       </p>
     )
   }
@@ -103,11 +107,11 @@ function ReleaseNotes() {
         <p className="text-sm text-surface-400">{error}</p>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setReloadToken((token) => token + 1)} className={LINK}>
-            Tekrar dene
+            {strings.common.retry}
           </button>
           <a href={GITHUB_RELEASES_URL} target="_blank" rel="noreferrer" className={LINK}>
             <ExternalLink size={14} />
-            GitHub'da aç
+            {text.openOnGithub}
           </a>
         </div>
       </div>
@@ -141,7 +145,7 @@ function ReleaseNotes() {
               </span>
               {isInstalled && (
                 <span className="shrink-0 rounded border border-accent/45 bg-accent/15 px-2 py-0.5 text-caption font-medium text-accent">
-                  Yüklü sürüm
+                  {text.installedVersion}
                 </span>
               )}
             </button>
@@ -156,7 +160,7 @@ function ReleaseNotes() {
                   className="mt-4 inline-flex items-center gap-1.5 text-xs text-surface-500 transition-colors hover:text-surface-300"
                 >
                   <ExternalLink size={12} />
-                  GitHub'da görüntüle
+                  {text.viewOnGithub}
                 </a>
               </div>
             )}
@@ -171,26 +175,25 @@ export function SupportSettings() {
   return (
     <div className="flex flex-col gap-4">
       <div className={CARD}>
-        <p className="text-sm font-medium text-white">Projeyi destekleyin</p>
+        <p className="text-sm font-medium text-white">{text.supportTitle}</p>
         <p className="mt-1 text-sm text-surface-400">
-          Abi Player ücretsiz ve açık kaynak. GitHub&apos;da yıldız vermeniz projenin daha çok
-          kişiye ulaşmasına yardımcı olur.
+          {text.supportText(APP_NAME)}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer" className={LINK}>
             <Star size={14} />
-            GitHub&apos;da yıldız ver
+            {text.star}
           </a>
           <a href={GITHUB_NEW_ISSUE_URL} target="_blank" rel="noreferrer" className={LINK}>
             <Bug size={14} />
-            Hata bildir veya öneri gönder
+            {text.reportIssue}
           </a>
         </div>
       </div>
 
       <div className={CARD}>
         <div className="mb-4 flex items-center justify-between gap-3">
-          <p className="text-sm font-medium text-white">Sürüm notları</p>
+          <p className="text-sm font-medium text-white">{text.releaseNotes}</p>
           <a
             href={GITHUB_RELEASES_URL}
             target="_blank"
@@ -198,7 +201,7 @@ export function SupportSettings() {
             className="inline-flex items-center gap-1.5 text-xs text-surface-500 transition-colors hover:text-surface-300"
           >
             <ExternalLink size={12} />
-            Tümü
+            {text.allReleases}
           </a>
         </div>
         <ReleaseNotes />

@@ -8,6 +8,7 @@ import { CatalogSettings } from './CatalogSettings'
 import { GeneralSettings } from './GeneralSettings'
 import { UpdateSettings } from './UpdateSettings'
 import { SupportSettings } from './SupportSettings'
+import { strings } from '@/strings'
 
 export type SettingsTabId =
   | 'sources'
@@ -25,19 +26,21 @@ interface SettingsTab {
   icon: LucideIcon
 }
 
-const TABS: SettingsTab[] = [
-  { id: 'sources', label: 'Kaynaklar', description: 'Xtream ve M3U kaynaklarınızı yönetin', icon: Database },
-  { id: 'playback', label: 'Oynatma', description: 'Dublaj dili, canlı yayın biçimi, donanım hızlandırma ve ses passthrough', icon: Play },
-  { id: 'subtitles', label: 'Altyazı', description: 'Altyazı dili ve görünümü', icon: Captions },
-  { id: 'catalog', label: 'Katalog', description: 'Hangi kategorilerin listelerde görüneceği', icon: LayoutGrid },
-  { id: 'general', label: 'Genel', description: 'Saat, EPG, TMDB ve sıfırlama', icon: SlidersHorizontal },
-  { id: 'updates', label: 'Güncelleme', description: 'Sürüm bilgisi ve güncelleme kontrolü', icon: Download },
-  { id: 'support', label: 'Destek', description: 'Projeye katkı, geri bildirim ve sürüm notları', icon: Heart }
+const TAB_ICONS: Array<[SettingsTabId, LucideIcon]> = [
+  ['sources', Database],
+  ['playback', Play],
+  ['subtitles', Captions],
+  ['catalog', LayoutGrid],
+  ['general', SlidersHorizontal],
+  ['updates', Download],
+  ['support', Heart]
 ]
+
+const TABS: SettingsTab[] = TAB_ICONS.map(([id, icon]) => ({ id, icon, ...strings.settings.tabs[id] }))
 
 /** The label a settings tab is shown with, for texts that send the user there. */
 export function settingsTabLabel(id: SettingsTabId): string {
-  return TABS.find((tab) => tab.id === id)?.label ?? id
+  return strings.settings.tabs[id].label
 }
 
 function renderTab(tabId: SettingsTabId) {
@@ -77,13 +80,13 @@ export function SettingsContent() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
   const activeTab: SettingsTabId = isTabId(requestedTab) ? requestedTab : 'sources'
-  const active = TABS.find((tab) => tab.id === activeTab) ?? TABS[0]
+  const active = strings.settings.tabs[activeTab]
 
   return (
     <div className="flex flex-col gap-5 lg:flex-row lg:gap-6">
       {/* Horizontal strip on narrow windows, sidebar from lg up. */}
       <nav
-        aria-label="Ayar bölümleri"
+        aria-label={strings.settings.tabsLabel}
         className="flex shrink-0 gap-1 overflow-x-auto lg:w-52 lg:flex-col lg:overflow-visible"
       >
         {TABS.map((tab) => {

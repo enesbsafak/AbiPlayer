@@ -20,7 +20,15 @@ import { catalog } from '@/catalog/catalog-store'
 import { secureCredentialService } from '@/services/secure-credentials'
 import { createCatalogWorkerClient, setCatalogWorkerForTests, type CatalogWorkerClient } from '@/workers/client'
 import type { WorkerJobKind } from '@/workers/protocol'
+import { strings } from '@/strings'
 import { PlaylistImport } from './PlaylistImport'
+
+/** The one source the form added. */
+function onlySource() {
+  const [source, ...rest] = useStore.getState().sources
+  if (!source || rest.length > 0) throw new Error('expected exactly one source')
+  return source
+}
 
 /** Jobs the catalog worker was given. */
 let jobs: WorkerJobKind[] = []
@@ -71,11 +79,11 @@ describe('PlaylistImport (C2c follow-up)', () => {
     const setM3uUrl = vi.spyOn(secureCredentialService, 'setM3uUrl').mockResolvedValue()
     renderForm()
 
-    fireEvent.change(screen.getByLabelText('Liste URL'), { target: { value: 'http://panel.test/get.php?u=1' } })
+    fireEvent.change(screen.getByLabelText(strings.sources.fields.playlistUrl), { target: { value: 'http://panel.test/get.php?u=1' } })
     fireEvent.click(screen.getByRole('button', { name: 'Listeyi İçe Aktar' }))
 
     await waitFor(() => expect(useStore.getState().sources).toHaveLength(1))
-    const [source] = useStore.getState().sources
+    const source = onlySource()
     expect(setM3uUrl).toHaveBeenCalledWith(source.id, 'http://panel.test/get.php?u=1')
     expect(fetchMock).toHaveBeenCalledTimes(1)
     // Swapped in by the worker ingest, not handed back to the form.
@@ -90,7 +98,7 @@ describe('PlaylistImport (C2c follow-up)', () => {
     vi.spyOn(secureCredentialService, 'setM3uUrl').mockRejectedValue(new Error('Güvenli depo yazılamadı'))
     renderForm()
 
-    fireEvent.change(screen.getByLabelText('Liste URL'), { target: { value: 'http://panel.test/get.php?u=1' } })
+    fireEvent.change(screen.getByLabelText(strings.sources.fields.playlistUrl), { target: { value: 'http://panel.test/get.php?u=1' } })
     fireEvent.click(screen.getByRole('button', { name: 'Listeyi İçe Aktar' }))
 
     expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringMatching(/Güvenli depo yazılamadı/))
@@ -106,7 +114,7 @@ describe('PlaylistImport (C2c follow-up)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Dosya Seç/ }))
 
     await waitFor(() => expect(useStore.getState().sources).toHaveLength(1))
-    const [source] = useStore.getState().sources
+    const source = onlySource()
     expect(source).toMatchObject({ type: 'm3u_file', filePath: 'C:\\listeler\\a.m3u' })
     expect(catalog.getItems(source.id, 'live').map((item) => item.name)).toEqual(['Kanal 1'])
     expect(catalog.getStatus(source.id, 'live')).toMatchObject({ complete: true, fromCache: false })

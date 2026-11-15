@@ -6,6 +6,9 @@ import { FavoriteToggle } from '@/components/ui/FavoriteToggle'
 import { CARD_FOCUS_CLASS, type CardFocusProps } from '@/components/catalog/card-focus'
 import { inferContentQualityLabel } from '@/services/quality'
 import type { Channel } from '@/types/playlist'
+import { strings } from '@/strings'
+
+const text = strings.catalog.cards
 
 interface ChannelCardProps extends CardFocusProps {
   channel: Channel
@@ -22,6 +25,7 @@ export const ChannelCard = memo(function ChannelCard({
 }: ChannelCardProps) {
   const artwork = channel.logo || channel.coverUrl
   const qualityLabel = inferContentQualityLabel(channel)
+  const groupLabel = channel.group || channel.categoryName || (channel.type === 'live' ? text.liveFallbackGroup : text.mediaFallbackGroup)
 
   return (
     <div
@@ -31,7 +35,7 @@ export const ChannelCard = memo(function ChannelCard({
         type="button"
         className="flex w-full flex-1 flex-col text-left outline-none"
         onClick={() => onPlay(channel)}
-        aria-label={`${channel.name} oynat`}
+        aria-label={strings.common.playItem(channel.name)}
         {...focusProps}
       >
         <div className="relative flex aspect-video items-center justify-center bg-surface-800">
@@ -56,9 +60,9 @@ export const ChannelCard = memo(function ChannelCard({
             />
           </div>
           {channel.type === 'live' && (
-            <div className="absolute left-2 top-2 flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 text-caption font-medium text-white" aria-label="Canlı yayın">
+            <div className="absolute left-2 top-2 flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 text-caption font-medium text-white" aria-label={text.liveBadgeLabel}>
               <span className="size-1.5 animate-pulse rounded-full bg-white" aria-hidden="true" />
-              Canlı
+              {strings.common.live}
             </div>
           )}
           {qualityLabel && (
@@ -74,10 +78,10 @@ export const ChannelCard = memo(function ChannelCard({
           <ClampText
             as="p"
             lines={1}
-            titleText={channel.group || channel.categoryName || (channel.type === 'live' ? 'Yayın' : 'Medya')}
+            titleText={groupLabel}
             className="mt-0.5 text-label text-surface-500"
           >
-            {channel.group || channel.categoryName || (channel.type === 'live' ? 'Yayın' : 'Medya')}
+            {groupLabel}
           </ClampText>
         </div>
       </button>

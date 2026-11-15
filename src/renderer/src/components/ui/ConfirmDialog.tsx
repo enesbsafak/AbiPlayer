@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Modal } from './Modal'
+import { strings } from '@/strings'
 import { Button } from './Button'
 
 interface ConfirmDialogProps {
@@ -20,7 +21,7 @@ export function ConfirmDialog({
   title,
   children,
   confirmLabel,
-  cancelLabel = 'Vazgeç',
+  cancelLabel = strings.common.cancel,
   destructive = false,
   onConfirm,
   onCancel

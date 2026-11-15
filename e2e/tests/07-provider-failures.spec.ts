@@ -63,7 +63,7 @@ test.describe('sağlayıcı hataları', () => {
       }
     })
 
-    test('F1-43: ana sayfa hata ve "Yeniden Dene" gösterir', async ({ launch, mock }) => {
+    test('F1-43: ana sayfa hata ve "Tekrar Dene" gösterir', async ({ launch, mock }) => {
       const app = await launch()
       await addXtreamSource(app.page, mock)
       // Requests are retried with backoff; give the bootstrap time to give up
@@ -73,8 +73,8 @@ test.describe('sağlayıcı hataları', () => {
       await loading.waitFor({ state: 'detached', timeout: 45_000 }).catch(() => undefined)
       await app.shot('catalog-requests-failed')
       observe(`all catalog requests HTTP 500, dashboard text: "${(await app.page.getByRole('main').innerText()).replace(/\s+/g, ' ').slice(0, 200)}"`)
-      // Exact: the loading panel's "Çok uzun sürüyor, yeniden dene" is not the error panel.
-      await expect(app.page.getByRole('button', { name: 'Yeniden Dene', exact: true })).toBeVisible({ timeout: 5000 })
+      // Exact: the loading panel's "Çok uzun sürüyor, tekrar dene" is not the error panel.
+      await expect(app.page.getByRole('button', { name: 'Tekrar Dene', exact: true })).toBeVisible({ timeout: 5000 })
       await expect(app.page.getByText('Kaynağa bağlanılamadı')).toBeVisible()
     })
   })

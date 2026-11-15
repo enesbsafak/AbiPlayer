@@ -1,6 +1,7 @@
 import { Component, type ReactNode, type ErrorInfo } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { toUserMessage } from '@/services/user-error'
+import { strings } from '@/strings'
 import { ERROR_ACTION_CLASS, ErrorScreen } from './ErrorScreen'
 
 interface Props {
@@ -13,13 +14,13 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false, error: null }
+  override state: State = { hasError: false, error: null }
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error }
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo): void {
+  override componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error('ErrorBoundary caught:', error, info.componentStack)
   }
 
@@ -27,19 +28,19 @@ export class ErrorBoundary extends Component<Props, State> {
     this.setState({ hasError: false, error: null })
   }
 
-  render(): ReactNode {
+  override render(): ReactNode {
     if (!this.state.hasError) return this.props.children
 
     return (
       <ErrorScreen
         fullScreen
-        title="Beklenmeyen bir hata oluştu"
-        message={toUserMessage(this.state.error, 'Uygulama beklenmedik şekilde durdu.')}
+        title={strings.shell.errors.unexpectedTitle}
+        message={toUserMessage(this.state.error, strings.shell.errors.appStopped)}
         detail={this.state.error?.message || undefined}
         actions={
           <button type="button" onClick={this.handleReload} className={ERROR_ACTION_CLASS}>
             <RotateCcw size={16} aria-hidden="true" />
-            Tekrar Dene
+            {strings.common.retry}
           </button>
         }
       />

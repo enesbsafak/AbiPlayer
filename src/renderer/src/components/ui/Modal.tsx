@@ -1,6 +1,7 @@
 import { useId, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
+import { strings } from '@/strings'
 
 interface ModalProps {
   isOpen: boolean
@@ -34,7 +35,7 @@ export function Modal({ isOpen, onClose, title, children, className = '' }: Moda
     <dialog
       ref={dialogRef}
       className="fixed inset-0 z-modal m-0 flex h-dvh w-screen max-w-none items-center justify-center border-0 bg-black/80 p-4 text-surface-50 backdrop:bg-black/80"
-      aria-label={title ? undefined : 'Pencere'}
+      aria-label={title ? undefined : strings.common.dialog}
       aria-labelledby={title ? titleId : undefined}
       onCancel={(event) => {
         event.preventDefault()
@@ -49,7 +50,7 @@ export function Modal({ isOpen, onClose, title, children, className = '' }: Moda
               type="button"
               onClick={onClose}
               className="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-50"
-              aria-label="Kapat"
+              aria-label={strings.common.close}
             >
               <X size={18} />
             </button>

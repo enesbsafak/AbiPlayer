@@ -30,7 +30,7 @@ describe('entering a source secret again in place (K3)', () => {
     const other: PlaylistSource = { id: 'm2', name: 'Diğer', type: 'm3u_url', url: 'http://cdn.test/list.m3u', addedAt: 1 }
     expect(normalizeSecretInput(m3u, { url: 'http://cdn.test/list.m3u' }, [m3u, other])).toEqual({
       ok: false,
-      error: 'Bu URL zaten "Diğer" olarak ekli'
+      error: 'Bu liste adresi zaten "Diğer" olarak ekli'
     })
   })
 

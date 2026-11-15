@@ -5,7 +5,10 @@ import { Spinner } from '@/components/ui/Spinner'
 import { useStore } from '@/store'
 import { toUserMessage } from '@/services/user-error'
 import type { PlaylistSource } from '@/types/playlist'
+import { strings } from '@/strings'
 import { normalizeSecretInput, saveSourceSecret } from './source-secret'
+
+const { fields, secretForm: text } = strings.sources
 
 /**
  * Enters the secret of an existing source again, in place: the source keeps
@@ -32,7 +35,7 @@ export function SourceSecretForm({ source, onDone }: { source: PlaylistSource; o
       await saveSourceSecret(source.id, input.secret)
       onDone()
     } catch (cause) {
-      setError(`Bilgiler güvenli depoya kaydedilemedi: ${toUserMessage(cause)}`)
+      setError(text.saveFailed(toUserMessage(cause)))
     } finally {
       setSaving(false)
     }
@@ -43,14 +46,14 @@ export function SourceSecretForm({ source, onDone }: { source: PlaylistSource; o
     <form
       onSubmit={(event) => void handleSubmit(event)}
       className="mt-2 flex flex-col gap-3 rounded-lg border border-surface-800 bg-surface-950 p-3"
-      aria-label={`${source.name} bilgilerini yeniden gir`}
+      aria-label={text.label(source.name)}
     >
       <p className="text-xs text-surface-400">
-        Kaynak silinmeden bilgileri yenilenir; favorileriniz, izleme geçmişiniz ve gizlediğiniz kategoriler korunur.
+        {text.hint}
       </p>
       <Input
         id={`${idPrefix}-url`}
-        label={isXtream ? 'Sunucu URL' : 'Liste URL'}
+        label={isXtream ? fields.serverUrl : fields.playlistUrl}
         value={url}
         onChange={(event) => setUrl(event.target.value)}
         required
@@ -59,14 +62,14 @@ export function SourceSecretForm({ source, onDone }: { source: PlaylistSource; o
         <>
           <Input
             id={`${idPrefix}-user`}
-            label="Kullanıcı Adı"
+            label={fields.username}
             value={username}
             onChange={(event) => setUsername(event.target.value)}
             required
           />
           <Input
             id={`${idPrefix}-pass`}
-            label="Şifre"
+            label={fields.password}
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
@@ -81,10 +84,10 @@ export function SourceSecretForm({ source, onDone }: { source: PlaylistSource; o
       )}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={saving}>
-          {saving ? <><Spinner size={14} /> Kaydediliyor…</> : 'Kaydet ve Bağlan'}
+          {saving ? <><Spinner size={14} /> {text.saving}</> : text.save}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDone} disabled={saving}>
-          Vazgeç
+          {strings.common.cancel}
         </Button>
       </div>
     </form>

@@ -2,10 +2,13 @@ import { useMemo } from 'react'
 import { Button } from '@/components/ui/Button'
 import { useAppUpdate } from '@/hooks/useAppUpdate'
 import type { AppUpdateState } from '@/services/platform'
+import { LOCALE, strings } from '@/strings'
+
+const text = strings.settings.updates
 
 function formatUpdateTimestamp(timestamp: number | null): string {
-  if (!timestamp) return 'Henüz kontrol edilmedi'
-  return new Date(timestamp).toLocaleString('tr-TR')
+  if (!timestamp) return text.neverChecked
+  return new Date(timestamp).toLocaleString(LOCALE)
 }
 
 function formatBytes(value: number | null): string | null {
@@ -27,23 +30,23 @@ function formatBytes(value: number | null): string | null {
 function getUpdateStatusLabel(updateState: AppUpdateState | null): string {
   switch (updateState?.status) {
     case 'unsupported':
-      return 'Bu ortamda otomatik güncelleme desteklenmiyor'
+      return text.status.unsupported
     case 'idle':
-      return 'Güncelleme sistemi hazır'
+      return text.status.idle
     case 'checking':
-      return 'Güncellemeler kontrol ediliyor...'
+      return text.status.checking
     case 'available':
-      return 'Yeni sürüm bulundu, indirme başlatıldı'
+      return text.status.available
     case 'downloading':
-      return 'Güncelleme indiriliyor...'
+      return text.status.downloading
     case 'downloaded':
-      return 'Güncelleme indirildi, kurulum için yeniden başlatın'
+      return text.status.downloaded
     case 'not-available':
-      return 'Uygulama güncel'
+      return text.status.notAvailable
     case 'error':
-      return 'Güncelleme kontrolünde hata oluştu'
+      return text.status.error
     default:
-      return 'Güncelleme durumu alınıyor...'
+      return text.status.unknown
   }
 }
 
@@ -63,9 +66,9 @@ export function UpdateSettings() {
     const total = formatBytes(appUpdateState.totalBytes)
     const speed = formatBytes(appUpdateState.bytesPerSecond)
 
-    const parts = [`%${Math.round((appUpdateState.progress ?? 0) * 100)}`]
+    const parts = [text.percent(appUpdateState.progress ?? 0)]
     if (transferred && total) parts.push(`${transferred} / ${total}`)
-    if (speed) parts.push(`${speed}/sn`)
+    if (speed) parts.push(text.perSecond(speed))
     return parts.join(' | ')
   }, [appUpdateState])
 
@@ -74,7 +77,7 @@ export function UpdateSettings() {
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <p className="text-sm font-medium text-white">
-            Sürüm {appUpdateState?.currentVersion ?? '...'}
+            {text.version(appUpdateState?.currentVersion)}
             {appUpdateState?.availableVersion &&
             appUpdateState.availableVersion !== appUpdateState.currentVersion
               ? ` → ${appUpdateState.availableVersion}`
@@ -86,7 +89,7 @@ export function UpdateSettings() {
           )}
           {checkError && <p className="text-xs text-red-400">{checkError}</p>}
           <p className="text-xs text-surface-500">
-            Son kontrol: {formatUpdateTimestamp(appUpdateState?.lastCheckedAt ?? null)}
+            {text.lastChecked(formatUpdateTimestamp(appUpdateState?.lastCheckedAt ?? null))}
           </p>
         </div>
 
@@ -115,20 +118,20 @@ export function UpdateSettings() {
             }
           >
             {isCheckingUpdates || appUpdateState?.status === 'checking'
-              ? 'Kontrol ediliyor...'
-              : 'Güncellemeleri Kontrol Et'}
+              ? text.checking
+              : text.check}
           </Button>
 
           {appUpdateState?.updateReadyToInstall && (
             <Button onClick={() => void install()} disabled={isInstallingUpdate}>
-              {isInstallingUpdate ? 'Yeniden başlatılıyor...' : 'Yeniden Başlat ve Yükle'}
+              {isInstallingUpdate ? text.restarting : text.restartAndInstall}
             </Button>
           )}
         </div>
 
         {appUpdateState?.releaseDate && (
           <p className="text-xs text-surface-500">
-            Yeni sürüm tarihi: {new Date(appUpdateState.releaseDate).toLocaleString('tr-TR')}
+            {text.releaseDate(new Date(appUpdateState.releaseDate).toLocaleString(LOCALE))}
           </p>
         )}
       </div>
