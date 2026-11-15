@@ -5,18 +5,22 @@ import { CHANNEL_GRID_LAYOUT, ChannelGridEmpty, renderChannelCard } from '@/comp
 import { useCatalogPage } from '@/hooks/useCatalogPage'
 import { isPlayableChannel } from '@/services/playback'
 import type { Channel } from '@/types/playlist'
+import { strings } from '@/strings'
+
+const TYPE_TEXT = strings.catalog.types.live
 
 const LABELS: CatalogPageLabels = {
-  all: 'Tüm Kanallar',
-  noun: 'kanal',
-  grid: 'Kanallar',
-  loading: 'Kanallar yükleniyor...',
-  search: 'Kanal ara'
+  all: TYPE_TEXT.all,
+  noun: TYPE_TEXT.noun,
+  grid: TYPE_TEXT.plural,
+  loading: TYPE_TEXT.loading,
+  search: TYPE_TEXT.search,
+  searchPlaceholder: TYPE_TEXT.searchPlaceholder
 }
 
 const MESSAGES = {
-  previewLoading: 'Kanallar hızlı ön izleme listesiyle açılıyor...',
-  loadFailed: 'Kanallar yüklenemedi'
+  previewLoading: TYPE_TEXT.previewLoading,
+  loadFailed: TYPE_TEXT.loadFailed
 }
 
 /** Live TV: opening a card plays it. */

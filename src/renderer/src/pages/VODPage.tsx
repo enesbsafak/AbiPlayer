@@ -7,18 +7,22 @@ import { useCatalogPage } from '@/hooks/useCatalogPage'
 import { isPlayableChannel } from '@/services/playback'
 import { useCatalogItem } from '@/catalog'
 import type { Channel } from '@/types/playlist'
+import { strings } from '@/strings'
+
+const TYPE_TEXT = strings.catalog.types.vod
 
 const LABELS: CatalogPageLabels = {
-  all: 'Tüm Filmler',
-  noun: 'film',
-  grid: 'Filmler',
-  loading: 'Film içerikleri yükleniyor...',
-  search: 'Film ara'
+  all: TYPE_TEXT.all,
+  noun: TYPE_TEXT.noun,
+  grid: TYPE_TEXT.plural,
+  loading: TYPE_TEXT.loading,
+  search: TYPE_TEXT.search,
+  searchPlaceholder: TYPE_TEXT.searchPlaceholder
 }
 
 const MESSAGES = {
-  previewLoading: 'Filmler hızlı ön izleme listesiyle açılıyor...',
-  loadFailed: 'Film içerikleri yüklenemedi'
+  previewLoading: TYPE_TEXT.previewLoading,
+  loadFailed: TYPE_TEXT.loadFailed
 }
 
 /** Films: opening a card shows its detail; playing starts from there. */

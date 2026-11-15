@@ -21,7 +21,7 @@ test.describe('parça tercihleri mpv ile', () => {
     await app.shot('preferences')
 
     await openRoute(page, '/vod')
-    await page.getByPlaceholder('Kanal ara...').fill('Çift Dilli')
+    await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Çift Dilli')
     await cardButton(page, KNOWN.dualAudioFilm).click()
     await page.getByRole('button', { name: 'Filmi Oynat' }).click()
     await expect(page).toHaveURL(/#\/player/)

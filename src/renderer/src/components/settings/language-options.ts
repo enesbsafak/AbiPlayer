@@ -1,23 +1,24 @@
 import { useMemo } from 'react'
 import { useStore } from '@/store'
 import { collectTrackLanguages } from '@/services/track-preferences'
+import { LOCALE, strings } from '@/strings'
 
 export const COMMON_LANGUAGE_CODES = ['tr', 'en', 'de', 'fr', 'es', 'it', 'pt', 'ru', 'ar']
 
 let turkishLanguageDisplayNames: Intl.DisplayNames | null = null
 
 try {
-  turkishLanguageDisplayNames = new Intl.DisplayNames(['tr'], { type: 'language' })
+  turkishLanguageDisplayNames = new Intl.DisplayNames([LOCALE], { type: 'language' })
 } catch {
   turkishLanguageDisplayNames = null
 }
 
 export function formatLanguageLabel(code: string): string {
   const normalized = code.trim().toLowerCase()
-  if (!normalized) return 'Bilinmiyor'
+  if (!normalized) return strings.common.unknown
 
   try {
-    const languagePart = normalized.split('-')[0]
+    const languagePart = normalized.split('-')[0] ?? normalized
     const display = turkishLanguageDisplayNames?.of(languagePart)
     return display ? `${display} (${normalized.toUpperCase()})` : normalized.toUpperCase()
   } catch {

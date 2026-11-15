@@ -18,6 +18,9 @@ import { toUserMessage } from '@/services/user-error'
 import { useCatalogItem, xtreamItemId } from '@/catalog'
 import type { SeriesDetail as SeriesDetailType } from '@/types/playlist'
 import type { EpisodePlaybackRequest } from '@/types/player'
+import { strings } from '@/strings'
+
+const text = strings.catalog.detail
 
 // The interface is Turkish only; there is no language setting to follow.
 const TMDB_LANGUAGE = resolveTmdbLanguage('tr')
@@ -160,9 +163,7 @@ function useSeriesDetailData({
         // credentials" (permanent for this source).
         dispatchLoad({
           type: 'loadAborted',
-          message: credentialsHydrated
-            ? 'Bu kaynak için Xtream kimlik bilgileri bulunamadı'
-            : 'Kimlik bilgileri hazırlanıyor, lütfen bekleyin...'
+          message: credentialsHydrated ? text.seriesNoCredentials : text.seriesCredentialsPending
         })
         return
       }
@@ -222,7 +223,7 @@ function useSeriesDetailData({
                 .sort((a, b) => a - b)
                 .map((seasonNumber) => ({
                   seasonNumber,
-                  name: `Sezon ${seasonNumber}`,
+                  name: text.season(seasonNumber),
                   episodeCount: episodes[seasonNumber]?.length ?? 0,
                   cover: ''
                 }))
@@ -302,20 +303,21 @@ function useSeriesDetailData({
         setDetail(nextDetail)
 
         const availableSeasons = nextDetail.seasons
-        if (availableSeasons.length > 0) {
+        const firstSeason = availableSeasons[0]
+        if (firstSeason) {
           const requestedSeason = initialSeasonRef.current
           const preferredSeasonNumber =
             typeof requestedSeason === 'number' &&
             availableSeasons.some((season) => season.seasonNumber === requestedSeason)
               ? requestedSeason
-              : availableSeasons[0].seasonNumber
+              : firstSeason.seasonNumber
 
           setSelectedSeason(preferredSeasonNumber)
         }
       } catch (err) {
         if (cancelled) return
         console.error('Failed to load series info:', err)
-        dispatchLoad({ type: 'loadFailed', message: toUserMessage(err, 'Dizi detayı yüklenemedi.') })
+        dispatchLoad({ type: 'loadFailed', message: toUserMessage(err, text.seriesLoadFailed) })
       } finally {
         if (!cancelled) dispatchLoad({ type: 'loadEnd' })
       }
@@ -373,7 +375,7 @@ function useSeriesDetailData({
               plot: tmdbEpisode.overview || episode.plot,
               duration:
                 tmdbEpisode.runtime && tmdbEpisode.runtime > 0
-                  ? `${tmdbEpisode.runtime} dk`
+                  ? text.minutes(tmdbEpisode.runtime)
                   : episode.duration,
               durationSecs:
                 tmdbEpisode.runtime && tmdbEpisode.runtime > 0
@@ -451,18 +453,18 @@ export function SeriesDetail({
     return (
       <div className="flex flex-col gap-4 py-12">
         <Button variant="ghost" size="sm" onClick={onBack} className="self-start">
-          <ArrowLeft size={16} /> Geri
+          <ArrowLeft size={16} /> {strings.common.back}
         </Button>
         <div className="rounded-lg border border-red-500/35 bg-red-500/10 px-4 py-6 text-center text-red-200">
           <p className="text-sm font-medium">
-            {loadError || 'Dizi detayı yüklenemedi'}
+            {loadError || text.seriesLoadFailed}
           </p>
           <div className="mt-3 flex items-center justify-center gap-2">
             <Button size="sm" variant="secondary" onClick={retry}>
-              Tekrar Dene
+              {strings.common.retry}
             </Button>
             <Button size="sm" variant="ghost" onClick={onBack}>
-              Geri Dön
+              {strings.common.goBack}
             </Button>
           </div>
         </div>
@@ -475,7 +477,7 @@ export function SeriesDetail({
   return (
     <div className="flex flex-col gap-6">
       <Button variant="ghost" size="sm" onClick={onBack} className="self-start">
-        <ArrowLeft size={16} /> Geri
+        <ArrowLeft size={16} /> {strings.common.back}
       </Button>
 
       <div className="flex flex-col md:flex-row gap-6">
@@ -487,8 +489,8 @@ export function SeriesDetail({
           {detail.genre && <p className="text-sm text-accent">{detail.genre}</p>}
           {detail.plot && <p className="text-sm text-surface-400 leading-relaxed max-w-2xl">{detail.plot}</p>}
           <div className="flex gap-4 text-xs text-surface-500 mt-2">
-            {detail.rating && <span>Puan: {detail.rating}</span>}
-            {detail.director && <span>Yönetmen: {detail.director}</span>}
+            {detail.rating && <span>{text.rating(detail.rating)}</span>}
+            {detail.director && <span>{text.director(detail.director)}</span>}
             {detail.releaseDate && <span>{detail.releaseDate}</span>}
           </div>
           {favoriteChannelId && (
@@ -508,7 +510,7 @@ export function SeriesDetail({
               onSeasonChange?.(s.seasonNumber)
             }}
           >
-            {s.name || `Sezon ${s.seasonNumber}`}
+            {s.name || text.season(s.seasonNumber)}
           </Button>
         ))}
       </div>
@@ -533,7 +535,7 @@ export function SeriesDetail({
                     episodeNum: ep.episodeNum,
                     episodeId,
                     containerExtension: ep.containerExtension,
-                    title: `${detail.name} - S${ep.season}E${ep.episodeNum} - ${ep.title}`,
+                    title: text.episodeTitle(detail.name, ep.season, ep.episodeNum, ep.title),
                     ...(ep.coverUrl ? { coverUrl: ep.coverUrl } : {}),
                     fallbackStreamUrl: ep.streamUrl
                   })
@@ -545,7 +547,7 @@ export function SeriesDetail({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="min-w-0 text-sm font-medium truncate">
-                      E{ep.episodeNum}. {ep.title}
+                      {text.episode(ep.episodeNum, ep.title)}
                     </p>
                     {qualityLabel && (
                       <QualityBadge label={qualityLabel} className="shrink-0" />

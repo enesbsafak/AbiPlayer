@@ -12,7 +12,7 @@ test.describe('ana sayfada yeniden dene', () => {
   // whose playlist was still downloading; the finished download was then
   // dropped, the attempt counted as a success, and the home page stayed empty
   // with no error and no further attempt.
-  test('K1: "Çok uzun sürüyor, yeniden dene" inen M3U listesini çöpe atmaz', async ({ launch, mock, profileDir, closeApp }) => {
+  test('K1: "Çok uzun sürüyor, tekrar dene" inen M3U listesini çöpe atmaz', async ({ launch, mock, profileDir, closeApp }) => {
     const first = await launch({ label: 'first' })
     await addM3uSource(first.page, mock.m3uUrl('ts'), 'Yavaş Liste')
     await expectHomeWithContent(first.page)
@@ -27,7 +27,7 @@ test.describe('ana sayfada yeniden dene', () => {
 
     const second = await launch({ label: 'second' })
     const { page } = second
-    const retry = page.getByRole('button', { name: 'Çok uzun sürüyor, yeniden dene' })
+    const retry = page.getByRole('button', { name: 'Çok uzun sürüyor, tekrar dene' })
     await expect(retry).toBeVisible({ timeout: 30_000 })
     // The download is under way when the user gives up waiting.
     await expect.poll(() => mock.stats().counts.m3u ?? 0, { timeout: 15_000 }).toBe(1)

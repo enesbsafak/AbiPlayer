@@ -6,6 +6,9 @@ import { isMpvHoldingPlayback, useMpvPlayer, type MpvPlayerOptions } from '@/hoo
 import { useKeepDisplayAwake } from '@/hooks/useKeepDisplayAwake'
 import { mpvSetVideoRect } from '@/services/platform'
 import type { CornerRect } from '@/player/corner-rect'
+import { strings } from '@/strings'
+
+const text = strings.player.corner
 
 // mpv keeps playing when this host goes away while its playback is still the
 // current one: expanding hands it back to the player route. Closing, or
@@ -47,7 +50,7 @@ export default function CornerPlayer({ rect }: { rect: CornerRect }) {
 
   return (
     <section
-      aria-label="Köşe oynatıcı"
+      aria-label={text.label}
       data-corner-player
       className="no-drag fixed z-overlay overflow-hidden rounded-md ring-1 ring-surface-700"
       style={{ left, top, width, height }}
@@ -61,8 +64,8 @@ export default function CornerPlayer({ rect }: { rect: CornerRect }) {
               setMiniPlayer(false)
               void navigate('/player')
             }}
-            aria-label="Oynatıcıyı büyüt"
-            title="Büyüt"
+            aria-label={text.expand}
+            title={text.expandTitle}
             className="rounded p-1 text-white/80 transition-colors hover:bg-white/15 hover:text-white"
           >
             <Maximize2 size={14} />
@@ -74,8 +77,8 @@ export default function CornerPlayer({ rect }: { rect: CornerRect }) {
               stopPlayback()
               clearPlayerReturnTarget()
             }}
-            aria-label="Oynatmayı kapat"
-            title="Kapat"
+            aria-label={text.stop}
+            title={text.stopTitle}
             className="rounded p-1 text-white/80 transition-colors hover:bg-white/15 hover:text-white"
           >
             <X size={14} />

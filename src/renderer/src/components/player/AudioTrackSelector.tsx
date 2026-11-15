@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect, useId } from 'react'
 import { Languages } from 'lucide-react'
 import { useStore } from '@/store'
+import { strings } from '@/strings'
+
+const text = strings.player.audio
 
 export function AudioTrackSelector() {
   const audioTracks = useStore((s) => s.audioTracks)
@@ -26,8 +29,8 @@ export function AudioTrackSelector() {
         type="button"
         onClick={() => setOpen(!open)}
         className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal"
-        title="Ses Kanalları"
-        aria-label="Ses kanalı seç"
+        title={text.title}
+        aria-label={text.label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -40,9 +43,9 @@ export function AudioTrackSelector() {
           // Capped + scrollable: this opens upward and multi-audio IPTV streams
           // can list more tracks than fit above the control bar.
           className="absolute bottom-full right-0 mb-2 max-h-[calc(100vh-5rem)] w-48 list-none overflow-y-auto rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-lg"
-          aria-label="Ses Kanalı"
+          aria-label={text.heading}
         >
-          <li className="px-3 py-1.5 text-xs font-medium text-surface-500">Ses Kanalı</li>
+          <li className="px-3 py-1.5 text-xs font-medium text-surface-500">{text.heading}</li>
           {audioTracks.map((track, index) => (
             <li key={track.id}>
               <button
@@ -53,7 +56,7 @@ export function AudioTrackSelector() {
                 }`}
                 aria-current={track.id === currentAudioTrack ? 'true' : undefined}
               >
-                {track.name || track.lang || `Ses ${index + 1}`}
+                {track.name || track.lang || text.fallback(index + 1)}
               </button>
             </li>
           ))}

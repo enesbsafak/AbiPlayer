@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Search, Plus } from 'lucide-react'
 import { useStore } from '@/store'
+import { strings } from '@/strings'
 
 export function Header() {
   const navigate = useNavigate()
@@ -20,23 +21,23 @@ export function Header() {
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={() => navigate('/search')}
-          aria-label="Ara"
+          onClick={() => void navigate('/search')}
+          aria-label={strings.common.search}
           className="flex items-center gap-2 rounded-lg border border-surface-700 bg-surface-900 px-3 py-1.5 text-sm text-surface-400 transition-colors hover:border-surface-600 hover:text-surface-200"
         >
           <Search size={14} aria-hidden="true" />
-          <span className="hidden sm:block">Ara</span>
-          <kbd className="hidden rounded border border-surface-700 bg-surface-800 px-1.5 py-0.5 text-caption text-surface-500 sm:block">Ctrl+K</kbd>
+          <span className="hidden sm:block">{strings.common.search}</span>
+          <kbd className="hidden rounded border border-surface-700 bg-surface-800 px-1.5 py-0.5 text-caption text-surface-500 sm:block">{strings.shell.header.searchShortcut}</kbd>
         </button>
 
         <button
           type="button"
-          onClick={() => navigate('/settings')}
-          aria-label="Kaynak Ekle"
+          onClick={() => void navigate('/settings')}
+          aria-label={strings.common.addSource}
           className="flex items-center gap-2 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-600"
         >
           <Plus size={14} aria-hidden="true" />
-          <span className="hidden sm:block">Kaynak Ekle</span>
+          <span className="hidden sm:block">{strings.common.addSource}</span>
         </button>
       </div>
     </header>

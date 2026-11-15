@@ -2,6 +2,9 @@ import { useState, useRef, useEffect } from 'react'
 import { Subtitles, Upload } from 'lucide-react'
 import { useStore } from '@/store'
 import { useExternalSubtitleLoader } from '@/hooks/useExternalSubtitleLoader'
+import { strings } from '@/strings'
+
+const text = strings.player.subtitles
 
 function parseSubtitleBackgroundOpacity(background: string): number {
   const match = background.match(
@@ -58,8 +61,8 @@ export function SubtitleSelector() {
         type="button"
         onClick={() => setOpen(!open)}
         className={`rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal ${currentSubtitleTrack ? 'text-accent' : ''}`}
-        title="Altyazı"
-        aria-label="Altyazı seç"
+        title={text.title}
+        aria-label={text.label}
         aria-haspopup="true"
         aria-expanded={open}
       >
@@ -75,7 +78,7 @@ export function SubtitleSelector() {
       {open && (
         <div className="absolute bottom-full right-0 mb-2 flex max-h-[calc(100vh-5rem)] w-64 flex-col rounded-lg border border-surface-700 bg-surface-900 shadow-lg">
           <div className="min-h-0 flex-1 overflow-y-auto py-1">
-            <p className="px-3 py-1.5 text-xs font-medium text-surface-500">Altyazı</p>
+            <p className="px-3 py-1.5 text-xs font-medium text-surface-500">{text.heading}</p>
             <button
               type="button"
               onClick={handleOff}
@@ -83,7 +86,7 @@ export function SubtitleSelector() {
                 !currentSubtitleTrack ? 'text-accent' : 'text-surface-200'
               }`}
             >
-              Kapalı
+              {text.off}
             </button>
             {subtitleTracks.map((track) => (
               <button
@@ -94,16 +97,16 @@ export function SubtitleSelector() {
                   String(track.id) === currentSubtitleTrack ? 'text-accent' : 'text-surface-200'
                 }`}
               >
-                {track.name || track.lang || `Altyazı ${track.id}`}
+                {track.name || track.lang || text.fallback(track.id)}
               </button>
             ))}
           </div>
           <div className="shrink-0 border-t border-surface-700 px-3 py-2">
             <p className="text-label font-medium text-surface-500">
-              Altyazı Stili
+              {text.style}
             </p>
             <div className="mt-2 flex items-center justify-between text-xs text-surface-400">
-              <span>Yazı boyutu</span>
+              <span>{text.fontSize}</span>
               <span>{subtitleFontSize}px</span>
             </div>
             <input
@@ -112,7 +115,7 @@ export function SubtitleSelector() {
               max={48}
               step={2}
               value={subtitleFontSize}
-              aria-label="Altyazı yazı boyutu"
+              aria-label={text.fontSizeLabel}
               onChange={(e) =>
                 updateSettings({ subtitleFontSize: Number.parseInt(e.target.value, 10) || 24 })
               }
@@ -121,19 +124,19 @@ export function SubtitleSelector() {
 
             <div className="mt-2 grid grid-cols-[1fr_auto] items-center gap-2">
               <div className="flex items-center justify-between text-xs text-surface-400">
-                <span>Renk</span>
+                <span>{text.color}</span>
               </div>
               <input
                 type="color"
                 value={subtitleColor}
-                aria-label="Altyazı rengi"
+                aria-label={text.colorLabel}
                 onChange={(e) => updateSettings({ subtitleColor: e.target.value })}
                 className="h-7 w-10 cursor-pointer rounded border border-surface-600 bg-surface-800 p-0.5"
               />
             </div>
 
             <div className="mt-2 flex items-center justify-between text-xs text-surface-400">
-              <span>Arka plan</span>
+              <span>{text.background}</span>
               <span>{subtitleOpacity}%</span>
             </div>
             <input
@@ -142,7 +145,7 @@ export function SubtitleSelector() {
               max={100}
               step={5}
               value={subtitleOpacity}
-              aria-label="Altyazı arka plan opaklığı"
+              aria-label={text.backgroundLabel}
               onChange={(e) => {
                 const opacity = Number.parseInt(e.target.value, 10)
                 const alpha = Math.max(0, Math.min(100, opacity)) / 100
@@ -160,7 +163,7 @@ export function SubtitleSelector() {
                   backgroundColor: subtitleBackground
                 }}
               >
-                Altyazı önizleme
+                {text.preview}
               </span>
             </div>
           </div>
@@ -168,10 +171,10 @@ export function SubtitleSelector() {
           <div className="shrink-0 border-t border-surface-700 px-3 py-1">
             <button
               type="button"
-              onClick={handleLoadExternal}
+              onClick={() => void handleLoadExternal()}
               className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-300 hover:bg-surface-800 transition-colors"
             >
-              <Upload size={14} /> Dışarıdan dosya yükle
+              <Upload size={14} /> {text.loadExternal}
             </button>
             {externalLoader.error && (
               <p role="alert" className="px-3 pb-2 text-xs text-red-400">

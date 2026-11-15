@@ -2,6 +2,9 @@ import { useStore } from '@/store'
 import { secureCredentialService } from '@/services/secure-credentials'
 import type { PlaylistSource } from '@/types/playlist'
 import type { XtreamCredentials } from '@/types/xtream'
+import { strings } from '@/strings'
+
+const { validation } = strings.sources
 
 /*
  * Entering the secret of an existing source again (K3): the Xtream username
@@ -37,32 +40,32 @@ export function normalizeSecretInput(
   others: readonly PlaylistSource[] = []
 ): SecretInputResult {
   const rawUrl = fields.url.trim()
-  if (!rawUrl) return { ok: false, error: source.type === 'xtream' ? 'Sunucu adresi boş bırakılamaz' : 'Liste adresi boş bırakılamaz' }
+  if (!rawUrl) return { ok: false, error: source.type === 'xtream' ? validation.emptyServerUrl : validation.emptyPlaylistUrl }
   let parsed: URL
   try {
     parsed = new URL(withScheme(source.type === 'xtream' ? rawUrl.replace(/\/+$/, '') : rawUrl))
   } catch {
-    return { ok: false, error: source.type === 'xtream' ? 'Geçersiz sunucu adresi' : 'Geçersiz URL adresi' }
+    return { ok: false, error: source.type === 'xtream' ? validation.invalidServerUrl : validation.invalidPlaylistUrl }
   }
   if (!['http:', 'https:'].includes(parsed.protocol)) {
-    return { ok: false, error: 'Yalnızca HTTP/HTTPS adresleri destekleniyor' }
+    return { ok: false, error: validation.httpOnly }
   }
 
   if (source.type === 'xtream') {
     const username = (fields.username ?? '').trim()
     const password = (fields.password ?? '').trim()
-    if (!username || !password) return { ok: false, error: 'Kullanıcı adı ve şifre boş bırakılamaz' }
+    if (!username || !password) return { ok: false, error: validation.emptyCredentials }
     const url = parsed.toString().replace(/\/+$/, '')
     const duplicate = others.find(
       (other) => other.id !== source.id && other.type === 'xtream' && other.url === url && other.username === username
     )
-    if (duplicate) return { ok: false, error: `Bu sunucu ve kullanıcı adı zaten "${duplicate.name}" olarak ekli` }
+    if (duplicate) return { ok: false, error: validation.duplicateXtream(duplicate.name) }
     return { ok: true, secret: { url, username, password } }
   }
 
   const m3uUrl = parsed.toString()
   const duplicate = others.find((other) => other.id !== source.id && other.type === 'm3u_url' && other.url === m3uUrl)
-  if (duplicate) return { ok: false, error: `Bu URL zaten "${duplicate.name}" olarak ekli` }
+  if (duplicate) return { ok: false, error: validation.duplicatePlaylistUrl(duplicate.name) }
   return { ok: true, secret: { m3uUrl } }
 }
 

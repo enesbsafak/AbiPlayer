@@ -28,7 +28,7 @@ describe('Dropdown', () => {
     const items = screen.getAllByRole('menuitemradio')
     expect(items).toHaveLength(3)
     expect(document.activeElement).toBe(items[1])
-    expect(items[1].getAttribute('aria-checked')).toBe('true')
+    expect(items[1]?.getAttribute('aria-checked')).toBe('true')
   })
 
   it('moves with the arrow keys and wraps around', () => {

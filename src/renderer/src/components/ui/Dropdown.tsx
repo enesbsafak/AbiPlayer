@@ -7,6 +7,7 @@ import {
   type ReactNode
 } from 'react'
 import { ChevronDown } from 'lucide-react'
+import { strings } from '@/strings'
 
 interface DropdownItem {
   id: string
@@ -30,7 +31,7 @@ interface DropdownProps {
  * Escape closes, and focus goes back to the trigger whenever the menu closes
  * from the keyboard or a pick.
  */
-export function Dropdown({ items, value, onSelect, placeholder = 'Seçiniz...', className = '', id, labelledBy }: DropdownProps) {
+export function Dropdown({ items, value, onSelect, placeholder = strings.common.selectPlaceholder, className = '', id, labelledBy }: DropdownProps) {
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
   const ref = useRef<HTMLDivElement>(null)

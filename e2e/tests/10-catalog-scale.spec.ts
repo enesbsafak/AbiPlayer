@@ -118,7 +118,7 @@ for (const size of ['medium', 'large'] as CatalogPreset[]) {
       const categoryButtons = await page.getByRole('group', { name: 'Kategoriler' }).locator('[data-roving-index]').count()
       const categoryTotal = mock.catalog.vodCategories.length
 
-      const search = page.getByPlaceholder('Kanal ara...')
+      const search = page.getByRole('textbox', { name: 'Film ara', exact: true })
       const filmSearch = await typeAndTime(page, search, 'gece', () =>
         expect(page.getByText(/^[\d.]+ sonuç/)).toBeVisible({ timeout: 30_000 })
       )

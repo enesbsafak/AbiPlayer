@@ -10,6 +10,7 @@ vi.mock('@/services/secure-credentials', () => ({
 }))
 
 import { useStore } from '@/store'
+import { strings } from '@/strings'
 import { LoginForm } from './LoginForm'
 
 function fill(label: string, value: string) {
@@ -30,7 +31,7 @@ describe('LoginForm', () => {
     xtream.authenticate.mockResolvedValue({ user_info: { auth: 1 }, server_info: {} })
     render(createElement(MemoryRouter, null, createElement(LoginForm)))
 
-    fill('Sunucu URL', '  example.test:8080  ')
+    fill(strings.sources.fields.serverUrl, '  example.test:8080  ')
     fill('Kullanıcı Adı', ' ali \n')
     fill('Şifre', '\tgizli ')
     submit()
@@ -41,17 +42,18 @@ describe('LoginForm', () => {
       username: 'ali',
       password: 'gizli'
     })
-    const [source] = useStore.getState().sources
-    expect(source.username).toBe('ali')
-    expect(source.password).toBe('gizli')
-    expect(source.name).toBe('ali@example.test:8080')
+    expect(useStore.getState().sources[0]).toMatchObject({
+      username: 'ali',
+      password: 'gizli',
+      name: 'ali@example.test:8080'
+    })
   })
 
   it('shows network failures in Turkish', async () => {
     xtream.authenticate.mockRejectedValue(new TypeError('Failed to fetch'))
     render(createElement(MemoryRouter, null, createElement(LoginForm)))
 
-    fill('Sunucu URL', 'example.test')
+    fill(strings.sources.fields.serverUrl, 'example.test')
     fill('Kullanıcı Adı', 'ali')
     fill('Şifre', 'gizli')
     submit()

@@ -16,6 +16,7 @@ import {
   windowSetFullscreen
 } from '@/services/platform'
 import { toUserMessage } from '@/services/user-error'
+import { strings } from '@/strings'
 
 interface PlayerControlsProps {
   videoRef: RefObject<HTMLVideoElement | null>
@@ -74,7 +75,7 @@ function ProgressScrubber({
         onBlur={scrubber.commit}
         className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-surface-600 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent"
         style={{ background: `linear-gradient(to right, ${PROGRESS_TRACK_COLOR} ${progress}%, ${PROGRESS_BACK_COLOR} ${progress}%)` }}
-        aria-label="Oynatma ilerlemesi"
+        aria-label={strings.player.transport.progress}
         aria-valuemin={0}
         aria-valuemax={Math.round(duration)}
         aria-valuenow={Math.round(shownTime)}
@@ -124,7 +125,8 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
     }
 
     if (!video) return
-    if (video.paused) video.play()
+    // A refused play() (autoplay policy, a source that failed) leaves it paused; the controls show that.
+    if (video.paused) void video.play().catch(() => undefined)
     else video.pause()
   }
 
@@ -172,7 +174,9 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
         await video.requestPictureInPicture()
         setPiP(true)
       }
-    } catch {}
+    } catch {
+      // Refused (no video frame yet, or picture-in-picture disabled): the state stays as it was.
+    }
   }
 
   const navigateBackToOrigin = () => {

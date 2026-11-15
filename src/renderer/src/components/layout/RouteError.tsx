@@ -2,17 +2,18 @@ import { useEffect } from 'react'
 import { isRouteErrorResponse, useLocation, useNavigate, useRouteError } from 'react-router-dom'
 import { Home, RotateCcw, Settings } from 'lucide-react'
 import { toUserMessage } from '@/services/user-error'
+import { strings } from '@/strings'
 import { ERROR_ACTION_CLASS, ERROR_SECONDARY_ACTION_CLASS, ErrorScreen } from './ErrorScreen'
 
 function describeRouteError(error: unknown): { message: string; detail?: string } {
   if (isRouteErrorResponse(error)) {
     return {
-      message: error.status === 404 ? 'Aradığınız sayfa bulunamadı.' : 'Sayfa açılamadı.',
+      message: error.status === 404 ? strings.shell.errors.pageNotFound : strings.shell.errors.pageFailed,
       detail: `${error.status} ${error.statusText}`
     }
   }
   const detail = error instanceof Error ? error.message : undefined
-  return { message: toUserMessage(error, 'Beklenmeyen bir hata oluştu.'), detail }
+  return { message: toUserMessage(error, strings.shell.errors.unexpected), detail }
 }
 
 interface RouteErrorProps {
@@ -42,7 +43,7 @@ export function RouteError({ fullScreen = false }: RouteErrorProps) {
   return (
     <ErrorScreen
       fullScreen={fullScreen}
-      title="Sayfa yüklenemedi"
+      title={strings.shell.errors.pageTitle}
       message={message}
       detail={detail}
       actions={
@@ -53,7 +54,7 @@ export function RouteError({ fullScreen = false }: RouteErrorProps) {
           <button
             type="button"
             onClick={() =>
-              navigate(
+              void navigate(
                 { pathname: location.pathname, search: location.search, hash: location.hash },
                 { replace: true, state: location.state }
               )
@@ -61,27 +62,27 @@ export function RouteError({ fullScreen = false }: RouteErrorProps) {
             className={ERROR_ACTION_CLASS}
           >
             <RotateCcw size={16} aria-hidden="true" />
-            Tekrar Dene
+            {strings.common.retry}
           </button>
           {onHome ? (
             // "Ana Sayfaya Dön" from a broken home page leads straight back
             // here; settings is where a bad source can be removed.
             <button
               type="button"
-              onClick={() => navigate('/settings', { replace: true })}
+              onClick={() => void navigate('/settings', { replace: true })}
               className={ERROR_SECONDARY_ACTION_CLASS}
             >
               <Settings size={16} aria-hidden="true" />
-              Ayarlara Git
+              {strings.shell.errors.goToSettings}
             </button>
           ) : (
             <button
               type="button"
-              onClick={() => navigate('/', { replace: true })}
+              onClick={() => void navigate('/', { replace: true })}
               className={ERROR_SECONDARY_ACTION_CLASS}
             >
               <Home size={16} aria-hidden="true" />
-              Ana Sayfaya Dön
+              {strings.shell.errors.goHome}
             </button>
           )}
         </>

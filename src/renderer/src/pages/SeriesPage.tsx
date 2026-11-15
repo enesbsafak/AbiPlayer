@@ -5,19 +5,23 @@ import { POSTER_GRID_LAYOUT, PosterGridEmpty, renderPosterCard } from '@/compone
 import { SeriesDetail } from '@/components/series/SeriesDetail'
 import { useCatalogPage } from '@/hooks/useCatalogPage'
 import type { Channel } from '@/types/playlist'
+import { strings } from '@/strings'
 import type { EpisodePlaybackRequest } from '@/types/player'
 
+const TYPE_TEXT = strings.catalog.types.series
+
 const LABELS: CatalogPageLabels = {
-  all: 'Tüm Diziler',
-  noun: 'dizi',
-  grid: 'Diziler',
-  loading: 'Diziler yükleniyor...',
-  search: 'Dizi ara'
+  all: TYPE_TEXT.all,
+  noun: TYPE_TEXT.noun,
+  grid: TYPE_TEXT.plural,
+  loading: TYPE_TEXT.loading,
+  search: TYPE_TEXT.search,
+  searchPlaceholder: TYPE_TEXT.searchPlaceholder
 }
 
 const MESSAGES = {
-  previewLoading: 'Diziler hızlı ön izleme listesiyle açılıyor...',
-  loadFailed: 'Diziler yüklenemedi'
+  previewLoading: TYPE_TEXT.previewLoading,
+  loadFailed: TYPE_TEXT.loadFailed
 }
 
 /** Series: opening a card shows its seasons and episodes; an episode plays. */
@@ -59,7 +63,7 @@ export default function SeriesPage() {
       detail={
         detail && seriesId !== undefined
           ? {
-              label: 'Dizi ayrıntısı',
+              label: strings.catalog.detail.seriesLabel,
               content: (
                 <SeriesDetail
                   seriesId={seriesId}

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { AlertCircle } from 'lucide-react'
+import { strings } from '@/strings'
 import { WindowControls } from './TitleBar'
 
 interface ErrorScreenProps {
@@ -23,7 +24,7 @@ export function ErrorScreen({ title, message, detail, fullScreen = false, action
       <p className="text-sm text-surface-400">{message}</p>
       {detail && detail !== message && (
         <details className="w-full text-left text-xs text-surface-500">
-          <summary className="cursor-pointer select-none">Teknik ayrıntı</summary>
+          <summary className="cursor-pointer select-none">{strings.common.technicalDetail}</summary>
           <p className="mt-2 break-words font-mono">{detail}</p>
         </details>
       )}

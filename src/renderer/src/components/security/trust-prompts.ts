@@ -22,7 +22,8 @@ export function notePendingSource(url: string, resubmit: () => boolean, now = Da
   const host = hostOf(url)
   if (!host) return
   for (let i = pending.length - 1; i >= 0; i -= 1) {
-    if (pending[i].host === host || now - pending[i].submittedAt > PENDING_SOURCE_TTL_MS) pending.splice(i, 1)
+    const entry = pending[i]
+    if (!entry || entry.host === host || now - entry.submittedAt > PENDING_SOURCE_TTL_MS) pending.splice(i, 1)
   }
   pending.push({ host, submittedAt: now, resubmit })
 }

@@ -1,7 +1,10 @@
 import { useMemo } from 'react'
 import { useStore } from '@/store'
 import { Dropdown } from '@/components/ui/Dropdown'
+import { strings } from '@/strings'
 import { formatLanguageLabel, useLanguageCodes } from './language-options'
+
+const text = strings.settings.subtitles
 
 function parseSubtitleBackgroundOpacity(background: string): number {
   const match = background.match(
@@ -22,8 +25,8 @@ export function SubtitleSettings() {
 
   const subtitleLanguageItems = useMemo(
     () => [
-      { id: 'off', label: 'Varsayılan kapalı' },
-      { id: 'auto', label: 'Otomatik (ilk uygun)' },
+      { id: 'off', label: text.languageOff },
+      { id: 'auto', label: text.languageAuto },
       ...languageCodes.map((code) => ({ id: code, label: formatLanguageLabel(code) }))
     ],
     [languageCodes]
@@ -39,7 +42,7 @@ export function SubtitleSettings() {
     <div className="flex flex-col gap-6">
       <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
         <p id="preferred-subtitle-language-label" className="mb-2 text-sm text-surface-400">
-          Tercih Edilen Altyazı Dili
+          {text.language}
         </p>
         <Dropdown
           id="preferred-subtitle-language"
@@ -53,20 +56,20 @@ export function SubtitleSettings() {
               updateSettings({ defaultSubtitleEnabled: true, preferredSubtitleLanguage: id })
             }
           }}
-          placeholder="Tercih edilen altyazı dili"
+          placeholder={text.languagePlaceholder}
         />
         <p className="mt-1 text-xs text-surface-500">
-          Yayında bu dilde altyazı varsa kendiliğinden açılır.
+          {text.languageHint}
         </p>
       </div>
 
       <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
-        <p className="mb-4 text-sm font-medium text-surface-200">Görünüm</p>
+        <p className="mb-4 text-sm font-medium text-surface-200">{text.appearance}</p>
 
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <label htmlFor="subtitle-font-size" className="mb-1 block text-sm text-surface-400">
-              Yazı Boyutu
+              {text.fontSize}
             </label>
             <input
               id="subtitle-font-size"
@@ -83,7 +86,7 @@ export function SubtitleSettings() {
 
           <div>
             <label htmlFor="subtitle-color" className="mb-1 block text-sm text-surface-400">
-              Yazı Rengi
+              {text.color}
             </label>
             <input
               id="subtitle-color"
@@ -100,7 +103,7 @@ export function SubtitleSettings() {
             htmlFor="subtitle-background-opacity"
             className="mb-1 block text-sm text-surface-400"
           >
-            Arka Plan Opaklığı
+            {text.backgroundOpacity}
           </label>
           <input
             id="subtitle-background-opacity"
@@ -120,7 +123,7 @@ export function SubtitleSettings() {
         </div>
 
         <div className="mt-4">
-          <p className="text-xs font-medium text-surface-500">Önizleme</p>
+          <p className="text-xs font-medium text-surface-500">{text.preview}</p>
           <div className="mt-2 rounded-lg border border-surface-800 bg-black/70 p-6 text-center">
             <span
               className="inline-block rounded px-3 py-1 leading-relaxed"
@@ -130,7 +133,7 @@ export function SubtitleSettings() {
                 backgroundColor: settings.subtitleBackground
               }}
             >
-              Bu bir altyazı önizlemesidir.
+              {text.previewText}
             </span>
           </div>
         </div>

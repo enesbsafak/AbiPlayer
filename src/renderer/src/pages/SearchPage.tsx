@@ -6,6 +6,9 @@ import { Spinner } from '@/components/ui/Spinner'
 import type { Channel } from '@/types/playlist'
 import { useCatalogSearchResults } from '@/catalog'
 import { useOpenCatalogItem } from '@/hooks/useOpenCatalogItem'
+import { strings } from '@/strings'
+
+const text = strings.catalog.search
 
 /** Results drawn at most; the count above them is every match. */
 const MAX_RESULTS = 300
@@ -61,15 +64,15 @@ export default function SearchPage() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              aria-label="Tüm içeriklerde ara"
-              placeholder="Tüm kanal, film ve dizilerde ara..."
+              aria-label={text.label}
+              placeholder={text.placeholder}
               className="w-full rounded-lg border border-surface-700 bg-surface-900 py-3 pl-12 pr-4 text-lg text-surface-50 placeholder:text-surface-500 transition-colors focus:border-surface-600 focus:outline-none focus:ring-2 focus:ring-accent/20"
             />
           </div>
           {active && (
             <p className="mb-4 flex items-center gap-2 text-sm text-surface-300" aria-live="polite">
-              "{deferredQuery}" için {total.toLocaleString('tr-TR')} sonuç bulundu
-              {total > results.length && ` (ilk ${results.length.toLocaleString('tr-TR')} gösteriliyor)`}
+              {text.found(deferredQuery, total)}
+              {total > results.length && text.capped(results.length)}
               {isPending && <Spinner size={14} />}
             </p>
           )}
@@ -77,12 +80,12 @@ export default function SearchPage() {
 
         <div ref={setScrollElement} className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
           {active ? (
-            <ChannelGrid channels={results} onPlay={handlePlay} scrollElement={scrollElement} ariaLabel="Arama sonuçları" />
+            <ChannelGrid channels={results} onPlay={handlePlay} scrollElement={scrollElement} ariaLabel={text.results} />
           ) : (
             <div className="py-20 text-center text-surface-400">
               <Search size={48} className="mx-auto mb-4" />
-              <p className="text-lg">Tüm kaynaklarda arama yapın</p>
-              <p className="mt-1 text-sm">Başlamak için en az 2 karakter yazın</p>
+              <p className="text-lg">{text.idleTitle}</p>
+              <p className="mt-1 text-sm">{text.idleHint(MIN_QUERY_LENGTH)}</p>
             </div>
           )}
         </div>

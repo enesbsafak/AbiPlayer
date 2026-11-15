@@ -12,7 +12,10 @@ import { reloadSourceCatalog } from '@/catalog/cache-lifecycle'
 import { ingestDropped, ingestM3uText } from '@/catalog/worker-ingest'
 import { needsStoredSecret } from '@/store/auth-slice'
 import type { PlaylistSource } from '@/types/playlist'
+import { strings } from '@/strings'
 import { SourceSecretForm } from './SourceSecretForm'
+
+const text = strings.sources.manager
 
 function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   if (!(key in record)) return record
@@ -25,11 +28,7 @@ function sourceStillExists(sourceId: string): boolean {
   return useStore.getState().sources.some((source) => source.id === sourceId)
 }
 
-const SOURCE_TYPE_LABELS: Record<PlaylistSource['type'], string> = {
-  xtream: 'Xtream Codes',
-  m3u_url: 'M3U URL',
-  m3u_file: 'M3U Dosya'
-}
+const SOURCE_TYPE_LABELS: Record<PlaylistSource['type'], string> = strings.sources.typeLabels
 
 export function SourceManager() {
   const sources = useStore((s) => s.sources)
@@ -75,9 +74,7 @@ export function SourceManager() {
       } catch (err) {
         // The source still goes, as asked; the user learns that its stored
         // sign-in could not be wiped instead of it failing silently.
-        setRemovalError(
-          `"${source.name}" kaldırıldı, ancak kayıtlı giriş bilgisi güvenli depodan silinemedi: ${toUserMessage(err)}`
-        )
+        setRemovalError(text.removedButSecretKept(source.name, toUserMessage(err)))
       }
     }
 
@@ -101,10 +98,10 @@ export function SourceManager() {
     try {
       if (source.type === 'xtream') {
         const creds = getXtreamCredentials(sourceId)
-        if (!creds) throw new Error('Kimlik bilgileri bulunamadı')
+        if (!creds) throw new Error(text.noCredentials)
         const auth = await xtreamApi.authenticate(creds)
         if (auth.user_info.auth !== 1) {
-          throw new Error('Kimlik doğrulama başarısız oldu')
+          throw new Error(strings.sources.validation.authFailed)
         }
         if (!sourceStillExists(sourceId)) return
         // Only once the server accepted us. The lists stay on screen, marked
@@ -121,20 +118,20 @@ export function SourceManager() {
         await reloadSourceCatalog(sourceId)
       } else if (source.type === 'm3u_file') {
         const result = await pickAndReadFile([
-          { name: 'Oynatma Listesi Dosyaları', extensions: ['m3u', 'm3u8', 'txt'] }
+          { name: strings.sources.m3u.fileFilter, extensions: ['m3u', 'm3u8', 'txt'] }
         ])
         if (!result) return
         if (!sourceStillExists(sourceId)) return
         // Parsed in the worker and cached under the file picked now.
         const outcome = await ingestM3uText(sourceId, result.content, result.path)
         if (!sourceStillExists(sourceId)) return
-        if (ingestDropped(outcome)) throw new Error('Liste yüklenirken kaynak yeniden yüklendi. Tekrar deneyin.')
+        if (ingestDropped(outcome)) throw new Error(text.reloadedDuringLoad)
         // The file may have been picked from a new place: the next start reads it from there.
         if (result.path !== source.filePath) updateSource(sourceId, { filePath: result.path })
         setSourceError(sourceId, null)
       }
     } catch (err) {
-      setRefreshError((prev) => ({ ...prev, [sourceId]: toUserMessage(err, 'Yenileme başarısız oldu.') }))
+      setRefreshError((prev) => ({ ...prev, [sourceId]: toUserMessage(err, text.refreshFailed) }))
     } finally {
       setRefreshing(sourceId, false)
     }
@@ -160,8 +157,8 @@ export function SourceManager() {
 
   const statusText = (source: PlaylistSource, connected: boolean): string | null => {
     const failure = sourceErrors[source.id]
-    if (failure?.retryAt != null) return 'yeniden bağlanıyor...'
-    if (source.type === 'xtream' && !connected && !failure) return 'bağlanıyor...'
+    if (failure?.retryAt != null) return text.reconnecting
+    if (source.type === 'xtream' && !connected && !failure) return text.connecting
     return null
   }
 
@@ -169,15 +166,15 @@ export function SourceManager() {
     return (
       <div className="text-center py-8 text-surface-500">
         {removalError && <p className="mb-2 text-xs text-red-400" role="alert">{removalError}</p>}
-        <p>Henüz kaynak eklenmedi.</p>
-        <p className="text-sm mt-1">Başlamak için bir Xtream Codes sunucusu veya M3U listesi ekleyin.</p>
+        <p>{text.empty}</p>
+        <p className="text-sm mt-1">{text.emptyHint}</p>
       </div>
     )
   }
 
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium text-surface-400 mb-1">Kaynaklarınız</h3>
+      <h3 className="text-sm font-medium text-surface-400 mb-1">{text.heading}</h3>
       {removalError && (
         <p className="text-xs text-red-400" role="alert">{removalError}</p>
       )}
@@ -185,6 +182,7 @@ export function SourceManager() {
         const connected = isConnected(source.id, source.type)
         const isRefreshing = refreshingIds.has(source.id)
         const offerSecret = secretEntryOffered(source)
+        const status = statusText(source, connected)
 
         return (
           <div key={source.id}>
@@ -206,15 +204,15 @@ export function SourceManager() {
                 )}
                 <div className="flex items-center gap-2">
                   {connected ? (
-                    <Wifi size={14} className="text-green-400 shrink-0" aria-label="Bağlı" />
+                    <Wifi size={14} className="text-green-400 shrink-0" aria-label={text.connected} />
                   ) : (
-                    <WifiOff size={14} className="text-surface-500 shrink-0" aria-label="Bağlı değil" />
+                    <WifiOff size={14} className="text-surface-500 shrink-0" aria-label={text.disconnected} />
                   )}
                   <div>
                     <p className="text-sm font-medium">{source.name}</p>
                     <p className="text-xs text-surface-500">
                       {SOURCE_TYPE_LABELS[source.type]}
-                      {statusText(source, connected) && ` - ${statusText(source, connected)}`}
+                      {status && text.statusSuffix(status)}
                     </p>
                     {(refreshError[source.id] ?? sourceErrors[source.id]?.message) && (
                       <p className="text-xs text-red-400 mt-0.5" role="alert">
@@ -227,7 +225,7 @@ export function SourceManager() {
               <div className="flex items-center gap-1">
                 {offerSecret && editingSecret !== source.id && (
                   <Button variant="secondary" size="sm" onClick={() => setEditingSecret(source.id)}>
-                    {source.type === 'xtream' ? 'Bilgileri Gir' : 'Adresi Gir'}
+                    {source.type === 'xtream' ? text.enterCredentials : text.enterAddress}
                   </Button>
                 )}
                 {source.type === 'm3u_file' && sourceErrors[source.id]?.kind === 'file' && (
@@ -239,7 +237,7 @@ export function SourceManager() {
                       void handleRefresh(source.id)
                     }}
                   >
-                    Dosyayı Yeniden Seç
+                    {text.repickFile}
                   </Button>
                 )}
                 <Button
@@ -249,8 +247,8 @@ export function SourceManager() {
                   onClick={() => {
                     void handleRefresh(source.id)
                   }}
-                  aria-label={`${source.name} kaynağını yenile`}
-                  title="Yenile"
+                  aria-label={text.refresh(source.name)}
+                  title={strings.common.refresh}
                 >
                   {isRefreshing ? (
                     <Loader2 size={14} className="animate-spin" aria-hidden="true" />
@@ -262,8 +260,8 @@ export function SourceManager() {
                   variant="ghost"
                   size="sm"
                   onClick={() => setPendingRemoval(source)}
-                  aria-label={`${source.name} kaynağını sil`}
-                  title="Sil"
+                  aria-label={text.remove(source.name)}
+                  title={strings.common.delete}
                 >
                   <Trash2 size={14} className="text-red-400" aria-hidden="true" />
                 </Button>
@@ -276,8 +274,8 @@ export function SourceManager() {
 
       <ConfirmDialog
         isOpen={pendingRemoval !== null}
-        title="Kaynak silinsin mi?"
-        confirmLabel="Sil"
+        title={text.removeConfirmTitle}
+        confirmLabel={strings.common.delete}
         destructive
         onCancel={() => setPendingRemoval(null)}
         onConfirm={() => {
@@ -287,9 +285,8 @@ export function SourceManager() {
         }}
       >
         <p>
-          <span className="font-medium text-surface-100">{pendingRemoval?.name}</span> kaynağı,
-          kanalları ve kategorileriyle birlikte kaldırılacak. Bu işlem geri alınamaz; yeniden
-          kullanmak için kaynağı tekrar eklemeniz gerekir.
+          <span className="font-medium text-surface-100">{pendingRemoval?.name}</span>
+          {text.removeConfirmBody}
         </p>
       </ConfirmDialog>
     </div>

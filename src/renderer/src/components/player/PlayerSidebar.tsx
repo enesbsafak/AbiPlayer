@@ -12,6 +12,9 @@ import { useVisibleCatalogCategories, useVisibleCatalogItems, type CatalogType }
 import { mediaKey } from '../../../../shared/playback'
 import { ClampText } from '@/components/ui'
 import type { Channel } from '@/types/playlist'
+import { strings } from '@/strings'
+
+const text = strings.player.sidebar
 
 const SIDEBAR_WIDTH = 288
 /** One row: 32 px artwork plus padding. */
@@ -29,9 +32,6 @@ export function isPlayingItem(currentMediaKey: string | null | undefined, channe
   return !!currentMediaKey && channelMediaKey(channel) === currentMediaKey
 }
 
-function typeLabelOf(type: CatalogType): string {
-  return type === 'live' ? 'Kanallar' : type === 'series' ? 'Diziler' : 'Filmler'
-}
 
 export function PlayerSidebar() {
   const currentChannel = useStore((s) => s.currentChannel)
@@ -93,7 +93,7 @@ export function PlayerSidebar() {
 
   if (!currentChannel) return null
 
-  const typeLabel = typeLabelOf(currentChannel.type)
+  const typeLabel = strings.catalog.types[currentChannel.type].plural
 
   return (
     <div
@@ -114,8 +114,8 @@ export function PlayerSidebar() {
           type="button"
           onClick={() => setPlayerSidebarOpen(false)}
           className="rounded p-1 text-surface-400 hover:text-white hover:bg-white/8 transition-colors duration-normal"
-          aria-label="Kanal listesini kapat"
-          title="Kapat (L)"
+          aria-label={text.close}
+          title={text.closeTitle}
         >
           <X size={14} />
         </button>
@@ -126,7 +126,6 @@ export function PlayerSidebar() {
           sourceId={sourceId}
           type={type}
           currentChannel={currentChannel}
-          typeLabel={typeLabel}
           isOpen={isPlayerSidebarOpen}
           selectedCategoryId={selectedCategoryId}
           onSelectCategory={setSelectedCategoryId}
@@ -140,13 +139,12 @@ interface SidebarBodyProps {
   sourceId: string
   type: CatalogType
   currentChannel: Channel
-  typeLabel: string
   isOpen: boolean
   selectedCategoryId: string | null
   onSelectCategory: (categoryId: string | null) => void
 }
 
-function SidebarBody({ sourceId, type, currentChannel, typeLabel, isOpen, selectedCategoryId, onSelectCategory }: SidebarBodyProps) {
+function SidebarBody({ sourceId, type, currentChannel, isOpen, selectedCategoryId, onSelectCategory }: SidebarBodyProps) {
   const playChannel = useStore((s) => s.playChannel)
   const currentMediaKey = useStore((s) => s.currentPlayback?.mediaKey ?? null)
   const [isCategoryOpen, setIsCategoryOpen] = useState(false)
@@ -155,8 +153,8 @@ function SidebarBody({ sourceId, type, currentChannel, typeLabel, isOpen, select
 
   const availableCategories = useVisibleCatalogCategories(sourceId, type)
   const activeCategoryLabel = useMemo(() => {
-    if (!selectedCategoryId) return 'Tümü'
-    return availableCategories.find((c) => c.id === selectedCategoryId)?.name || 'Tümü'
+    if (!selectedCategoryId) return text.all
+    return availableCategories.find((c) => c.id === selectedCategoryId)?.name || text.all
   }, [selectedCategoryId, availableCategories])
 
   const visibleChannels = useVisibleCatalogItems(sourceId, type, selectedCategoryId)
@@ -164,7 +162,7 @@ function SidebarBody({ sourceId, type, currentChannel, typeLabel, isOpen, select
   const activeIndex = positionInList(channels, currentChannel.id)
 
   // Stable between renders, or the virtualizer recomputes every row's position on each one.
-  const getItemKey = useCallback((index: number) => channels[index].id, [channels])
+  const getItemKey = useCallback((index: number) => channels[index]?.id ?? index, [channels])
   const virtualizer = useVirtualizer({
     count: channels.length,
     getScrollElement: () => scrollElement,
@@ -247,7 +245,7 @@ function SidebarBody({ sourceId, type, currentChannel, typeLabel, isOpen, select
                   !selectedCategoryId ? 'text-accent bg-accent/8' : 'text-surface-300 hover:bg-white/4'
                 }`}
               >
-                Tüm {typeLabel}
+                {strings.catalog.types[type].all}
               </button>
               {availableCategories.map((cat) => (
                 <button
@@ -270,12 +268,13 @@ function SidebarBody({ sourceId, type, currentChannel, typeLabel, isOpen, select
       <div ref={setScrollElement} className="flex-1 overflow-y-auto">
         {channels.length === 0 ? (
           <div className="py-8 text-center text-xs text-surface-600">
-            Bu kategoride içerik yok
+            {text.empty}
           </div>
         ) : (
           <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
             {virtualizer.getVirtualItems().map((row) => {
               const ch = channels[row.index]
+              if (!ch) return null
               // The id narrows it to one row cheaply; the media key decides.
               const isActive = ch.id === currentChannel.id && isPlayingItem(currentMediaKey, ch)
               return (

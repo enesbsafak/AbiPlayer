@@ -2,9 +2,12 @@ import { useState, useRef, useEffect, useId } from 'react'
 import { SlidersHorizontal } from 'lucide-react'
 import { useStore } from '@/store'
 import { DEFAULT_PLAYBACK_TUNING } from '@/store/player-slice'
+import { strings } from '@/strings'
+
+const text = strings.player.tuning
 
 const ASPECT_OPTIONS = [
-  { id: 'auto', label: 'Otomatik' },
+  { id: 'auto', label: text.aspectAuto },
   { id: '16:9', label: '16:9' },
   { id: '4:3', label: '4:3' }
 ] as const
@@ -55,8 +58,8 @@ export function PlaybackTuningSelector() {
         className={`rounded-lg p-2 transition-colors duration-normal ${
           isDefault ? 'hover:bg-white/10' : 'bg-white/20'
         }`}
-        title="Senkron ve Görüntü"
-        aria-label="Senkron ve görüntü ayarları"
+        title={text.title}
+        aria-label={text.label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -69,24 +72,24 @@ export function PlaybackTuningSelector() {
           id={menuId}
           className="absolute bottom-full right-0 mb-2 max-h-[calc(100vh-5rem)] w-72 overflow-y-auto rounded-lg border border-surface-700 bg-surface-900 p-3 shadow-lg"
           role="menu"
-          aria-label="Senkron ve Görüntü"
+          aria-label={text.title}
         >
           <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-surface-500">Senkron ve Görüntü</p>
+            <p className="text-xs font-medium text-surface-500">{text.title}</p>
             <button
               type="button"
               onClick={resetPlaybackTuning}
               disabled={isDefault}
               className="rounded px-2 py-0.5 text-xs text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
             >
-              Sıfırla
+              {strings.common.reset}
             </button>
           </div>
 
           <div className="mt-3">
             <div className="flex items-center justify-between">
               <label htmlFor={`${menuId}-audio-delay`} className="text-sm text-surface-300">
-                Ses gecikmesi
+                {text.audioDelay}
               </label>
               <span className="text-xs tabular-nums text-surface-400">
                 {formatDelay(playbackTuning.audioDelay)}
@@ -103,7 +106,7 @@ export function PlaybackTuningSelector() {
               className="mt-1 w-full cursor-pointer"
             />
             <p className="text-xs leading-4 text-surface-500">
-              Ses görüntüden önce geliyorsa sağa kaydırın.
+              {text.audioDelayHint}
             </p>
           </div>
 
@@ -111,7 +114,7 @@ export function PlaybackTuningSelector() {
             <div className="mt-3">
               <div className="flex items-center justify-between">
                 <label htmlFor={`${menuId}-sub-delay`} className="text-sm text-surface-300">
-                  Altyazı gecikmesi
+                  {text.subtitleDelay}
                 </label>
                 <span className="text-xs tabular-nums text-surface-400">
                   {formatDelay(playbackTuning.subDelay)}
@@ -132,7 +135,7 @@ export function PlaybackTuningSelector() {
 
           {!isLive && (
             <div className="mt-3">
-              <p className="text-sm text-surface-300">Oynatma hızı</p>
+              <p className="text-sm text-surface-300">{text.speed}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {SPEED_OPTIONS.map((speed) => (
                   <button
@@ -154,7 +157,7 @@ export function PlaybackTuningSelector() {
           )}
 
           <div className="mt-3">
-            <p className="text-sm text-surface-300">En-boy oranı</p>
+            <p className="text-sm text-surface-300">{text.aspect}</p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {ASPECT_OPTIONS.map((option) => (
                 <button
@@ -175,7 +178,7 @@ export function PlaybackTuningSelector() {
           </div>
 
           <p className="mt-3 border-t border-surface-800 pt-2 text-xs leading-4 text-surface-500">
-            Bu ayarlar yalnızca açık olan yayın için geçerlidir, kanal değişince sıfırlanır.
+            {text.scopeHint}
           </p>
         </div>
       )}

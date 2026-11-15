@@ -4,6 +4,9 @@ import { AudioTrackSelector } from './AudioTrackSelector'
 import { PlaybackTuningSelector } from './PlaybackTuningSelector'
 import { QualitySelector } from './QualitySelector'
 import { SubtitleSelector } from './SubtitleSelector'
+import { strings } from '@/strings'
+
+const text = strings.player.actions
 
 const ICON_BUTTON = 'rounded-lg p-2 transition-colors duration-normal hover:bg-white/10'
 
@@ -48,8 +51,8 @@ export function PlayerActionControls({
           type="button"
           onClick={onTogglePiP}
           className={ICON_BUTTON}
-          title="Resim İçinde Resim"
-          aria-label="Resim İçinde Resim"
+          title={text.pictureInPicture}
+          aria-label={text.pictureInPicture}
         >
           <PictureInPicture2 size={18} />
         </button>
@@ -61,8 +64,8 @@ export function PlayerActionControls({
         className={`rounded-lg p-2 transition-colors duration-normal ${
           isPlayerSidebarOpen ? 'bg-white/20' : 'hover:bg-white/10'
         }`}
-        title="Kanal Listesi (L)"
-        aria-label="Kanal Listesi"
+        title={text.listTitle}
+        aria-label={text.listLabel}
         aria-pressed={isPlayerSidebarOpen}
       >
         <List size={18} />
@@ -72,8 +75,8 @@ export function PlayerActionControls({
         type="button"
         onClick={onToggleFullscreen}
         className={ICON_BUTTON}
-        title="Tam Ekran (F)"
-        aria-label={isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'}
+        title={text.fullscreenTitle}
+        aria-label={isFullscreen ? text.exitFullscreen : text.enterFullscreen}
       >
         {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
       </button>
@@ -82,8 +85,8 @@ export function PlayerActionControls({
         type="button"
         onClick={onLeave}
         className={ICON_BUTTON}
-        title="Geri dön (Esc) — oynatma devam eder"
-        aria-label="Geri dön"
+        title={text.leaveTitle}
+        aria-label={text.leaveLabel}
       >
         <ArrowLeft size={18} />
       </button>

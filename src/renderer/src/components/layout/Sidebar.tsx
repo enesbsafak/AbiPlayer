@@ -1,15 +1,18 @@
 import { Link, NavLink } from 'react-router-dom'
 import { Tv, Film, Clapperboard, Calendar, Star, Search, Settings, Radio, Zap, Heart } from 'lucide-react'
 import { APP_NAME, APP_VERSION_LABEL } from '@/constants/app-info'
+import { strings } from '@/strings'
+
+const nav = strings.shell.nav
 
 const navItems = [
-  { to: '/', icon: Radio, label: 'Ana Sayfa' },
-  { to: '/live', icon: Tv, label: 'Canlı TV' },
-  { to: '/vod', icon: Film, label: 'Filmler' },
-  { to: '/series', icon: Clapperboard, label: 'Diziler' },
-  { to: '/epg', icon: Calendar, label: 'Yayın Akışı' },
-  { to: '/favorites', icon: Star, label: 'Favoriler' },
-  { to: '/search', icon: Search, label: 'Ara' }
+  { to: '/', icon: Radio, label: nav.home },
+  { to: '/live', icon: Tv, label: nav.live },
+  { to: '/vod', icon: Film, label: nav.vod },
+  { to: '/series', icon: Clapperboard, label: nav.series },
+  { to: '/epg', icon: Calendar, label: nav.epg },
+  { to: '/favorites', icon: Star, label: nav.favorites },
+  { to: '/search', icon: Search, label: nav.search }
 ]
 
 export function Sidebar() {
@@ -25,7 +28,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav aria-label="Ana gezinme" className="flex flex-1 flex-col gap-0.5 px-2 lg:px-3">
+      <nav aria-label={nav.label} className="flex flex-1 flex-col gap-0.5 px-2 lg:px-3">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
@@ -52,18 +55,18 @@ export function Sidebar() {
             NavLink's active state ignores the query string. */}
         <Link
           to="/settings?tab=support"
-          aria-label="Destek"
-          title="Destek"
+          aria-label={nav.support}
+          title={nav.support}
           className="flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-surface-400 transition-colors hover:bg-surface-900 hover:text-surface-200"
         >
           <Heart size={18} className="mx-auto shrink-0 lg:mx-0" aria-hidden="true" />
-          <span className="hidden lg:block">Destek</span>
+          <span className="hidden lg:block">{nav.support}</span>
         </Link>
 
         <NavLink
           to="/settings"
-          aria-label="Ayarlar"
-          title="Ayarlar"
+          aria-label={nav.settings}
+          title={nav.settings}
           className={({ isActive }) =>
             `flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors ${
               isActive
@@ -73,7 +76,7 @@ export function Sidebar() {
           }
         >
           <Settings size={18} className="mx-auto shrink-0 lg:mx-0" aria-hidden="true" />
-          <span className="hidden lg:block">Ayarlar</span>
+          <span className="hidden lg:block">{nav.settings}</span>
         </NavLink>
       </div>
     </aside>

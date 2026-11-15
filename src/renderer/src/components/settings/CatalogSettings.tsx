@@ -1,5 +1,8 @@
 import { useStore } from '@/store'
+import { strings } from '@/strings'
 import { CategoryVisibility } from './CategoryVisibility'
+
+const text = strings.settings.catalog
 
 export function AdultContentSetting() {
   const showAdultContent = useStore((s) => s.settings.showAdultContent)
@@ -14,11 +17,10 @@ export function AdultContentSetting() {
           onChange={(e) => updateSettings({ showAdultContent: e.target.checked })}
           className="rounded border-surface-700 bg-surface-900 text-accent focus:ring-accent"
         />
-        <span className="text-sm text-surface-300">Yetişkin içeriği göster</span>
+        <span className="text-sm text-surface-300">{text.adultContent}</span>
       </label>
       <p className="mt-1 text-xs text-surface-500">
-        Kapalıyken yetişkin içerik olarak tanınan kanallar, filmler, diziler ve kategoriler
-        listelerde, aramada ve ana sayfada görünmez. Açıkken listelerin sonunda gösterilir.
+        {text.adultContentHint}
       </p>
     </div>
   )

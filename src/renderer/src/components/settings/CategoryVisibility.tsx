@@ -6,13 +6,16 @@ import { Dropdown } from '@/components/ui/Dropdown'
 import { Input } from '@/components/ui/Input'
 import { normalizeSearchText } from '@/services/text-normalize'
 import { useCatalogCategories, useVisibleCatalogCategories } from '@/catalog'
+import { strings } from '@/strings'
+
+const text = strings.settings.catalog
 
 type ContentType = 'live' | 'vod' | 'series'
 
 const TYPE_TABS: Array<{ id: ContentType; label: string }> = [
-  { id: 'live', label: 'Canlı TV' },
-  { id: 'vod', label: 'Filmler' },
-  { id: 'series', label: 'Diziler' }
+  { id: 'live', label: strings.catalog.types.live.section },
+  { id: 'vod', label: strings.catalog.types.vod.section },
+  { id: 'series', label: strings.catalog.types.series.section }
 ]
 
 export function CategoryVisibility() {
@@ -59,23 +62,23 @@ export function CategoryVisibility() {
   if (sources.length === 0) {
     return (
       <p className="rounded-lg border border-surface-800 bg-surface-900 px-4 py-3 text-sm text-surface-400">
-        Kategori yönetimi için önce bir kaynak ekleyin.
+        {text.noSources}
       </p>
     )
   }
 
   return (
       <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
-        <p className="text-sm font-medium text-surface-200">Kategori Görünürlüğü</p>
+        <p className="text-sm font-medium text-surface-200">{text.visibility}</p>
         <p className="mt-1 text-sm text-surface-400">
-          Gizlediğiniz kategoriler listelerden tamamen çıkar; içindeki kanallar da görünmez.
+          {text.visibilityHint}
         </p>
 
         <div className="mt-4 flex flex-col gap-3">
           {sources.length > 1 && (
             <div>
               <p id="category-source-label" className="text-sm text-surface-400 mb-2">
-                Kaynak
+                {text.source}
               </p>
               <Dropdown
                 id="category-source"
@@ -83,7 +86,7 @@ export function CategoryVisibility() {
                 items={sourceItems}
                 value={effectiveSourceId ?? undefined}
                 onSelect={(id) => setSelectedSourceId(id)}
-                placeholder="Kaynak seç"
+                placeholder={text.sourcePlaceholder}
               />
             </div>
           )}
@@ -110,17 +113,15 @@ export function CategoryVisibility() {
             type="search"
             value={filterQuery}
             onChange={(e) => setFilterQuery(e.target.value)}
-            placeholder="Kategori ara..."
-            aria-label="Kategori ara"
+            placeholder={text.filterPlaceholder}
+            aria-label={text.filterLabel}
           />
         </div>
 
         <div className="mt-4 max-h-80 overflow-y-auto rounded-lg border border-surface-800">
           {visibleList.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-surface-500">
-              {scopedCategories.length > 0
-                ? 'Aramayla eşleşen kategori yok.'
-                : 'Bu tür için kategori bulunamadı. Kaynak taraması tamamlanmamış olabilir.'}
+              {scopedCategories.length > 0 ? text.noMatch : text.noCategories}
             </p>
           ) : (
             <ul className="divide-y divide-surface-800">
@@ -145,13 +146,13 @@ export function CategoryVisibility() {
                       </span>
                       {category.isAdult && (
                         <span className="shrink-0 rounded bg-surface-800 px-1.5 py-0.5 text-xs text-surface-400">
-                          18+
+                          {text.adultBadge}
                         </span>
                       )}
                       {isHidden ? (
-                        <EyeOff size={14} className="shrink-0 text-surface-500" aria-label="Gizli" />
+                        <EyeOff size={14} className="shrink-0 text-surface-500" aria-label={text.hidden} />
                       ) : (
-                        <Eye size={14} className="shrink-0 text-surface-600" aria-label="Görünür" />
+                        <Eye size={14} className="shrink-0 text-surface-600" aria-label={text.visible} />
                       )}
                     </label>
                   </li>
@@ -167,12 +168,10 @@ export function CategoryVisibility() {
             disabled={hiddenCountForSource === 0}
             onClick={() => effectiveSourceId && showAllCategories(effectiveSourceId)}
           >
-            Bu kaynaktaki gizlileri geri getir
+            {text.showAllHidden}
           </Button>
           <span className="text-xs text-surface-500">
-            {hiddenCountForSource > 0
-              ? `${hiddenCountForSource} kategori gizli`
-              : 'Gizli kategori yok'}
+            {text.hiddenCount(hiddenCountForSource)}
           </span>
         </div>
       </div>

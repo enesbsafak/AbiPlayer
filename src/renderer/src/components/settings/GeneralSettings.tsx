@@ -10,7 +10,10 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Dropdown } from '@/components/ui/Dropdown'
 import { Input } from '@/components/ui/Input'
 import { toUserMessage } from '@/services/user-error'
+import { strings } from '@/strings'
 import { saveTmdbApiKey } from './tmdb-api-key'
+
+const text = strings.settings.general
 
 /**
  * Edits a local draft and commits on blur or Enter. Clamping on every
@@ -41,7 +44,7 @@ export function EpgRefreshIntervalInput() {
   return (
     <Input
       id="epg-refresh"
-      label="EPG Yenileme Aralığı (dakika)"
+      label={text.epgInterval}
       type="number"
       min={MIN_EPG_REFRESH_MINUTES}
       max={MAX_EPG_REFRESH_MINUTES}
@@ -75,12 +78,12 @@ export function TmdbApiKeyInput() {
 
   const commit = async () => {
     if (draft.trim() === tmdbApiKey) return
-    setStatus({ kind: 'saving', message: 'Kaydediliyor…' })
+    setStatus({ kind: 'saving', message: strings.common.saving })
     try {
       await saveTmdbApiKey(draft)
-      setStatus({ kind: 'saved', message: 'Anahtar güvenli depoya kaydedildi.' })
+      setStatus({ kind: 'saved', message: text.tmdbKeySaved })
     } catch (error) {
-      setStatus({ kind: 'error', message: `Anahtar kaydedilemedi: ${toUserMessage(error)}` })
+      setStatus({ kind: 'error', message: text.tmdbKeySaveFailed(toUserMessage(error)) })
     }
   }
 
@@ -88,7 +91,7 @@ export function TmdbApiKeyInput() {
     <>
       <Input
         id="tmdb-api-key"
-        label="TMDB API Anahtarı (opsiyonel)"
+        label={text.tmdbKey}
         type="password"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
@@ -99,11 +102,10 @@ export function TmdbApiKeyInput() {
             void commit()
           }
         }}
-        placeholder="TMDB v3 anahtarı veya v4 bearer token girin"
+        placeholder={text.tmdbKeyPlaceholder}
       />
       <p className="mt-1 text-xs text-surface-500">
-        Film ve dizi detayları ile bölüm adlarını zenginleştirmek için kullanılır. Kaynak şifreleriyle birlikte
-        şifreli olarak saklanır.
+        {text.tmdbKeyHint}
       </p>
       {status && (
         <p className={`mt-1 text-xs ${status.kind === 'error' ? 'text-red-400' : 'text-surface-400'}`} role={status.kind === 'error' ? 'alert' : 'status'}>
@@ -126,25 +128,25 @@ export function GeneralSettings() {
     <div className="flex flex-col gap-6">
       <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
         <p id="epg-time-format-label" className="mb-2 text-sm text-surface-400">
-          Saat Formatı
+          {text.timeFormat}
         </p>
         <Dropdown
           id="epg-time-format"
           labelledBy="epg-time-format-label"
           items={[
-            { id: '24h', label: '24 Saat' },
-            { id: '12h', label: '12 Saat' }
+            { id: '24h', label: text.timeFormat24 },
+            { id: '12h', label: text.timeFormat12 }
           ]}
           value={epgTimeFormat}
           onSelect={(id) => updateSettings({ epgTimeFormat: id as '12h' | '24h' })}
-          placeholder="Saat formatı"
+          placeholder={text.timeFormatPlaceholder}
         />
       </div>
 
       <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
         <EpgRefreshIntervalInput />
         <p className="mt-1 text-xs text-surface-500">
-          {MIN_EPG_REFRESH_MINUTES} ile {MAX_EPG_REFRESH_MINUTES} dakika arasında bir değer girin.
+          {text.epgIntervalHint(MIN_EPG_REFRESH_MINUTES, MAX_EPG_REFRESH_MINUTES)}
         </p>
       </div>
 
@@ -153,11 +155,9 @@ export function GeneralSettings() {
       </div>
 
       <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
-        <p className="text-sm font-medium text-surface-200">İzleme Geçmişi</p>
+        <p className="text-sm font-medium text-surface-200">{text.history}</p>
         <p className="mt-1 text-xs text-surface-500">
-          {watchProgressCount > 0
-            ? `${watchProgressCount} içerik için kaldığınız yer kayıtlı.`
-            : 'Kaldığınız yer kaydedilen bir içerik yok.'}
+          {text.historyCount(watchProgressCount)}
         </p>
         <Button
           variant="secondary"
@@ -165,25 +165,24 @@ export function GeneralSettings() {
           onClick={clearWatchProgress}
           disabled={watchProgressCount === 0}
         >
-          İzleme Geçmişini Temizle
+          {text.clearHistory}
         </Button>
       </div>
 
       <div className="rounded-lg border border-red-500/25 bg-surface-900 p-5">
-        <p className="text-sm font-medium text-surface-200">Tüm Ayarları Sıfırla</p>
+        <p className="text-sm font-medium text-surface-200">{text.resetAll}</p>
         <p className="mt-1 text-xs text-surface-500">
-          Ayarlar varsayılana döner. Kaynaklarınız, favorileriniz, gizlediğiniz kategoriler ve
-          TMDB anahtarınız etkilenmez.
+          {text.resetAllHint}
         </p>
         <Button variant="danger" className="mt-3" onClick={() => setConfirmingReset(true)}>
-          Tüm Ayarları Sıfırla
+          {text.resetAll}
         </Button>
       </div>
 
       <ConfirmDialog
         isOpen={confirmingReset}
-        title="Ayarlar sıfırlansın mı?"
-        confirmLabel="Sıfırla"
+        title={text.resetConfirmTitle}
+        confirmLabel={strings.common.reset}
         destructive
         onCancel={() => setConfirmingReset(false)}
         onConfirm={() => {
@@ -192,11 +191,10 @@ export function GeneralSettings() {
         }}
       >
         <p>
-          Oynatma, altyazı, EPG ve saat ayarları varsayılan değerlerine döner. Bu işlem geri
-          alınamaz.
+          {text.resetConfirmBody}
         </p>
         <p className="mt-2 text-surface-400">
-          TMDB anahtarınız, kaynaklarınız, favorileriniz ve gizlediğiniz kategoriler korunur.
+          {text.resetConfirmKept}
         </p>
       </ConfirmDialog>
     </div>

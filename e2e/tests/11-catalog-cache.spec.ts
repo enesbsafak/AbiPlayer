@@ -138,7 +138,7 @@ test.describe('katalog önbelleği', () => {
     await second.shot('offline-copy')
 
     await openRoute(page, '/vod')
-    await page.getByPlaceholder('Kanal ara...').fill('Kayıp Şehir')
+    await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Kayıp Şehir')
     await expect(cardButton(page, KNOWN.film)).toBeVisible()
   })
 

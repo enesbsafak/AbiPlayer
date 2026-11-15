@@ -6,7 +6,10 @@ import { Button } from '@/components/ui/Button'
 import { ClampText } from '@/components/ui'
 import { Spinner } from '@/components/ui/Spinner'
 import { ROVING_INDEX_ATTR, useRovingFocus } from '@/components/catalog/useRovingFocus'
-import { useCatalogCategories, useVisibleCatalogCategories, type CatalogCategory, type CatalogType } from '@/catalog'
+import { useCatalogCategories, useVisibleCatalogCategories, type CatalogType } from '@/catalog'
+import { strings } from '@/strings'
+
+const text = strings.catalog.categories
 
 interface CategoryListProps {
   type: CatalogType
@@ -53,7 +56,10 @@ export const CategoryList = memo(function CategoryList({
   const count = categories.length + 1
 
   // Stable between renders, or the virtualizer recomputes every row's position on each one.
-  const getItemKey = useCallback((index: number) => (index === 0 ? '__all__' : categories[index - 1].id), [categories])
+  const getItemKey = useCallback(
+    (index: number) => (index === 0 ? '__all__' : (categories[index - 1]?.id ?? index)),
+    [categories]
+  )
   const virtualizer = useVirtualizer({
     count,
     getScrollElement: () => scrollElement,
@@ -90,7 +96,8 @@ export const CategoryList = memo(function CategoryList({
         </button>
       )
     }
-    const category: CatalogCategory = categories[index - 1]
+    const category = categories[index - 1]
+    if (!category) return null
     const selected = category.id === selectedCategoryId
     return (
       <div
@@ -119,8 +126,8 @@ export const CategoryList = memo(function CategoryList({
           // Hidden until hover/focus so the sidebar stays calm, but reachable
           // by keyboard from the active row.
           className="mt-1.5 mr-2 shrink-0 rounded p-1 text-surface-500 opacity-0 transition-opacity hover:bg-surface-800 hover:text-surface-200 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-hover:opacity-100"
-          aria-label={`${category.name} kategorisini gizle`}
-          title="Bu kategoriyi gizle"
+          aria-label={text.hide(category.name)}
+          title={text.hideTitle}
         >
           <EyeOff size={14} />
         </button>
@@ -134,7 +141,7 @@ export const CategoryList = memo(function CategoryList({
         <div
           ref={listRef}
           role="group"
-          aria-label="Kategoriler"
+          aria-label={text.label}
           className="relative w-full outline-none"
           style={{ height: `${virtualizer.getTotalSize()}px` }}
           {...roving.containerProps}
@@ -155,26 +162,26 @@ export const CategoryList = memo(function CategoryList({
         {loading && categories.length === 0 && (
           <div className="flex items-center gap-2 px-3 py-2 text-xs text-surface-400">
             <Spinner size={14} />
-            <span>Kategoriler yükleniyor...</span>
+            <span>{text.loading}</span>
           </div>
         )}
         {error && (
           <div role="alert" className="mt-2 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-xs leading-5 text-red-200">
             <p className="flex items-start gap-1.5 font-medium">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-              Kategoriler yüklenemedi
+              {text.loadFailed}
             </p>
             <p className="mt-0.5 text-red-200/80">{error}</p>
             {onRetry && (
               <Button size="sm" variant="secondary" className="mt-2" onClick={onRetry}>
-                Tekrar Dene
+                {strings.common.retry}
               </Button>
             )}
           </div>
         )}
         {hiddenCount > 0 && (
           <p className="mt-2 px-3 text-xs leading-5 text-surface-500">
-            {hiddenCount} kategori gizli. Ayarlar → Katalog bölümünden geri getirebilirsiniz.
+            {text.hiddenHint(hiddenCount)}
           </p>
         )}
       </div>

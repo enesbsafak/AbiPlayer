@@ -2,6 +2,9 @@ import { History, Play, X } from 'lucide-react'
 import { LazyImage } from '@/components/ui/LazyImage'
 import { ClampText } from '@/components/ui'
 import type { ContinueWatchingItem } from '@/services/watch-progress'
+import { strings } from '@/strings'
+
+const text = strings.catalog.home
 
 interface ContinueWatchingSectionProps {
   entries: ContinueWatchingItem[]
@@ -10,13 +13,7 @@ interface ContinueWatchingSectionProps {
 }
 
 function formatRemaining(seconds: number): string {
-  const minutes = Math.max(0, Math.round(seconds / 60))
-  if (minutes < 1) return 'Az kaldı'
-  if (minutes < 60) return `${minutes} dk kaldı`
-
-  const hours = Math.floor(minutes / 60)
-  const rest = minutes % 60
-  return rest === 0 ? `${hours} sa kaldı` : `${hours} sa ${rest} dk kaldı`
+  return text.remaining(Math.max(0, Math.round(seconds / 60)))
 }
 
 /**
@@ -35,7 +32,7 @@ export function ContinueWatchingSection({
     <section>
       <div className="mb-4 flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
-          <History size={20} className="text-accent" /> Devam Et
+          <History size={20} className="text-accent" /> {text.continueWatching}
         </h2>
       </div>
 
@@ -54,7 +51,7 @@ export function ContinueWatchingSection({
                 type="button"
                 onClick={() => onPlay(item)}
                 className="flex w-full flex-col text-left"
-                aria-label={`${entry.channel.name} — kaldığın yerden devam et`}
+                aria-label={text.resume(entry.channel.name)}
               >
                 <div className="relative aspect-[2/3] bg-surface-800">
                   <LazyImage src={artwork} alt={entry.channel.name} className="h-full w-full" />
@@ -88,8 +85,8 @@ export function ContinueWatchingSection({
               <button
                 type="button"
                 onClick={() => onRemove(entry.key)}
-                aria-label={`${entry.channel.name} içeriğini listeden kaldır`}
-                title="Listeden kaldır"
+                aria-label={text.removeFromList(entry.channel.name)}
+                title={text.removeFromListTitle}
                 className="absolute right-2 top-2 rounded bg-surface-950/80 p-1 text-surface-400 opacity-0 transition-opacity hover:text-surface-50 focus-visible:opacity-100 group-hover:opacity-100"
               >
                 <X size={12} />

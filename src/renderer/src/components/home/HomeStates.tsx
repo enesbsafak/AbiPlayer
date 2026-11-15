@@ -4,6 +4,9 @@ import { Button } from '@/components/ui/Button'
 import { APP_NAME, APP_VERSION_LABEL } from '@/constants/app-info'
 import { BOOTSTRAP_STAGES, type BootstrapStage } from '@/hooks/useHomeBootstrap'
 import { toUserMessage } from '@/services/user-error'
+import { strings } from '@/strings'
+
+const text = strings.catalog.home
 
 function Panel({ children }: { children: React.ReactNode }) {
   return (
@@ -25,15 +28,15 @@ export function HomeWelcome() {
         <div className="flex size-20 items-center justify-center border border-accent/40 bg-accent/15">
           <Tv size={40} className="text-accent" />
         </div>
-        <h1 className="text-2xl font-bold text-white">{APP_NAME}&apos;a Hoş Geldin</h1>
+        <h1 className="text-2xl font-bold text-white">{text.welcome(APP_NAME)}</h1>
         <p className="rounded-md border border-surface-700 bg-surface-900 px-2.5 py-1 text-xs font-medium text-surface-400">
-          {APP_VERSION_LABEL} sürümü test aşamasındadır.
+          {text.betaNotice(APP_VERSION_LABEL)}
         </p>
         <p className="max-w-md text-surface-300">
-          İzlemeye başlamak için Xtream Codes sunucusuna bağlan veya bir M3U listesi içe aktar.
+          {text.welcomeHint}
         </p>
-        <Button size="lg" onClick={() => navigate('/settings')}>
-          <Plus size={20} /> Kaynak Ekle
+        <Button size="lg" onClick={() => void navigate('/settings')}>
+          <Plus size={20} /> {strings.common.addSource}
         </Button>
       </div>
     </Panel>
@@ -49,7 +52,7 @@ interface HomeLoadingProps {
 
 export function HomeLoading({ isConnectingSources, stage, onRetry }: HomeLoadingProps) {
   const { message, progress } = BOOTSTRAP_STAGES[stage]
-  const label = isConnectingSources ? 'Kaynaklar bağlanıyor...' : message
+  const label = isConnectingSources ? text.connectingSources : message
   const value = isConnectingSources ? 0.15 : progress
 
   return (
@@ -70,11 +73,11 @@ export function HomeLoading({ isConnectingSources, stage, onRetry }: HomeLoading
         />
       </div>
       <p className="text-xs text-surface-500">
-        {isConnectingSources ? 'Sunucu yanıtı bekleniyor' : 'Kategoriler ve ön izleme yükleniyor'}
+        {isConnectingSources ? text.waitingForServer : text.loadingPreview}
       </p>
       <Button variant="ghost" size="sm" onClick={onRetry}>
         <RefreshCw size={14} />
-        Çok uzun sürüyor, yeniden dene
+        {text.tooSlowRetry}
       </Button>
     </Panel>
   )
@@ -92,16 +95,16 @@ export function HomeError({ message, onRetry, detail }: HomeErrorProps) {
 
   return (
     <Panel>
-      <p className="text-sm font-medium text-white">Kaynağa bağlanılamadı</p>
-      <p className="max-w-xl text-sm text-red-300">{toUserMessage(message, 'Bağlantı kurulamadı.')}</p>
+      <p className="text-sm font-medium text-white">{text.connectFailed}</p>
+      <p className="max-w-xl text-sm text-red-300">{toUserMessage(message, text.connectFailedFallback)}</p>
       {detail && <p className="text-xs text-surface-400">{detail}</p>}
       <div className="flex items-center gap-2">
         <Button onClick={onRetry}>
           <RefreshCw size={16} />
-          Yeniden Dene
+          {strings.common.retry}
         </Button>
-        <Button variant="secondary" onClick={() => navigate('/settings')}>
-          Kaynak Ayarları
+        <Button variant="secondary" onClick={() => void navigate('/settings')}>
+          {strings.common.sourceSettings}
         </Button>
       </div>
     </Panel>
@@ -131,11 +134,11 @@ export function HomeNotice({ message, tone = 'error', onRetry, onDismiss }: Home
         {onRetry && (
           <Button variant="ghost" size="sm" onClick={onRetry}>
             <RefreshCw size={14} />
-            Tekrar dene
+            {strings.common.retry}
           </Button>
         )}
         {onDismiss && (
-          <Button variant="ghost" size="sm" onClick={onDismiss} aria-label="Bildirimi kapat">
+          <Button variant="ghost" size="sm" onClick={onDismiss} aria-label={strings.common.dismissNotice}>
             <X size={14} />
           </Button>
         )}

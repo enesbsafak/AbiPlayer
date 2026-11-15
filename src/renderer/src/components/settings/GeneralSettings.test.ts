@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, renderHook, screen } from '@testing-library
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { useStore } from '@/store'
 import { DEFAULT_SETTINGS } from '@/types/settings'
+import { strings } from '@/strings'
 import { EpgRefreshIntervalInput, GeneralSettings } from './GeneralSettings'
 import { useLanguageCodes } from './language-options'
 
@@ -21,7 +22,7 @@ afterEach(() => {
 })
 
 function intervalInput(): HTMLInputElement {
-  return screen.getByLabelText('EPG Yenileme Aralığı (dakika)') as HTMLInputElement
+  return screen.getByLabelText(strings.settings.general.epgInterval) as HTMLInputElement
 }
 
 describe('EPG refresh interval', () => {

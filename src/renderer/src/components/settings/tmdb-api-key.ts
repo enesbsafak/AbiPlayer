@@ -1,6 +1,7 @@
 import { useStore } from '@/store'
 import { secureCredentialService } from '@/services/secure-credentials'
 import { isValidTmdbApiKey } from '../../../../shared/secure-credentials'
+import { strings } from '@/strings'
 
 /**
  * Saves the TMDB key the user typed: in the secure credential store, never
@@ -13,7 +14,7 @@ export async function saveTmdbApiKey(
 ): Promise<string> {
   const apiKey = raw.trim()
   if (apiKey && !isValidTmdbApiKey(apiKey)) {
-    throw new Error('Geçersiz TMDB anahtarı: boşluk ya da özel karakter içermemeli.')
+    throw new Error(strings.settings.general.tmdbKeyInvalid)
   }
   await store(apiKey)
   const state = useStore.getState()

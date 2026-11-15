@@ -2,6 +2,9 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { SlidersHorizontal } from 'lucide-react'
 import { useStore } from '@/store'
 import { AUTO_VIDEO_QUALITY_ID } from '@/services/quality'
+import { strings } from '@/strings'
+
+const text = strings.player.quality
 
 export function QualitySelector() {
   const videoQualityOptions = useStore((s) => s.videoQualityOptions)
@@ -28,8 +31,8 @@ export function QualitySelector() {
 
   const buttonLabel =
     currentVideoQuality === AUTO_VIDEO_QUALITY_ID && activeOption
-      ? `Oto ${activeOption.shortLabel}`
-      : selectedOption?.shortLabel || 'Kalite'
+      ? text.auto(activeOption.shortLabel)
+      : selectedOption?.shortLabel || text.fallback
 
   return (
     <div ref={ref} className="relative">
@@ -37,8 +40,8 @@ export function QualitySelector() {
         type="button"
         onClick={() => setOpen((value) => !value)}
         className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm hover:bg-white/10 transition-colors duration-normal"
-        title="Görüntü kalitesi"
-        aria-label="Görüntü kalitesi seç"
+        title={text.title}
+        aria-label={text.label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -52,9 +55,9 @@ export function QualitySelector() {
           // Capped + scrollable: this opens upward and HLS ladders can carry
           // more renditions than fit above the control bar.
           className="absolute bottom-full right-0 mb-2 max-h-[calc(100vh-5rem)] w-56 list-none overflow-y-auto rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-lg"
-          aria-label="Görüntü Kalitesi"
+          aria-label={text.heading}
         >
-          <li className="px-3 py-1.5 text-xs font-medium text-surface-500">Görüntü Kalitesi</li>
+          <li className="px-3 py-1.5 text-xs font-medium text-surface-500">{text.heading}</li>
           {videoQualityOptions.map((option) => {
             const isSelected = option.id === currentVideoQuality
             const isAutoActive = option.id === AUTO_VIDEO_QUALITY_ID && !!activeOption
