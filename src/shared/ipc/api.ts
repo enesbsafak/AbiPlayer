@@ -44,6 +44,7 @@ export const INVOKE_METHODS = {
   mpvSetSubtitleStyle: 'mpv-set-subtitle-style',
   mpvSetPlaybackTuning: 'mpv-set-playback-tuning',
   mpvSetVideoMargin: 'mpv-set-video-margin',
+  mpvSetVideoRect: 'mpv-set-video-rect',
   mpvGetState: 'mpv-get-state',
   mpvSubscribe: 'mpv-subscribe',
   mpvUnsubscribe: 'mpv-unsubscribe',

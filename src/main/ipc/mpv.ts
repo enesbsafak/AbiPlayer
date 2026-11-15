@@ -6,6 +6,7 @@ import { maskCredentials } from '../../shared/mask-credentials'
 import { sendEvent, type EventTarget } from './events'
 import type { IpcRegistrar } from './register'
 import { isValidFilePathArgument, type PickedFileRegistry } from './files'
+import { isValidVideoRect, videoMarginRatiosForRect } from '../mpv/video-rect'
 import {
   clampNormalizedVolume,
   isValidMpvSubtitleStyle,
@@ -38,6 +39,7 @@ export type MpvControllerApi = Pick<
   | 'setPlaybackTuning'
   | 'setSubtitleStyle'
   | 'setVideoMarginRatio'
+  | 'setVideoRect'
   | 'getState'
   | 'subscribe'
 >
@@ -297,6 +299,20 @@ export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDep
     const windowWidth = deps.getWindow(event.sender)?.getContentBounds().width ?? 0
     const ratio = windowWidth > 0 ? Math.max(0, pixels) / windowWidth : 0
     await controller.setVideoMarginRatio(ratio)
+  })
+
+  // The experimental corner player: the picture goes into a rectangle of the
+  // window, given in CSS pixels and turned into mpv's ratios against the
+  // window that hosts the video.
+  registrar.handle('mpv-set-video-rect', async (event, rect) => {
+    if (rect === null) {
+      await controller.setVideoRect(null)
+      return
+    }
+    if (!isValidVideoRect(rect)) throw new Error('Geçersiz görüntü alanı')
+    const bounds = deps.getWindow(event.sender)?.getContentBounds()
+    const margins = bounds ? videoMarginRatiosForRect(rect, bounds) : null
+    await controller.setVideoRect(margins)
   })
 
   // mpv pushes every property this snapshot exposes via `observe_property`,

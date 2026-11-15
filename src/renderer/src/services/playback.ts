@@ -81,6 +81,78 @@ export function resolveStreamUrl(target: PlaybackTarget, context: StreamUrlConte
   }
 }
 
+// ---------------------------------------------------------------------------
+// Live format (plan F2-04): which of the account's live formats an engine gets.
+
+/** The "Canlı yayın biçimi" setting. */
+export type LiveFormatSetting = 'auto' | XtreamLiveFormat
+
+export type PlaybackEngineKind = 'mpv' | 'html5'
+
+/**
+ * What "Otomatik" means for mpv. Measured on the synthetic provider
+ * (docs/olcumler/2026-11-15-oynatma-acilisi.md): MPEG-TS gave mpv no faster
+ * start than HLS, so automatic keeps HLS.
+ */
+export const AUTO_MPV_LIVE_FORMAT: XtreamLiveFormat = 'm3u8'
+
+/**
+ * The live format to request for an Xtream live channel. The HTML5 engine
+ * plays live only through hls.js, so it always asks for HLS; mpv follows the
+ * setting. A format the account does not allow is never chosen.
+ */
+export function decideLiveFormat(
+  engine: PlaybackEngineKind,
+  setting: LiveFormatSetting,
+  allowed: readonly XtreamLiveFormat[]
+): XtreamLiveFormat {
+  if (engine === 'html5') return pickLiveFormat(allowed, 'm3u8')
+  return pickLiveFormat(allowed, setting === 'auto' ? AUTO_MPV_LIVE_FORMAT : setting)
+}
+
+/**
+ * The format to try once when a channel did not open in `failed`, or null.
+ * Only an explicit choice falls back: "Otomatik" keeps today's behaviour
+ * (HLS, and the reconnect policy when it fails), and the HTML5 engine has no
+ * other format to go to.
+ */
+export function liveFormatFallback(
+  engine: PlaybackEngineKind,
+  setting: LiveFormatSetting,
+  allowed: readonly XtreamLiveFormat[],
+  failed: XtreamLiveFormat
+): XtreamLiveFormat | null {
+  if (engine !== 'mpv' || setting === 'auto') return null
+  const other: XtreamLiveFormat = failed === 'ts' ? 'm3u8' : 'ts'
+  return allowed.includes(other) ? other : null
+}
+
+export function liveFormatLabel(format: XtreamLiveFormat): string {
+  return format === 'ts' ? 'MPEG-TS' : 'HLS'
+}
+
+/**
+ * The URL an engine plays for a playback. Only an Xtream live channel depends
+ * on the engine (its format); everything else plays the URL resolved when the
+ * playback started. `format` is null for those.
+ */
+export function resolveEngineStreamUrl(
+  playback: { target: PlaybackTarget; streamUrl: string },
+  engine: PlaybackEngineKind,
+  setting: LiveFormatSetting,
+  state: PlaybackSourceState,
+  formatOverride?: XtreamLiveFormat
+): { url: string; format: XtreamLiveFormat | null; allowed: readonly XtreamLiveFormat[] } {
+  const { target } = playback
+  const credentials = target.kind === 'live' ? (state.getXtreamCredentials?.(target.sourceId) ?? null) : null
+  if (target.kind !== 'live' || !credentials) return { url: playback.streamUrl, format: null, allowed: [] }
+  const allowed = getAllowedLiveFormats(state.xtreamAuth?.[target.sourceId])
+  const format =
+    formatOverride && allowed.includes(formatOverride) ? formatOverride : decideLiveFormat(engine, setting, allowed)
+  const url = resolveStreamUrl(target, { credentials, liveFormat: { allowed, preferred: format } })
+  return url ? { url, format, allowed } : { url: playback.streamUrl, format: null, allowed: [] }
+}
+
 /** The parts of the store a URL is resolved from. Optional so slices can be tested alone. */
 export interface PlaybackSourceState {
   getXtreamCredentials?: (sourceId: string) => XtreamCredentials | null

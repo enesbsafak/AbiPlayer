@@ -15,6 +15,7 @@ import {
   type FileFilter,
   type MediaJobOptions,
   type MpvOpenRequest,
+  type MpvVideoRect,
   type PickedFile,
   type WindowStateInfo
 } from '../../../shared/ipc/contract'
@@ -26,6 +27,7 @@ export type {
   FileFilter,
   MediaJobOptions,
   MpvOpenRequest,
+  MpvVideoRect,
   MpvPlaybackTuning,
   MpvStateSnapshot,
   MpvSubtitleStyle,
@@ -168,6 +170,11 @@ export async function mpvAddSubtitleFile(filePath: string): Promise<number | nul
 export async function mpvSetVideoMargin(right: number): Promise<void> {
   if (!isElectron() || !window.electron?.mpvSetVideoMargin) return
   await window.electron.mpvSetVideoMargin(right)
+}
+
+export async function mpvSetVideoRect(rect: MpvVideoRect | null): Promise<void> {
+  if (!isElectron() || !window.electron?.mpvSetVideoRect) return
+  await window.electron.mpvSetVideoRect(rect)
 }
 
 export async function mpvSetFullscreen(fullscreen: boolean): Promise<void> {

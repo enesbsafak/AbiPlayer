@@ -177,6 +177,12 @@ export interface PlayerSlice {
    * card shows the item as paused and expanding it starts it again.
    */
   isPlaybackSuspended: boolean
+  /**
+   * Experimental (setting `keepPlayingInCorner`, mpv only): the player route
+   * was left and mpv keeps playing the current playback in a corner of the
+   * window. Never true together with `isPlaybackSuspended`.
+   */
+  isCornerPlayback: boolean
   /** The viewer picked the subtitle track (or "off") for the current stream. */
   isSubtitleTrackUserChoice: boolean
   /** Short, non-fatal message shown over the player (e.g. incomplete subtitles). */
@@ -197,6 +203,14 @@ export interface PlayerSlice {
   reloadPlayback: () => void
   suspendPlayback: () => void
   resumeSuspendedPlayback: () => void
+  /**
+   * The player route is being left: suspend the playback, or, with the
+   * experimental corner setting on and mpv as the engine, keep it playing in
+   * the corner.
+   */
+  leavePlayerRoute: () => void
+  /** The player route is shown again: a corner playback goes back to full size, unchanged. */
+  returnFromCornerPlayback: () => void
   /** Engine report: the stream of `playbackId` is open far enough to seek. */
   markPlaybackLoaded: (playbackId: PlaybackId) => void
   /** The resume seek for `playbackId` was sent to the engine. */
@@ -234,7 +248,20 @@ export interface PlayerSlice {
   applyPlayerPatch: (patch: PlayerPatch) => void
 }
 
-type PlayerSliceState = PlayerSlice & PlaybackSourceState
+type PlayerSliceState = PlayerSlice &
+  PlaybackSourceState & { settings?: { keepPlayingInCorner?: boolean } }
+
+/** Whether leaving the player route keeps the playback running in the corner. */
+export function shouldKeepPlayingInCorner(
+  state: Pick<PlayerSliceState, 'settings' | 'playbackEngine' | 'currentPlayback' | 'isPlaybackSuspended'>
+): boolean {
+  return (
+    state.settings?.keepPlayingInCorner === true &&
+    state.playbackEngine === 'mpv' &&
+    state.currentPlayback !== null &&
+    !state.isPlaybackSuspended
+  )
+}
 
 function failedStart(): Partial<PlayerSlice> {
   return {
@@ -282,11 +309,26 @@ function startState(state: PlayerSliceState, request: PlaybackRequest): Partial<
     isPlaying: true,
     isPaused: false,
     isPlaybackSuspended: false,
+    isCornerPlayback: false,
     // Live has no position to return to; everything else may.
     pendingResume: armResume(playback),
     // A lip-sync offset that fixed the previous broadcast is wrong for this
     // one, so corrections never carry across a channel change.
     playbackTuning: DEFAULT_PLAYBACK_TUNING
+  }
+}
+
+function suspendState(state: PlayerSliceState): Partial<PlayerSlice> {
+  if (!state.currentChannel || !state.currentPlayback || state.isPlaybackSuspended) return state
+  return {
+    ...EMPTY_STREAM_STATE,
+    isPlaying: false,
+    isPaused: true,
+    isPlaybackSuspended: true,
+    isCornerPlayback: false,
+    // Coming back starts the stream again, so a film or episode has to be
+    // put back where it was. Live simply restarts.
+    pendingResume: armResume(state.currentPlayback)
   }
 }
 
@@ -320,6 +362,7 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
   pendingResume: null,
   playbackReloadToken: 0,
   isPlaybackSuspended: false,
+  isCornerPlayback: false,
   isSubtitleTrackUserChoice: false,
   playerNotice: null,
   showControls: true,
@@ -364,6 +407,7 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
       playbackTuning: DEFAULT_PLAYBACK_TUNING,
       pendingResume: null,
       isPlaybackSuspended: false,
+      isCornerPlayback: false,
       isPlayerSidebarOpen: false
     }),
 
@@ -391,19 +435,17 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
       }
     }),
 
-  suspendPlayback: () =>
+  suspendPlayback: () => set(suspendState),
+
+  leavePlayerRoute: () =>
     set((state) => {
-      if (!state.currentChannel || !state.currentPlayback || state.isPlaybackSuspended) return state
-      return {
-        ...EMPTY_STREAM_STATE,
-        isPlaying: false,
-        isPaused: true,
-        isPlaybackSuspended: true,
-        // Coming back starts the stream again, so a film or episode has to be
-        // put back where it was. Live simply restarts.
-        pendingResume: armResume(state.currentPlayback)
-      }
+      if (!shouldKeepPlayingInCorner(state)) return suspendState(state)
+      // Same playback, still playing: nothing is reloaded and nothing is armed.
+      return state.isCornerPlayback ? state : { isCornerPlayback: true, isPlayerSidebarOpen: false }
     }),
+
+  returnFromCornerPlayback: () =>
+    set((state) => (state.isCornerPlayback ? { isCornerPlayback: false } : state)),
 
   // Expanding the mini card loads the stream again: a new playback of the same
   // item, and the armed resume moves over to it.

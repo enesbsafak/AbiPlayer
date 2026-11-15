@@ -14,6 +14,12 @@ export interface UserSettings {
   // Off by default: it only helps when an AV receiver is decoding, and mpv
   // needs an active stream before it can tell whether the device accepts it.
   audioPassthrough: boolean
+  // Format of Xtream live channels with mpv: 'auto' (HLS when the account
+  // allows it), 'm3u8' (HLS) or 'ts' (MPEG-TS). The HTML5 engine always gets HLS.
+  liveStreamFormat: 'auto' | 'm3u8' | 'ts'
+  // Experimental (plan F2-15): mpv keeps playing in a corner of the window
+  // while the user browses, instead of the "paused, continue" card.
+  keepPlayingInCorner: boolean
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -29,5 +35,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   tmdbApiKey: '',
   epgTimeFormat: '24h',
   hardwareAcceleration: true,
-  audioPassthrough: false
+  audioPassthrough: false,
+  liveStreamFormat: 'auto',
+  keepPlayingInCorner: false
 }

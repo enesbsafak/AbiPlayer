@@ -16,9 +16,22 @@ import {
   windowGetState,
   type MpvStateSnapshot
 } from '@/services/platform'
+import { perfMark, perfMpvOpen, perfMpvSnapshot } from '@/services/perf'
 import { AUTO_VIDEO_QUALITY_ID, getMpvVideoTrackId } from '@/services/quality'
+import {
+  liveFormatFallback,
+  resolveEngineStreamUrl,
+  type LiveFormatSetting
+} from '@/services/playback'
 import { useStore } from '@/store'
-import { isLiveTarget } from '../../../shared/playback'
+import type { XtreamLiveFormat } from '@/types/xtream'
+import { isLiveTarget, type PlaybackId } from '../../../shared/playback'
+import {
+  initialLiveFormatState,
+  liveFormatFallbackNotice,
+  stepLiveFormat,
+  type LiveFormatState
+} from '@/player/live-format-fallback'
 import {
   MPV_STARTUP_OVERLAY_TIMEOUT_MS,
   isNewerSnapshot,
@@ -66,12 +79,57 @@ const EMPTY_PLAYBACK_PATCH = {
 }
 
 /**
+ * The playback this window last had mpv open, while mpv still has it. A hook
+ * mounting for that same playback (the player route and the experimental
+ * corner player hand it to each other) adopts it instead of loading it again.
+ * One mpv per window, so one value per renderer.
+ */
+let heldPlaybackId: PlaybackId | null = null
+
+/** The URL mpv plays for a playback and where its live format stands (F2-04). */
+interface MpvStream {
+  playbackId: PlaybackId
+  url: string
+  setting: LiveFormatSetting
+  allowed: readonly XtreamLiveFormat[]
+  liveFormat: LiveFormatState
+}
+
+/** Shared by the hosts for the same reason as `heldPlaybackId`. */
+let currentStream: MpvStream | null = null
+
+export function isMpvHoldingPlayback(playbackId: PlaybackId): boolean {
+  return heldPlaybackId === playbackId
+}
+
+/** For tests: forget what mpv holds. */
+export function resetMpvHeldPlayback(): void {
+  heldPlaybackId = null
+  currentStream = null
+}
+
+function stopMpv(): void {
+  heldPlaybackId = null
+  void mpvStop().catch(() => undefined)
+}
+
+export interface MpvPlayerOptions {
+  /**
+   * Asked when the hook unmounts: true leaves mpv playing for the next host
+   * (the corner player). Without it unmounting stops mpv, as before.
+   */
+  keepPlayingOnUnmount?: () => boolean
+}
+
+/**
  * The mpv engine. Main pushes mpv's snapshots; this hook applies the ones
  * stamped with the current playback id (newest first, by `seq`) to the store,
  * opens each new playback, and runs the shared reconnect policy for live
  * streams. Returns whether the startup overlay should show.
  */
-export function useMpvPlayer(enabled: boolean) {
+export function useMpvPlayer(enabled: boolean, options: MpvPlayerOptions = {}) {
+  const keepPlayingOnUnmountRef = useRef(options.keepPlayingOnUnmount)
+  keepPlayingOnUnmountRef.current = options.keepPlayingOnUnmount
   const preferencesRef = useRef<TrackPreferenceState>(FRESH_TRACK_PREFERENCES)
   const lastSeqRef = useRef<number | null>(null)
   /** Newest applied snapshot of the current playback. */
@@ -109,17 +167,23 @@ export function useMpvPlayer(enabled: boolean) {
     preferencesRef.current = FRESH_TRACK_PREFERENCES
   }, [enabled, mediaKey])
 
-  // Full mpv teardown when disabled or on unmount.
+  // Full mpv teardown when disabled or on unmount. mpv keeps a playback it
+  // holds for the host taking it over: on unmount when the host says so, and
+  // while disabled (the player route mounts disabled until the engine is
+  // known) when mpv holds the very playback that is current.
   useEffect(() => {
-    const teardown = () => {
+    const teardown = (unmounting: boolean) => {
       startupStartedAtRef.current = null
       startupVisibleRef.current = false
       reconnectRef.current?.dispose()
       reconnectRef.current = null
-      void mpvStop().catch(() => undefined)
+      if (unmounting && keepPlayingOnUnmountRef.current?.()) return
+      const currentId = useStore.getState().currentPlayback?.playbackId ?? null
+      if (!unmounting && currentId !== null && heldPlaybackId === currentId) return
+      stopMpv()
     }
-    if (enabled) return teardown
-    teardown()
+    if (enabled) return () => teardown(true)
+    teardown(false)
   }, [enabled])
 
   // Declared ahead of the playback effect on purpose: effects run in
@@ -149,7 +213,27 @@ export function useMpvPlayer(enabled: boolean) {
       const store = useStore.getState()
       const playback = store.currentPlayback
       if (!playback || !isSnapshotForPlayback(snapshot, playback.playbackId)) return
+
+      // A live channel that did not open in an explicitly chosen format gets
+      // one try in the other one (F2-04); the failed load is not reported.
+      const stream = currentStream
+      if (stream && stream.playbackId === playback.playbackId) {
+        const failed = stream.liveFormat.format
+        const alternative = failed ? liveFormatFallback('mpv', stream.setting, stream.allowed, failed) : null
+        const step = stepLiveFormat(stream.liveFormat, snapshot, alternative)
+        currentStream = { ...stream, liveFormat: step.state }
+        if (step.fallbackTo && failed) {
+          const next = resolveEngineStreamUrl(playback, 'mpv', stream.setting, store, step.fallbackTo)
+          currentStream = { ...currentStream, url: next.url }
+          applyPlayerPatch({ playerNotice: liveFormatFallbackNotice(failed, step.fallbackTo) })
+          perfMpvOpen(next.url)
+          void mpvOpen(next.url, { playbackId: playback.playbackId }).catch(() => undefined)
+        }
+        if (step.ignore) return
+      }
+
       currentSnapshotRef.current = snapshot
+      perfMpvSnapshot(snapshot)
 
       if (startupVisibleRef.current && !shouldKeepStartupOverlay(snapshot, startupStartedAtRef.current)) {
         updateStartupVisibility(false)
@@ -220,11 +304,33 @@ export function useMpvPlayer(enabled: boolean) {
 
     if (!playback) {
       startupStartedAtRef.current = null
+      currentStream = null
       updateStartupVisibility(false)
-      void mpvStop().catch(() => undefined)
+      stopMpv()
       applyPlayerPatch(EMPTY_PLAYBACK_PATCH)
       return
     }
+
+    // mpv already plays this very playback: another host had it (the corner
+    // player and the player route hand it to each other). Nothing is loaded
+    // again and the startup overlay stays off.
+    const adopted = heldPlaybackId === playback.playbackId
+    let stream = currentStream
+    if (!adopted || stream?.playbackId !== playback.playbackId) {
+      // The live format is decided here, at the edge, for mpv (F2-04).
+      const state = useStore.getState()
+      const setting = state.settings.liveStreamFormat
+      const resolved = resolveEngineStreamUrl(playback, 'mpv', setting, state)
+      stream = {
+        playbackId: playback.playbackId,
+        url: resolved.url,
+        setting,
+        allowed: resolved.allowed,
+        liveFormat: initialLiveFormatState(resolved.format)
+      }
+      currentStream = stream
+    }
+    const openUrl = stream.url
 
     // A reconnect reopens the same playback (same id, mpv keeps its tuning)
     // and is dropped if another one has started by the time it fires.
@@ -234,9 +340,17 @@ export function useMpvPlayer(enabled: boolean) {
       },
       reconnect: () => {
         if (cancelled) return
-        void mpvOpen(playback.streamUrl, { playbackId: playback.playbackId }).catch(() => undefined)
+        // After a format fallback the stream URL is the other format's.
+        const url = currentStream?.playbackId === playback.playbackId ? currentStream.url : openUrl
+        void mpvOpen(url, { playbackId: playback.playbackId }).catch(() => undefined)
       }
     })
+
+    if (adopted) {
+      return () => {
+        cancelled = true
+      }
+    }
 
     // Only the first launch shows the startup overlay, not a channel switch.
     const isFirstLaunch = startupStartedAtRef.current === null
@@ -246,11 +360,15 @@ export function useMpvPlayer(enabled: boolean) {
 
     const open = async () => {
       try {
-        await mpvOpen(playback.streamUrl, {
+        heldPlaybackId = playback.playbackId
+        perfMpvOpen(openUrl)
+        await mpvOpen(openUrl, {
           playbackId: playback.playbackId,
           tuning: useStore.getState().playbackTuning
         })
+        perfMark('mpv:open-resolved')
       } catch (error) {
+        if (heldPlaybackId === playback.playbackId) heldPlaybackId = null
         if (cancelled) return
         startupStartedAtRef.current = null
         updateStartupVisibility(false)

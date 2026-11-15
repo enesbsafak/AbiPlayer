@@ -29,6 +29,7 @@ export function clampEpgRefreshInterval(value: number): number {
 }
 
 const EPG_TIME_FORMATS: ReadonlyArray<UserSettings['epgTimeFormat']> = ['12h', '24h']
+const LIVE_STREAM_FORMATS: ReadonlyArray<UserSettings['liveStreamFormat']> = ['auto', 'm3u8', 'ts']
 const SETTINGS_KEYS = Object.keys(DEFAULT_SETTINGS) as Array<keyof UserSettings>
 
 /**
@@ -44,6 +45,12 @@ function pickKnownSettings(input: Record<string, unknown>): Partial<UserSettings
     if (typeof value !== typeof DEFAULT_SETTINGS[key]) continue
     if (typeof value === 'number' && !Number.isFinite(value)) continue
     if (key === 'epgTimeFormat' && !EPG_TIME_FORMATS.includes(value as UserSettings['epgTimeFormat'])) {
+      continue
+    }
+    if (
+      key === 'liveStreamFormat' &&
+      !LIVE_STREAM_FORMATS.includes(value as UserSettings['liveStreamFormat'])
+    ) {
       continue
     }
     picked[key] = value
