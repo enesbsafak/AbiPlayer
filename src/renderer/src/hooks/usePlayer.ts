@@ -67,6 +67,7 @@ export function usePlayer(
 ) {
   const disabled = options?.disabled ?? false
   const hlsRef = useRef<Hls | null>(null)
+  const engineRef = useRef<HlsEngine | null>(null)
   const directReadRetriesRef = useRef(0)
   const preferencesRef = useRef<TrackPreferenceState>(FRESH_TRACK_PREFERENCES)
 
@@ -120,6 +121,7 @@ export function usePlayer(
 
     hlsRef.current?.destroy()
     hlsRef.current = null
+    engineRef.current = null
 
     const tracks = createHtml5TrackSync({
       video,
@@ -145,6 +147,9 @@ export function usePlayer(
     }
     video.addEventListener('loadeddata', onMediaTracksMaybeReady, { signal: listenerAbort.signal })
     video.addEventListener('canplay', onMediaTracksMaybeReady, { signal: listenerAbort.signal })
+    // Every load of this playback: the first, the direct-read retry and the
+    // live reconnect of a plain source all start on the default audio.
+    video.addEventListener('loadedmetadata', () => tracks.reassertAudioSelection(), { signal: listenerAbort.signal })
 
     const resetQualities = () =>
       applyPlayerPatch({ videoQualityOptions: [], currentVideoQuality: null, activeVideoQuality: null })
@@ -167,6 +172,7 @@ export function usePlayer(
             manifestParsed: (hls) => {
               tracks.refreshVideoQualities(hls)
               tracks.refreshAudioTracks(hls)
+              tracks.reassertAudioSelection(hls)
               tracks.refreshSubtitleTracks(hls)
               attachCueListeners(video, setActiveSubtitleCues)
               tracks.syncHlsSubtitleSelection()
@@ -201,6 +207,7 @@ export function usePlayer(
               return
             }
             engine = started
+            engineRef.current = started
             hlsRef.current = started.hls
           },
           () => {
@@ -260,6 +267,7 @@ export function usePlayer(
       }
       disableAllNativeSubtitleTracks(video)
       engine?.dispose()
+      if (engineRef.current === engine) engineRef.current = null
       hlsRef.current = null
       releaseMediaElementSource(video)
     }
@@ -488,10 +496,11 @@ export function usePlayer(
     return watchHtml5LiveStream(video, {
       showMessage: (message) => applyPlayerPatch({ playerError: message }),
       reconnect: () => {
-        const hls = hlsRef.current
-        if (hls) {
-          hls.stopLoad()
-          hls.startLoad(-1)
+        const engine = engineRef.current
+        if (engine) {
+          // The playlist again, not `startLoad`: after a fatal manifest
+          // failure hls.js has nothing left to resume from.
+          engine.reload()
           return
         }
         const src = video.currentSrc || streamUrl

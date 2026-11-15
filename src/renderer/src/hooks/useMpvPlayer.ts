@@ -37,6 +37,7 @@ import {
   isNewerSnapshot,
   isSnapshotForPlayback,
   isSnapshotLoaded,
+  mpvReconnectObservation,
   reconcileMpvSnapshot,
   shouldKeepStartupOverlay
 } from '@/player/mpv-snapshot'
@@ -252,15 +253,7 @@ export function useMpvPlayer(enabled: boolean, options: MpvPlayerOptions = {}) {
       // mpv has this load's file open: a resume seek can run.
       if (isSnapshotLoaded(snapshot)) store.markPlaybackLoaded(playback.playbackId)
 
-      reconnectRef.current?.observe({
-        isLive: isLiveTarget(playback.target),
-        // Time-pos is unreliable as a liveness signal (many live feeds hold
-        // it or reset it while healthy); mpv's demuxer underrun flag is not.
-        progressing: snapshot.phase === 'playing' && !snapshot.buffering && !snapshot.paused,
-        expectingProgress: !snapshot.paused && (snapshot.phase === 'loading' || snapshot.phase === 'playing'),
-        error: snapshot.error,
-        errorKey: snapshot.loadId
-      })
+      reconnectRef.current?.observe(mpvReconnectObservation(snapshot, isLiveTarget(playback.target)))
     }
 
     const applyWindowFullscreen = (fullscreen: boolean) => {

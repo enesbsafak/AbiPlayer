@@ -173,6 +173,11 @@ export interface ReconnectDriver {
  * Runs the policy for one playback: holds its state, runs the attempt timer
  * and looks again at the stall deadline when no new observation arrives
  * (a stalled stream reports nothing).
+ *
+ * Looking again replays the last observation as "not progressing": nothing
+ * reported since then means nothing moved since then. Replaying it as it was
+ * would count a progress report from before the stall as fresh progress and
+ * push the deadline out forever.
  */
 export function createReconnectDriver(options: ReconnectDriverOptions): ReconnectDriver {
   const now = options.now ?? Date.now
@@ -183,6 +188,10 @@ export function createReconnectDriver(options: ReconnectDriverOptions): Reconnec
   let attemptTimer: ReturnType<typeof setTimeout> | null = null
   let recheckTimer: ReturnType<typeof setTimeout> | null = null
   let disposed = false
+
+  const observeSilence = (): void => {
+    if (last) observe({ ...last, progressing: false })
+  }
 
   const observe = (observation: ReconnectObservation): void => {
     if (disposed) return
@@ -199,7 +208,7 @@ export function createReconnectDriver(options: ReconnectDriverOptions): Reconnec
     if (step.recheckAt !== null) {
       recheckTimer = setTimer(() => {
         recheckTimer = null
-        if (last) observe(last)
+        observeSilence()
       }, Math.max(0, step.recheckAt - at))
     }
 
@@ -210,7 +219,7 @@ export function createReconnectDriver(options: ReconnectDriverOptions): Reconnec
         if (disposed) return
         state = reconnectAttemptStarted(state, now())
         options.reconnect(attempt)
-        if (last) observe(last)
+        observeSilence()
       }, delayMs)
     }
   }

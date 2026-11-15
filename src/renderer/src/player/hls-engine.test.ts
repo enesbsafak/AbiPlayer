@@ -10,6 +10,9 @@ import {
   type HlsModuleLoader
 } from './hls-engine'
 
+const networkErrorData = { type: Hls.ErrorTypes.NETWORK_ERROR, details: Hls.ErrorDetails.FRAG_LOAD_ERROR }
+const manifestErrorData = { type: Hls.ErrorTypes.NETWORK_ERROR, details: Hls.ErrorDetails.MANIFEST_LOAD_ERROR }
+
 const noEvents: HlsEngineEvents = {
   manifestParsed: () => undefined,
   levelsChanged: () => undefined,
@@ -96,6 +99,47 @@ describe('startHlsEngine', () => {
     expect(fake.created[0].loadSource).toHaveBeenCalledWith('http://p.test/live/u/p/1.m3u8')
     expect(fake.created[0].attachMedia).toHaveBeenCalledWith(video)
     engine?.dispose()
+  })
+
+  it('reloads the playlist on a reconnect, also after a fatal manifest failure (P1)', async () => {
+    vi.useFakeTimers()
+    const handlers = new Map<string, (event: string, data: unknown) => void>()
+    class EventfulHls {
+      static Events = Hls.Events
+      loadSource = vi.fn()
+      attachMedia = vi.fn()
+      startLoad = vi.fn()
+      destroy = vi.fn()
+      on(event: string, handler: (event: string, data: unknown) => void) {
+        handlers.set(event, handler)
+      }
+    }
+    const clearTimeout = vi.spyOn(window, 'clearTimeout')
+    const engine = await startHlsEngine(document.createElement('video'), 'http://p.test/live/u/p/1.m3u8', noEvents, {
+      signal: new AbortController().signal,
+      load: () => Promise.resolve({ default: EventfulHls as unknown as typeof Hls })
+    })
+    const hls = engine!.hls as unknown as EventfulHls
+
+    // hls.js's own retry after a fragment failure fires and is forgotten.
+    handlers.get(Hls.Events.ERROR)!(Hls.Events.ERROR, { fatal: true, ...networkErrorData })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(hls.startLoad).toHaveBeenCalledTimes(1)
+
+    handlers.get(Hls.Events.ERROR)!(Hls.Events.ERROR, { fatal: true, ...manifestErrorData })
+    engine!.reload()
+    expect(hls.loadSource).toHaveBeenCalledTimes(2)
+    expect(hls.loadSource).toHaveBeenLastCalledWith('http://p.test/live/u/p/1.m3u8')
+    // The manifest retry belonged to the replaced load: cancelled, never run.
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(hls.loadSource).toHaveBeenCalledTimes(2)
+
+    clearTimeout.mockClear()
+    engine!.dispose()
+    // Nothing fired or cancelled is still held.
+    expect(clearTimeout).not.toHaveBeenCalled()
+    clearTimeout.mockRestore()
+    vi.useRealTimers()
   })
 
   it('does not even load hls.js for a playback that is already over', async () => {

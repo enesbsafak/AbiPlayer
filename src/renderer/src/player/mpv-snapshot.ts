@@ -5,6 +5,7 @@ import {
   buildMpvVideoQualityOptions,
   getActiveMpvVideoQualityId
 } from '@/services/quality'
+import { CONNECTION_LOST_MESSAGE, type ReconnectObservation } from './reconnect-policy'
 import { MPV_AUDIO_PREFIX, MPV_SUBTITLE_PREFIX, trackId } from './track-ids'
 import {
   normalizeVideoQualitySelection,
@@ -34,6 +35,27 @@ export function isSnapshotForPlayback(
   playbackId: string | null
 ): boolean {
   return playbackId !== null && snapshot.playbackId === playbackId
+}
+
+/**
+ * What one snapshot tells the shared reconnect policy.
+ *
+ * A live stream has no end. mpv keeps the last frame open (`--keep-open`) and
+ * reports `ended` when the server closes it cleanly, with no error and nothing
+ * left to expect; for a live target that is a lost connection like any other
+ * and is reported as a failure of that load.
+ */
+export function mpvReconnectObservation(snapshot: MpvStateSnapshot, isLive: boolean): ReconnectObservation {
+  const endedLive = isLive && snapshot.phase === 'ended'
+  return {
+    isLive,
+    // Time-pos is unreliable as a liveness signal (many live feeds hold it or
+    // reset it while healthy); mpv's demuxer underrun flag is not.
+    progressing: snapshot.phase === 'playing' && !snapshot.buffering && !snapshot.paused,
+    expectingProgress: !snapshot.paused && (snapshot.phase === 'loading' || snapshot.phase === 'playing'),
+    error: snapshot.error ?? (endedLive ? CONNECTION_LOST_MESSAGE : null),
+    errorKey: snapshot.loadId
+  }
 }
 
 /** The stream of that load is open far enough to seek (mpv's `file-loaded`). */

@@ -280,6 +280,60 @@ describe('useMpvPlayer', () => {
     expect(vi.mocked(mpvOpen)).toHaveBeenCalledTimes(1)
   })
 
+  // P1, mpv side of the shared policy: main pushes a snapshot about five
+  // times a second while a stream plays, so silence means mpv froze.
+  it('leaves a live stream alone while its snapshots keep coming, and reconnects once they stop', async () => {
+    act(() => useStore.getState().playChannel(liveA))
+    renderHook(() => useMpvPlayer(true))
+    await advance(0)
+    vi.mocked(mpvOpen).mockClear()
+
+    for (let elapsed = 0; elapsed < 60_000; elapsed += 200) {
+      await push(playing({ timePos: elapsed / 1000, demuxerCacheDuration: 3 }))
+      await advance(200)
+    }
+    expect(vi.mocked(mpvOpen)).not.toHaveBeenCalled()
+
+    await advance(STALL_THRESHOLD_MS + 1 + 1000)
+    expect(vi.mocked(mpvOpen)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(mpvOpen)).toHaveBeenCalledWith(liveA.streamUrl, { playbackId: playbackId() })
+  })
+
+  // P4: `--keep-open` holds the last frame when the server ends a live
+  // stream cleanly; mpv reports `ended` with no error.
+  it('reconnects a live stream the server ended cleanly, once per load', async () => {
+    act(() => useStore.getState().playChannel(liveA))
+    renderHook(() => useMpvPlayer(true))
+    await advance(0)
+    vi.mocked(mpvOpen).mockClear()
+
+    await push(playing({ loadId: 1 }))
+    await push(playing({ loadId: 1, phase: 'ended', paused: true }))
+    expect(useStore.getState().playerError).toBe(`Bağlantı kesildi, yeniden bağlanılıyor... (1/${MAX_AUTO_RECONNECT})`)
+    await advance(1000)
+    expect(vi.mocked(mpvOpen)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(mpvOpen)).toHaveBeenCalledWith(liveA.streamUrl, { playbackId: playbackId() })
+
+    await push(playing({ loadId: 1, phase: 'ended', paused: true }))
+    await advance(5000)
+    expect(vi.mocked(mpvOpen)).toHaveBeenCalledTimes(1)
+
+    await push(playing({ loadId: 2 }))
+    expect(useStore.getState().playerError).toBeNull()
+  })
+
+  it('lets a film end', async () => {
+    act(() => useStore.getState().playChannel(film))
+    renderHook(() => useMpvPlayer(true))
+    await advance(0)
+    vi.mocked(mpvOpen).mockClear()
+    await push(playing({ loadId: 1 }))
+    await push(playing({ loadId: 1, phase: 'ended', paused: true }))
+    await advance(60_000)
+    expect(vi.mocked(mpvOpen)).not.toHaveBeenCalled()
+    expect(useStore.getState().playerError).toBeNull()
+  })
+
   it('gives up with a final message after the last attempt', async () => {
     act(() => useStore.getState().playChannel(liveA))
     renderHook(() => useMpvPlayer(true))

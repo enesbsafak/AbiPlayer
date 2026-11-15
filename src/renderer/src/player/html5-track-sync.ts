@@ -4,6 +4,7 @@ import type { PlayerPatch } from '@/store/player-slice'
 import { buildVideoQualityOptions, getActiveVideoQualityId } from '@/services/quality'
 import {
   applyHlsSubtitleTrack,
+  applyNativeAudioTrack,
   attachCueListeners,
   collectHlsAudioTracks,
   collectHlsSubtitleTracks,
@@ -12,7 +13,7 @@ import {
   mergeHtml5SubtitleTracks,
   syncActiveSubtitleCues
 } from './html5-tracks'
-import { HLS_SUBTITLE_PREFIX, trackIndex } from './track-ids'
+import { HLS_AUDIO_PREFIX, HLS_SUBTITLE_PREFIX, NATIVE_AUDIO_PREFIX, trackIndex } from './track-ids'
 import {
   normalizeVideoQualitySelection,
   reconcileAudioSelection,
@@ -108,11 +109,29 @@ export function createHtml5TrackSync(deps: Html5TrackSyncDeps) {
     applyHlsSubtitleTrack(video, hls, index, setActiveSubtitleCues)
   }
 
+  /**
+   * A new load (a reload, a reconnect, the return from the mini card) starts
+   * on the stream's default audio, while the store still holds the selection
+   * and its effect will not send an unchanged value again. Pushes it back once
+   * the load's tracks are known, as the mpv engine does (`reassertSelections`).
+   */
+  const reassertAudioSelection = (hls: Hls | null = deps.getHls()): void => {
+    const current = deps.getStore().currentAudioTrack
+    const hlsIndex = trackIndex(current, HLS_AUDIO_PREFIX)
+    if (hlsIndex !== null) {
+      if (hls && hlsIndex < (hls.audioTracks?.length ?? 0) && hls.audioTrack !== hlsIndex) hls.audioTrack = hlsIndex
+      return
+    }
+    const nativeIndex = trackIndex(current, NATIVE_AUDIO_PREFIX)
+    if (nativeIndex !== null) applyNativeAudioTrack(video, nativeIndex)
+  }
+
   return {
     refreshAudioTracks,
     refreshSubtitleTracks,
     refreshVideoQualities,
     syncHlsSubtitleSelection,
+    reassertAudioSelection,
     /** Tracks may be known now (loadeddata, canplay). */
     refreshMediaTracks(): void {
       refreshAudioTracks()

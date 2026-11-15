@@ -11,8 +11,9 @@ export interface Html5LiveWatchOptions {
 
 /**
  * Feeds a live `<video>` into the shared reconnect policy. Progress is the
- * element's position moving forward; the element reports nothing while it
- * stalls, so the policy's own deadline does the noticing.
+ * element's position moving forward. A frozen stream mostly reports nothing
+ * at all (no more `timeupdate`), sometimes `waiting` or `stalled` first; the
+ * policy's own deadline takes the silence for no progress.
  */
 export function watchHtml5LiveStream(video: HTMLVideoElement, options: Html5LiveWatchOptions): () => void {
   const driver = createReconnectDriver(options)
@@ -28,16 +29,15 @@ export function watchHtml5LiveStream(video: HTMLVideoElement, options: Html5Live
     if (progressing) lastTimePos = time
     observe(progressing)
   }
-  const onPlayStateChange = (): void => observe(false)
+  const onNoProgress = (): void => observe(false)
+  const noProgressEvents = ['pause', 'play', 'waiting', 'stalled'] as const
 
   video.addEventListener('timeupdate', onTimeUpdate)
-  video.addEventListener('pause', onPlayStateChange)
-  video.addEventListener('play', onPlayStateChange)
+  for (const type of noProgressEvents) video.addEventListener(type, onNoProgress)
 
   return () => {
     driver.dispose()
     video.removeEventListener('timeupdate', onTimeUpdate)
-    video.removeEventListener('pause', onPlayStateChange)
-    video.removeEventListener('play', onPlayStateChange)
+    for (const type of noProgressEvents) video.removeEventListener(type, onNoProgress)
   }
 }
