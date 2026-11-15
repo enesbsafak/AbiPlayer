@@ -8,7 +8,7 @@ import { PlayerControls, formatTime } from './PlayerControls'
 import { PlayerSidebar } from './PlayerSidebar'
 import { SubtitleOverlay } from './SubtitleOverlay'
 import { Spinner } from '@/components/ui/Spinner'
-import { AlertCircle, RefreshCw, RotateCcw, X } from 'lucide-react'
+import { AlertCircle, Info, RefreshCw, RotateCcw, X } from 'lucide-react'
 import { mpvIsAvailable, mpvSetFullscreen, windowSetFullscreen } from '@/services/platform'
 import { GENERATED_CAPTIONS_TRACK_LABEL, GENERATED_CAPTIONS_TRACK_LANGUAGE } from '@/constants/captions'
 import type { SubtitleCue } from '@/types/player'
@@ -18,6 +18,7 @@ interface VideoPlayerProps {
 }
 
 const DEFAULT_PLAYER_SIZE = { width: 1280, height: 720 }
+const PLAYER_NOTICE_MS = 8_000
 
 function formatVttTime(seconds: number): string {
   const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0
@@ -66,6 +67,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
   const setPlaybackEngine = useStore((s) => s.setPlaybackEngine)
   const isPlayerSidebarOpen = useStore((s) => s.isPlayerSidebarOpen)
   const subtitleCues = useStore((s) => s.subtitleCues)
+  const playerNotice = useStore((s) => s.playerNotice)
   const isEngineResolved = mpvAvailable !== null
   const mpvEnabled = mpvAvailable === true && playbackEngine === 'mpv'
   const captionsTrackSrc = useMemo(() => buildCaptionsTrackSrc(subtitleCues), [subtitleCues])
@@ -144,6 +146,12 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
 
   useEffect(() => () => clearTimeout(hideTimerRef.current), [])
 
+  useEffect(() => {
+    if (!playerNotice) return
+    const timer = window.setTimeout(() => useStore.getState().setPlayerNotice(null), PLAYER_NOTICE_MS)
+    return () => window.clearTimeout(timer)
+  }, [playerNotice])
+
   const toggleFullscreen = useCallback(async () => {
     if (mpvEnabled) {
       const next = !isFullscreen
@@ -218,10 +226,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
           {currentChannel && (
             <button
               type="button"
-              onClick={() => {
-                useStore.getState().setPlayerError(null)
-                useStore.getState().playChannel(currentChannel)
-              }}
+              onClick={() => useStore.getState().reloadPlayback()}
               className="mt-2 flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20 transition-colors"
             >
               <RefreshCw size={14} />
@@ -231,27 +236,47 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
         </div>
       )}
 
-      {resumedFrom !== null && (
-        <div className="absolute left-1/2 top-6 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-surface-700 bg-surface-950/95 px-4 py-2.5 text-sm text-surface-200 shadow-lg">
-          <span>{formatTime(resumedFrom)} konumundan devam ediliyor</span>
-          <button
-            type="button"
-            onClick={restartFromStart}
-            className="flex items-center gap-1.5 rounded-md border border-surface-700 px-2.5 py-1 text-xs text-surface-300 transition-colors hover:border-surface-600 hover:text-surface-50"
+      <div className="absolute left-1/2 top-6 flex -translate-x-1/2 flex-col items-center gap-2">
+        {resumedFrom !== null && (
+          <div className="flex items-center gap-3 rounded-lg border border-surface-700 bg-surface-950/95 px-4 py-2.5 text-sm text-surface-200 shadow-lg">
+            <span>{formatTime(resumedFrom)} konumundan devam ediliyor</span>
+            <button
+              type="button"
+              onClick={restartFromStart}
+              className="flex items-center gap-1.5 rounded-md border border-surface-700 px-2.5 py-1 text-xs text-surface-300 transition-colors hover:border-surface-600 hover:text-surface-50"
+            >
+              <RotateCcw size={13} />
+              Baştan başla
+            </button>
+            <button
+              type="button"
+              onClick={dismissResumeNotice}
+              aria-label="Bildirimi kapat"
+              className="text-surface-500 transition-colors hover:text-surface-200"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {playerNotice && (
+          <div
+            role="status"
+            className="flex items-center gap-3 rounded-lg border border-surface-700 bg-surface-950/95 px-4 py-2.5 text-sm text-surface-200 shadow-lg"
           >
-            <RotateCcw size={13} />
-            Baştan başla
-          </button>
-          <button
-            type="button"
-            onClick={dismissResumeNotice}
-            aria-label="Bildirimi kapat"
-            className="text-surface-500 transition-colors hover:text-surface-200"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
+            <Info size={14} className="shrink-0 text-surface-400" aria-hidden="true" />
+            <span>{playerNotice}</span>
+            <button
+              type="button"
+              onClick={() => useStore.getState().setPlayerNotice(null)}
+              aria-label="Bildirimi kapat"
+              className="text-surface-500 transition-colors hover:text-surface-200"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+      </div>
 
       <SubtitleOverlay playerSize={playerSize} />
 

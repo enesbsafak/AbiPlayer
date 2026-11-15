@@ -3,7 +3,9 @@ import { Languages } from 'lucide-react'
 import { useStore } from '@/store'
 
 export function AudioTrackSelector() {
-  const { audioTracks, currentAudioTrack, setCurrentAudioTrack } = useStore()
+  const audioTracks = useStore((s) => s.audioTracks)
+  const currentAudioTrack = useStore((s) => s.currentAudioTrack)
+  const setCurrentAudioTrack = useStore((s) => s.setCurrentAudioTrack)
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const menuId = useId()
@@ -24,7 +26,7 @@ export function AudioTrackSelector() {
         type="button"
         onClick={() => setOpen(!open)}
         className="rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal"
-        title="Ses Kanallari"
+        title="Ses Kanalları"
         aria-label="Ses kanalı seç"
         aria-haspopup="menu"
         aria-expanded={open}

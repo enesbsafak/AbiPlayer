@@ -8,12 +8,13 @@ const RESUME_NOTICE_MS = 8_000
 /**
  * Jumps a VOD title or episode back to where it was left off.
  *
- * The trigger is `pendingResumeStreamUrl`, which only `playChannel` sets. Basing
- * it on this component instead would misfire twice over: `/player` unmounts
- * whenever the viewer drops back to the mini player, so a remount would re-seek
- * someone who had already scrubbed elsewhere, and engine detection restarts on
- * every mount, so the first render always reads html5 and would seek a `<video>`
- * that mpv is not even using.
+ * The trigger is `pendingResumeStreamUrl`, which the store arms whenever a stream
+ * is started from scratch: `playChannel`, `reloadPlayback`, and
+ * `suspendPlayback` (leaving /player stops both engines, so coming back from the
+ * mini player loads the film again and has to put it back where it was). Basing
+ * it on this component mounting instead would seek a `<video>` that mpv is not
+ * even using: engine detection restarts on every mount and the first render
+ * always reads html5.
  *
  * Waits for a non-zero duration — the first moment either engine has the file
  * open far enough for a seek to land — and for detection to settle, then

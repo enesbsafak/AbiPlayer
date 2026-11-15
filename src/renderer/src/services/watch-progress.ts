@@ -112,6 +112,22 @@ export function findProgress(
 }
 
 /**
+ * A resume is pending when the stream was (re)started and has not been put back
+ * at its saved position yet. Whatever the engine reports in that window is the
+ * restart, not the viewer's progress, so it must not pull the entry backwards.
+ */
+export function wouldRewindPendingResume(
+  entries: WatchProgressEntry[],
+  channel: Pick<Channel, 'streamUrl'>,
+  position: number,
+  pendingResumeStreamUrl: string | null
+): boolean {
+  if (!pendingResumeStreamUrl || pendingResumeStreamUrl !== channel.streamUrl) return false
+  const saved = findProgress(entries, channel)
+  return saved !== null && position < saved.position
+}
+
+/**
  * Newest first, one entry per stream, capped. Callers pass the whole list back
  * so the store stays a plain array — ordering is the recency signal the
  * dashboard row renders directly.

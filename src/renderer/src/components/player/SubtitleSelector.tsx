@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Subtitles, Upload } from 'lucide-react'
 import { useStore } from '@/store'
-import { mpvAddSubtitleFile, pickAndReadFile } from '@/services/platform'
-import { parseSubtitles } from '@/services/subtitle-parser'
+import { useExternalSubtitleLoader } from '@/hooks/useExternalSubtitleLoader'
 
 function parseSubtitleBackgroundOpacity(background: string): number {
   const match = background.match(
@@ -15,13 +14,19 @@ function parseSubtitleBackgroundOpacity(background: string): number {
 }
 
 export function SubtitleSelector() {
-  const {
-    subtitleTracks, currentSubtitleTrack, playbackEngine, setCurrentSubtitleTrack,
-    setSubtitleCues, setActiveSubtitleCues, settings, updateSettings
-  } = useStore()
+  const subtitleTracks = useStore((s) => s.subtitleTracks)
+  const currentSubtitleTrack = useStore((s) => s.currentSubtitleTrack)
+  const selectSubtitleTrack = useStore((s) => s.selectSubtitleTrack)
+  const applyPlayerPatch = useStore((s) => s.applyPlayerPatch)
+  const subtitleFontSize = useStore((s) => s.settings.subtitleFontSize)
+  const subtitleColor = useStore((s) => s.settings.subtitleColor)
+  const subtitleBackground = useStore((s) => s.settings.subtitleBackground)
+  const updateSettings = useStore((s) => s.updateSettings)
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  const subtitleOpacity = parseSubtitleBackgroundOpacity(settings.subtitleBackground)
+  const subtitleOpacity = parseSubtitleBackgroundOpacity(subtitleBackground)
+  const externalLoader = useExternalSubtitleLoader()
+  const { clearError: clearLoadError } = externalLoader
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -31,33 +36,19 @@ export function SubtitleSelector() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  useEffect(() => {
+    if (!open) clearLoadError()
+  }, [open, clearLoadError])
+
   const handleLoadExternal = async () => {
-    const result = await pickAndReadFile([
-      { name: 'Altyazı Dosyaları', extensions: ['srt', 'vtt', 'ass', 'ssa'] }
-    ])
-    if (!result) return
-
-    if (playbackEngine === 'mpv') {
-      const trackId = await mpvAddSubtitleFile(result.path)
-      if (trackId !== null) {
-        setSubtitleCues([])
-        setActiveSubtitleCues([])
-        setCurrentSubtitleTrack(`mpv-s:${trackId}`)
-      }
-      setOpen(false)
-      return
-    }
-
-    const cues = parseSubtitles(result.content, result.path)
-    setSubtitleCues(cues)
-    setCurrentSubtitleTrack('external')
-    setOpen(false)
+    const result = await externalLoader.load()
+    // A failure keeps the menu open so its message stays readable.
+    if (result === 'loaded') setOpen(false)
   }
 
   const handleOff = () => {
-    setCurrentSubtitleTrack(null)
-    setActiveSubtitleCues([])
-    setSubtitleCues([])
+    selectSubtitleTrack(null)
+    applyPlayerPatch({ subtitleCues: [], activeSubtitleCues: [] })
     setOpen(false)
   }
 
@@ -67,7 +58,7 @@ export function SubtitleSelector() {
         type="button"
         onClick={() => setOpen(!open)}
         className={`rounded-lg p-2 hover:bg-white/10 transition-colors duration-normal ${currentSubtitleTrack ? 'text-accent' : ''}`}
-        title="Altyazi"
+        title="Altyazı"
         aria-label="Altyazı seç"
         aria-haspopup="true"
         aria-expanded={open}
@@ -92,18 +83,18 @@ export function SubtitleSelector() {
                 !currentSubtitleTrack ? 'text-accent' : 'text-surface-200'
               }`}
             >
-              Kapali
+              Kapalı
             </button>
             {subtitleTracks.map((track) => (
               <button
                 key={track.id}
                 type="button"
-                onClick={() => { setCurrentSubtitleTrack(String(track.id)); setOpen(false) }}
+                onClick={() => { selectSubtitleTrack(String(track.id)); setOpen(false) }}
                 className={`flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-800 transition-colors ${
                   String(track.id) === currentSubtitleTrack ? 'text-accent' : 'text-surface-200'
                 }`}
               >
-                {track.name || track.lang || `Altyazi ${track.id}`}
+                {track.name || track.lang || `Altyazı ${track.id}`}
               </button>
             ))}
           </div>
@@ -112,15 +103,15 @@ export function SubtitleSelector() {
               Altyazı Stili
             </p>
             <div className="mt-2 flex items-center justify-between text-xs text-surface-400">
-              <span>Yazi boyutu</span>
-              <span>{settings.subtitleFontSize}px</span>
+              <span>Yazı boyutu</span>
+              <span>{subtitleFontSize}px</span>
             </div>
             <input
               type="range"
               min={16}
               max={48}
               step={2}
-              value={settings.subtitleFontSize}
+              value={subtitleFontSize}
               aria-label="Altyazı yazı boyutu"
               onChange={(e) =>
                 updateSettings({ subtitleFontSize: Number.parseInt(e.target.value, 10) || 24 })
@@ -134,7 +125,7 @@ export function SubtitleSelector() {
               </div>
               <input
                 type="color"
-                value={settings.subtitleColor}
+                value={subtitleColor}
                 aria-label="Altyazı rengi"
                 onChange={(e) => updateSettings({ subtitleColor: e.target.value })}
                 className="h-7 w-10 cursor-pointer rounded border border-surface-600 bg-surface-800 p-0.5"
@@ -164,12 +155,12 @@ export function SubtitleSelector() {
               <span
                 className="rounded px-2 py-0.5"
                 style={{
-                  fontSize: `${Math.max(12, settings.subtitleFontSize - 4)}px`,
-                  color: settings.subtitleColor,
-                  backgroundColor: settings.subtitleBackground
+                  fontSize: `${Math.max(12, subtitleFontSize - 4)}px`,
+                  color: subtitleColor,
+                  backgroundColor: subtitleBackground
                 }}
               >
-                Altyazi onizleme
+                Altyazı önizleme
               </span>
             </div>
           </div>
@@ -180,8 +171,13 @@ export function SubtitleSelector() {
               onClick={handleLoadExternal}
               className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-300 hover:bg-surface-800 transition-colors"
             >
-              <Upload size={14} /> Disaridan dosya yukle
+              <Upload size={14} /> Dışarıdan dosya yükle
             </button>
+            {externalLoader.error && (
+              <p role="alert" className="px-3 pb-2 text-xs text-red-400">
+                {externalLoader.error}
+              </p>
+            )}
           </div>
         </div>
       )}

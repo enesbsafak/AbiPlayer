@@ -4,7 +4,10 @@ import { useStore } from '@/store'
 import { AUTO_VIDEO_QUALITY_ID } from '@/services/quality'
 
 export function QualitySelector() {
-  const { videoQualityOptions, currentVideoQuality, activeVideoQuality, setCurrentVideoQuality } = useStore()
+  const videoQualityOptions = useStore((s) => s.videoQualityOptions)
+  const currentVideoQuality = useStore((s) => s.currentVideoQuality)
+  const activeVideoQuality = useStore((s) => s.activeVideoQuality)
+  const setCurrentVideoQuality = useStore((s) => s.setCurrentVideoQuality)
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const menuId = useId()
@@ -34,7 +37,7 @@ export function QualitySelector() {
         type="button"
         onClick={() => setOpen((value) => !value)}
         className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm hover:bg-white/10 transition-colors duration-normal"
-        title="Goruntu kalitesi"
+        title="Görüntü kalitesi"
         aria-label="Görüntü kalitesi seç"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -51,7 +54,7 @@ export function QualitySelector() {
           className="absolute bottom-full right-0 mb-2 max-h-[calc(100vh-5rem)] w-56 list-none overflow-y-auto rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-lg"
           aria-label="Görüntü Kalitesi"
         >
-          <li className="px-3 py-1.5 text-xs font-medium text-surface-500">Goruntu Kalitesi</li>
+          <li className="px-3 py-1.5 text-xs font-medium text-surface-500">Görüntü Kalitesi</li>
           {videoQualityOptions.map((option) => {
             const isSelected = option.id === currentVideoQuality
             const isAutoActive = option.id === AUTO_VIDEO_QUALITY_ID && !!activeOption

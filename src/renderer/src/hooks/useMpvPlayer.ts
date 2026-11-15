@@ -63,7 +63,7 @@ function mapAudioTracks(tracks: MpvTrackInfo[]): AudioTrack[] {
     if (track.type !== 'audio') continue
     audioTracks.push({
       id: `${MPV_AUDIO_TRACK_PREFIX}${track.id}`,
-      name: track.title || track.lang || `Audio ${audioTracks.length + 1}`,
+      name: track.title || track.lang || `Ses ${audioTracks.length + 1}`,
       lang: track.lang,
       default: track.selected
     })
@@ -77,7 +77,7 @@ function mapSubtitleTracks(tracks: MpvTrackInfo[]): SubtitleTrack[] {
     if (track.type !== 'sub') continue
     subtitleTracks.push({
       id: `${MPV_SUBTITLE_TRACK_PREFIX}${track.id}`,
-      name: track.title || track.lang || `Subtitle ${subtitleTracks.length + 1}`,
+      name: track.title || track.lang || `Altyazı ${subtitleTracks.length + 1}`,
       lang: track.lang,
       type: track.external ? 'external' : 'embedded'
     })
@@ -128,15 +128,183 @@ function sameQualityOptions(a: VideoQualityOption[], b: VideoQualityOption[]): b
   })
 }
 
-const MAX_AUTO_RECONNECT = 5
+export const MAX_AUTO_RECONNECT = 5
 const RECONNECT_DELAY_MS = 1000
 const STALL_THRESHOLD_MS = 12_000
+export const MPV_CONNECTION_LOST_MESSAGE = 'Yayın bağlantısı kesildi.'
+
+/**
+ * Whether a polled snapshot describes the stream the renderer asked for.
+ *
+ * Until `mpvOpen` for the current stream has resolved, mpv may still be on the
+ * previous file, and applying that snapshot writes the old stream's tracks and
+ * position into the new one. After that, a path equal to the stream just left
+ * is still stale; any other path is mpv's own name for ours (a resolved
+ * playlist entry, for instance) and is accepted.
+ */
+export function isSnapshotForCurrentStream(
+  snapshot: Pick<MpvStateSnapshot, 'path'>,
+  stream: { url: string | null; previousUrl: string | null; opened: boolean }
+): boolean {
+  if (!stream.url || !stream.opened) return false
+  if (snapshot.path === null || snapshot.path === stream.url) return true
+  return snapshot.path !== stream.previousUrl
+}
+
+export interface MpvReconnectInput {
+  isLive: boolean
+  error: string | null
+  isStalled: boolean
+  /** A stream is loaded and no reconnect is already scheduled. */
+  canReconnect: boolean
+  attempts: number
+  currentPlayerError: string | null
+}
+
+export function planMpvReconnect(input: MpvReconnectInput): {
+  scheduleAttempt: number | null
+  playerError: string | null
+} {
+  if (!input.error && !input.isStalled) return { scheduleAttempt: null, playerError: null }
+  if (!input.canReconnect) {
+    return { scheduleAttempt: null, playerError: input.currentPlayerError }
+  }
+  if (input.isLive && input.attempts < MAX_AUTO_RECONNECT) {
+    const attempt = input.attempts + 1
+    return {
+      scheduleAttempt: attempt,
+      playerError: `Bağlantı kesildi, yeniden bağlanılıyor... (${attempt}/${MAX_AUTO_RECONNECT})`
+    }
+  }
+  // Out of attempts. A stall carries no mpv error text, and keeping the last
+  // "(5/5)" progress message would claim a reconnect is still under way.
+  return { scheduleAttempt: null, playerError: input.error ?? MPV_CONNECTION_LOST_MESSAGE }
+}
+
+export interface MpvTrackSelectionState {
+  audioPreferenceApplied: boolean
+  subtitlePreferenceApplied: boolean
+  /** The "subtitles on by default" setting is off and was applied to this stream. */
+  subtitlesOffByDefault: boolean
+}
+
+export interface MpvTrackSelectionStore {
+  currentAudioTrack: string | null
+  currentSubtitleTrack: string | null
+  isSubtitleTrackUserChoice: boolean
+  settings: {
+    preferredAudioLanguage: string
+    preferredSubtitleLanguage: string
+    defaultSubtitleEnabled: boolean
+  }
+}
+
+export interface MpvTrackSelectionResult {
+  audioTracks: AudioTrack[]
+  subtitleTracks: SubtitleTrack[]
+  /** `undefined` leaves the store's selection alone. */
+  audioTrack?: string | null
+  subtitleTrack?: string | null
+  /** mpv picked a subtitle on its own although the setting says off. */
+  disableMpvSubtitles: boolean
+  state: MpvTrackSelectionState
+}
+
+/**
+ * Decides the store's audio/subtitle selection from one mpv snapshot.
+ *
+ * Preferences are consumed once per stream, and only when the snapshot carries
+ * the stream's track list: consuming them on an empty list (mpv still opening)
+ * used to burn the subtitle preference before there was anything to match.
+ * After that, the store is only back-filled from mpv when it holds no choice,
+ * and never over a choice the viewer made: the poll that follows "off" can
+ * still report the old `sid` and would switch the subtitle back on.
+ */
+export function reconcileMpvTrackSelection(
+  snapshot: Pick<MpvStateSnapshot, 'tracks' | 'aid' | 'sid'>,
+  store: MpvTrackSelectionStore,
+  state: MpvTrackSelectionState
+): MpvTrackSelectionResult {
+  const audioTracks = mapAudioTracks(snapshot.tracks)
+  const subtitleTracks = mapSubtitleTracks(snapshot.tracks)
+  const nextState = { ...state }
+  const result: MpvTrackSelectionResult = {
+    audioTracks,
+    subtitleTracks,
+    disableMpvSubtitles: false,
+    state: nextState
+  }
+
+  const selectedAudioTrack = snapshot.aid ? `${MPV_AUDIO_TRACK_PREFIX}${snapshot.aid}` : null
+  if (!state.audioPreferenceApplied && audioTracks.length > 0) {
+    const preferredTrackId = pickPreferredAudioTrackId(
+      audioTracks,
+      store.settings.preferredAudioLanguage
+    )
+    const targetAudioTrack = preferredTrackId ?? selectedAudioTrack
+    if (targetAudioTrack && store.currentAudioTrack !== targetAudioTrack) {
+      result.audioTrack = targetAudioTrack
+    } else if (!targetAudioTrack && store.currentAudioTrack !== null) {
+      result.audioTrack = null
+    }
+    nextState.audioPreferenceApplied = true
+  } else if (selectedAudioTrack && store.currentAudioTrack === null) {
+    result.audioTrack = selectedAudioTrack
+  }
+
+  const selectedSubtitleTrack = snapshot.sid ? `${MPV_SUBTITLE_TRACK_PREFIX}${snapshot.sid}` : null
+  const streamLoaded = snapshot.tracks.length > 0
+  if (!state.subtitlePreferenceApplied) {
+    if (store.isSubtitleTrackUserChoice) {
+      // The viewer already decided for this stream; nothing left to prefer.
+      nextState.subtitlePreferenceApplied = true
+    } else if (streamLoaded) {
+      const { defaultSubtitleEnabled, preferredSubtitleLanguage } = store.settings
+      if (!defaultSubtitleEnabled || subtitleTracks.length === 0) {
+        if (store.currentSubtitleTrack !== null) result.subtitleTrack = null
+        if (!defaultSubtitleEnabled) {
+          nextState.subtitlesOffByDefault = true
+          result.disableMpvSubtitles = selectedSubtitleTrack !== null
+        }
+      } else {
+        const preferredTrackId = pickPreferredSubtitleTrackId(
+          subtitleTracks,
+          preferredSubtitleLanguage
+        )
+        const targetSubtitleTrack = preferredTrackId ?? selectedSubtitleTrack
+        if (targetSubtitleTrack && store.currentSubtitleTrack !== targetSubtitleTrack) {
+          result.subtitleTrack = targetSubtitleTrack
+        } else if (!targetSubtitleTrack && store.currentSubtitleTrack !== null) {
+          result.subtitleTrack = null
+        }
+      }
+      nextState.subtitlePreferenceApplied = true
+    }
+  } else if (
+    selectedSubtitleTrack &&
+    store.currentSubtitleTrack === null &&
+    !store.isSubtitleTrackUserChoice &&
+    !state.subtitlesOffByDefault
+  ) {
+    result.subtitleTrack = selectedSubtitleTrack
+  }
+
+  return result
+}
 
 export function useMpvPlayer(enabled: boolean) {
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const audioPreferenceAppliedRef = useRef(false)
-  const subtitlePreferenceAppliedRef = useRef(false)
+  const trackSelectionRef = useRef<MpvTrackSelectionState>({
+    audioPreferenceApplied: false,
+    subtitlePreferenceApplied: false,
+    subtitlesOffByDefault: false
+  })
   const startupUrlRef = useRef<string | null>(null)
+  const previousStreamUrlRef = useRef<string | null>(null)
+  // Bumped whenever a stream is (re)loaded; `openedGenerationRef` catches up
+  // once mpv has accepted it. Polls only trust snapshots taken after that.
+  const streamGenerationRef = useRef(0)
+  const openedGenerationRef = useRef(-1)
   const startupStartedAtRef = useRef<number | null>(null)
   const reconnectCountRef = useRef(0)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -146,6 +314,7 @@ export function useMpvPlayer(enabled: boolean) {
   // Select individually: a bare `useStore()` re-runs this hook on every store
   // write, and the poll below writes several times per second.
   const currentChannel = useStore((s) => s.currentChannel)
+  const playbackReloadToken = useStore((s) => s.playbackReloadToken)
   const currentAudioTrack = useStore((s) => s.currentAudioTrack)
   const currentSubtitleTrack = useStore((s) => s.currentSubtitleTrack)
   const currentVideoQuality = useStore((s) => s.currentVideoQuality)
@@ -164,20 +333,29 @@ export function useMpvPlayer(enabled: boolean) {
   }
 
   useEffect(() => {
-    audioPreferenceAppliedRef.current = false
-    subtitlePreferenceAppliedRef.current = false
+    trackSelectionRef.current = {
+      audioPreferenceApplied: false,
+      subtitlePreferenceApplied: false,
+      subtitlesOffByDefault: false
+    }
   }, [enabled, currentChannel?.id, currentChannel?.streamUrl])
+
+  const cancelPendingReconnect = () => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+    }
+  }
 
   // Full MPV teardown when disabled or component unmounts
   useEffect(() => {
     const teardown = () => {
       startupUrlRef.current = null
+      previousStreamUrlRef.current = null
+      openedGenerationRef.current = -1
       startupStartedAtRef.current = null
       reconnectCountRef.current = 0
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current)
-        reconnectTimerRef.current = null
-      }
+      cancelPendingReconnect()
       startupVisibleRef.current = false
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current)
@@ -210,6 +388,14 @@ export function useMpvPlayer(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
+    // A reconnect scheduled for the previous stream (or the previous load of
+    // this one) must not fire into this one, and its attempt count and stall
+    // clock belong to it too.
+    cancelPendingReconnect()
+    reconnectCountRef.current = 0
+    lastGoodPlaybackRef.current = 0
+    streamGenerationRef.current += 1
+    const generation = streamGenerationRef.current
 
     const syncChannel = async () => {
       const available = await mpvIsAvailable()
@@ -255,11 +441,15 @@ export function useMpvPlayer(enabled: boolean) {
         const safeVolume = clampVolume(currentVolume)
         // Only show startup overlay on first MPV launch, not on channel switches
         const isFirstLaunch = !startupUrlRef.current
+        if (startupUrlRef.current && startupUrlRef.current !== currentChannel.streamUrl) {
+          previousStreamUrlRef.current = startupUrlRef.current
+        }
         startupUrlRef.current = currentChannel.streamUrl
         startupStartedAtRef.current = Date.now()
         if (isFirstLaunch) updateStartupVisibility(true)
         await mpvOpen(currentChannel.streamUrl)
         if (cancelled) return
+        openedGenerationRef.current = generation
 
         await Promise.allSettled([mpvSetVolume(safeVolume), mpvSetMute(currentMuted)])
       } catch (error) {
@@ -281,22 +471,43 @@ export function useMpvPlayer(enabled: boolean) {
       // switching natively via loadfile-replace. Full teardown only
       // happens when the enabled flag changes (separate effect).
     }
-  }, [enabled, currentChannel, applyPlayerPatch, setPlaybackEngine, setPlayerError])
+    // `playbackReloadToken` is not read in the body: bumping it is how
+    // "Yeniden Bağlan" makes mpv load the same stream again.
+  }, [enabled, currentChannel, playbackReloadToken, applyPlayerPatch, setPlaybackEngine, setPlayerError])
 
   useEffect(() => {
     if (!enabled) return
+    let cancelled = false
+    // mpv answers slowly while it is opening a stream; without this, ticks pile
+    // up behind one another and land out of order.
+    let pollInFlight = false
 
-    const poll = async () => {
+    const pollOnce = async () => {
+      const generation = streamGenerationRef.current
+      const opened = openedGenerationRef.current === generation
       const [snapshot, windowFullscreen] = await Promise.all([
         mpvGetState().catch(() => null),
         windowIsFullscreen().catch(() => false)
       ])
-      if (!snapshot) return
+      if (cancelled || !snapshot) return
 
       const now = Date.now()
       // Poll can only CLEAR the startup overlay, never re-enable it
       if (startupVisibleRef.current && !shouldKeepStartupOverlay(snapshot, startupUrlRef.current, startupStartedAtRef.current, now)) {
         updateStartupVisibility(false)
+      }
+
+      // The stream changed while this request was out, or mpv has not taken
+      // the current one yet: the snapshot belongs to something else.
+      if (streamGenerationRef.current !== generation) return
+      if (
+        !isSnapshotForCurrentStream(snapshot, {
+          url: startupUrlRef.current,
+          previousUrl: previousStreamUrlRef.current,
+          opened
+        })
+      ) {
+        return
       }
 
       // Accumulate everything this tick observed into one patch and publish it
@@ -348,78 +559,38 @@ export function useMpvPlayer(enabled: boolean) {
         now - lastGoodPlaybackRef.current > STALL_THRESHOLD_MS
 
       // Auto-reconnect on error OR stall for live streams
-      const needsReconnect = (snapshot.error || isStalledLive) && startupUrlRef.current && !reconnectTimerRef.current
-      let nextPlayerError = store.playerError
-      if (needsReconnect) {
-        if (isLiveStream && reconnectCountRef.current < MAX_AUTO_RECONNECT) {
-          reconnectCountRef.current++
-          const delay = RECONNECT_DELAY_MS * reconnectCountRef.current
-          nextPlayerError = `Bağlantı kesildi, yeniden bağlanılıyor... (${reconnectCountRef.current}/${MAX_AUTO_RECONNECT})`
-          lastGoodPlaybackRef.current = now // reset stall timer
-          reconnectTimerRef.current = setTimeout(() => {
-            reconnectTimerRef.current = null
-            void mpvOpen(startupUrlRef.current!).catch(() => undefined)
-          }, delay)
-        } else if (snapshot.error) {
-          nextPlayerError = snapshot.error
-        }
-      } else if (!snapshot.error && !isStalledLive) {
-        nextPlayerError = null
+      const reconnectUrl = startupUrlRef.current
+      const reconnect = planMpvReconnect({
+        isLive: isLiveStream,
+        error: snapshot.error,
+        isStalled: isStalledLive,
+        canReconnect: !!reconnectUrl && !reconnectTimerRef.current,
+        attempts: reconnectCountRef.current,
+        currentPlayerError: store.playerError
+      })
+      if (reconnect.scheduleAttempt !== null && reconnectUrl) {
+        reconnectCountRef.current = reconnect.scheduleAttempt
+        lastGoodPlaybackRef.current = now // reset stall timer
+        reconnectTimerRef.current = setTimeout(() => {
+          reconnectTimerRef.current = null
+          if (startupUrlRef.current !== reconnectUrl) return
+          void mpvOpen(reconnectUrl).catch(() => undefined)
+        }, RECONNECT_DELAY_MS * reconnect.scheduleAttempt)
       }
-      if (store.playerError !== nextPlayerError) patch.playerError = nextPlayerError
+      if (store.playerError !== reconnect.playerError) patch.playerError = reconnect.playerError
 
-      const nextAudioTracks = mapAudioTracks(snapshot.tracks)
-      if (!sameAudioTracks(store.audioTracks, nextAudioTracks)) {
-        patch.audioTracks = nextAudioTracks
+      const selection = reconcileMpvTrackSelection(snapshot, store, trackSelectionRef.current)
+      trackSelectionRef.current = selection.state
+      if (!sameAudioTracks(store.audioTracks, selection.audioTracks)) {
+        patch.audioTracks = selection.audioTracks
       }
-
-      const currentStoreAudioTrack = store.currentAudioTrack
-      const selectedAudioTrack = snapshot.aid ? `${MPV_AUDIO_TRACK_PREFIX}${snapshot.aid}` : null
-      if (!audioPreferenceAppliedRef.current && nextAudioTracks.length > 0) {
-        const preferredTrackId = pickPreferredAudioTrackId(
-          nextAudioTracks,
-          store.settings.preferredAudioLanguage
-        )
-        const targetAudioTrack = preferredTrackId ?? selectedAudioTrack
-        if (targetAudioTrack && currentStoreAudioTrack !== targetAudioTrack) {
-          patch.currentAudioTrack = targetAudioTrack
-        } else if (!targetAudioTrack && currentStoreAudioTrack !== null) {
-          patch.currentAudioTrack = null
-        }
-        audioPreferenceAppliedRef.current = true
-      } else if (selectedAudioTrack && currentStoreAudioTrack === null) {
-        patch.currentAudioTrack = selectedAudioTrack
+      if (selection.audioTrack !== undefined) patch.currentAudioTrack = selection.audioTrack
+      if (!sameSubtitleTracks(store.subtitleTracks, selection.subtitleTracks)) {
+        patch.subtitleTracks = selection.subtitleTracks
       }
-
-      const nextSubtitleTracks = mapSubtitleTracks(snapshot.tracks)
-      if (!sameSubtitleTracks(store.subtitleTracks, nextSubtitleTracks)) {
-        patch.subtitleTracks = nextSubtitleTracks
-      }
-
-      const selectedSubtitleTrack = snapshot.sid ? `${MPV_SUBTITLE_TRACK_PREFIX}${snapshot.sid}` : null
-      const currentStoreSubtitleTrack = store.currentSubtitleTrack
-      if (!subtitlePreferenceAppliedRef.current) {
-        const { defaultSubtitleEnabled, preferredSubtitleLanguage } = store.settings
-
-        if (!defaultSubtitleEnabled || nextSubtitleTracks.length === 0) {
-          if (currentStoreSubtitleTrack !== null) {
-            patch.currentSubtitleTrack = null
-          }
-        } else {
-          const preferredTrackId = pickPreferredSubtitleTrackId(
-            nextSubtitleTracks,
-            preferredSubtitleLanguage
-          )
-          const targetSubtitleTrack = preferredTrackId ?? selectedSubtitleTrack
-          if (targetSubtitleTrack && currentStoreSubtitleTrack !== targetSubtitleTrack) {
-            patch.currentSubtitleTrack = targetSubtitleTrack
-          } else if (!targetSubtitleTrack && currentStoreSubtitleTrack !== null) {
-            patch.currentSubtitleTrack = null
-          }
-        }
-        subtitlePreferenceAppliedRef.current = true
-      } else if (selectedSubtitleTrack && currentStoreSubtitleTrack === null) {
-        patch.currentSubtitleTrack = selectedSubtitleTrack
+      if (selection.subtitleTrack !== undefined) patch.currentSubtitleTrack = selection.subtitleTrack
+      if (selection.disableMpvSubtitles) {
+        void mpvSetSubtitleTrack(null).catch(() => undefined)
       }
 
       const videoTracks = snapshot.tracks.filter((track) => track.type === 'video')
@@ -451,12 +622,23 @@ export function useMpvPlayer(enabled: boolean) {
       if (Object.keys(patch).length > 0) applyPlayerPatch(patch)
     }
 
+    const poll = async () => {
+      if (pollInFlight) return
+      pollInFlight = true
+      try {
+        await pollOnce()
+      } finally {
+        pollInFlight = false
+      }
+    }
+
     void poll()
     pollTimerRef.current = setInterval(() => {
       void poll()
     }, 250)
 
     return () => {
+      cancelled = true
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current)
         pollTimerRef.current = null
@@ -464,10 +646,7 @@ export function useMpvPlayer(enabled: boolean) {
       // poll() schedules this one, so this effect owns it too. The teardown
       // effect also clears it, but relying on that split ownership means a
       // reconnect can still fire after this effect stopped polling.
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current)
-        reconnectTimerRef.current = null
-      }
+      cancelPendingReconnect()
     }
   }, [enabled, applyPlayerPatch])
 

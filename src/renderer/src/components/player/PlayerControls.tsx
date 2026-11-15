@@ -4,6 +4,7 @@ import { useStore } from '@/store'
 import { PlayerActionControls } from './PlayerActionControls'
 import { PlayerTransportControls } from './PlayerTransportControls'
 import { navigateToPlayerReturnTarget } from '@/services/player-navigation'
+import { useSeekScrubber } from '@/hooks/useSeekScrubber'
 import {
   mpvSeek,
   mpvSeekTo,
@@ -23,8 +24,6 @@ interface PlayerControlsProps {
 interface ProgressScrubberProps {
   currentTime: number
   duration: number
-  remainingTime: number
-  progress: number
   playbackEngine: string
   video: HTMLVideoElement | null
 }
@@ -45,33 +44,39 @@ const PROGRESS_BACK_COLOR = '#3f3f46'
 function ProgressScrubber({
   currentTime,
   duration,
-  remainingTime,
-  progress,
   playbackEngine,
   video
 }: ProgressScrubberProps) {
+  const scrubber = useSeekScrubber(currentTime, (t) => {
+    if (playbackEngine === 'mpv') {
+      void mpvSeekTo(t).catch(() => undefined)
+    } else if (video) {
+      video.currentTime = t
+    }
+  })
+  const shownTime = scrubber.value
+  const progress = duration > 0 ? (shownTime / duration) * 100 : 0
+  const remainingTime = Math.max(0, duration - shownTime)
+
   return (
     <div className="mb-3 flex items-center gap-3">
-      <span className="text-xs text-surface-200 tabular-nums">{formatTime(currentTime)}</span>
+      <span className="text-xs text-surface-200 tabular-nums">{formatTime(shownTime)}</span>
       <input
         type="range"
         min={0}
         max={duration}
-        value={currentTime}
-        onChange={(e) => {
-          const t = parseFloat(e.target.value)
-          if (playbackEngine === 'mpv') {
-            void mpvSeekTo(t).catch(() => undefined)
-          } else if (video) {
-            video.currentTime = t
-          }
-        }}
+        value={shownTime}
+        onChange={(e) => scrubber.update(parseFloat(e.target.value))}
+        onPointerUp={scrubber.commit}
+        onPointerCancel={scrubber.commit}
+        onKeyUp={scrubber.commit}
+        onBlur={scrubber.commit}
         className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-surface-600 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent"
         style={{ background: `linear-gradient(to right, ${PROGRESS_TRACK_COLOR} ${progress}%, ${PROGRESS_BACK_COLOR} ${progress}%)` }}
         aria-label="Oynatma ilerlemesi"
         aria-valuemin={0}
         aria-valuemax={Math.round(duration)}
-        aria-valuenow={Math.round(currentTime)}
+        aria-valuenow={Math.round(shownTime)}
       />
       <span className="text-xs text-surface-200 tabular-nums">{formatTime(duration)}</span>
       <span className="min-w-[70px] text-right text-xs text-surface-300 tabular-nums">
@@ -182,8 +187,6 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
   }
 
   const isLive = currentChannel?.type === 'live'
-  const remainingTime = !isLive && duration > 0 ? Math.max(0, duration - currentTime) : 0
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
   const jumpToLive = () => {
     if (playbackEngine === 'mpv') {
@@ -210,8 +213,6 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
         <ProgressScrubber
           currentTime={currentTime}
           duration={duration}
-          remainingTime={remainingTime}
-          progress={progress}
           playbackEngine={playbackEngine}
           video={video}
         />

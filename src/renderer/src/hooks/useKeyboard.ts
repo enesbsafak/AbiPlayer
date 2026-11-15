@@ -11,6 +11,89 @@ import {
   windowSetFullscreen
 } from '@/services/platform'
 
+// Inputs that do not take typed text. Clicking one of these (the seek bar, the
+// volume slider) focuses it, and treating it as a text field switched every
+// shortcut off until the viewer clicked somewhere else.
+const NON_TEXT_INPUT_TYPES = new Set([
+  'range',
+  'checkbox',
+  'radio',
+  'button',
+  'submit',
+  'reset',
+  'color',
+  'file',
+  'image'
+])
+
+export function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (target instanceof HTMLInputElement) return !NON_TEXT_INPUT_TYPES.has(target.type)
+  return (
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    (target instanceof HTMLElement && target.isContentEditable === true)
+  )
+}
+
+export type KeyboardShortcut =
+  | 'search'
+  | 'toggle-play'
+  | 'toggle-fullscreen'
+  | 'toggle-mute'
+  | 'volume-up'
+  | 'volume-down'
+  | 'seek-back'
+  | 'seek-forward'
+  | 'toggle-sidebar'
+  | 'escape'
+
+type ShortcutKeyEvent = Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'target'>
+
+/**
+ * Maps a key press to the shortcut it triggers, or null to leave it alone.
+ *
+ * Playback keys only belong to the player screen. Elsewhere Space activates the
+ * focused button and the arrows scroll the catalog, and the mini player is a
+ * paused card with nothing to control, so claiming them there breaks both.
+ */
+export function resolveKeyboardShortcut(
+  event: ShortcutKeyEvent,
+  context: { pathname: string; hasChannel: boolean }
+): KeyboardShortcut | null {
+  if (isTextEntryTarget(event.target)) return null
+
+  const hasModifier = event.metaKey || event.ctrlKey || event.altKey
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') return 'search'
+  if (event.key === 'Escape') return 'escape'
+
+  if (!context.hasChannel || context.pathname !== '/player') return null
+
+  switch (event.key) {
+    case ' ':
+    case 'k':
+      return hasModifier ? null : 'toggle-play'
+    case 'f':
+    case 'F':
+      return 'toggle-fullscreen'
+    case 'm':
+    case 'M':
+      return 'toggle-mute'
+    case 'ArrowUp':
+      return 'volume-up'
+    case 'ArrowDown':
+      return 'volume-down'
+    case 'ArrowLeft':
+      return 'seek-back'
+    case 'ArrowRight':
+      return 'seek-forward'
+    case 'l':
+    case 'L':
+      return hasModifier ? null : 'toggle-sidebar'
+    default:
+      return null
+  }
+}
+
 export function useKeyboard() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -30,32 +113,20 @@ export function useKeyboard() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Don't intercept when typing in inputs
-      const target = e.target
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement ||
-        (target instanceof HTMLElement && target.isContentEditable)
-      ) {
-        return
-      }
+      const shortcut = resolveKeyboardShortcut(e, {
+        pathname: location.pathname,
+        hasChannel: !!currentChannel
+      })
+      if (!shortcut) return
+      const isPlayerRoute = location.pathname === '/player'
 
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        navigate('/search')
-        return
-      }
+      switch (shortcut) {
+        case 'search':
+          e.preventDefault()
+          navigate('/search')
+          break
 
-      // Playback shortcuts must not swallow keys while nothing is playing —
-      // Space activates focused buttons and the arrows scroll the catalog
-      // lists, so claiming them app-wide breaks both.
-      const hasPlayback = !!currentChannel
-
-      switch (e.key) {
-        case ' ':
-        case 'k':
-          if (e.metaKey || e.ctrlKey || e.altKey || !hasPlayback) return
+        case 'toggle-play':
           e.preventDefault()
           if (playbackEngine === 'mpv') {
             void mpvTogglePause().catch(() => undefined)
@@ -65,9 +136,7 @@ export function useKeyboard() {
           }
           break
 
-        case 'f':
-        case 'F':
-          if (!hasPlayback) return
+        case 'toggle-fullscreen':
           e.preventDefault()
           if (playbackEngine === 'mpv') {
             const next = !isFullscreen
@@ -87,9 +156,7 @@ export function useKeyboard() {
           }
           break
 
-        case 'm':
-        case 'M':
-          if (!hasPlayback) return
+        case 'toggle-mute':
           e.preventDefault()
           {
             const next = !isMuted
@@ -100,8 +167,7 @@ export function useKeyboard() {
           }
           break
 
-        case 'ArrowUp':
-          if (!hasPlayback) return
+        case 'volume-up':
           e.preventDefault()
           {
             const next = Math.min(1, volume + 0.05)
@@ -112,8 +178,7 @@ export function useKeyboard() {
           }
           break
 
-        case 'ArrowDown':
-          if (!hasPlayback) return
+        case 'volume-down':
           e.preventDefault()
           {
             const next = Math.max(0, volume - 0.05)
@@ -124,8 +189,7 @@ export function useKeyboard() {
           }
           break
 
-        case 'ArrowLeft':
-          if (!hasPlayback) return
+        case 'seek-back':
           e.preventDefault()
           if (playbackEngine === 'mpv') {
             void mpvSeek(-10).catch(() => undefined)
@@ -135,8 +199,7 @@ export function useKeyboard() {
           }
           break
 
-        case 'ArrowRight':
-          if (!hasPlayback) return
+        case 'seek-forward':
           e.preventDefault()
           if (playbackEngine === 'mpv') {
             void mpvSeek(10).catch(() => undefined)
@@ -146,18 +209,14 @@ export function useKeyboard() {
           }
           break
 
-        case 'l':
-        case 'L':
-          if (e.metaKey || e.ctrlKey || e.altKey) return
+        case 'toggle-sidebar':
           e.preventDefault()
-          if (currentChannel && location.pathname === '/player') {
-            togglePlayerSidebar()
-          }
+          togglePlayerSidebar()
           break
 
-        case 'Escape':
+        case 'escape':
           // Close sidebar first, then handle fullscreen/exit
-          if (isPlayerSidebarOpen) {
+          if (isPlayerRoute && isPlayerSidebarOpen) {
             e.preventDefault()
             setPlayerSidebarOpen(false)
             break
@@ -169,14 +228,13 @@ export function useKeyboard() {
           } else if (document.fullscreenElement) {
             document.exitFullscreen()
             setFullscreen(false)
-          } else if (location.pathname === '/player' && currentChannel) {
+          } else if (isPlayerRoute && currentChannel) {
             e.preventDefault()
             setMiniPlayer(true)
             navigateToPlayerReturnTarget({ navigate, target: playerReturnTarget })
           }
           break
       }
-
     }
 
     document.addEventListener('keydown', handler)
