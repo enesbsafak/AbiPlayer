@@ -14,6 +14,7 @@
     "lint:changed": "node scripts/lint-changed.mjs",
     "postinstall": "electron-builder install-app-deps",
     "prepare:mpv:win": "node scripts/prepare-mpv-win.mjs",
+    "update:mpv-pin": "node scripts/update-mpv-pin.mjs",
     "build:unpack": "npm run prepare:mpv:win && npm run build && electron-builder --dir",
     "build:win": "npm run prepare:mpv:win && npm run build && electron-builder --win",
     "release:win": "node scripts/release-win.mjs",

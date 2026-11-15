@@ -1,95 +1,74 @@
 #!/usr/bin/env node
 
-import { spawn } from 'child_process'
-import { createHash } from 'crypto'
-import { createWriteStream, existsSync } from 'fs'
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises'
-import { tmpdir } from 'os'
-import { join } from 'path'
-import { Readable } from 'stream'
-import { pipeline } from 'stream/promises'
-import { path7za } from '7zip-bin'
+// Pakete giren mpv'yi kurar (F0-06). Kaynak her zaman scripts/mpv-pin.json'daki
+// sabittir: sürüm etiketi, dosya adı, boyut ve SHA256 depoda durur. İndirilen
+// dosya bu özetle tutmazsa derleme durur. Arşiv geçici klasöre açılır, hazırlık
+// klasörü tamamlanınca resources/mpv/win32-x64 adına taşınır; yarım kurulum
+// hedefte hiç görünmez. Sabiti yeni sürüme taşımak için: npm run update:mpv-pin
 
-const MPV_RELEASE_API =
-  'https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest'
+import { spawn } from 'child_process'
+import { existsSync } from 'fs'
+import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'fs/promises'
+import { tmpdir } from 'os'
+import { basename, dirname, join } from 'path'
+import { path7za } from '7zip-bin'
+import {
+  SOURCE_FILE_NAME,
+  buildSourceInfo,
+  downloadWithSha256,
+  pinDownloadUrl,
+  readPin,
+  sourceMatchesPin
+} from './mpv-lib.mjs'
+
 const TARGET_DIR = join(process.cwd(), 'resources', 'mpv', 'win32-x64')
 const TARGET_EXE = join(TARGET_DIR, 'mpv.exe')
 const FORCE_DOWNLOAD = process.env['FORCE_MPV_DOWNLOAD'] === '1'
+const DOWNLOAD_TIMEOUT_MS = Number(process.env['MPV_DOWNLOAD_TIMEOUT_MS']) || 10 * 60_000
+const VERSION_CHECK_TIMEOUT_MS = 30_000
 
 function log(message) {
   console.log(`[prepare-mpv] ${message}`)
 }
 
-function isObject(value) {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'abi-player-build'
-    }
-  })
-
-  if (!response.ok) {
-    throw new Error(`GitHub API hatasi (${response.status}): ${response.statusText}`)
-  }
-
-  return response.json()
-}
-
-async function downloadFile(url, destinationPath) {
-  const response = await fetch(url, {
-    redirect: 'follow',
-    headers: {
-      Accept: 'application/octet-stream',
-      'User-Agent': 'abi-player-build'
-    }
-  })
-
-  if (!response.ok || !response.body) {
-    throw new Error(`Dosya indirilemedi (${response.status}): ${response.statusText}`)
-  }
-
-  await pipeline(Readable.fromWeb(response.body), createWriteStream(destinationPath))
-}
-
-async function verifyFileSha256(filePath, expectedSha256) {
-  const fileBuffer = await readFile(filePath)
-  const actualSha256 = createHash('sha256').update(fileBuffer).digest('hex')
-  if (actualSha256 !== expectedSha256.toLowerCase()) {
-    throw new Error(
-      `SHA256 dogrulama basarisiz. Beklenen=${expectedSha256}, Alinan=${actualSha256}`
-    )
-  }
-}
-
-function run(command, args) {
+function run(command, args, { timeoutMs } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(command, args, {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: timeoutMs
+    })
+    let stdout = ''
     let stderr = ''
 
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk
+    })
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', (chunk) => {
       stderr += chunk
     })
 
     child.on('error', reject)
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       if (code === 0) {
-        resolve()
+        resolve(stdout)
         return
       }
 
-      const message = stderr.trim() || `${command} kod ${code} ile cikti`
-      reject(new Error(message))
+      const reason = signal ? `${signal} sinyaliyle durdu` : `kod ${code} ile çıktı`
+      reject(new Error(stderr.trim() || `${basename(command)} ${reason}`))
     })
   })
 }
 
-async function extractArchive(archivePath, outputDir) {
-  await run(path7za, ['x', archivePath, `-o${outputDir}`, '-y'])
+async function readInstalledSource() {
+  try {
+    return JSON.parse(await readFile(join(TARGET_DIR, SOURCE_FILE_NAME), 'utf8'))
+  } catch {
+    return null
+  }
 }
 
 async function findDirectoryContainingFile(rootDir, fileName) {
@@ -115,94 +94,110 @@ async function findDirectoryContainingFile(rootDir, fileName) {
   return null
 }
 
-async function copyDirectoryContents(sourceDir, targetDir) {
-  const entries = await readdir(sourceDir, { withFileTypes: true })
-  for (const entry of entries) {
-    await cp(join(sourceDir, entry.name), join(targetDir, entry.name), {
-      recursive: true,
-      force: true
-    })
+// Önceki yarım çalıştırmalardan kalan hazırlık ve yedek klasörleri.
+async function removeLeftovers(parentDir, baseName) {
+  if (!existsSync(parentDir)) return
+  for (const entry of await readdir(parentDir, { withFileTypes: true })) {
+    if (entry.isDirectory() && /\.(staging|old)-[\w-]+$/.test(entry.name) && entry.name.startsWith(baseName)) {
+      await rm(join(parentDir, entry.name), { recursive: true, force: true })
+    }
   }
 }
 
-function pickMpvAsset(assets) {
-  return assets.find((asset) => {
-    if (!isObject(asset) || typeof asset.name !== 'string') return false
-    return (
-      asset.name.startsWith('mpv-x86_64-') &&
-      asset.name.endsWith('.7z') &&
-      !asset.name.includes('-v3-') &&
-      !asset.name.includes('debug') &&
-      !asset.name.includes('dev')
-    )
-  })
-}
+// Hedefle aynı birimde hazırlanan klasör tek adımda yerine taşınır. Eski kurulum
+// önce kenara alınır; taşıma başarısız olursa geri konur.
+async function swapIntoPlace(stagingDir) {
+  const oldDir = `${TARGET_DIR}.old-${process.pid}`
+  const hadPrevious = existsSync(TARGET_DIR)
 
-function getAssetSha256(asset) {
-  if (!isObject(asset) || typeof asset.digest !== 'string') return null
-  if (!asset.digest.startsWith('sha256:')) return null
-  return asset.digest.slice('sha256:'.length).trim().toLowerCase()
+  if (hadPrevious) {
+    try {
+      await rename(TARGET_DIR, oldDir)
+    } catch (error) {
+      throw new Error(
+        `${TARGET_DIR} taşınamadı; mpv çalışıyor olabilir. Kapatıp yeniden deneyin.`,
+        { cause: error }
+      )
+    }
+  }
+
+  try {
+    await rename(stagingDir, TARGET_DIR)
+  } catch (error) {
+    if (hadPrevious) await rename(oldDir, TARGET_DIR)
+    throw error
+  }
+
+  if (hadPrevious) await rm(oldDir, { recursive: true, force: true })
 }
 
 async function main() {
   if (process.platform !== 'win32') {
-    log('Windows disi ortamda MPV hazirlama atlandi.')
+    log('Windows dışı ortamda MPV hazırlama atlandı.')
     return
   }
+
+  const pin = await readPin()
+  const label = `${pin.repository}@${pin.releaseTag} ${pin.assetName}`
 
   if (!FORCE_DOWNLOAD && existsSync(TARGET_EXE)) {
-    log(`MPV zaten hazir: ${TARGET_EXE}`)
-    return
+    const installed = await readInstalledSource()
+    if (sourceMatchesPin(installed, pin)) {
+      log(`MPV zaten hazır (${pin.releaseTag}): ${TARGET_EXE}`)
+      return
+    }
+    const was = installed ? `${String(installed.releaseTag)} ${String(installed.assetName)}` : 'kaydı yok'
+    log(`Kurulu MPV sabitle eşleşmiyor (${was}); yeniden kuruluyor.`)
   }
 
-  const release = await fetchJson(MPV_RELEASE_API)
-  const assets = Array.isArray(release.assets) ? release.assets : []
-  const asset = pickMpvAsset(assets)
+  const parentDir = dirname(TARGET_DIR)
+  await mkdir(parentDir, { recursive: true })
+  await removeLeftovers(parentDir, basename(TARGET_DIR))
 
-  if (!asset || typeof asset.browser_download_url !== 'string' || typeof asset.name !== 'string') {
-    throw new Error('Uygun x64 MPV release asset bulunamadi.')
-  }
-
-  const expectedSha256 = getAssetSha256(asset)
   const tempRoot = await mkdtemp(join(tmpdir(), 'abi-player-mpv-'))
-  const archivePath = join(tempRoot, asset.name)
+  const archivePath = join(tempRoot, pin.assetName)
   const extractDir = join(tempRoot, 'extract')
+  const stagingDir = `${TARGET_DIR}.staging-${process.pid}`
 
   try {
-    await mkdir(extractDir, { recursive: true })
+    log(`${label} indiriliyor...`)
+    const downloaded = await downloadWithSha256(pinDownloadUrl(pin), archivePath, DOWNLOAD_TIMEOUT_MS)
 
-    log(`${asset.name} indiriliyor...`)
-    await downloadFile(asset.browser_download_url, archivePath)
-
-    if (expectedSha256) {
-      log('SHA256 dogrulaniyor...')
-      await verifyFileSha256(archivePath, expectedSha256)
+    if (downloaded.sha256 !== pin.sha256 || downloaded.size !== pin.size) {
+      throw new Error(
+        'İndirilen mpv sabitle eşleşmiyor; derleme durduruldu.\n' +
+          `  beklenen: sha256=${pin.sha256} boyut=${pin.size}\n` +
+          `  alınan:   sha256=${downloaded.sha256} boyut=${downloaded.size}`
+      )
     }
+    log('SHA256 sabitle eşleşti.')
 
-    log('Arsiv aciliyor...')
-    await extractArchive(archivePath, extractDir)
+    log('Arşiv açılıyor...')
+    await mkdir(extractDir, { recursive: true })
+    await run(path7za, ['x', archivePath, `-o${extractDir}`, '-y'])
 
     const mpvDir = await findDirectoryContainingFile(extractDir, 'mpv.exe')
     if (!mpvDir) {
-      throw new Error('Arsivde mpv.exe bulunamadi.')
+      throw new Error('Arşivde mpv.exe bulunamadı.')
     }
 
-    await rm(TARGET_DIR, { recursive: true, force: true })
-    await mkdir(TARGET_DIR, { recursive: true })
-    await copyDirectoryContents(mpvDir, TARGET_DIR)
+    await rm(stagingDir, { recursive: true, force: true })
+    await cp(mpvDir, stagingDir, { recursive: true })
 
-    const sourceInfo = {
-      releaseTag: typeof release.tag_name === 'string' ? release.tag_name : null,
-      assetName: asset.name,
-      assetUrl: asset.browser_download_url,
-      sha256: expectedSha256,
-      downloadedAt: new Date().toISOString(),
-      repository: 'shinchiro/mpv-winbuild-cmake'
-    }
+    const versionOutput = await run(join(stagingDir, 'mpv.exe'), ['--version'], {
+      timeoutMs: VERSION_CHECK_TIMEOUT_MS
+    })
+    log(versionOutput.split(/\r?\n/)[0] ?? 'mpv --version çalıştı')
 
-    await writeFile(join(TARGET_DIR, '.mpv-source.json'), `${JSON.stringify(sourceInfo, null, 2)}\n`)
-    log(`MPV hazirlandi: ${TARGET_EXE}`)
+    await writeFile(
+      join(stagingDir, SOURCE_FILE_NAME),
+      `${JSON.stringify(buildSourceInfo(pin), null, 2)}\n`
+    )
+
+    await swapIntoPlace(stagingDir)
+    log(`MPV hazırlandı: ${TARGET_EXE}`)
   } finally {
+    await rm(stagingDir, { recursive: true, force: true })
     await rm(tempRoot, { recursive: true, force: true })
   }
 }
