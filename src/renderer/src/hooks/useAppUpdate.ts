@@ -9,6 +9,7 @@ import {
 } from '@/services/platform'
 import { toUserMessage } from '@/services/user-error'
 import { flushPersistedStore } from '@/store'
+import { strings } from '@/strings'
 
 /**
  * Shared view of the updater. The main process is the single source of truth and
@@ -64,7 +65,7 @@ export function useAppUpdate() {
       stillChecking = nextState?.status === 'checking'
       return nextState
     } catch (error) {
-      setCheckError(toUserMessage(error, 'Güncelleme denetlenemedi.'))
+      setCheckError(toUserMessage(error, strings.settings.updates.checkFailed))
       return null
     } finally {
       if (!stillChecking) setIsChecking(false)
@@ -80,7 +81,7 @@ export function useAppUpdate() {
       flushPersistedStore()
       started = await installAppUpdate()
     } catch (error) {
-      setCheckError(toUserMessage(error, 'Güncelleme kurulamadı.'))
+      setCheckError(toUserMessage(error, strings.settings.updates.installFailed))
     } finally {
       if (!started) setIsInstalling(false)
     }

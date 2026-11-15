@@ -91,6 +91,32 @@ export const sources = {
     save: 'Kaydet ve Bağlan'
   },
 
+  /** Connecting a saved source, at start-up or on a retry. */
+  connect: {
+    failed: 'Kaynağa bağlanılamadı.',
+    /** `details`: each source's "name: reason", joined with " · ". */
+    summary: (count: number, details: string) => `${count} kaynağa bağlanılamadı — ${details}`,
+    secretsUnavailable: 'Kayıtlı giriş bilgileri şu an okunamıyor; uygulama yeniden deneyecek.',
+    missingXtreamSecret: `Kayıtlı kullanıcı adı ve şifre bulunamadı. ${settingsPath('sources')} bölümünden bu kaynağın bilgilerini yeniden girin.`,
+    missingM3uUrl: `Kayıtlı liste adresi bulunamadı. ${settingsPath('sources')} bölümünden bu kaynağın adresini yeniden girin.`,
+    missingCredentials: 'Kayıtlı giriş bilgileri bulunamadı.',
+    missingUrl: 'Kayıtlı liste adresi bulunamadı.',
+    missingFilePath: 'Liste dosyasının yolu kayıtlı değil. Dosyayı yeniden seçin.',
+    fileReadFailed: 'Liste dosyası okunamadı.',
+    /** Appended to a read failure that does not already ask for it. */
+    repickFile: 'Dosyayı yeniden seçin.',
+    fileCopyKept: (when: string) => `Dosyanın ${when} tarihinde okunan kopyası gösteriliyor.`,
+    fileNotPicked: (when: string | null) =>
+      `Uygulama yalnızca sizin seçtiğiniz dosyaları okuyabildiği için bu liste dosyasını ${settingsPath('sources')} bölümünde "Dosyayı Yeniden Seç" ile bir kez yeniden seçin` +
+      (when ? `; o zamana kadar dosyanın ${when} tarihinde okunan kopyası gösteriliyor.` : '.'),
+    reloadedRetrying: 'Liste yüklenirken kaynak yeniden yüklendi. Yeniden denenecek.',
+    secretsLoadFailed: 'Bu kaynağın giriş bilgileri yüklenemedi.',
+    secretMigrationFailed:
+      'Kayıtlı giriş bilgileri güvenli depoya taşınamadı. Bilgiler kaybolmasın diye şimdilik eski yerinde duruyor; uygulama her açılışta yeniden deneyecek.',
+    secretStoreUnreadable:
+      'Kayıtlı giriş bilgileri şu an okunamıyor. Bilgiler silinmedi; uygulama okumayı kendiliğinden yeniden deneyecek.'
+  },
+
   credentials: {
     lossTitle: 'Kayıtlı giriş bilgileri okunamadı',
     lossMessage: (quarantinedAs: string | null) =>

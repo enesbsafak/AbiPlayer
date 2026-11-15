@@ -12,6 +12,7 @@ import {
   pickPreferred,
   type LocalizedText
 } from './epg-service'
+import { requests } from '@/strings/requests'
 
 /*
  * XMLTV, parsed as it streams in.
@@ -244,7 +245,7 @@ export function createXmltvParser(options: XmltvParseOptions): { feed(text: stri
     const category = pickPreferred(pending.categories, preferred)
     const program: EPGProgram = {
       channelId: pending.key,
-      title: title?.text || 'Başlık Yok',
+      title: title?.text || requests.epg.noTitle,
       start: pending.start,
       end: pending.end
     }
@@ -510,8 +511,8 @@ export async function fetchAndParseEPG(
   await streamText(url, (text) => parser.feed(text), {
     signal: options.signal,
     onProgress: options.onProgress,
-    httpMessage: (status) => `EPG indirilemedi: ${status}`,
-    timeoutMessage: 'EPG indirilirken zaman aşımı oluştu'
+    httpMessage: requests.epg.downloadFailed,
+    timeoutMessage: requests.epg.timeout
   })
   return toEpgData(parser.end())
 }

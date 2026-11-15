@@ -10,6 +10,7 @@ import { forgetSourceMeta } from './source-meta'
 import { setCacheKeyPending } from './cache-key'
 import { CATALOG_TYPES } from './types'
 import { ingestDropped, ingestFromCache, ingestM3uText, ingestM3uUrl, sourceIdentity, type IngestOutcome } from './worker-ingest'
+import { strings } from '@/strings'
 
 /*
  * The disk cache's place in the app's life:
@@ -237,24 +238,24 @@ export async function reloadSourceCatalog(sourceId: string, options: { onlyStale
   if (!source) return
   if (source.type === 'xtream') {
     const creds = state.getXtreamCredentials(sourceId)
-    if (!creds) throw new Error('Kayıtlı kimlik bilgileri bulunamadı.')
+    if (!creds) throw new Error(strings.sources.connect.missingCredentials)
     // `onlyStale`: lists that are complete and fresh from the provider stay.
     await ensureStagedSync(sourceId, 'live', creds, { refresh: !options.onlyStale })
     return
   }
   let outcome: IngestOutcome
   if (source.type === 'm3u_url') {
-    if (!source.url) throw new Error('Kayıtlı liste adresi bulunamadı.')
+    if (!source.url) throw new Error(strings.sources.connect.missingUrl)
     outcome = await ingestM3uUrl(sourceId, source.url)
   } else {
-    if (!source.filePath) throw new Error('Liste dosyasının yolu kayıtlı değil. Dosyayı yeniden seçin.')
+    if (!source.filePath) throw new Error(strings.sources.connect.missingFilePath)
     const file = await readPickedFile(source.filePath)
     if (!file) return
     outcome = await ingestM3uText(sourceId, file.content, file.path)
   }
   // Refreshed again meanwhile: what this load fetched was not kept.
   if (ingestDropped(outcome) && useStore.getState().sources.some((item) => item.id === sourceId)) {
-    throw new Error('Liste yüklenirken kaynak yeniden yüklendi. Tekrar deneyin.')
+    throw new Error(strings.sources.manager.reloadedDuringLoad)
   }
   useStore.getState().setSourceError(sourceId, null)
 }

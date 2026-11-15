@@ -1,5 +1,6 @@
 import type { TlsPolicy } from '../tls/policy'
 import type { IpcRegistrar } from './register'
+import { mainStrings } from '../../shared/main-strings'
 
 export type TlsPolicyApi = Pick<TlsPolicy, 'listTrusted' | 'listUntrusted' | 'trust' | 'revoke'>
 
@@ -8,7 +9,7 @@ export function registerTlsHandlers(registrar: IpcRegistrar, policy: TlsPolicyAp
   registrar.handle('tls-list-trusted', () => policy.listTrusted())
   registrar.handle('tls-list-untrusted', () => policy.listUntrusted())
   registrar.handle('tls-trust', (_event, request) => {
-    if (!request || typeof request !== 'object') throw new Error('Geçersiz sertifika onayı')
+    if (!request || typeof request !== 'object') throw new Error(mainStrings.invalid.trustRequest)
     return policy.trust(request as Parameters<TlsPolicy['trust']>[0])
   })
   registrar.handle('tls-revoke', (_event, host, port) => policy.revoke(host, port))

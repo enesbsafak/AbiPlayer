@@ -10,6 +10,7 @@ import {
   PROBED_SUBTITLE_PREFIX,
   trackId
 } from './track-ids'
+import { strings } from '@/strings'
 
 /**
  * Track lists of the `<video>` element and hls.js, mapped to store tracks, and
@@ -66,7 +67,7 @@ export function collectNativeSubtitleTracks(video: HTMLVideoElement): SubtitleTr
 
     nativeTracks.push({
       id: trackId(NATIVE_SUBTITLE_PREFIX, i),
-      name: track.label || track.language || `Altyazı ${i + 1}`,
+      name: track.label || track.language || strings.player.subtitles.fallback(i + 1),
       lang: track.language || undefined,
       type: 'embedded'
     })
@@ -79,7 +80,7 @@ export function collectHlsSubtitleTracks(hls: Hls): SubtitleTrack[] {
   const tracks = hls.subtitleTracks || []
   return tracks.map((track, index) => ({
     id: trackId(HLS_SUBTITLE_PREFIX, index),
-    name: track.name || track.lang || `Altyazı ${index + 1}`,
+    name: track.name || track.lang || strings.player.subtitles.fallback(index + 1),
     lang: track.lang,
     type: 'embedded'
   }))
@@ -94,7 +95,7 @@ export function collectProbedSubtitleTracks(tracks: EmbeddedSubtitleProbeTrack[]
     const nameParts = [lang ? lang.toUpperCase() : '', title || '', codec ? `(${codec})` : ''].filter(Boolean)
     return {
       id: trackId(PROBED_SUBTITLE_PREFIX, track.index),
-      name: nameParts.join(' ') || `Altyazı ${index + 1}`,
+      name: nameParts.join(' ') || strings.player.subtitles.fallback(index + 1),
       lang: lang || undefined,
       type: 'embedded'
     }
@@ -109,7 +110,7 @@ export function collectNativeAudioTracks(video: HTMLVideoElement): AudioTrack[] 
   for (const [i, track] of listEntries(tracks)) {
     nativeTracks.push({
       id: trackId(NATIVE_AUDIO_PREFIX, i),
-      name: track.label || track.language || `Ses ${i + 1}`,
+      name: track.label || track.language || strings.player.audio.fallback(i + 1),
       lang: track.language || undefined,
       default: !!track.enabled
     })
@@ -122,7 +123,7 @@ export function collectHlsAudioTracks(hls: Hls): AudioTrack[] {
   const tracks = hls.audioTracks || []
   return tracks.map((track, index) => ({
     id: trackId(HLS_AUDIO_PREFIX, index),
-    name: track.name || track.lang || `Ses ${index + 1}`,
+    name: track.name || track.lang || strings.player.audio.fallback(index + 1),
     lang: track.lang,
     default: !!track.default
   }))

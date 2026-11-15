@@ -2,14 +2,14 @@ import { useCallback, useState } from 'react'
 import { useStore } from '@/store'
 import { mpvAddSubtitleFile, pickAndReadFile } from '@/services/platform'
 import { parseSubtitles } from '@/services/subtitle-parser'
+import { strings } from '@/strings'
 
-export const SUBTITLE_FILE_READ_ERROR =
-  'Altyazı dosyası okunamadı. Dosya çok büyük ya da erişilemez olabilir.'
-export const SUBTITLE_FILE_ADD_ERROR = 'Altyazı dosyası oynatıcıya eklenemedi.'
-export const SUBTITLE_FILE_EMPTY_ERROR = 'Dosyada okunabilir altyazı bulunamadı.'
+export const SUBTITLE_FILE_READ_ERROR = strings.player.subtitles.fileReadFailed
+export const SUBTITLE_FILE_ADD_ERROR = strings.player.subtitles.fileAddFailed
+export const SUBTITLE_FILE_EMPTY_ERROR = strings.player.subtitles.fileEmpty
 
 const SUBTITLE_FILE_FILTERS = [
-  { name: 'Altyazı Dosyaları', extensions: ['srt', 'vtt', 'ass', 'ssa'] }
+  { name: strings.player.subtitles.fileFilter, extensions: ['srt', 'vtt', 'ass', 'ssa'] }
 ]
 
 export type ExternalSubtitleLoadResult = 'loaded' | 'cancelled' | 'failed'

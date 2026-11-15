@@ -1,10 +1,6 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/services/m3u-parser', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/services/m3u-parser')>()
-  return { ...actual, fetchAndParseM3U: vi.fn() }
-})
 vi.mock('@/services/platform', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/services/platform')>()
   return { ...actual, readPickedFile: vi.fn() }

@@ -2,9 +2,9 @@ import type { SubtitleCue } from '@/types/player'
 import type { EmbeddedSubtitleExtractionResult } from '@/services/platform'
 import { parseSubtitles } from '@/services/subtitle-parser'
 import { isMediaJobCancelledError } from './media-jobs'
+import { strings } from '@/strings'
 
-export const TRUNCATED_SUBTITLE_NOTICE =
-  'Altyazının yalnızca bir bölümü alınabildi; ilerleyen sahnelerde altyazı görünmeyebilir.'
+export const TRUNCATED_SUBTITLE_NOTICE = strings.player.subtitles.truncated
 
 /** `truncated` is optional on the IPC result; absent means complete. */
 export function isTruncatedSubtitleExtraction(result: EmbeddedSubtitleExtractionResult): boolean {

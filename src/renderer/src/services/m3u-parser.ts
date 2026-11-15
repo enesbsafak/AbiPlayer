@@ -2,6 +2,7 @@ import { itemAt } from '../../../shared/checked'
 import type { Channel, Category } from '@/types/playlist'
 import { isAdultLabel } from './adult-content'
 import { requestHost } from './xtream-errors'
+import { requests } from '@/strings/requests'
 
 // Startup blocks on this: a 2-minute ceiling meant one unreachable playlist URL
 // pinned the "Kaynaklar bağlanıyor..." screen for two minutes with no feedback.
@@ -357,13 +358,9 @@ export async function streamText(url: string, onText: (text: string) => void, op
     if (error instanceof PlaylistRequestError) return error
     if (timedOut) return new PlaylistRequestError('timeout', options.timeoutMessage, { host, cause: error })
     if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
-      return new PlaylistRequestError('aborted', 'İstek iptal edildi', { host, cause: error })
+      return new PlaylistRequestError('aborted', requests.cancelled, { host, cause: error })
     }
-    return new PlaylistRequestError(
-      'network',
-      'Oynatma listesi sunucusuna bağlanılamadı. İnternet bağlantısını ve adresi kontrol edin.',
-      { host, cause: error }
-    )
+    return new PlaylistRequestError('network', requests.playlist.unreachable, { host, cause: error })
   }
 
   const abortFromCaller = () => controller.abort()
@@ -428,7 +425,7 @@ export async function streamText(url: string, onText: (text: string) => void, op
 function checkPlaylistUrl(url: string): URL {
   const parsedUrl = new URL(url)
   if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-    throw new Error('Yalnızca HTTP/HTTPS oynatma listesi adresleri destekleniyor')
+    throw new Error(requests.playlist.httpOnly)
   }
   return parsedUrl
 }
@@ -443,18 +440,9 @@ export async function fetchM3uStreamed(
   const parser = createM3uParser(sourceId)
   await streamText(parsedUrl.toString(), (text) => parser.feed(text), {
     ...options,
-    httpMessage: (status) => `M3U listesi indirilemedi (HTTP ${status})`,
-    timeoutMessage: 'M3U listesi indirilirken zaman aşımı oluştu'
+    httpMessage: requests.playlist.downloadFailed,
+    timeoutMessage: requests.playlist.timeout
   })
   return parser.end()
 }
 
-/**
- * @deprecated Nothing in the app calls it: playlists are fetched by the
- * catalog worker (`fetchM3uStreamed`). Kept only because
- * components/auth/PlaylistImport.test.ts still mocks it; delete it together
- * with that mock.
- */
-export function fetchAndParseM3U(url: string, sourceId: string): Promise<ParsedPlaylist> {
-  return fetchM3uStreamed(url, sourceId)
-}

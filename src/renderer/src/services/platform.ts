@@ -19,6 +19,7 @@ import {
   type PickedFile,
   type WindowStateInfo
 } from '../../../shared/ipc/contract'
+import { strings } from '@/strings'
 
 export type {
   AppUpdateState,
@@ -342,7 +343,7 @@ export async function tlsListUntrusted(): Promise<UntrustedCertificateNotice[]> 
 
 /** Pins the certificate main last saw for that host and port. Rejects for GitHub/TMDB hosts. */
 export async function tlsTrust(request: CertificateTrustRequest): Promise<TrustedCertificateHost> {
-  if (!isElectron() || !window.electron?.tlsTrust) throw new Error('Sertifika onayı yalnızca uygulamada yapılabilir')
+  if (!isElectron() || !window.electron?.tlsTrust) throw new Error(strings.security.trust.appOnly)
   return window.electron.tlsTrust(request)
 }
 

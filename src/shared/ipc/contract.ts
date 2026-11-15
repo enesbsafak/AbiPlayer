@@ -6,6 +6,7 @@
  * table in `./api`, and the renderer's wrappers call through that table — so a
  * channel that exists on one side and not the other is a type error.
  */
+import { mainStrings } from '../main-strings'
 import type {
   AppUpdateState,
   EmbeddedSubtitleExtractionResult,
@@ -74,7 +75,7 @@ export interface MediaJobOptions {
 }
 
 /** Message of the error a cancelled probe/extraction rejects with. */
-export const MEDIA_JOB_CANCELLED_MESSAGE = 'Medya işi iptal edildi'
+export const MEDIA_JOB_CANCELLED_MESSAGE = mainStrings.media.cancelled
 
 export interface WindowStateInfo {
   isMaximized: boolean

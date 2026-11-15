@@ -2,6 +2,7 @@ import type { BrowserWindow } from 'electron'
 import type { WindowStateInfo } from '../../shared/ipc/contract'
 import type { IpcRegistrar } from './register'
 import { requireBoolean } from './validators'
+import { mainStrings } from '../../shared/main-strings'
 
 export function readWindowStateInfo(window: Pick<BrowserWindow, 'isMaximized' | 'isFullScreen'>): WindowStateInfo {
   return { isMaximized: window.isMaximized(), isFullScreen: window.isFullScreen() }
@@ -61,7 +62,7 @@ export function registerWindowHandlers(
   })
 
   registrar.handle('window-set-fullscreen', (event, fullscreen) => {
-    const value = requireBoolean(fullscreen, 'Geçersiz tam ekran değeri')
+    const value = requireBoolean(fullscreen, mainStrings.invalid.fullscreen)
     getWindow(event.sender)?.setFullScreen(value)
   })
 

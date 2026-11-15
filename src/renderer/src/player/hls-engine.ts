@@ -1,4 +1,5 @@
 import type Hls from 'hls.js'
+import { strings } from '@/strings'
 
 // hls.js (about 590 kB) is loaded only when the HTML5 engine actually plays
 // HLS: with mpv, the usual engine, it is never needed. Nothing in this module
@@ -41,7 +42,7 @@ export function createHlsErrorRecovery(maxConsecutive = HLS_MAX_CONSECUTIVE_FATA
     },
     nextStep(error: { type: string; details: string }): HlsRecoveryStep {
       if (consecutive >= maxConsecutive) {
-        return { kind: 'fail', message: `Oynatma başarısız: ${error.details}` }
+        return { kind: 'fail', message: strings.player.errors.hlsGaveUp(error.details) }
       }
       consecutive++
       const delayMs = Math.min(1000 * Math.pow(1.5, consecutive - 1), 10000)
@@ -51,7 +52,7 @@ export function createHlsErrorRecovery(maxConsecutive = HLS_MAX_CONSECUTIVE_FATA
           : { kind: 'restart-load', delayMs }
       }
       if (error.type === HLS_MEDIA_ERROR) return { kind: 'recover-media' }
-      return { kind: 'fail', message: `Oynatma hatası: ${error.details}` }
+      return { kind: 'fail', message: strings.player.errors.hlsFatal(error.details) }
     }
   }
 }

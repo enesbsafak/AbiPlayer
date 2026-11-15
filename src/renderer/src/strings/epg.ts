@@ -21,6 +21,9 @@ export const epg = {
     `Yayın akışı güncellenemedi: ${error}${when ? ` ${when} tarihli kopya gösteriliyor.` : ''}`,
   truncatedLimit: 'Yayın akışı çok büyük: kanal ya da program sınırına ulaşıldı, bazı kanalların programları eksik.',
   truncatedCut: 'Yayın akışının tamamı yüklenemedi: indirme yarıda kesildi, bazı kanalların programları eksik.',
+  addressFailed: 'Yayın akışı adresi oluşturulamadı.',
+  noPlaylistGuide: 'Bu oynatma listesi bir yayın akışı adresi (url-tvg) içermiyor.',
+  loadFailed: 'Yayın akışı alınamadı.',
   cachedCopy: (when: string, loading: boolean) =>
     `${when} tarihli kayıtlı yayın akışı gösteriliyor${loading ? ', güncelleniyor…' : '.'}`
 }

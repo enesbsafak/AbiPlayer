@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { classifyError, stripErrorPrefixes, toUserMessage, USER_ERROR_MESSAGES } from './user-error'
+import { settingsPath } from '@/strings'
 
 describe('toUserMessage', () => {
   it('maps the browser network failure to Turkish', () => {
@@ -105,7 +106,7 @@ describe('certificate errors (F3-01)', () => {
     const message = toUserMessage(new Error('net::ERR_CERT_DATE_INVALID'))
     expect(message).toBe(USER_ERROR_MESSAGES.certificate)
     expect(message).toMatch(/onay penceresinden/)
-    expect(message).toMatch(/Ayarlar > Kaynaklar/)
+    expect(message).toContain(settingsPath('sources'))
   })
 
   it('still reports other net:: errors as network failures', () => {

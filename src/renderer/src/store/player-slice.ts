@@ -27,6 +27,7 @@ import {
   type PlaybackId
 } from '../../../shared/playback'
 import { EXTERNAL_SUBTITLE_ID } from '@/player/track-ids'
+import { strings } from '@/strings'
 
 export const DEFAULT_PLAYBACK_TUNING: MpvPlaybackTuning = {
   audioDelay: 0,
@@ -127,7 +128,7 @@ function viewerSelections(state: PlayerSlice): Partial<PlayerSlice> {
   }
 }
 
-const NOT_PLAYABLE_MESSAGE = 'Seçilen içerik doğrudan oynatılamıyor.'
+const NOT_PLAYABLE_MESSAGE = strings.player.errors.notPlayable
 
 function armResume(playback: CurrentPlayback): PendingResume | null {
   if (!isTrackableTarget(playback.target)) return null
@@ -199,11 +200,6 @@ export interface PlayerSlice {
    * the seek for that very playback has been carried out (`completeResume`).
    */
   pendingResume: PendingResume | null
-  /**
-   * Bumped by `reloadPlayback`, which also issues a new playback id. Kept for
-   * code that only needs to know "a reload happened".
-   */
-  playbackReloadToken: number
   /**
    * The player route was left while something was selected. Neither engine
    * runs in that state (mpv is stopped, the <video> is unmounted): the mini
@@ -383,7 +379,6 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
   activeSubtitleCues: [],
   playbackTuning: DEFAULT_PLAYBACK_TUNING,
   pendingResume: null,
-  playbackReloadToken: 0,
   isPlaybackSuspended: false,
   isCornerPlayback: false,
   isSubtitleTrackUserChoice: false,
@@ -449,7 +444,6 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
       return {
         currentPlayback: playback,
         loadedPlaybackId: null,
-        playbackReloadToken: state.playbackReloadToken + 1,
         playerError: null,
         isBuffering: false,
         currentTime: 0,

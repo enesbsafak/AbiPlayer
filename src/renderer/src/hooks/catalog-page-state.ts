@@ -1,4 +1,5 @@
 import type { CatalogStatus, CatalogType } from '@/catalog/types'
+import { formatDateTime, strings } from '@/strings'
 
 /**
  * Pure parts of the catalog page model: which banner the status calls for,
@@ -35,8 +36,7 @@ export interface CatalogBannerInput {
 
 /** The offline banner's text: when the copy shown was fetched. */
 export function offlineCopyBannerText(since: number): string {
-  const when = new Date(since).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })
-  return `Çevrimdışı kopya, ${when} tarihinde güncellendi`
+  return strings.catalog.page.offlineBanner(formatDateTime(since))
 }
 
 /**

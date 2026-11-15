@@ -46,6 +46,8 @@ import {
 import { createReconnectDriver, type ReconnectDriver } from '@/player/reconnect-policy'
 import { MPV_AUDIO_PREFIX, MPV_SUBTITLE_PREFIX, trackId, trackIndex } from '@/player/track-ids'
 import { FRESH_TRACK_PREFERENCES, type TrackPreferenceState } from '@/player/track-reconciler'
+import { toUserMessage } from '@/services/user-error'
+import { strings } from '@/strings'
 
 function clampVolume(value: number): number {
   return Math.max(0, Math.min(1, value))
@@ -374,7 +376,7 @@ export function useMpvPlayer(enabled: boolean, options: MpvPlayerOptions = {}) {
         startupStartedAtRef.current = null
         updateStartupVisibility(false)
         setPlaybackEngine('html5')
-        setPlayerError(error instanceof Error ? error.message : 'mpv oynatım başlatılamadı')
+        setPlayerError(toUserMessage(error, strings.player.errors.mpvStartFailed))
       }
     }
     void open()

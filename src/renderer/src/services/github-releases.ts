@@ -1,5 +1,6 @@
 import { itemAt } from '../../../shared/checked'
 import { GITHUB_REPO } from '@/constants/app-info'
+import { errors } from '@/strings/errors'
 
 const RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=8`
 const REQUEST_TIMEOUT_MS = 12_000
@@ -102,7 +103,7 @@ async function requestReleases(): Promise<ReleaseNote[]> {
     })
 
     if (!response.ok) {
-      throw new Error(`GitHub sürüm listesi alınamadı (${response.status})`)
+      throw new Error(errors.github.listFailed(response.status))
     }
 
     const data: unknown = await response.json().catch(() => null)
@@ -130,7 +131,7 @@ function isGithubRelease(value: unknown): value is GithubReleaseResponse {
  */
 export function parseReleaseList(data: unknown): ReleaseNote[] {
   if (!Array.isArray(data)) {
-    throw new Error('GitHub sürüm listesi okunamadı: beklenmeyen yanıt')
+    throw new Error(errors.github.badResponse)
   }
 
   return data

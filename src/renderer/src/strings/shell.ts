@@ -13,6 +13,12 @@ export const shell = {
     settings: 'Ayarlar'
   },
 
+  app: {
+    stage: 'Açık Beta',
+    /** The line a bug report is prefilled with. */
+    versionLine: (version: string) => `Sürüm: ${version}`
+  },
+
   header: {
     searchShortcut: 'Ctrl+K'
   },

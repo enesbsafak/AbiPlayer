@@ -34,7 +34,7 @@ const live: Channel = {
 }
 
 describe('player-slice reloadPlayback', () => {
-  it('bumps the reload token and clears the error without touching the channel or selections', () => {
+  it('starts a new playback of the same media and clears the error without touching the channel or selections', () => {
     const store = createPlayerTestStore()
     store.getState().playChannel(movie)
     store.getState().selectSubtitleTrack('mpv-s:2')
@@ -46,11 +46,13 @@ describe('player-slice reloadPlayback', () => {
     })
     store.getState().completeResume(defined(store.getState().pendingResume, 'the armed resume').playbackId)
     const channelBefore = store.getState().currentChannel
+    const before = defined(store.getState().currentPlayback, 'the playback before the reload')
 
     store.getState().reloadPlayback()
 
     const state = store.getState()
-    expect(state.playbackReloadToken).toBe(1)
+    expect(state.currentPlayback?.playbackId).not.toBe(before.playbackId)
+    expect(state.currentPlayback?.mediaKey).toBe(before.mediaKey)
     expect(state.playerError).toBeNull()
     expect(state.currentChannel).toBe(channelBefore)
     expect(state.currentAudioTrack).toBe('mpv-a:1')
@@ -79,15 +81,19 @@ describe('player-slice reloadPlayback', () => {
   it('does not arm a resume for live channels', () => {
     const store = createPlayerTestStore()
     store.getState().playChannel(live)
+    const before = defined(store.getState().currentPlayback, 'the live playback')
     store.getState().reloadPlayback()
-    expect(store.getState().playbackReloadToken).toBe(1)
+    expect(store.getState().currentPlayback?.playbackId).not.toBe(before.playbackId)
+    expect(store.getState().currentPlayback?.mediaKey).toBe(before.mediaKey)
     expect(store.getState().pendingResume).toBeNull()
   })
 
   it('is a no-op with nothing selected', () => {
     const store = createPlayerTestStore()
+    const before = store.getState()
     store.getState().reloadPlayback()
-    expect(store.getState().playbackReloadToken).toBe(0)
+    expect(store.getState()).toBe(before)
+    expect(store.getState().currentPlayback).toBeNull()
   })
 })
 

@@ -1,5 +1,6 @@
 import { itemAt } from '../../shared/checked'
 import type { MpvSubtitleStyle, MpvTrackInfo } from '../../shared/types/electron-ipc'
+import { mainStrings } from '../../shared/main-strings'
 
 /** Everything that belongs to the file currently loaded, and to nothing else. */
 export interface MpvStreamState {
@@ -197,18 +198,18 @@ export function applyPlayerProperty(
 // "unrecognized file format", …) — map the common ones so the UI can show
 // something actionable instead of raw engine output.
 const MPV_FILE_ERROR_MESSAGES: Record<string, string> = {
-  'loading failed': 'Yayın açılamadı. Kaynak yanıt vermiyor veya adres geçersiz.',
-  'unrecognized file format': 'Yayın biçimi tanınmadı.',
-  'unknown error': 'Yayın açılırken bilinmeyen bir hata oluştu.'
+  'loading failed': mainStrings.mpv.loadingFailed,
+  'unrecognized file format': mainStrings.mpv.unrecognizedFormat,
+  'unknown error': mainStrings.mpv.unknownError
 }
 
 export function describeMpvFileError(fileError: unknown): string {
   if (typeof fileError !== 'string' || !fileError.trim()) {
-    return 'Yayın açılamadı.'
+    return mainStrings.mpv.openFailed
   }
 
   const normalized = fileError.trim().toLowerCase()
-  return MPV_FILE_ERROR_MESSAGES[normalized] ?? `Yayın açılamadı: ${fileError.trim().slice(0, 200)}`
+  return MPV_FILE_ERROR_MESSAGES[normalized] ?? mainStrings.mpv.openFailedWith(fileError.trim().slice(0, 200))
 }
 
 function parseCssColor(input: string): { r: number; g: number; b: number; a: number } | null {

@@ -16,6 +16,10 @@ import { plainSecretOf, type SourceConnectionError } from '@/store/auth-slice'
 import type { PlaylistSource } from '@/types/playlist'
 import type { XtreamAuthResponse } from '@/types/xtream'
 import { perfMark } from '@/services/perf'
+import { formatDateTime, strings } from '@/strings'
+import { mainStrings } from '../../../shared/main-strings'
+
+const text = strings.sources.connect
 
 /** Waits before automatic attempt n (1-based) after a failed connection; the last one repeats. */
 export const RECONNECT_DELAYS_MS = [3_000, 6_000, 12_000, 24_000, 48_000, 60_000] as const
@@ -47,7 +51,7 @@ export function cachedCopyFetchedAt(sourceId: string): number | null {
 }
 
 export function formatCacheTime(epochMs: number): string {
-  return new Date(epochMs).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })
+  return formatDateTime(epochMs)
 }
 
 /** Waits (briefly) until the source's cached catalog, if it has one, is in memory. */
@@ -98,7 +102,7 @@ export function describeConnectFailure(
   }
   return {
     kind: 'other',
-    message: toUserMessage(error, 'Kaynağa bağlanılamadı.'),
+    message: toUserMessage(error, text.failed),
     retryAt: now + reconnectDelayMs(failures)
   }
 }
@@ -115,7 +119,7 @@ export function connectionSummary(
   const [only] = failures
   if (only === undefined) return null
   if (failures.length === 1) return only
-  return `${failures.length} kaynağa bağlanılamadı — ${failures.join(' · ')}`
+  return text.summary(failures.length, failures.join(' · '))
 }
 
 export interface ConnectDeps {
@@ -131,11 +135,9 @@ export interface ConnectDeps {
   sourceExists?: (sourceId: string) => boolean
 }
 
-export const SECRETS_UNAVAILABLE_MESSAGE = 'Kayıtlı giriş bilgileri şu an okunamıyor; uygulama yeniden deneyecek.'
-export const MISSING_XTREAM_SECRET_MESSAGE =
-  'Kayıtlı kullanıcı adı ve şifre bulunamadı. Ayarlar > Kaynaklar bölümünden bu kaynağın bilgilerini yeniden girin.'
-export const MISSING_M3U_URL_MESSAGE =
-  'Kayıtlı liste adresi bulunamadı. Ayarlar > Kaynaklar bölümünden bu kaynağın adresini yeniden girin.'
+export const SECRETS_UNAVAILABLE_MESSAGE = text.secretsUnavailable
+export const MISSING_XTREAM_SECRET_MESSAGE = text.missingXtreamSecret
+export const MISSING_M3U_URL_MESSAGE = text.missingM3uUrl
 
 function missingSecret(message: string, deps: ConnectDeps): SourceConnectError {
   return new SourceConnectError('missing-secret', deps.secretsUnavailable ? SECRETS_UNAVAILABLE_MESSAGE : message)
@@ -146,19 +148,16 @@ function missingSecret(message: string, deps: ConnectDeps): SourceConnectError {
  * those starts empty after an update from a version that did not keep one.
  */
 function isNotPickedError(message: string): boolean {
-  return message.includes('okuma izni yok')
+  return message.includes(mainStrings.files.notPicked)
 }
 
 /** Why a playlist file could not be read again, in one sentence, and what to do. */
 export function fileReadFailureMessage(error: unknown, cachedAt: number | null): string {
-  const kept = cachedAt ? ` Dosyanın ${formatCacheTime(cachedAt)} tarihinde okunan kopyası gösteriliyor.` : ''
-  const reason = toUserMessage(error, 'Liste dosyası okunamadı.')
-  if (isNotPickedError(reason)) {
-    const meanwhile = cachedAt ? `; o zamana kadar dosyanın ${formatCacheTime(cachedAt)} tarihinde okunan kopyası gösteriliyor.` : '.'
-    return `Uygulama yalnızca sizin seçtiğiniz dosyaları okuyabildiği için bu liste dosyasını Ayarlar > Kaynaklar bölümünde "Dosyayı Yeniden Seç" ile bir kez yeniden seçin${meanwhile}`
-  }
-  const ask = /yeniden seçin\.?$/i.test(reason) ? '' : ' Dosyayı yeniden seçin.'
-  return `${reason}${ask}${kept}`
+  const when = cachedAt ? formatCacheTime(cachedAt) : null
+  const reason = toUserMessage(error, text.fileReadFailed)
+  if (isNotPickedError(reason)) return text.fileNotPicked(when)
+  const ask = /yeniden seçin\.?$/i.test(reason) ? [] : [text.repickFile]
+  return [reason, ...ask, ...(when ? [text.fileCopyKept(when)] : [])].join(' ')
 }
 
 /** A dropped playlist is fetched again this many times before the attempt fails (and is retried on a timer). */
@@ -183,7 +182,7 @@ async function ingestUntilKept(source: PlaylistSource, deps: ConnectDeps, run: (
     })
     if (fresh) return
     if (attempt >= DROPPED_INGEST_ATTEMPTS) {
-      throw new XtreamRequestError('network', 'Liste yüklenirken kaynak yeniden yüklendi. Yeniden denenecek.')
+      throw new XtreamRequestError('network', text.reloadedRetrying)
     }
   }
 }
@@ -209,7 +208,7 @@ export async function connectSource(source: PlaylistSource, deps: ConnectDeps): 
     }
     perfMark('connect:auth-done')
     if (auth.user_info.auth !== 1) {
-      throw new XtreamRequestError('auth', 'Kimlik doğrulama başarısız (kullanıcı adı veya şifre reddedildi)')
+      throw new XtreamRequestError('auth', strings.requests.xtream.authRejected)
     }
     deps.setXtreamAuth(source.id, auth)
     return
@@ -230,7 +229,7 @@ export async function connectSource(source: PlaylistSource, deps: ConnectDeps): 
 
   const filePath = source.filePath
   if (!filePath) {
-    throw new SourceConnectError('file', 'Liste dosyasının yolu kayıtlı değil. Dosyayı yeniden seçin.')
+    throw new SourceConnectError('file', text.missingFilePath)
   }
   const readOnce = async () => {
     try {
@@ -279,11 +278,9 @@ export function planSecretMigration(
   return plan
 }
 
-export const SECRET_MIGRATION_FAILED_MESSAGE =
-  'Kayıtlı giriş bilgileri güvenli depoya taşınamadı. Bilgiler kaybolmasın diye şimdilik eski yerinde duruyor; uygulama her açılışta yeniden deneyecek.'
+export const SECRET_MIGRATION_FAILED_MESSAGE = text.secretMigrationFailed
 
-export const SECRET_STORE_UNREADABLE_MESSAGE =
-  'Kayıtlı giriş bilgileri şu an okunamıyor. Bilgiler silinmedi; uygulama okumayı kendiliğinden yeniden deneyecek.'
+export const SECRET_STORE_UNREADABLE_MESSAGE = text.secretStoreUnreadable
 
 /**
  * Moves a TMDB key an older version kept in the plain settings to the secure

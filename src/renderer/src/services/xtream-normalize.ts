@@ -16,12 +16,16 @@ import type {
   XtreamVODStream
 } from '@/types/xtream'
 import { XtreamRequestError, badResponseError } from './xtream-errors'
+import { requests } from '@/strings/requests'
 
 // Normalization happens once, at the service boundary. Panels disagree on the
 // type of nearly every field ("1" vs 1 vs true, numbers as strings, null for
 // empty text), so nothing past this file has to second-guess a value.
 
 type RawRecord = Record<string, unknown>
+
+/** Which list an Xtream answer should have held, for the error that says it did not. */
+export type XtreamListKind = keyof typeof requests.xtream.listNames
 
 function isRecord(value: unknown): value is RawRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -83,20 +87,17 @@ function toStringList(value: unknown): string[] {
  * category. Anything else (an HTML page parsed as a string, an error object,
  * null) is a bad response rather than a crash further down.
  */
-export function toXtreamList(raw: unknown, what: string): unknown[] {
+export function toXtreamList(raw: unknown, what: XtreamListKind): unknown[] {
   if (Array.isArray(raw)) return raw
   if (isRecord(raw)) {
     const userInfo = raw.user_info
     if (isRecord(userInfo) && !toXtreamBoolean(userInfo.auth)) {
-      throw new XtreamRequestError(
-        'auth',
-        'Kimlik doğrulama başarısız oldu: sunucu kullanıcı adını veya şifreyi reddetti'
-      )
+      throw new XtreamRequestError('auth', requests.xtream.authRejected)
     }
     const keys = Object.keys(raw)
     if (keys.every((key) => /^\d+$/.test(key))) return Object.values(raw)
   }
-  throw badResponseError(`Beklenmeyen sunucu yanıtı: ${what} listesi gelmedi`)
+  throw badResponseError(requests.xtream.missingList(requests.xtream.listNames[what]))
 }
 
 export function normalizeXtreamUserInfo(raw: XtreamRawUserInfo): XtreamUserInfo {
@@ -138,7 +139,7 @@ function normalizeServerInfo(raw: XtreamRawServerInfo) {
 
 export function normalizeXtreamAuthResponse(raw: unknown): XtreamAuthResponse {
   if (!isRecord(raw) || !isRecord(raw.user_info)) {
-    throw badResponseError('Sunucu geçersiz kimlik doğrulama yanıtı döndürdü')
+    throw badResponseError(requests.xtream.badAuthResponse)
   }
   return {
     user_info: normalizeXtreamUserInfo(raw.user_info as XtreamRawUserInfo),
@@ -147,7 +148,7 @@ export function normalizeXtreamAuthResponse(raw: unknown): XtreamAuthResponse {
 }
 
 export function normalizeXtreamCategories(raw: unknown): XtreamCategory[] {
-  return toXtreamList(raw, 'kategori').flatMap((item) => {
+  return toXtreamList(raw, 'category').flatMap((item) => {
     if (!isRecord(item)) return []
     const cat = item as XtreamRawCategory
     const id = toXtreamString(cat.category_id)
@@ -161,7 +162,7 @@ export function normalizeXtreamCategories(raw: unknown): XtreamCategory[] {
 }
 
 export function normalizeXtreamLiveStreams(raw: unknown): XtreamLiveStream[] {
-  return toXtreamList(raw, 'kanal').flatMap((item) => {
+  return toXtreamList(raw, 'live').flatMap((item) => {
     if (!isRecord(item)) return []
     const s = item as XtreamRawLiveStream
     const streamId = toXtreamId(s.stream_id)
@@ -186,7 +187,7 @@ export function normalizeXtreamLiveStreams(raw: unknown): XtreamLiveStream[] {
 }
 
 export function normalizeXtreamVodStreams(raw: unknown): XtreamVODStream[] {
-  return toXtreamList(raw, 'film').flatMap((item) => {
+  return toXtreamList(raw, 'vod').flatMap((item) => {
     if (!isRecord(item)) return []
     const s = item as XtreamRawVODStream
     const streamId = toXtreamId(s.stream_id)
@@ -233,7 +234,7 @@ function normalizeSeriesItem(s: XtreamRawSeriesStream, seriesId: number): Xtream
 }
 
 export function normalizeXtreamSeries(raw: unknown): XtreamSeriesStream[] {
-  return toXtreamList(raw, 'dizi').flatMap((item) => {
+  return toXtreamList(raw, 'series').flatMap((item) => {
     if (!isRecord(item)) return []
     const s = item as XtreamRawSeriesStream
     const seriesId = toXtreamId(s.series_id)
@@ -243,7 +244,7 @@ export function normalizeXtreamSeries(raw: unknown): XtreamSeriesStream[] {
 }
 
 export function normalizeXtreamVodInfo(raw: unknown): XtreamVODInfo {
-  if (!isRecord(raw)) throw badResponseError('Beklenmeyen sunucu yanıtı: film bilgisi gelmedi')
+  if (!isRecord(raw)) throw badResponseError(requests.xtream.missingVodInfo)
   // A panel that does not know the movie answers `"info": []`.
   const info: RawRecord = isRecord(raw.info) ? raw.info : {}
   const movie: RawRecord = isRecord(raw.movie_data) ? raw.movie_data : {}
@@ -277,7 +278,7 @@ export function normalizeXtreamVodInfo(raw: unknown): XtreamVODInfo {
  * nested season and episode values field by field.
  */
 export function normalizeXtreamSeriesInfo(raw: unknown): XtreamSeriesInfo {
-  if (!isRecord(raw)) throw badResponseError('Beklenmeyen sunucu yanıtı: dizi bilgisi gelmedi')
+  if (!isRecord(raw)) throw badResponseError(requests.xtream.missingSeriesInfo)
   const episodes = raw.episodes
   return {
     seasons: Array.isArray(raw.seasons) ? raw.seasons : [],

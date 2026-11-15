@@ -12,6 +12,7 @@ import { catalogWorker, type CatalogWorkerClient } from '@/workers/client'
 import type { EpgResultMeta } from '@/workers/protocol'
 import type { EPGChannel, EPGData, EPGProgram } from '@/types/epg'
 import type { PlaylistSource } from '@/types/playlist'
+import { strings } from '@/strings'
 
 const MIN_EPG_REFRESH_MINUTES = 5
 const MAX_EPG_REFRESH_MINUTES = 1440
@@ -138,7 +139,7 @@ export function createEpgLoader(deps: EpgLoaderDeps = {}) {
 
       if (!isCurrent()) return
       if (!url) {
-        useStore.getState().failEpgLoad(source.type === 'xtream' ? 'EPG adresi oluşturulamadı.' : 'Bu oynatma listesi bir yayın akışı adresi (url-tvg) içermiyor.')
+        useStore.getState().failEpgLoad(source.type === 'xtream' ? strings.epg.addressFailed : strings.epg.noPlaylistGuide)
         return
       }
       const fresh = emptyGuide()
@@ -152,7 +153,7 @@ export function createEpgLoader(deps: EpgLoaderDeps = {}) {
         useStore.getState().completeEpgLoad(sourceId, withMeta(fresh, result.meta), { fromCache: false, fetchedAt: result.meta.fetchedAt })
       } catch (error) {
         if (!isCurrent()) return
-        useStore.getState().failEpgLoad(toUserMessage(await certificateAwareError(error), 'EPG verisi alınamadı'))
+        useStore.getState().failEpgLoad(toUserMessage(await certificateAwareError(error), strings.epg.loadFailed))
       }
     })()
 

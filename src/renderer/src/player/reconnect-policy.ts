@@ -1,3 +1,5 @@
+import { strings } from '@/strings'
+
 /**
  * The one reconnect policy for live streams, whichever engine plays them.
  *
@@ -16,10 +18,10 @@ export const MAX_RECONNECT_ATTEMPTS = 5
  */
 export const STALL_THRESHOLD_MS = 12_000
 export const RECONNECT_BASE_DELAY_MS = 1_000
-export const CONNECTION_LOST_MESSAGE = 'Yayın bağlantısı kesildi.'
+export const CONNECTION_LOST_MESSAGE = strings.player.errors.connectionLost
 
 export function reconnectingMessage(attempt: number): string {
-  return `Bağlantı kesildi, yeniden bağlanılıyor... (${attempt}/${MAX_RECONNECT_ATTEMPTS})`
+  return strings.player.errors.reconnecting(attempt, MAX_RECONNECT_ATTEMPTS)
 }
 
 /** Waits grow with each attempt in a row: 1 s, 2 s, ... */

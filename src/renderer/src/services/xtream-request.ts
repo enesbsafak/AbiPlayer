@@ -1,5 +1,6 @@
 import type { XtreamCredentials } from '@/types/xtream'
 import { XTREAM_REQUEST_CANCELLED_MESSAGE, XtreamRequestError, requestHost } from './xtream-errors'
+import { requests } from '@/strings/requests'
 
 /*
  * The network half of the Xtream client: URL building, one request with
@@ -141,15 +142,10 @@ async function readBodyText(res: Response, requestSignal: AbortSignal, onIdle: (
 }
 
 function describeHttpFailure(status: number, sample: string, host?: string): XtreamRequestError {
-  const suffix = sample ? ` (${sample})` : ''
   if (status === 401 || status === 403) {
-    return new XtreamRequestError(
-      'auth',
-      `Kimlik doğrulama başarısız oldu (HTTP ${status}). Kullanıcı adını, şifreyi ve hesap durumunu kontrol edin.${suffix}`,
-      { status, host }
-    )
+    return new XtreamRequestError('auth', requests.xtream.authHttp(status, sample), { status, host })
   }
-  return new XtreamRequestError('http', `Sunucu hata döndürdü (HTTP ${status})${suffix}`, { status, host })
+  return new XtreamRequestError('http', requests.xtream.http(status, sample), { status, host })
 }
 
 /** Timing hook: called with a step name and the (credential-bearing) URL. */
@@ -211,36 +207,23 @@ async function requestOnce(
       return { data, size: body.length }
     } catch {
       const sample = maskCredentialsInUrl(body.slice(0, 200)).replace(/\s+/g, ' ').trim()
-      throw new XtreamRequestError(
-        'bad-response',
-        `Geçersiz sunucu yanıtı. JSON bekleniyordu: ${sample || 'boş gövde'}`,
-        { host }
-      )
+      throw new XtreamRequestError('bad-response', requests.xtream.notJson(sample), { host })
     }
   } catch (error) {
     if (error instanceof XtreamRequestError) throw error
     if (state.timeoutPhase === 'headers') {
-      throw new XtreamRequestError(
-        'timeout',
-        `İstek zaman aşımına uğradı: sunucu ${headersTimeoutMs / 1000} saniye içinde yanıt vermedi`,
-        { cause: error, host }
-      )
+      throw new XtreamRequestError('timeout', requests.xtream.headersTimeout(headersTimeoutMs / 1000), { cause: error, host })
     }
     if (state.timeoutPhase === 'body') {
-      throw new XtreamRequestError(
-        'timeout',
-        `İstek zaman aşımına uğradı: sunucudan ${XTREAM_BODY_IDLE_TIMEOUT_MS / 1000} saniyedir veri gelmiyor`,
-        { cause: error, host }
-      )
+      throw new XtreamRequestError('timeout', requests.xtream.bodyTimeout(XTREAM_BODY_IDLE_TIMEOUT_MS / 1000), {
+        cause: error,
+        host
+      })
     }
     if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
       throw new XtreamRequestError('aborted', XTREAM_REQUEST_CANCELLED_MESSAGE, { cause: error })
     }
-    throw new XtreamRequestError(
-      'network',
-      'Sunucuya bağlanılamadı. İnternet bağlantısını ve sunucu adresini kontrol edin.',
-      { cause: error, host }
-    )
+    throw new XtreamRequestError('network', requests.xtream.unreachable, { cause: error, host })
   } finally {
     clearTimeout(headersTimer)
     if (signal) signal.removeEventListener('abort', abortFromSignal)

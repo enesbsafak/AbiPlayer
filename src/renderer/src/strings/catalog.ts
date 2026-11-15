@@ -51,6 +51,10 @@ export const catalog = {
     syncFailed: (noun: string) => `Tam ${noun} listesi yüklenemedi`,
     partialShown: 'Şimdilik yalnızca yüklenen kısım gösteriliyor; arama ve sonuç sayısı eksik.',
     listEmpty: 'Liste şu an boş.',
+    offlineBanner: (when: string) => `Çevrimdışı kopya, ${when} tarihinde güncellendi`,
+    categoryListFailed: 'Kategori listesi alınamadı.',
+    categoryLoading: 'Seçili kategori yükleniyor...',
+    contentSyncFailed: 'İçerik senkronizasyonu başarısız oldu.',
     checkSourceSettings: ' Kaynak bilgilerini Ayarlar bölümünden kontrol edin.'
   },
 
@@ -102,6 +106,18 @@ export const catalog = {
     tooSlowRetry: 'Çok uzun sürüyor, tekrar dene',
     connectFailed: 'Kaynağa bağlanılamadı',
     connectFailedFallback: 'Bağlantı kurulamadı.',
+    stages: {
+      idle: 'İçerikler taranıyor...',
+      categories: 'Kategoriler yükleniyor...',
+      preview: 'Ön izleme yükleniyor...',
+      catalog: 'Tam katalog arka planda yükleniyor...'
+    },
+    offlineCopy: (when: string) =>
+      `Kaynağa bağlanılamadı: çevrimdışı kopya gösteriliyor (${when} tarihinde güncellendi). Bağlantı otomatik olarak yeniden denenecek.`,
+    typeLoadFailed: 'İçerikler yüklenemedi.',
+    loadFailed: 'Ana sayfa içerikleri yüklenemedi.',
+    /** `labels`: the types that failed, comma-separated. */
+    partialFailure: (labels: string, reasons: string) => `${labels} yüklenemedi. ${reasons}`,
     autoRetry: 'Bağlantı otomatik olarak yeniden denenecek.',
     hubLabel: 'Yayın Merkezi',
     readyCount: (count: number) => `Canlı yayın, film ve dizilerde toplam ${formatCount(count)} içerik hazır.`,

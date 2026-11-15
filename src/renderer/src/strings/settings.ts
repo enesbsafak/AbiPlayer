@@ -139,6 +139,8 @@ export const settings = {
     check: 'Güncellemeleri Kontrol Et',
     restarting: 'Yeniden başlatılıyor...',
     restartAndInstall: 'Yeniden Başlat ve Kur',
+    checkFailed: 'Güncellemeler kontrol edilemedi.',
+    installFailed: 'Güncelleme kurulamadı.',
     releaseDate: (when: string) => `Yeni sürüm tarihi: ${when}`
   },
 

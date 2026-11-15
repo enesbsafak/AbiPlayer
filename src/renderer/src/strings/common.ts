@@ -5,6 +5,11 @@ export function formatCount(count: number): string {
   return count.toLocaleString(LOCALE)
 }
 
+/** A moment as a short date and time ("15.11.2026 17:30"). */
+export function formatDateTime(epochMs: number): string {
+  return new Date(epochMs).toLocaleString(LOCALE, { dateStyle: 'short', timeStyle: 'short' })
+}
+
 /** Words and actions shared by many screens; one wording each. */
 export const common = {
   locale: LOCALE,

@@ -1,5 +1,6 @@
 import type { Channel, EpisodeInfo } from '@/types/playlist'
 import type { VideoQualityOption } from '@/types/player'
+import { strings } from '@/strings'
 
 export const AUTO_VIDEO_QUALITY_ID = 'auto'
 export const HLS_VIDEO_QUALITY_PREFIX = 'hls-v:'
@@ -122,7 +123,7 @@ export function getMpvVideoTrackId(qualityId: string | null | undefined): number
 export function formatVideoQualityLabel(level: VideoLevelLike): string {
   const inferredFromName = inferContentQualityLabel({ name: level.name })
   const inferredFromDimensions = inferResolutionFromDimensions(level.height, level.width)
-  return inferredFromName || inferredFromDimensions || 'Kaynak'
+  return inferredFromName || inferredFromDimensions || strings.player.quality.sourceLevel
 }
 
 export function buildVideoQualityOptions(levels: VideoLevelLike[]): VideoQualityOption[] {
@@ -131,8 +132,8 @@ export function buildVideoQualityOptions(levels: VideoLevelLike[]): VideoQuality
   return [
     {
       id: AUTO_VIDEO_QUALITY_ID,
-      label: 'Otomatik',
-      shortLabel: 'Oto',
+      label: strings.player.quality.autoOption,
+      shortLabel: strings.player.quality.autoShort,
       auto: true
     },
     ...levels.map((level, index) => {
@@ -158,8 +159,8 @@ export function buildMpvVideoQualityOptions(
   return [
     {
       id: AUTO_VIDEO_QUALITY_ID,
-      label: 'Otomatik',
-      shortLabel: 'Oto',
+      label: strings.player.quality.autoOption,
+      shortLabel: strings.player.quality.autoShort,
       auto: true
     },
     ...tracks.map((track) => {

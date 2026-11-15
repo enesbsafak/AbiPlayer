@@ -35,6 +35,11 @@ export const player = {
   },
 
   quality: {
+    /** The option that lets the engine choose. */
+    autoOption: 'Otomatik',
+    autoShort: 'Oto',
+    /** A level whose name and size say nothing: the source's own quality. */
+    sourceLevel: 'Kaynak',
     title: 'Görüntü kalitesi',
     label: 'Görüntü kalitesi seç',
     heading: 'Görüntü Kalitesi',
@@ -64,7 +69,14 @@ export const player = {
     background: 'Arka plan',
     backgroundLabel: 'Altyazı arka plan opaklığı',
     preview: 'Altyazı ön izlemesi',
-    loadExternal: 'Dışarıdan dosya yükle'
+    loadExternal: 'Dışarıdan dosya yükle',
+    fileFilter: 'Altyazı Dosyaları',
+    fileReadFailed: 'Altyazı dosyası okunamadı. Dosya çok büyük ya da erişilemez olabilir.',
+    fileAddFailed: 'Altyazı dosyası oynatıcıya eklenemedi.',
+    fileEmpty: 'Dosyada okunabilir altyazı bulunamadı.',
+    truncated: 'Altyazının yalnızca bir bölümü alınabildi; ilerleyen sahnelerde altyazı görünmeyebilir.',
+    /** Label of the text track the app fills with parsed cues (it may show in the system caption menu). */
+    generatedTrack: 'Abi Player altyazısı'
   },
 
   tuning: {
@@ -77,6 +89,24 @@ export const player = {
     aspect: 'En-boy oranı',
     aspectAuto: 'Otomatik',
     scopeHint: 'Bu ayarlar yalnızca açık olan yayın için geçerlidir, başka bir içerik açılınca sıfırlanır.'
+  },
+
+  errors: {
+    notPlayable: 'Seçilen içerik doğrudan oynatılamıyor.',
+    engineLoadFailed: 'Oynatıcı bileşeni yüklenemedi.',
+    playbackError: 'Oynatma hatası',
+    mpvStartFailed: 'mpv ile oynatma başlatılamadı.',
+    hlsGaveUp: (details: string) => `Oynatma başarısız: ${details}`,
+    hlsFatal: (details: string) => `Oynatma hatası: ${details}`,
+    connectionLost: 'Yayın bağlantısı kesildi.',
+    reconnecting: (attempt: number, max: number) => `Bağlantı kesildi, yeniden bağlanılıyor... (${attempt}/${max})`,
+    liveFormatFallback: (failed: string, next: string) => `Kanal ${failed} biçiminde açılamadı; ${next} ile deneniyor.`
+  },
+
+  deferred: {
+    entryGone: 'Bu içerik artık oynatma listesinde bulunmuyor.',
+    sourceGone: 'Bu içeriğin kaynağı artık kayıtlı değil.',
+    loading: (name: string) => `“${name}” için oynatma listesi yükleniyor…`
   },
 
   sidebar: {

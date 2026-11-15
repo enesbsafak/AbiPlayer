@@ -14,6 +14,7 @@ import {
   type WorkerToMain
 } from './protocol'
 import type { WorkerRuntime } from './runtime'
+import { requests } from '@/strings/requests'
 
 /*
  * The main thread's side of the catalog worker: starts it, numbers jobs,
@@ -183,7 +184,7 @@ export function createCatalogWorkerClient(options: ClientOptions = {}): CatalogW
       worker.terminate()
       port = inPagePort(pageBackend)
       if (lastKey !== undefined) port.post({ v: CATALOG_WORKER_PROTOCOL, type: 'key', key: lastKey })
-      failAll('Katalog işlemi yarıda kaldı. Tekrar deneyin.')
+      failAll(requests.worker.interrupted)
     }
     return { isolated: true, post: (message) => worker.postMessage(message), terminate: () => worker.terminate() }
   }
@@ -197,7 +198,7 @@ export function createCatalogWorkerClient(options: ClientOptions = {}): CatalogW
     const id = nextId++
     const result = new Promise<JobResult>((resolve, reject) => {
       if (signal?.aborted) {
-        reject(new XtreamRequestError('aborted', 'İstek iptal edildi'))
+        reject(new XtreamRequestError('aborted', requests.cancelled))
         return
       }
       pending.set(id, { handlers, resolve, reject })
@@ -207,7 +208,7 @@ export function createCatalogWorkerClient(options: ClientOptions = {}): CatalogW
           if (!pending.has(id)) return
           pending.delete(id)
           send({ type: 'cancel', id })
-          reject(new XtreamRequestError('aborted', 'İstek iptal edildi'))
+          reject(new XtreamRequestError('aborted', requests.cancelled))
         },
         { once: true }
       )
@@ -231,7 +232,7 @@ export function createCatalogWorkerClient(options: ClientOptions = {}): CatalogW
     },
     terminate() {
       port.terminate()
-      failAll('Katalog işçisi kapatıldı.')
+      failAll(requests.worker.closed)
     }
   }
 }
