@@ -4,6 +4,64 @@ Plan: [iyilestirme-plani.md](iyilestirme-plani.md). Çalışma dalı: `iyilestir
 
 Karar noktalarında plandaki öneriler uygulanıyor: dürüst mini oynatıcı kartı, kaynağa özel TLS onayı, yalnızca Windows, IndexedDB katalog önbelleği.
 
+## Sonuç (15 Kasım 2026)
+
+Planın altı fazı uygulandı ve `iyilestirme` dalında birleştirildi. Hiçbir şey push edilmedi.
+
+**Son doğrulama (birleştirme dalı):**
+
+- Typecheck temiz; TypeScript'in sıkı seçenekleri her yerde açık.
+- Lint 0 hata ve 0 uyarı. Başlangıçta lint yoktu; kurulduğunda 62 uyarı vardı, kurallar artık her yerde hata düzeyinde.
+- 1.218 birim testi (başlangıçta 150).
+- 41 uçtan uca test, gerçek mpv ile Electron 45 üzerinde.
+- Paketlenmiş uygulama çalıştırılıp doğrulandı (4 senaryo).
+
+**Bağımsız inceleme:** üç inceleyici (main süreç ve TLS, oynatıcı, katalog ve kalıcılık) 29 kusur bildirdi. 26 tanesi doğrulanıp testleriyle düzeltildi, 3 tanesi başka bir paketle zaten kapanmıştı. Birleştirme hasarı bulunmadı.
+
+### Ölçümler
+
+Yerel, sahte bir sağlayıcıya karşı, ekran dışı pencereyle, Ryzen 7 7800X3D üzerinde alındı. Gerçek sağlayıcı rakamları değildir. Ayrıntı: [olcumler/2026-11-15-son.md](olcumler/2026-11-15-son.md), taban: [olcumler/2026-11-15-taban.md](olcumler/2026-11-15-taban.md).
+
+| Ölçüm | Önce | Sonra |
+|---|---|---|
+| İlk boyama (50 bin kayıt) | 731 ms | 358 ms |
+| Ana sayfada ilk içerik, yavaş bağlantı (50 bin) | 1.219 ms | 677 ms |
+| İkinci açılışta tam katalog, yavaş bağlantı (50 bin) | 8.912 ms | 297 ms (önbellekten) |
+| İkinci açılışta tam katalog (200 bin) | 1.205 ms | 505 ms (önbellekten) |
+| Eşitlemede ana iş parçacığında uzun görev (200 bin) | 254 ms | yok |
+| MPEG-TS kanal değişimi | 385 ms | 172 ms |
+| MPEG-TS ilk kanal | 737 ms | 480 ms |
+| HLS ilk kanal | 638 ms | 481 ms |
+| HLS kanal değişimi | 143 ms | 128 ms |
+| Film açılışı | 95 ms | 94 ms |
+
+Geriye giden bir ölçüm: önbellek boşken çok hızlı yerel bağlantıda 200 bin kayıtlık tam katalog 1.205 ms yerine 1.626 ms sürüyor, çünkü listeler worker'da ayrıştırılıp önbelleğe yazılıyor; bu sırada arayüz serbest kalıyor.
+
+Paket: `app.asar` 72,4 MB → 2,6 MB; arayüz paketi 2,63 MB → 1,31 MB; oynatıcı sayfası 588 kB → 56 kB. Kurulum toplamı yaklaşık aynı kaldı (662 MB), çünkü FFmpeg ve Electron 45 büyüdü.
+
+### Kullanıcının fark edeceği davranış değişiklikleri
+
+- **Sertifikası bozuk sağlayıcılar bir kez onay ister.** Eskiden her sertifika sessizce kabul ediliyordu.
+- **Yetişkin içerik varsayılan olarak gizli.** Katalog ayarlarından açılır. Eskiden ayar kapalıyken de listenin sonunda görünüyordu.
+- **Oynatıcıdan çıkınca oynatma duraklar** ve "Duraklatıldı, devam et" kartı görünür; film kaldığı yerden sürer. Köşede oynatmaya devam etme deneysel bir ayar olarak var, varsayılan olarak kapalı.
+- **Kaldırılan ayarlar:** Kanal Görünüm Modu, otomatik oynat, varsayılan ses düzeyi. İlk ikisi hiçbir şey yapmıyordu, üçüncüsü hatırlanan ses düzeyiyle çelişiyordu.
+- **Yeni ayarlar:** canlı yayın biçimi (Otomatik, HLS, MPEG-TS), yetişkin içerik, güvenilen sunucu sertifikaları.
+- **Yerel M3U dosyası kaynakları** yükseltmeden sonraki ilk açılışta dosyanın bir kez yeniden seçilmesini ister.
+- **İfade değişiklikleri:** "Tekrar Dene", "giriş bilgileri", "yayın akışı" (EPG yerine), "Saat Biçimi".
+- **Yalnızca Windows:** macOS ve Linux derleme betikleri kaldırıldı.
+
+### Yapılmayan ve doğrulanmayanlar
+
+- **Kod imzalama (F3-05) yapılmadı.** Ücretli bir hizmet ve sahibin adına sertifika gerektirir. Otomatik güncellemenin güvencesi hâlâ GitHub deposuna yazma yetkisi.
+- **Hiçbir şey gerçek bir IPTV sağlayıcısına karşı denenmedi.** Tüm doğrulama yerel sahte sağlayıcıyla yapıldı.
+- **Görünür pencerede kimse bakmadı.** Testler ekran dışında çalışır. Şeffaf pencerenin görünümü, başlık çubuğuna çift tıklamanın gerçek davranışı ve deneysel köşe oynatıcının görüntüsü doğrulanmadı.
+- **Kurulum paketi (NSIS) üretilip denenmedi;** yalnızca açılmış paket çalıştırıldı.
+- **CI hiç çalışmadı.** İş akışları yazıldı ama push edilmediği için GitHub üzerinde denenmedi.
+- **Eski sürümden kalma gerçek bir profille yükseltme denenmedi;** geçişler birim testleriyle kapsanıyor.
+- **Lisans:** uygulama MIT, ancak pakete giren mpv ve FFmpeg GPL derlemeleri. Dağıtımda GPL yükümlülükleri doğar (README'de üçüncü taraf lisansları bölümü var). LGPL FFmpeg derlemesine geçiş mümkün.
+- **Hitap biçimi** (sen ve siz karışık) üslup tercihi olduğu için değiştirilmedi.
+- **Sıkılaştırma seçeneği:** paketlenmiş uygulama Electron'un `--inspect` anahtarını hâlâ kabul ediyor; kapatmak paketlenmiş uçtan uca testleri de engellerdi.
+
 ## İş paketleri
 
 | Dalga | Paket | Kapsam | Durum |
@@ -24,9 +82,11 @@ Karar noktalarında plandaki öneriler uygulanıyor: dürüst mini oynatıcı ka
 | D | D1 Güvenlik | F3-01..03, F3-07 | TLS politikası birleştirildi; F3-02 C2d içinde |
 | D | D2 Electron 45 ve paket | F3-04, F3-09, F5-07 | Birleştirildi (hls.js tembel yükleme D3te) |
 | D | D3 Canlı biçim ve mini oynatıcı | F2-04, F2-15 | Birleştirildi |
-| D | D4 Erişilebilirlik, metinler, temizlik | F5-01..06, F5-08, F5-09 | Bekliyor |
-| D | D5 Testler ve belgeler | F5-10, F5-12, F3-10 | Bekliyor |
-| E | Bağımsız inceleme ve son doğrulama | tümü | Bekliyor |
+| D | D4 Erişilebilirlik, metinler, temizlik | F5-01..06, F5-08, F5-09 | Birleştirildi (C2b, FE, FD içinde) |
+| D | D5 Testler ve belgeler | F5-10, F5-12, F3-10 | Birleştirildi (D2, FD içinde) |
+| E | Bağımsız inceleme ve düzeltmeleri | 29 bulgu | Birleştirildi (FA, FB, FC) |
+| F | Son sağlamlaştırma ve metin sözlüğü | FD, FE | Birleştirildi |
+| F | FG Kalan metinler | hook ve servislerdeki metinler | Sürüyor |
 
 ## Mimari kararlar
 
@@ -63,3 +123,4 @@ Karar noktalarında plandaki öneriler uygulanıyor: dürüst mini oynatıcı ka
 - 2026-11-15: FB birleştirildi: oynatıcı incelemesinin dokuz bulgusu (M1, P1-P8) doğrulanıp testleriyle düzeltildi. Öne çıkanlar: HTML5 motorunda donan canlı yayın artık yeniden bağlanıyor; canlıya atlamada TLS kararı her yüklemede yeniden alınıyor; arayüz yeniden yüklenince mpv duruyor; temiz kapanan canlı yayın yeniden bağlanıyor; izleyicinin ses, altyazı ve harici altyazı dosyası seçimleri yeniden bağlanma, yeniden yükleme ve askıya alma boyunca korunuyor; paketlenmiş derlemede Electron'un varsayılan menüsü kaldırıldı. 1.155 birim testi, 39 uçtan uca test geçiyor.
 - 2026-11-15: FC birleştirildi: katalog incelemesinin 16 bulgusu ele alındı (13'ü doğrulanıp düzeltildi, 3'ü EPG paketiyle zaten kapanmıştı) ve önbellek entegrasyonunun kalanı yapıldı. Öne çıkanlar: ana sayfadaki yeniden dene düğmesi inen M3U listesini artık boşa düşürmüyor; güvenli depo okunamazsa kaynak silinmeden bilgiler yerinde yeniden girilebiliyor; TMDB anahtarı güvenli depoda; localStorage'daki yedek kopyalar kimlik bilgisinden arındırılıyor; katalog sayfalarında çevrimdışı kopya şeridi; içe aktarma worker üzerinden. Varsayılan ses düzeyi ayarı kaldırıldı (hatırlanan ses düzeyiyle çelişiyordu). 1.197 birim testi geçiyor.
 - 2026-11-15: FE birleştirildi: bileşen ve sayfalardaki tüm arayüz metinleri tipli bir Türkçe sözlükte (src/renderer/src/strings, 463 kayıt); terimler birleştirildi (Tekrar Dene, giriş bilgileri, adres, yayın akışı, biçim, ön izleme, ayrıntı, kur); film ve dizi arama kutularının yer tutucusu düzeltildi; bileşen ve sayfalarda lint uyarısı ve sıkı derleme hatası kalmadı. Hook, servis ve depo katmanındaki kullanıcıya görünen metinler henüz sözlükte değil (liste FE raporunda). Ara sıra düşen TLS testinin kök nedeni bulundu: test sertifikası üreticisi yaklaşık birkaç yüz sertifikada bir geçersiz seri numarası kodluyordu. 1.202 birim testi geçiyor.
+- 2026-11-15: FD birleştirildi (paketlenmiş çalıştırma doğrulandı, lint uyarıları sıfırlandı, sıkı TypeScript her yerde, kararsız testin kök nedeni giderildi, son ölçüm). Sonuç bölümü yazıldı.
