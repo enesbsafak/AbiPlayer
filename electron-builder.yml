@@ -23,7 +23,13 @@ files:
   - '!electron.vite.config.*'
   - '!{postcss.config.js,tailwind.config.ts,vitest.config.ts,doctor.config.*}'
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
-  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json,tsconfig.scripts.json,eslint.config.mjs}'
+  # Repository-only trees. `.worktrees/` holds full parallel checkouts; without
+  # this line every one of them was packed into app.asar. Checked by
+  # `npm run test:e2e:packaged` after `npm run build:unpack`.
+  - '!{.worktrees,e2e,scripts,.github}/**'
+  - '!{test-results,playwright-report,coverage}/**'
+  - '!**/*.tsbuildinfo'
   # ffprobe-static ships a prebuilt binary for every platform it supports and
   # all of them get packaged — 275MB of binaries that can never execute on a
   # win32-x64 build. Only win32/x64 is reachable. This project builds Windows
