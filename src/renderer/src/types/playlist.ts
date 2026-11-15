@@ -20,11 +20,22 @@ export interface Category {
   parentId?: string
 }
 
+/**
+ * A catalog item as lists, cards, search and playback see it. Catalog records
+ * (`CatalogItem` in `@/catalog`) extend it. Detail text (plot, cast, director,
+ * genre, ...) is not part of it: detail views fetch that themselves.
+ */
 export interface Channel {
   id: string
   name: string
   logo?: string
+  /**
+   * The M3U entry URL, which is that entry's identity. Empty for Xtream
+   * items: their URL holds the account credentials and is built at playback
+   * time from `streamId` / `seriesId` and the source.
+   */
   streamUrl: string
+  /** Xtream live and film id. Never set on M3U entries. */
   streamId?: number
   sourceId: string
   categoryId?: string
@@ -36,20 +47,11 @@ export interface Channel {
   tvArchive?: boolean
   tvArchiveDuration?: number
   containerExtension?: string
-  // VOD extra
   rating?: string
-  plot?: string
-  cast?: string
-  director?: string
-  genre?: string
-  releaseDate?: string
-  duration?: string
   year?: string
   coverUrl?: string
-  backdropUrl?: string
-  // Series extra
+  /** Xtream series id. */
   seriesId?: number
-  seasonCount?: number
 }
 
 export interface SeriesDetail {

@@ -4,9 +4,8 @@ import { useStore } from '@/store'
 import { Button } from '@/components/ui/Button'
 import { Dropdown } from '@/components/ui/Dropdown'
 import { Input } from '@/components/ui/Input'
-import { isAdultLabel } from '@/services/adult-content'
-import { applyCategoryView } from '@/services/catalog-view'
 import { normalizeSearchText } from '@/services/text-normalize'
+import { useCatalogCategories, useVisibleCatalogCategories } from '@/catalog'
 
 type ContentType = 'live' | 'vod' | 'series'
 
@@ -19,7 +18,6 @@ const TYPE_TABS: Array<{ id: ContentType; label: string }> = [
 export function CategoryVisibility() {
   const sources = useStore((s) => s.sources)
   const activeSourceId = useStore((s) => s.activeSourceId)
-  const categories = useStore((s) => s.categories)
   const hiddenCategoryIds = useStore((s) => s.hiddenCategoryIds)
   const toggleCategoryHidden = useStore((s) => s.toggleCategoryHidden)
   const showAllCategories = useStore((s) => s.showAllCategories)
@@ -40,24 +38,23 @@ export function CategoryVisibility() {
     [sources]
   )
 
+  const scopedCategories = useCatalogCategories(effectiveSourceId, selectedType)
+  const ordered = useVisibleCatalogCategories(effectiveSourceId, selectedType, { includeHidden: true })
   const visibleList = useMemo(() => {
-    const scoped = categories.filter(
-      (category) => category.type === selectedType && category.sourceId === effectiveSourceId
-    )
-    const ordered = applyCategoryView(scoped, { hiddenCategoryIds, includeHidden: true })
-
     if (!filterQuery.trim()) return ordered
     const q = normalizeSearchText(filterQuery)
     return ordered.filter((category) => normalizeSearchText(category.name).includes(q))
-  }, [categories, selectedType, effectiveSourceId, hiddenCategoryIds, filterQuery])
+  }, [ordered, filterQuery])
 
-  const hiddenCountForSource = useMemo(
-    () =>
-      categories.filter(
-        (category) => category.sourceId === effectiveSourceId && hiddenCategoryIds.has(category.id)
-      ).length,
-    [categories, effectiveSourceId, hiddenCategoryIds]
-  )
+  // Category ids carry their source's id as prefix, so this also counts hidden
+  // categories of types not loaded this session (the button restores them too).
+  const hiddenCountForSource = useMemo(() => {
+    if (!effectiveSourceId) return 0
+    const prefix = `${effectiveSourceId}_`
+    let count = 0
+    for (const id of hiddenCategoryIds) if (id.startsWith(prefix)) count++
+    return count
+  }, [effectiveSourceId, hiddenCategoryIds])
 
   if (sources.length === 0) {
     return (
@@ -121,7 +118,7 @@ export function CategoryVisibility() {
         <div className="mt-4 max-h-80 overflow-y-auto rounded-lg border border-surface-800">
           {visibleList.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-surface-500">
-              {categories.some((c) => c.sourceId === effectiveSourceId && c.type === selectedType)
+              {scopedCategories.length > 0
                 ? 'Aramayla eşleşen kategori yok.'
                 : 'Bu tür için kategori bulunamadı. Kaynak taraması tamamlanmamış olabilir.'}
             </p>
@@ -146,7 +143,7 @@ export function CategoryVisibility() {
                       >
                         {category.name}
                       </span>
-                      {isAdultLabel(category.name) && (
+                      {category.isAdult && (
                         <span className="shrink-0 rounded bg-surface-800 px-1.5 py-0.5 text-xs text-surface-400">
                           18+
                         </span>

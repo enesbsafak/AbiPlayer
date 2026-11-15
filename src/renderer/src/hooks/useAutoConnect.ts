@@ -3,8 +3,20 @@ import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
 import { fetchAndParseM3U } from '@/services/m3u-parser'
 import { secureCredentialService } from '@/services/secure-credentials'
+import { catalog } from '@/catalog/catalog-store'
+import { m3uPlaylistToReplacement } from '@/catalog/convert'
+import type { CatalogStatusMap } from '@/store/playlist-slice'
 
 const AUTO_RETRY_INTERVAL_MS = 15_000
+
+/** Ids of sources with any catalog data, as one string so the selector result is stable. */
+export function sourcesWithCatalogKey(status: CatalogStatusMap): string {
+  const ids: string[] = []
+  for (const [sourceId, types] of Object.entries(status)) {
+    if (types && Object.values(types).some((entry) => entry?.loaded)) ids.push(sourceId)
+  }
+  return ids.sort().join('\n')
+}
 
 /**
  * On app startup, automatically reconnects to saved sources:
@@ -20,7 +32,7 @@ export function useAutoConnect() {
   const sources = useStore((s) => s.sources)
   const activeSourceId = useStore((s) => s.activeSourceId)
   const xtreamAuth = useStore((s) => s.xtreamAuth)
-  const channels = useStore((s) => s.channels)
+  const sourcesWithCatalog = useStore((s) => sourcesWithCatalogKey(s.catalogStatus))
   const credentialsHydrated = useStore((s) => s.credentialsHydrated)
   const setXtreamAuth = useStore((s) => s.setXtreamAuth)
   const hydrateXtreamCredentials = useStore((s) => s.hydrateXtreamCredentials)
@@ -28,8 +40,7 @@ export function useAutoConnect() {
   const setActiveSource = useStore((s) => s.setActiveSource)
   const setAuthLoading = useStore((s) => s.setAuthLoading)
   const setAuthError = useStore((s) => s.setAuthError)
-  const addChannels = useStore((s) => s.addChannels)
-  const addCategories = useStore((s) => s.addCategories)
+  const replaceSourceCatalog = useStore((s) => s.replaceSourceCatalog)
   const connectRetryToken = useStore((s) => s.connectRetryToken)
   const isLoading = useStore((s) => s.isLoading)
 
@@ -78,6 +89,7 @@ export function useAutoConnect() {
     if (!credentialsHydrated) return
     if (sources.length === 0) return
 
+    const loadedSourceIds = new Set(sourcesWithCatalog.split('\n'))
     const knownSourceIds = new Set(sources.map((s) => s.id))
     for (const sourceId of Object.keys(sourceAttemptAtRef.current)) {
       if (!knownSourceIds.has(sourceId)) delete sourceAttemptAtRef.current[sourceId]
@@ -102,7 +114,7 @@ export function useAutoConnect() {
 
       if (source.type === 'm3u_url') {
         if (!source.url) return false
-        return !channels.some((c) => c.sourceId === source.id)
+        return !loadedSourceIds.has(source.id)
       }
 
       return false
@@ -157,9 +169,11 @@ export function useAutoConnect() {
               }
 
               if (source.type === 'm3u_url' && source.url) {
-                const { channels: chs, categories: cats } = await fetchAndParseM3U(source.url, source.id)
-                addChannels(chs)
-                addCategories(cats)
+                // Dropped by the catalog when the source is removed or
+                // refreshed while the playlist downloads.
+                const revision = catalog.getSourceRevision(source.id)
+                const parsed = await fetchAndParseM3U(source.url, source.id)
+                replaceSourceCatalog(source.id, m3uPlaylistToReplacement(parsed), revision)
               }
             } catch (error) {
               reportFailure(source, error)
@@ -183,14 +197,13 @@ export function useAutoConnect() {
     sources,
     activeSourceId,
     xtreamAuth,
-    channels,
+    sourcesWithCatalog,
     connectRetryToken,
     isLoading,
     setXtreamAuth,
     setActiveSource,
     setAuthLoading,
     setAuthError,
-    addChannels,
-    addCategories
+    replaceSourceCatalog
   ])
 }

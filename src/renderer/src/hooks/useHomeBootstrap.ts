@@ -2,6 +2,15 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
 import { ensureStagedSync } from '@/services/background-sync'
+import { catalog } from '@/catalog/catalog-store'
+import {
+  xtreamCategoriesToRecords,
+  xtreamLiveToRecords,
+  xtreamSeriesToRecords,
+  xtreamVodToRecords
+} from '@/catalog/convert'
+import { CATALOG_TYPES, type CatalogCategory, type CatalogItem, type CatalogType } from '@/catalog/types'
+import type { CatalogStatusMap } from '@/store/playlist-slice'
 
 // Message and progress bar come from one source so they can never drift apart.
 export const BOOTSTRAP_STAGES = {
@@ -12,6 +21,18 @@ export const BOOTSTRAP_STAGES = {
 } as const
 
 export type BootstrapStage = keyof typeof BOOTSTRAP_STAGES
+
+/** Any type of the source has items in memory. */
+export function sourceHasCatalog(status: CatalogStatusMap, sourceId: string | null): boolean {
+  if (!sourceId) return false
+  return CATALOG_TYPES.some((type) => status[sourceId]?.[type]?.loaded === true)
+}
+
+/** Every type of the source holds a complete list. */
+export function sourceCatalogComplete(status: CatalogStatusMap, sourceId: string | null): boolean {
+  if (!sourceId) return false
+  return CATALOG_TYPES.every((type) => status[sourceId]?.[type]?.complete === true)
+}
 
 export interface HomeBootstrap {
   /** Failure from the home bootstrap itself (categories/preview fetch). */
@@ -27,16 +48,14 @@ export interface HomeBootstrap {
  * categories first, then a small preview, then the full catalog in background.
  */
 export function useHomeBootstrap(): HomeBootstrap {
-  const channels = useStore((s) => s.channels)
   const sources = useStore((s) => s.sources)
   const activeSourceId = useStore((s) => s.activeSourceId)
-  const hydratedSourceIds = useStore((s) => s.hydratedSourceIds)
+  const hasChannelsForSource = useStore((s) => sourceHasCatalog(s.catalogStatus, activeSourceId))
+  const isSourceComplete = useStore((s) => sourceCatalogComplete(s.catalogStatus, activeSourceId))
   const xtreamAuth = useStore((s) => s.xtreamAuth)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
-  const addChannels = useStore((s) => s.addChannels)
-  const addCategories = useStore((s) => s.addCategories)
   const setPlaylistLoading = useStore((s) => s.setPlaylistLoading)
-  const markSourceHydrated = useStore((s) => s.markSourceHydrated)
+  const replaceSourceCatalog = useStore((s) => s.replaceSourceCatalog)
   const requestSourceReconnect = useStore((s) => s.requestSourceReconnect)
 
   const [error, setError] = useState<string | null>(null)
@@ -52,18 +71,31 @@ export function useHomeBootstrap(): HomeBootstrap {
     const source = sources.find((item) => item.id === activeSourceId)
     if (!source || source.type !== 'xtream') return
 
-    const hasChannelsForSource = channels.some((channel) => channel.sourceId === activeSourceId)
-    if (!hasChannelsForSource) attempted.delete(activeSourceId)
-    if (hydratedSourceIds[activeSourceId]) return
+    // Per revision: after a refresh the source is bootstrapped again even
+    // though its old items are still on screen.
+    const attemptKey = `${activeSourceId}#${catalog.getSourceRevision(activeSourceId)}`
+    if (!hasChannelsForSource) attempted.delete(attemptKey)
+    if (isSourceComplete) return
     if (!xtreamAuth[activeSourceId]) return
-    if (attempted.has(activeSourceId)) return
+    if (attempted.has(attemptKey)) return
 
     const creds = getXtreamCredentials(activeSourceId)
     if (!creds) return
 
-    attempted.add(activeSourceId)
+    attempted.add(attemptKey)
     let cancelled = false
     const controller = new AbortController()
+    // Taken before the first request: anything that comes back after the
+    // source was removed or refreshed is dropped by the catalog.
+    const tokens = Object.fromEntries(
+      CATALOG_TYPES.map((type) => [type, catalog.beginGeneration(activeSourceId, type)])
+    ) as Record<CatalogType, ReturnType<typeof catalog.beginGeneration>>
+    const commitCategories = (type: CatalogType, categories: CatalogCategory[]) => {
+      if (categories.length > 0) catalog.commit({ token: tokens[type], mode: 'partial', categories })
+    }
+    const commitPreview = (type: CatalogType, items: CatalogItem[]) => {
+      if (items.length > 0) catalog.commit({ token: tokens[type], mode: 'partial', items })
+    }
 
     const bootstrap = async () => {
       setError(null)
@@ -78,11 +110,9 @@ export function useHomeBootstrap(): HomeBootstrap {
           xtreamApi.getSeriesCategories(creds, { signal: controller.signal }).catch(() => [])
         ])
         if (cancelled) return
-        addCategories([
-          ...xtreamApi.categoriesToApp(liveCats, activeSourceId, 'live'),
-          ...xtreamApi.categoriesToApp(vodCats, activeSourceId, 'vod'),
-          ...xtreamApi.categoriesToApp(seriesCats, activeSourceId, 'series')
-        ])
+        commitCategories('live', xtreamCategoriesToRecords(liveCats, activeSourceId, 'live'))
+        commitCategories('vod', xtreamCategoriesToRecords(vodCats, activeSourceId, 'vod'))
+        commitCategories('series', xtreamCategoriesToRecords(seriesCats, activeSourceId, 'series'))
 
         // Step 2: Small preview for dashboard display (~150KB total, fast)
         setStage('preview')
@@ -92,11 +122,9 @@ export function useHomeBootstrap(): HomeBootstrap {
           xtreamApi.getSeriesPreviewStreams(creds, 30, { signal: controller.signal }).catch(() => [])
         ])
         if (cancelled) return
-        addChannels([
-          ...xtreamApi.liveStreamsToChannels(livePreview, creds, activeSourceId),
-          ...xtreamApi.vodStreamsToChannels(vodPreview, creds, activeSourceId),
-          ...xtreamApi.seriesToChannels(seriesPreview, activeSourceId)
-        ])
+        commitPreview('live', xtreamLiveToRecords(livePreview, activeSourceId))
+        commitPreview('vod', xtreamVodToRecords(vodPreview, activeSourceId))
+        commitPreview('series', xtreamSeriesToRecords(seriesPreview, activeSourceId))
 
         // Step 3: Full catalog in background — sequential, not parallel
         // This runs after UI is already showing content, user doesn't wait
@@ -126,20 +154,19 @@ export function useHomeBootstrap(): HomeBootstrap {
     activeSourceId,
     attempted,
     sources,
-    channels,
-    hydratedSourceIds,
+    hasChannelsForSource,
+    isSourceComplete,
     xtreamAuth,
     getXtreamCredentials,
-    addChannels,
-    addCategories,
     setPlaylistLoading,
     reloadToken
   ])
 
   const retry = () => {
     if (activeSourceId) {
-      attempted.delete(activeSourceId)
-      markSourceHydrated(activeSourceId, false)
+      // Keeps what is on screen, cancels running syncs and marks the lists
+      // incomplete; the new revision lets the bootstrap and the full sync run again.
+      replaceSourceCatalog(activeSourceId, null)
     }
     setError(null)
     requestSourceReconnect()

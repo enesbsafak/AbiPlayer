@@ -2,7 +2,7 @@ import { memo, useMemo } from 'react'
 import { EyeOff, Folder, LayoutGrid } from 'lucide-react'
 import { useStore } from '@/store'
 import { ClampText } from '@/components/ui'
-import { applyCategoryView } from '@/services/catalog-view'
+import { useCatalogCategories, useVisibleCatalogCategories } from '@/catalog'
 
 type CategoryFilter = 'live' | 'vod' | 'series'
 
@@ -14,28 +14,13 @@ export const CategoryList = memo(function CategoryList({ filter }: CategoryListP
   const selectedCategoryId = useStore((s) => s.selectedCategoryId)
   const setSelectedCategory = useStore((s) => s.setSelectedCategory)
   const activeSourceId = useStore((s) => s.activeSourceId)
-  const allCategories = useStore((s) => s.categories)
   const hiddenCategoryIds = useStore((s) => s.hiddenCategoryIds)
   const toggleCategoryHidden = useStore((s) => s.toggleCategoryHidden)
-  const categories = useMemo(
-    () =>
-      applyCategoryView(
-        allCategories.filter(
-          (category) => category.type === filter && (!activeSourceId || category.sourceId === activeSourceId)
-        ),
-        { hiddenCategoryIds }
-      ),
-    [allCategories, filter, activeSourceId, hiddenCategoryIds]
-  )
+  const allCategories = useCatalogCategories(activeSourceId, filter)
+  const categories = useVisibleCatalogCategories(activeSourceId, filter)
   const hiddenCount = useMemo(
-    () =>
-      allCategories.filter(
-        (category) =>
-          category.type === filter &&
-          (!activeSourceId || category.sourceId === activeSourceId) &&
-          hiddenCategoryIds.has(category.id)
-      ).length,
-    [allCategories, filter, activeSourceId, hiddenCategoryIds]
+    () => allCategories.filter((category) => hiddenCategoryIds.has(category.id)).length,
+    [allCategories, hiddenCategoryIds]
   )
   const allLabel = filter === 'vod' ? 'Tüm Filmler' : filter === 'series' ? 'Tüm Diziler' : 'Tüm Kanallar'
 

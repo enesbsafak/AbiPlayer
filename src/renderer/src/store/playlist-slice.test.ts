@@ -1,47 +1,42 @@
 import { describe, expect, it } from 'vitest'
 import { create } from 'zustand'
-import { createPlaylistSlice, type PlaylistSlice } from './playlist-slice'
+import { createPlaylistSliceFor, type PlaylistSlice } from './playlist-slice'
 import { createPlayerSlice, DEFAULT_PLAYBACK_TUNING, type PlayerSlice } from './player-slice'
+import { createCatalogStore, type CatalogStore } from '@/catalog/catalog-store'
+import { categoryToRecord, m3uEntryToRecord } from '@/catalog/convert'
 import type { Category, Channel } from '@/types/playlist'
 
-function createTestStore() {
-  return create<PlaylistSlice>()((...args) => createPlaylistSlice(...args))
+function createTestStore(catalog: CatalogStore = createCatalogStore()) {
+  return { catalog, store: create<PlaylistSlice>()((...args) => createPlaylistSliceFor(catalog)(...args)) }
 }
 
 function createPlayerTestStore() {
   return create<PlayerSlice>()((...args) => createPlayerSlice(...args))
 }
 
-describe('playlist-slice', () => {
-  it('keeps the selected category when the same filter is set again', () => {
-    const store = createTestStore()
+const categories: Category[] = [
+  { id: 's1_live_1', name: 'Ulusal', sourceId: 's1', type: 'live' },
+  { id: 's1_live_2', name: 'XXX', sourceId: 's1', type: 'live' },
+  { id: 's2_live_1', name: 'Haber', sourceId: 's2', type: 'live' }
+]
 
-    store.getState().setSelectedCategory('source_live_10')
-    store.getState().setChannelFilter('live')
+function commitCategories(catalog: CatalogStore, list: Category[]) {
+  for (const sourceId of new Set(list.map((category) => category.sourceId))) {
+    catalog.commit({
+      token: catalog.beginGeneration(sourceId, 'live'),
+      mode: 'partial',
+      categories: list.filter((category) => category.sourceId === sourceId).map(categoryToRecord)
+    })
+  }
+}
 
-    expect(store.getState().selectedCategoryId).toBe('source_live_10')
-  })
-
-  it('clears the selected category when the filter actually changes', () => {
-    const store = createTestStore()
-
-    store.getState().setSelectedCategory('source_live_10')
-    store.getState().setChannelFilter('vod')
-
-    expect(store.getState().selectedCategoryId).toBeNull()
-    expect(store.getState().channelFilter).toBe('vod')
-  })
-})
+function entry(id: string, sourceId: string, categoryId?: string): Channel {
+  return { id, name: id, streamUrl: `http://example.test/${id}.ts`, sourceId, type: 'live', categoryId }
+}
 
 describe('playlist-slice category visibility', () => {
-  const categories: Category[] = [
-    { id: 's1_live_1', name: 'Ulusal', sourceId: 's1', type: 'live' },
-    { id: 's1_live_2', name: 'XXX', sourceId: 's1', type: 'live' },
-    { id: 's2_live_1', name: 'Haber', sourceId: 's2', type: 'live' }
-  ]
-
   it('toggles a category between hidden and visible', () => {
-    const store = createTestStore()
+    const { store } = createTestStore()
 
     store.getState().toggleCategoryHidden('s1_live_2')
     expect(store.getState().hiddenCategoryIds.has('s1_live_2')).toBe(true)
@@ -51,7 +46,7 @@ describe('playlist-slice category visibility', () => {
   })
 
   it('drops the selection when the browsed category gets hidden', () => {
-    const store = createTestStore()
+    const { store } = createTestStore()
 
     store.getState().setSelectedCategory('s1_live_2')
     store.getState().toggleCategoryHidden('s1_live_2')
@@ -60,7 +55,7 @@ describe('playlist-slice category visibility', () => {
   })
 
   it('keeps the selection when a different category gets hidden', () => {
-    const store = createTestStore()
+    const { store } = createTestStore()
 
     store.getState().setSelectedCategory('s1_live_1')
     store.getState().toggleCategoryHidden('s1_live_2')
@@ -69,8 +64,8 @@ describe('playlist-slice category visibility', () => {
   })
 
   it('restores only the requested source when showing all', () => {
-    const store = createTestStore()
-    store.getState().setCategories(categories)
+    const { store, catalog } = createTestStore()
+    commitCategories(catalog, categories)
     store.getState().setHiddenCategories(['s1_live_2', 's2_live_1'])
 
     store.getState().showAllCategories('s1')
@@ -78,9 +73,18 @@ describe('playlist-slice category visibility', () => {
     expect(store.getState().hiddenCategoryIds).toEqual(new Set(['s2_live_1']))
   })
 
+  it('restores hidden categories of a source whose catalog is not loaded', () => {
+    const { store } = createTestStore()
+    store.getState().setHiddenCategories(['s1_vod_7', 's2_live_1'])
+
+    store.getState().showAllCategories('s1')
+
+    expect(store.getState().hiddenCategoryIds).toEqual(new Set(['s2_live_1']))
+  })
+
   it('restores every source when no source is given', () => {
-    const store = createTestStore()
-    store.getState().setCategories(categories)
+    const { store, catalog } = createTestStore()
+    commitCategories(catalog, categories)
     store.getState().setHiddenCategories(['s1_live_2', 's2_live_1'])
 
     store.getState().showAllCategories()
@@ -89,13 +93,73 @@ describe('playlist-slice category visibility', () => {
   })
 
   it('forgets hidden entries when their source is removed', () => {
-    const store = createTestStore()
-    store.getState().setCategories(categories)
+    const { store, catalog } = createTestStore()
+    commitCategories(catalog, categories)
     store.getState().setHiddenCategories(['s1_live_2', 's2_live_1'])
 
-    store.getState().removeCategoriesBySource('s1')
+    store.getState().removeSourceCatalog('s1')
 
     expect(store.getState().hiddenCategoryIds).toEqual(new Set(['s2_live_1']))
+    expect(catalog.getCategories('s1', 'live')).toEqual([])
+  })
+
+  it('keeps hidden entries when the source is refreshed (F1-25)', () => {
+    const { store, catalog } = createTestStore()
+    commitCategories(catalog, categories)
+    store.getState().setHiddenCategories(['s1_live_2'])
+
+    store.getState().replaceSourceCatalog('s1', {
+      live: { items: [m3uEntryToRecord(entry('a', 's1', 's1_live_2'))], categories: [categoryToRecord(categories[1])] }
+    })
+    store.getState().replaceSourceCatalog('s1', null)
+
+    expect(store.getState().hiddenCategoryIds).toEqual(new Set(['s1_live_2']))
+  })
+})
+
+describe('playlist-slice catalog status mirror', () => {
+  it('mirrors every status change of the catalog store', () => {
+    const { store, catalog } = createTestStore()
+    const token = catalog.beginGeneration('s1', 'live')
+
+    catalog.setSyncState(token, { syncing: true })
+    expect(store.getState().catalogStatus.s1?.live).toMatchObject({ syncing: true, loaded: false })
+
+    catalog.commit({ token, mode: 'replace', items: [m3uEntryToRecord(entry('a', 's1'))] })
+    catalog.setSyncState(token, { syncing: false })
+    expect(store.getState().catalogStatus.s1?.live).toMatchObject({
+      syncing: false,
+      loaded: true,
+      complete: true,
+      count: 1
+    })
+    expect(store.getState().catalogStatus.s1?.live).toBe(catalog.getStatus('s1', 'live'))
+  })
+
+  it('drops the status and the sync progress of a removed source', () => {
+    const { store, catalog } = createTestStore()
+    catalog.commit({ token: catalog.beginGeneration('s1', 'vod'), mode: 'partial', items: [] })
+    store.getState().setSyncProgress('s1', { currentType: 'vod', completedTypes: 0, active: true })
+
+    store.getState().removeSourceCatalog('s1')
+
+    expect(store.getState().catalogStatus.s1).toBeUndefined()
+    expect(store.getState().syncProgress.s1).toBeUndefined()
+  })
+})
+
+describe('playlist-slice legacy adapters', () => {
+  it('merges channels and categories into the catalog without claiming completeness', () => {
+    const { store, catalog } = createTestStore()
+
+    store.getState().addChannels([entry('a', 's1', 's1_live_1'), entry('b', 's1')])
+    store.getState().addCategories([categories[0]])
+    store.getState().addCategories([categories[0], categories[1]])
+
+    expect(catalog.getItems('s1', 'live').map((item) => item.id)).toEqual(['a', 'b'])
+    expect(catalog.getItems('s1', 'live')[0]).toMatchObject({ searchName: 'a', isAdult: false })
+    expect(catalog.getCategories('s1', 'live').map((category) => category.id)).toEqual(['s1_live_1', 's1_live_2'])
+    expect(catalog.getStatus('s1', 'live')).toMatchObject({ loaded: true, complete: false })
   })
 })
 

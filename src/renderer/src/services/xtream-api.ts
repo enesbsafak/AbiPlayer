@@ -9,8 +9,14 @@ import type {
   XtreamSeriesStream,
   XtreamSeriesInfo
 } from '@/types/xtream'
-import type { Channel, Category } from '@/types/playlist'
-import { isAdultLabel } from './adult-content'
+import type { Channel } from '@/types/playlist'
+import {
+  xtreamCategoriesToRecords,
+  xtreamLiveToRecords,
+  xtreamSeriesToRecords,
+  xtreamVodToRecords
+} from '@/catalog/convert'
+import type { CatalogCategory, CatalogItem } from '@/catalog/types'
 import { XTREAM_REQUEST_CANCELLED_MESSAGE, XtreamRequestError } from './xtream-errors'
 import {
   normalizeXtreamAuthResponse,
@@ -474,8 +480,8 @@ export interface XtreamLiveChannelOptions {
 /**
  * Catalog timestamps (unix seconds) keyed by the channel id the converters
  * produce: `added` for live and VOD, `last_modified` for series. Entries the
- * panel sent no timestamp for are left out. Kept outside `Channel` so the
- * playlist type does not change.
+ * panel sent no timestamp for are left out. Catalog records carry the same
+ * values as `added` / `lastModified`; this is the map form for raw lists.
  */
 export function collectXtreamTimestamps(
   streams: Array<XtreamLiveStream | XtreamVODStream | XtreamSeriesStream>,
@@ -644,78 +650,35 @@ export const xtreamApi = {
     return `${base}/xmltv.php?username=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`
   },
 
-  // Convert to app types
-  categoriesToApp(cats: XtreamCategory[], sourceId: string, type: 'live' | 'vod' | 'series'): Category[] {
-    return cats.map((c) => ({
-      id: `${sourceId}_${type}_${c.category_id}`,
-      name: c.category_name,
-      sourceId,
-      type
-    }))
+  // Convert to catalog records (see `@/catalog/convert`): plain data, no
+  // credentials, no URL; playback builds the URL from the ids.
+  categoriesToApp(cats: XtreamCategory[], sourceId: string, type: 'live' | 'vod' | 'series'): CatalogCategory[] {
+    return xtreamCategoriesToRecords(cats, sourceId, type)
   },
 
+  liveStreamsToRecords(streams: XtreamLiveStream[], sourceId: string): CatalogItem[] {
+    return xtreamLiveToRecords(streams, sourceId)
+  },
+
+  vodStreamsToRecords(streams: XtreamVODStream[], sourceId: string): CatalogItem[] {
+    return xtreamVodToRecords(streams, sourceId)
+  },
+
+  seriesToRecords(streams: XtreamSeriesStream[], sourceId: string): CatalogItem[] {
+    return xtreamSeriesToRecords(streams, sourceId)
+  },
+
+  /**
+   * @deprecated Use `liveStreamsToRecords`. Kept for existing callers; the
+   * records it returns no longer carry a URL, so `creds` and `options` are
+   * not used (the live format is chosen when the stream is played).
+   */
   liveStreamsToChannels(
     streams: XtreamLiveStream[],
-    creds: XtreamCredentials,
+    _creds: XtreamCredentials,
     sourceId: string,
-    options?: XtreamLiveChannelOptions
+    _options?: XtreamLiveChannelOptions
   ): Channel[] {
-    const liveFormat = options?.liveFormat ?? 'm3u8'
-    return streams.map((s) => ({
-      id: `${sourceId}_live_${s.stream_id}`,
-      name: s.name,
-      logo: s.stream_icon || undefined,
-      streamUrl: xtreamApi.buildLiveUrl(creds, s.stream_id, liveFormat),
-      streamId: s.stream_id,
-      sourceId,
-      categoryId: s.category_id ? `${sourceId}_live_${s.category_id}` : undefined,
-      epgChannelId: s.epg_channel_id || undefined,
-      type: 'live' as const,
-      // Plenty of providers never populate is_adult, so fall back to the name.
-      // The category is checked separately at view time (adultCategoryIds),
-      // because Xtream streams carry only a category id, not its name.
-      isAdult: s.is_adult || isAdultLabel(s.name),
-      tvArchive: s.tv_archive,
-      tvArchiveDuration: s.tv_archive_duration
-    }))
-  },
-
-  vodStreamsToChannels(streams: XtreamVODStream[], creds: XtreamCredentials, sourceId: string): Channel[] {
-    return streams.map((s) => ({
-      id: `${sourceId}_vod_${s.stream_id}`,
-      name: s.name,
-      logo: s.stream_icon || undefined,
-      streamUrl: xtreamApi.buildVodUrl(creds, s.stream_id, s.container_extension || 'mp4'),
-      streamId: s.stream_id,
-      sourceId,
-      categoryId: s.category_id ? `${sourceId}_vod_${s.category_id}` : undefined,
-      type: 'vod' as const,
-      isAdult: s.is_adult || isAdultLabel(s.name),
-      rating: s.rating,
-      containerExtension: s.container_extension
-    }))
-  },
-
-  seriesToChannels(streams: XtreamSeriesStream[], sourceId: string): Channel[] {
-    return streams.map((s) => ({
-      id: `${sourceId}_series_${s.series_id}`,
-      name: s.name,
-      logo: s.cover || undefined,
-      streamUrl: '',
-      seriesId: s.series_id,
-      sourceId,
-      categoryId: s.category_id ? `${sourceId}_series_${s.category_id}` : undefined,
-      type: 'series' as const,
-      // XtreamSeriesStream carries no is_adult field at all — name only.
-      isAdult: isAdultLabel(s.name),
-      rating: s.rating,
-      plot: s.plot,
-      cast: s.cast,
-      director: s.director,
-      genre: s.genre,
-      releaseDate: s.release_date,
-      coverUrl: s.cover,
-      backdropUrl: s.backdrop_path[0]
-    }))
+    return xtreamLiveToRecords(streams, sourceId)
   }
 }

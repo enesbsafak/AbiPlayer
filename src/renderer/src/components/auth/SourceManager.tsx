@@ -8,7 +8,9 @@ import { fetchAndParseM3U, parseM3U } from '@/services/m3u-parser'
 import { secureCredentialService } from '@/services/secure-credentials'
 import { pickAndReadFile } from '@/services/platform'
 import { toUserMessage } from '@/services/user-error'
-import type { Category, Channel, PlaylistSource } from '@/types/playlist'
+import { catalog } from '@/catalog/catalog-store'
+import { m3uPlaylistToReplacement } from '@/catalog/convert'
+import type { PlaylistSource } from '@/types/playlist'
 
 function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   if (!(key in record)) return record
@@ -33,11 +35,9 @@ export function SourceManager() {
   const xtreamAuth = useStore((s) => s.xtreamAuth)
   const setActiveSource = useStore((s) => s.setActiveSource)
   const removeSource = useStore((s) => s.removeSource)
-  const removeChannelsBySource = useStore((s) => s.removeChannelsBySource)
-  const removeCategoriesBySource = useStore((s) => s.removeCategoriesBySource)
+  const replaceSourceCatalog = useStore((s) => s.replaceSourceCatalog)
+  const removeSourceCatalog = useStore((s) => s.removeSourceCatalog)
   const setXtreamAuth = useStore((s) => s.setXtreamAuth)
-  const addChannels = useStore((s) => s.addChannels)
-  const addCategories = useStore((s) => s.addCategories)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const clearEpg = useStore((s) => s.clearEpg)
 
@@ -57,15 +57,6 @@ export function SourceManager() {
     })
   }
 
-  // Swap in one go once the new list is in hand. Clearing first meant a
-  // network error left the source with no channels at all.
-  const replaceCatalog = (sourceId: string, channels: Channel[], categories: Category[]) => {
-    removeChannelsBySource(sourceId)
-    removeCategoriesBySource(sourceId)
-    addChannels(channels)
-    addCategories(categories)
-  }
-
   const handleRemove = async (source: PlaylistSource) => {
     if (source.type === 'xtream') {
       try {
@@ -76,8 +67,8 @@ export function SourceManager() {
     }
 
     removeSource(source.id)
-    removeChannelsBySource(source.id)
-    removeCategoriesBySource(source.id)
+    // Also cancels its running syncs and forgets its hidden categories.
+    removeSourceCatalog(source.id)
     clearEpg()
     setRefreshError((prev) => withoutKey(prev, source.id))
   }
@@ -88,6 +79,9 @@ export function SourceManager() {
 
     setRefreshing(sourceId, true)
     setRefreshError((prev) => withoutKey(prev, sourceId))
+    // The swap below is dropped if the source is removed, or refreshed again,
+    // while this one is still fetching.
+    const revision = catalog.getSourceRevision(sourceId)
 
     try {
       if (source.type === 'xtream') {
@@ -98,24 +92,26 @@ export function SourceManager() {
           throw new Error('Kimlik doğrulama başarısız oldu')
         }
         if (!sourceStillExists(sourceId)) return
+        // Only once the server accepted us. The lists stay on screen, marked
+        // incomplete: the next full sync replaces them, so items the provider
+        // removed disappear. Hidden categories are kept.
+        replaceSourceCatalog(sourceId, null, revision)
         setXtreamAuth(sourceId, auth)
-        // Only once the server accepted us: the catalog reloads on the next
-        // page visit.
-        removeChannelsBySource(sourceId)
-        removeCategoriesBySource(sourceId)
         clearEpg()
       } else if (source.type === 'm3u_url' && source.url) {
-        const { channels, categories } = await fetchAndParseM3U(source.url, sourceId)
+        // Swapped in one go once the new list is in hand. Clearing first meant
+        // a network error left the source with no channels at all.
+        const parsed = await fetchAndParseM3U(source.url, sourceId)
         if (!sourceStillExists(sourceId)) return
-        replaceCatalog(sourceId, channels, categories)
+        replaceSourceCatalog(sourceId, m3uPlaylistToReplacement(parsed), revision)
       } else if (source.type === 'm3u_file') {
         const result = await pickAndReadFile([
           { name: 'Oynatma Listesi Dosyaları', extensions: ['m3u', 'm3u8', 'txt'] }
         ])
         if (!result) return
-        const { channels, categories } = parseM3U(result.content, sourceId)
+        const parsed = parseM3U(result.content, sourceId)
         if (!sourceStillExists(sourceId)) return
-        replaceCatalog(sourceId, channels, categories)
+        replaceSourceCatalog(sourceId, m3uPlaylistToReplacement(parsed), revision)
       }
     } catch (err) {
       setRefreshError((prev) => ({ ...prev, [sourceId]: toUserMessage(err, 'Yenileme başarısız oldu.') }))

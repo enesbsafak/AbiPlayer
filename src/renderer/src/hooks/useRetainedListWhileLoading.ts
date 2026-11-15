@@ -16,15 +16,15 @@ const EMPTY: readonly never[] = []
  * can never flash on screen — the exact glitch this hook exists to prevent.
  */
 export function useRetainedListWhileLoading<T>(
-  items: T[],
+  items: readonly T[],
   loading: boolean,
   resetKey: string | null | undefined
-): T[] {
-  const retainedRef = useRef<T[]>(items)
+): readonly T[] {
+  const retainedRef = useRef<readonly T[]>(items)
   const previousResetKeyRef = useRef(resetKey)
 
   const isStale = previousResetKeyRef.current !== resetKey
-  const retained = isStale ? (EMPTY as unknown as T[]) : retainedRef.current
+  const retained: readonly T[] = isStale ? EMPTY : retainedRef.current
 
   useEffect(() => {
     if (previousResetKeyRef.current !== resetKey) {

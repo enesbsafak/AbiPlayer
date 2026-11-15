@@ -1,8 +1,7 @@
 import { useMemo } from 'react'
 import { useStore } from '@/store'
 import { isPlayableChannel } from '@/services/playback'
-import { applyCatalogView } from '@/services/catalog-view'
-import { useCatalogView } from '@/hooks/useCatalogView'
+import { useCatalogCategories, useVisibleCatalogItems } from '@/catalog'
 import type { Channel } from '@/types/playlist'
 
 export interface AdjacentChannels {
@@ -22,47 +21,46 @@ export interface AdjacentChannels {
  * cannot see in the list they picked the channel from.
  */
 export function useAdjacentChannels(currentChannel: Channel | null): AdjacentChannels {
-  const channels = useStore((s) => s.channels)
-  const categories = useStore((s) => s.categories)
+  const sourceId = currentChannel?.sourceId ?? null
+  const type = currentChannel?.type ?? 'live'
   const selectedCategoryId = useStore((s) => s.selectedCategoryId)
-  const catalogView = useCatalogView()
+  const categories = useCatalogCategories(sourceId, type)
 
-  const candidates = useMemo(() => {
-    if (!currentChannel) return []
+  // The browsed category counts only when it belongs to this source and type.
+  const effectiveCategoryId =
+    selectedCategoryId && categories.some((category) => category.id === selectedCategoryId)
+      ? selectedCategoryId
+      : (currentChannel?.categoryId ?? null)
 
-    const sameTypeAndSource = applyCatalogView(
-      channels.filter(
-        (channel) =>
-          channel.type === currentChannel.type &&
-          channel.sourceId === currentChannel.sourceId &&
-          isPlayableChannel(channel)
-      ),
-      catalogView
-    )
-
-    const storeCategory = selectedCategoryId
-      ? categories.find((c) => c.id === selectedCategoryId)
-      : null
-    const effectiveCategoryId =
-      storeCategory &&
-      storeCategory.type === currentChannel.type &&
-      storeCategory.sourceId === currentChannel.sourceId
-        ? selectedCategoryId
-        : currentChannel.categoryId ?? null
-
-    if (!effectiveCategoryId) return sameTypeAndSource
-
-    const withinCategory = sameTypeAndSource.filter((ch) => ch.categoryId === effectiveCategoryId)
-    return withinCategory.length > 0 ? withinCategory : sameTypeAndSource
-  }, [channels, categories, currentChannel, selectedCategoryId, catalogView])
+  const sameTypeAndSource = useVisibleCatalogItems(sourceId, type)
+  const withinCategory = useVisibleCatalogItems(sourceId, type, effectiveCategoryId)
 
   return useMemo(() => {
     if (!currentChannel) return { previous: null, next: null }
+    const inCategory = effectiveCategoryId
+      ? withinCategory.filter(isPlayableChannel)
+      : []
+    const candidates = inCategory.length > 0 ? inCategory : sameTypeAndSource
 
     const index = candidates.findIndex((item) => item.id === currentChannel.id)
-    return {
-      previous: index > 0 ? candidates[index - 1] : null,
-      next: index >= 0 && index < candidates.length - 1 ? candidates[index + 1] : null
+    if (index < 0) return { previous: null, next: null }
+
+    // Walk outwards instead of filtering the whole list first: a source can
+    // list 200,000 items and only the two neighbours matter.
+    let previous: Channel | null = null
+    for (let i = index - 1; i >= 0; i--) {
+      if (isPlayableChannel(candidates[i])) {
+        previous = candidates[i]
+        break
+      }
     }
-  }, [candidates, currentChannel])
+    let next: Channel | null = null
+    for (let i = index + 1; i < candidates.length; i++) {
+      if (isPlayableChannel(candidates[i])) {
+        next = candidates[i]
+        break
+      }
+    }
+    return { previous, next }
+  }, [currentChannel, effectiveCategoryId, withinCategory, sameTypeAndSource])
 }

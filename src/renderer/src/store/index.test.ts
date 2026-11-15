@@ -69,8 +69,33 @@ describe('partialize', () => {
     expect(JSON.stringify(persisted)).not.toContain('s3cret')
     expect(persisted.sources[0]).not.toHaveProperty('username')
     expect(Object.keys(persisted).sort()).toEqual(
-      ['activeSourceId', 'favoriteIds', 'hiddenCategoryIds', 'isMuted', 'settings', 'sources', 'volume', 'watchProgress'].sort()
+      [
+        'activeSourceId',
+        'favoriteIds',
+        'favoriteSnapshots',
+        'hiddenCategoryIds',
+        'isMuted',
+        'settings',
+        'sources',
+        'volume',
+        'watchProgress'
+      ].sort()
     )
+  })
+
+  it('persists one snapshot per favourite, in favourite order, without credentials', () => {
+    const partialize = createPartialize()
+    const persisted = partialize({
+      ...useStore.getState(),
+      favoriteIds: new Set(['x_live_2', 'm3u_1']),
+      favoriteSnapshots: {
+        m3u_1: { id: 'm3u_1', name: 'Liste', sourceId: 'm', type: 'live', streamUrl: 'http://cdn.test/1.ts' },
+        x_live_2: { id: 'x_live_2', name: 'Kanal', sourceId: 'x', type: 'live', streamId: 2 },
+        stale: { id: 'stale', name: 'Eski', sourceId: 'x', type: 'live', streamId: 9 }
+      }
+    } as AppStore)
+    expect(persisted.favoriteSnapshots.map((snapshot) => snapshot.id)).toEqual(['x_live_2', 'm3u_1'])
+    expect(persisted.favoriteSnapshots[0]).not.toHaveProperty('streamUrl')
   })
 })
 
@@ -95,6 +120,25 @@ describe('mergePersistedState', () => {
     expect([...merged.favoriteIds]).toEqual(['a'])
     expect(merged.currentChannel).toBeNull()
     expect(merged.isPlaying).toBe(false)
+  })
+
+  it('keeps valid snapshots of known favourites only', () => {
+    const merged = mergePersistedState(
+      {
+        favoriteIds: ['x_live_2', 'x_vod_3', 'm3u_bad'],
+        favoriteSnapshots: [
+          { id: 'x_live_2', name: 'Kanal', sourceId: 'x', type: 'live', streamId: 2, streamUrl: 'http://h/live/u/p/2.ts' },
+          { id: 'x_vod_3', name: 'Film', sourceId: 'x', type: 'vod' },
+          { id: 'm3u_bad', name: 'Liste', sourceId: 'm', type: 'live', streamUrl: 'javascript:alert(1)' },
+          { id: 'unknown', name: 'Yabancı', sourceId: 'x', type: 'live', streamId: 4 },
+          'garbage'
+        ]
+      },
+      current()
+    )
+    expect(Object.keys(merged.favoriteSnapshots)).toEqual(['x_live_2'])
+    // A URL on an Xtream item would carry its credentials.
+    expect(merged.favoriteSnapshots.x_live_2).not.toHaveProperty('streamUrl')
   })
 
   it('falls back to the current values for garbage', () => {

@@ -10,7 +10,7 @@ interface HomeSectionProps {
   iconClassName?: string
   /** Route the "Tümünü Gör" button navigates to. */
   viewAllTo: string
-  channels: Channel[]
+  channels: readonly Channel[]
   onPlay: (channel: Channel) => void
 }
 

@@ -134,3 +134,40 @@ describe('applyCategoryView', () => {
     expect(result.map((c) => c.name)).toEqual(['Ulusal', 'Gizli'])
   })
 })
+
+describe('showAdultContent (F1-53)', () => {
+  it('drops adult channels and adult categories when the setting is off', () => {
+    const channels = [
+      channel('Erotik 1', { isAdult: true }),
+      channel('Kanal 1', { categoryId: 'cat_adult' }),
+      channel('Haber TV')
+    ]
+    const result = applyCatalogView(channels, {
+      ...baseOptions,
+      adultCategoryIds: new Set(['cat_adult']),
+      showAdultContent: false
+    })
+    expect(result.map((c) => c.name)).toEqual(['Haber TV'])
+
+    const categories = [category('c1', 'XXX'), category('c2', 'Ulusal')]
+    expect(
+      applyCategoryView(categories, { hiddenCategoryIds: new Set(), showAdultContent: false }).map((c) => c.name)
+    ).toEqual(['Ulusal'])
+  })
+
+  it('still lists adult categories on the settings screen, which offers them back', () => {
+    const categories = [category('c1', 'XXX'), category('c2', 'Ulusal')]
+    expect(
+      applyCategoryView(categories, { hiddenCategoryIds: new Set(), includeHidden: true, showAdultContent: false }).map(
+        (c) => c.name
+      )
+    ).toEqual(['Ulusal', 'XXX'])
+  })
+
+  it('uses the adult flag computed at ingest instead of matching the name again', () => {
+    const flagged = [{ ...category('c1', 'Gece Kuşağı'), isAdult: true }, { ...category('c2', 'XXX'), isAdult: false }]
+    expect(
+      applyCategoryView(flagged, { hiddenCategoryIds: new Set(), showAdultContent: false }).map((c) => c.id)
+    ).toEqual(['c2'])
+  })
+})
