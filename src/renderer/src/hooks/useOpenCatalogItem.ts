@@ -4,6 +4,7 @@ import { useStore } from '@/store'
 import { isPlayableChannel } from '@/services/playback'
 import { openPlayerFromRoute } from '@/services/player-navigation'
 import type { Channel } from '@/types/playlist'
+import type { PlaybackRequest } from '@/types/player'
 
 export interface OpenCatalogItemContext {
   /** Route state the player hands back when the viewer leaves it. */
@@ -40,6 +41,32 @@ export function planCatalogItemOpen(
   }
 }
 
+/**
+ * Starts a playback request (a target plus what to show for it) and opens the
+ * player, remembering the current route to come back to.
+ */
+export function useOpenPlayback() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const startPlayback = useStore((s) => s.startPlayback)
+  const setMiniPlayer = useStore((s) => s.setMiniPlayer)
+  const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
+
+  return useCallback(
+    (request: PlaybackRequest, context: Pick<OpenCatalogItemContext, 'returnState'> = {}) => {
+      startPlayback(request)
+      setMiniPlayer(false)
+      openPlayerFromRoute({
+        location,
+        navigate,
+        returnState: context.returnState,
+        setPlayerReturnTarget
+      })
+    },
+    [location, navigate, startPlayback, setMiniPlayer, setPlayerReturnTarget]
+  )
+}
+
 /** One click handler for catalog cards outside the catalog pages. */
 export function useOpenCatalogItem() {
   const location = useLocation()
@@ -63,10 +90,10 @@ export function useOpenCatalogItem() {
           })
           return
         case 'series':
-          navigate('/series', { state: plan.state })
+          void navigate('/series', { state: plan.state })
           return
         case 'series-list':
-          navigate('/series')
+          void navigate('/series')
           return
         case 'none':
           return

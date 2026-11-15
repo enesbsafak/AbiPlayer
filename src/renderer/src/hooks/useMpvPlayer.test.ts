@@ -53,12 +53,22 @@ function createSnapshot(overrides: Partial<MpvStateSnapshot> = {}): MpvStateSnap
   }
 }
 
+const EXPECTED_PLAYBACK = { playbackId: 'pb-1', url: 'https://example.com/live.m3u8' }
+
 describe('shouldKeepStartupOverlay', () => {
+  it('hides the overlay when a stamped snapshot belongs to another playback', () => {
+    const snapshot = { ...createSnapshot({ path: EXPECTED_PLAYBACK.url }), playbackId: 'pb-0' }
+    expect(shouldKeepStartupOverlay(snapshot, EXPECTED_PLAYBACK, 1_000, 2_000)).toBe(false)
+    expect(
+      shouldKeepStartupOverlay({ ...snapshot, playbackId: 'pb-1' }, EXPECTED_PLAYBACK, 1_000, 2_000)
+    ).toBe(true)
+  })
+
   it('keeps the overlay while mpv is still idle for the target stream', () => {
     const snapshot = createSnapshot()
 
     expect(
-      shouldKeepStartupOverlay(snapshot, 'https://example.com/live.m3u8', 1_000, 2_000)
+      shouldKeepStartupOverlay(snapshot, EXPECTED_PLAYBACK, 1_000, 2_000)
     ).toBe(true)
   })
 
@@ -76,7 +86,7 @@ describe('shouldKeepStartupOverlay', () => {
     })
 
     expect(
-      shouldKeepStartupOverlay(snapshot, 'https://example.com/live.m3u8', 1_000, 2_000)
+      shouldKeepStartupOverlay(snapshot, EXPECTED_PLAYBACK, 1_000, 2_000)
     ).toBe(false)
   })
 
@@ -90,7 +100,7 @@ describe('shouldKeepStartupOverlay', () => {
 
     // Once mpv is running and actively loading, startup overlay should clear
     expect(
-      shouldKeepStartupOverlay(snapshot, 'https://example.com/live.m3u8', 1_000, 2_000)
+      shouldKeepStartupOverlay(snapshot, EXPECTED_PLAYBACK, 1_000, 2_000)
     ).toBe(false)
   })
 
@@ -100,7 +110,7 @@ describe('shouldKeepStartupOverlay', () => {
     })
 
     expect(
-      shouldKeepStartupOverlay(snapshot, 'https://example.com/live.m3u8', 1_000, 2_000)
+      shouldKeepStartupOverlay(snapshot, EXPECTED_PLAYBACK, 1_000, 2_000)
     ).toBe(false)
   })
 
@@ -108,7 +118,7 @@ describe('shouldKeepStartupOverlay', () => {
     const snapshot = createSnapshot()
 
     expect(
-      shouldKeepStartupOverlay(snapshot, 'https://example.com/live.m3u8', 1_000, 17_000)
+      shouldKeepStartupOverlay(snapshot, EXPECTED_PLAYBACK, 1_000, 17_000)
     ).toBe(false)
   })
 
@@ -118,7 +128,7 @@ describe('shouldKeepStartupOverlay', () => {
     })
 
     expect(
-      shouldKeepStartupOverlay(snapshot, 'https://example.com/live.m3u8', 1_000, 2_000)
+      shouldKeepStartupOverlay(snapshot, EXPECTED_PLAYBACK, 1_000, 2_000)
     ).toBe(false)
   })
 
@@ -130,13 +140,17 @@ describe('shouldKeepStartupOverlay', () => {
     })
 
     expect(
-      shouldKeepStartupOverlay(snapshot, 'https://example.com/live.m3u8', 1_000, 2_000)
+      shouldKeepStartupOverlay(snapshot, EXPECTED_PLAYBACK, 1_000, 2_000)
     ).toBe(false)
   })
 })
 
 describe('isSnapshotForCurrentStream', () => {
-  const stream = { url: 'https://e.com/b.ts', previousUrl: 'https://e.com/a.ts', opened: true }
+  const stream = {
+    playback: { playbackId: 'pb-2', url: 'https://e.com/b.ts' },
+    previousUrl: 'https://e.com/a.ts',
+    opened: true
+  }
 
   it('rejects everything until mpv has accepted the current stream', () => {
     expect(
@@ -155,7 +169,13 @@ describe('isSnapshotForCurrentStream', () => {
   })
 
   it('rejects everything when nothing is loaded', () => {
-    expect(isSnapshotForCurrentStream({ path: null }, { ...stream, url: null })).toBe(false)
+    expect(isSnapshotForCurrentStream({ path: null }, { ...stream, playback: null })).toBe(false)
+  })
+
+  it('judges a stamped snapshot by its playback id, not its path', () => {
+    // A reload of the same URL: the path matches, the playback does not.
+    expect(isSnapshotForCurrentStream({ path: 'https://e.com/b.ts', playbackId: 'pb-1' }, stream)).toBe(false)
+    expect(isSnapshotForCurrentStream({ path: 'https://e.com/a.ts', playbackId: 'pb-2' }, stream)).toBe(true)
   })
 })
 
@@ -436,4 +456,46 @@ describe('useMpvPlayer poll', () => {
     expect(vi.mocked(mpvOpen)).toHaveBeenCalledTimes(2)
     expect(vi.mocked(mpvOpen)).toHaveBeenLastCalledWith(liveA.streamUrl)
   })
+
+  it('reports the playback as loaded once mpv has a duration for it', async () => {
+    vi.mocked(mpvOpen).mockResolvedValue(undefined)
+    vi.mocked(mpvGetState).mockResolvedValue(runningSnapshot({ path: film.streamUrl, duration: 0 }))
+    act(() => useStore.getState().playChannel(film))
+    renderHook(() => useMpvPlayer(true))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    expect(useStore.getState().loadedPlaybackId).toBeNull()
+
+    vi.mocked(mpvGetState).mockResolvedValue(runningSnapshot({ path: film.streamUrl, duration: 5400 }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    expect(useStore.getState().loadedPlaybackId).toBe(useStore.getState().currentPlayback?.playbackId)
+  })
+
+  it('does not count a snapshot of the previous attempt as the reloaded one loading', async () => {
+    vi.mocked(mpvOpen).mockResolvedValue(undefined)
+    act(() => useStore.getState().playChannel(film))
+    const previous = useStore.getState().currentPlayback!.playbackId
+    act(() => useStore.getState().reloadPlayback())
+    vi.mocked(mpvGetState).mockResolvedValue({
+      ...runningSnapshot({ path: film.streamUrl, duration: 5400 }),
+      playbackId: previous
+    } as MpvStateSnapshot)
+    renderHook(() => useMpvPlayer(true))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600)
+    })
+
+    expect(useStore.getState().loadedPlaybackId).toBeNull()
+  })
 })
+
+const film: Channel = {
+  id: 'f',
+  name: 'Film',
+  streamUrl: 'https://e.com/movie/f.mkv',
+  sourceId: 's',
+  type: 'vod'
+}

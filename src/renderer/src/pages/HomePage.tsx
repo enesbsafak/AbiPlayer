@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Tv, Film, Clapperboard, Star } from 'lucide-react'
 import { useStore } from '@/store'
 import { HomeHero } from '@/components/home/HomeHero'
@@ -7,10 +7,15 @@ import { ContinueWatchingSection } from '@/components/home/ContinueWatchingSecti
 import { HomeError, HomeLoading, HomeWelcome } from '@/components/home/HomeStates'
 import { useHomeBootstrap } from '@/hooks/useHomeBootstrap'
 import { useCatalogView } from '@/hooks/useCatalogView'
-import { useOpenCatalogItem } from '@/hooks/useOpenCatalogItem'
+import { useOpenCatalogItem, useOpenPlayback } from '@/hooks/useOpenCatalogItem'
 import type { Channel } from '@/types/playlist'
 import { buildHomeCatalog, HOME_MAX_OTHER } from '@/components/home/home-catalog'
-import { restoreStreamUrl, type WatchProgressEntry } from '@/services/watch-progress'
+import {
+  indexChannelsByLegacyKey,
+  legacyIndexKey,
+  selectContinueWatching,
+  type ContinueWatchingItem
+} from '@/services/watch-progress'
 
 export default function HomePage() {
   const channels = useStore((s) => s.channels)
@@ -28,6 +33,11 @@ export default function HomePage() {
   const bootstrap = useHomeBootstrap()
 
   const handlePlay = useOpenCatalogItem()
+  const openPlayback = useOpenPlayback()
+  const handleContinue = useCallback(
+    (item: ContinueWatchingItem) => openPlayback({ target: item.target, channel: item.channel }),
+    [openPlayback]
+  )
 
   const catalogView = useCatalogView()
 
@@ -51,28 +61,35 @@ export default function HomePage() {
   // Like favourites, this is the viewer's own history rather than a catalog
   // listing, so category hiding deliberately does not filter it.
   //
-  // Stored URLs have their Xtream credentials stripped, so each one is rebuilt
-  // from the live source before it can be played. A rebuild that fails means the
-  // source was removed or is no longer an Xtream account — those entries are
-  // skipped rather than offered as cards that could only fail to authenticate.
-  // `sources` is a dependency because `getXtreamCredentials` reads from it.
-  const continueWatching = useMemo(() => {
-    const playable: WatchProgressEntry[] = []
-
-    for (const entry of watchProgress) {
-      if (playable.length >= HOME_MAX_OTHER) break
-
-      const streamUrl = restoreStreamUrl(
-        entry.channel.streamUrl,
-        getXtreamCredentials(entry.channel.sourceId)
-      )
-      if (!streamUrl) continue
-
-      playable.push({ ...entry, channel: { ...entry.channel, streamUrl } })
-    }
-
-    return playable
-  }, [watchProgress, sources, getXtreamCredentials])
+  // Nothing stored holds an Xtream credential: those items are rebuilt from
+  // the live source when played, so they are listed only while it has
+  // credentials. M3U items carry their own URL.
+  //
+  // Entries from before the media-key migration that it could not map are
+  // matched against the catalog by their old key; the index is built only for
+  // sources that still have such entries.
+  const sourcesWithCredentials = useMemo(
+    () => new Set(sources.filter((source) => getXtreamCredentials(source.id)).map((source) => source.id)),
+    [sources, getXtreamCredentials]
+  )
+  const legacySourceIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const entry of watchProgress) if (!entry.target) ids.add(entry.channel.sourceId)
+    return ids
+  }, [watchProgress])
+  const legacyIndex = useMemo(
+    () => indexChannelsByLegacyKey(channels, legacySourceIds),
+    [channels, legacySourceIds]
+  )
+  const continueWatching = useMemo(
+    () =>
+      selectContinueWatching(watchProgress, {
+        hasCredentials: (sourceId) => sourcesWithCredentials.has(sourceId),
+        findLegacyChannel: (entry) => legacyIndex.get(legacyIndexKey(entry)) ?? null,
+        limit: HOME_MAX_OTHER
+      }),
+    [watchProgress, sourcesWithCredentials, legacyIndex]
+  )
 
   if (sources.length === 0) return <HomeWelcome />
 
@@ -104,7 +121,7 @@ export default function HomePage() {
 
       <ContinueWatchingSection
         entries={continueWatching}
-        onPlay={handlePlay}
+        onPlay={handleContinue}
         onRemove={removeWatchProgress}
       />
 

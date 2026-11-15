@@ -2,9 +2,18 @@ import { describe, expect, it, vi } from 'vitest'
 import { create } from 'zustand'
 import { createPlayerSlice, type PlayerSlice } from './player-slice'
 import type { Channel } from '@/types/playlist'
+import type { XtreamCredentials } from '@/types/xtream'
+import type { PlaybackSourceState } from '@/services/playback'
 
 function createPlayerTestStore() {
   return create<PlayerSlice>()((...args) => createPlayerSlice(...args))
+}
+
+function createStoreWithCredentials(credentials: Record<string, XtreamCredentials>) {
+  return create<PlayerSlice & PlaybackSourceState>()((...args) => ({
+    ...createPlayerSlice(...args),
+    getXtreamCredentials: (sourceId: string) => credentials[sourceId] ?? null
+  }))
 }
 
 const movie: Channel = {
@@ -46,8 +55,24 @@ describe('player-slice reloadPlayback', () => {
     expect(state.currentAudioTrack).toBe('mpv-a:1')
     expect(state.currentSubtitleTrack).toBe('mpv-s:2')
     // The reload starts the film again, so it has to be put back where it was.
-    expect(state.pendingResumeStreamUrl).toBe(movie.streamUrl)
+    expect(state.pendingResume?.playbackId).toBe(state.currentPlayback?.playbackId)
     expect(state.duration).toBe(0)
+  })
+
+  it('is a new playback of the same item', () => {
+    const store = createPlayerTestStore()
+    store.getState().playChannel(movie)
+    store.getState().markPlaybackLoaded(store.getState().currentPlayback!.playbackId)
+    const before = store.getState().currentPlayback!
+
+    store.getState().reloadPlayback()
+
+    const after = store.getState().currentPlayback!
+    expect(after.playbackId).not.toBe(before.playbackId)
+    expect(after.mediaKey).toBe(before.mediaKey)
+    expect(after.streamUrl).toBe(before.streamUrl)
+    // The old load no longer counts as loaded.
+    expect(store.getState().loadedPlaybackId).toBeNull()
   })
 
   it('does not arm a resume for live channels', () => {
@@ -55,7 +80,7 @@ describe('player-slice reloadPlayback', () => {
     store.getState().playChannel(live)
     store.getState().reloadPlayback()
     expect(store.getState().playbackReloadToken).toBe(1)
-    expect(store.getState().pendingResumeStreamUrl).toBeNull()
+    expect(store.getState().pendingResume).toBeNull()
   })
 
   it('is a no-op with nothing selected', () => {
@@ -81,7 +106,21 @@ describe('player-slice suspendPlayback', () => {
     expect(state.isPaused).toBe(true)
     expect(state.currentTime).toBe(0)
     expect(state.duration).toBe(0)
-    expect(state.pendingResumeStreamUrl).toBe(movie.streamUrl)
+    expect(state.pendingResume?.mediaKey).toBe(state.currentPlayback?.mediaKey)
+    expect(state.pendingResume?.phase).toBe('awaiting-load')
+  })
+
+  it('comes back as a new playback, and the resume moves over to it', () => {
+    const store = createPlayerTestStore()
+    store.getState().playChannel(movie)
+    const first = store.getState().currentPlayback!.playbackId
+    store.getState().suspendPlayback()
+
+    store.getState().resumeSuspendedPlayback()
+
+    const { currentPlayback, pendingResume } = store.getState()
+    expect(currentPlayback!.playbackId).not.toBe(first)
+    expect(pendingResume?.playbackId).toBe(currentPlayback!.playbackId)
   })
 
   it('lets a live channel simply restart', () => {
@@ -89,7 +128,7 @@ describe('player-slice suspendPlayback', () => {
     store.getState().playChannel(live)
     store.getState().suspendPlayback()
     expect(store.getState().isPlaybackSuspended).toBe(true)
-    expect(store.getState().pendingResumeStreamUrl).toBeNull()
+    expect(store.getState().pendingResume).toBeNull()
   })
 
   it('is cleared by resuming, playing something new or stopping', () => {
@@ -157,5 +196,109 @@ describe('player-slice setActiveSubtitleCues', () => {
     store.getState().setActiveSubtitleCues([{ startTime: 1, endTime: 2, text: 'Bir' }])
     store.getState().setActiveSubtitleCues([{ startTime: 2, endTime: 3, text: 'İki' }])
     expect(store.getState().activeSubtitleCues[0].text).toBe('İki')
+  })
+})
+
+describe('player-slice playback identity', () => {
+  const credentials: XtreamCredentials = { url: 'http://panel.example', username: 'u', password: 'p#1' }
+  const xtreamFilm: Channel = {
+    id: 'acc-a_vod_7',
+    name: 'Film',
+    streamUrl: 'http://panel.example/movie/old/stale/7.mp4',
+    streamId: 7,
+    containerExtension: 'mkv',
+    sourceId: 'acc-a',
+    type: 'vod'
+  }
+
+  it('issues a new playback id for every start, even of the same item', () => {
+    const store = createPlayerTestStore()
+    store.getState().playChannel(movie)
+    const first = store.getState().currentPlayback!
+    store.getState().playChannel(movie)
+    const second = store.getState().currentPlayback!
+    expect(second.playbackId).not.toBe(first.playbackId)
+    expect(second.mediaKey).toBe(first.mediaKey)
+  })
+
+  it('builds an Xtream URL from the source credentials instead of the stored one', () => {
+    const store = createStoreWithCredentials({ 'acc-a': credentials })
+    store.getState().playChannel(xtreamFilm)
+    const playback = store.getState().currentPlayback!
+    expect(playback.target).toEqual({ kind: 'movie', sourceId: 'acc-a', streamId: 7, containerExtension: 'mkv' })
+    expect(playback.mediaKey).toBe('movie:acc-a:7')
+    expect(playback.streamUrl).toBe('http://panel.example/movie/u/p%231/7.mkv')
+  })
+
+  it('keeps two accounts on one host apart', () => {
+    const store = createStoreWithCredentials({ 'acc-a': credentials, 'acc-b': credentials })
+    store.getState().playChannel(xtreamFilm)
+    const a = store.getState().currentPlayback!.mediaKey
+    store.getState().playChannel({ ...xtreamFilm, sourceId: 'acc-b' })
+    expect(store.getState().currentPlayback!.mediaKey).not.toBe(a)
+  })
+
+  it('falls back to the stored URL while the credentials are not known', () => {
+    const store = createPlayerTestStore()
+    store.getState().playChannel(xtreamFilm)
+    expect(store.getState().currentPlayback!.streamUrl).toBe(xtreamFilm.streamUrl)
+  })
+
+  it('refuses an item it cannot derive a stream for', () => {
+    const store = createPlayerTestStore()
+    store.getState().playChannel({ ...xtreamFilm, streamUrl: '' })
+    expect(store.getState().currentPlayback).toBeNull()
+    expect(store.getState().currentChannel).toBeNull()
+    expect(store.getState().playerError).not.toBeNull()
+  })
+
+  it('plays an episode with a real episode target and a stable display id', () => {
+    const store = createStoreWithCredentials({ 'acc-a': credentials })
+    const request = {
+      sourceId: 'acc-a',
+      seriesId: 40,
+      season: 2,
+      episodeNum: 3,
+      episodeId: 901,
+      containerExtension: 'mp4',
+      title: 'Dizi - S2E3 - Bölüm'
+    }
+    store.getState().playEpisode(request)
+    const first = store.getState()
+    expect(first.currentPlayback!.target).toEqual({
+      kind: 'episode',
+      sourceId: 'acc-a',
+      streamId: 901,
+      containerExtension: 'mp4',
+      seriesId: 40,
+      season: 2,
+      episode: 3
+    })
+    expect(first.currentPlayback!.mediaKey).toBe('episode:acc-a:901')
+    expect(first.currentPlayback!.streamUrl).toBe('http://panel.example/series/u/p%231/901.mp4')
+    expect(first.pendingResume).not.toBeNull()
+
+    store.getState().playEpisode(request)
+    expect(store.getState().currentChannel!.id).toBe(first.currentChannel!.id)
+  })
+
+  it('only accepts a load report and a resume step for the current playback', () => {
+    const store = createPlayerTestStore()
+    store.getState().playChannel(movie)
+    const stale = store.getState().currentPlayback!.playbackId
+    store.getState().reloadPlayback()
+    const current = store.getState().currentPlayback!.playbackId
+
+    store.getState().markPlaybackLoaded(stale)
+    expect(store.getState().loadedPlaybackId).toBeNull()
+    store.getState().completeResume(stale)
+    expect(store.getState().pendingResume).not.toBeNull()
+
+    store.getState().markPlaybackLoaded(current)
+    expect(store.getState().loadedPlaybackId).toBe(current)
+    store.getState().markResumeSeekIssued(current, 120)
+    expect(store.getState().pendingResume).toMatchObject({ phase: 'seek-issued', position: 120 })
+    store.getState().completeResume(current)
+    expect(store.getState().pendingResume).toBeNull()
   })
 })

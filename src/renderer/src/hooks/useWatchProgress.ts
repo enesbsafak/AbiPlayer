@@ -1,12 +1,16 @@
 import { useEffect, useRef } from 'react'
-import { useStore } from '@/store'
-import { isTrackableChannel, wouldRewindPendingResume } from '@/services/watch-progress'
+import { flushPersistedStore, useStore } from '@/store'
+import { legacyProgressKeyFor, wouldRewindPendingResume } from '@/services/watch-progress'
 import type { Channel } from '@/types/playlist'
+import { isTrackableTarget, type PlaybackTarget } from '../../../shared/playback'
 
 const SAVE_INTERVAL_MS = 10_000
 
 interface PlaybackSnapshot {
+  target: PlaybackTarget
+  mediaKey: string
   channel: Channel
+  streamUrl: string
   position: number
   duration: number
 }
@@ -32,18 +36,21 @@ export function useWatchProgress(): void {
   const latestRef = useRef<PlaybackSnapshot | null>(null)
   // Only the identity of what is playing (and its lifecycle) belongs in the
   // dependency list; each change flushes the last position through cleanup.
-  const currentStreamUrl = useStore((s) => s.currentChannel?.streamUrl)
+  const playbackId = useStore((s) => s.currentPlayback?.playbackId)
   const isPlaybackSuspended = useStore((s) => s.isPlaybackSuspended)
-  const playbackReloadToken = useStore((s) => s.playbackReloadToken)
 
   useEffect(() => {
     return useStore.subscribe((state) => {
+      const playback = state.currentPlayback
       const channel = state.currentChannel
-      if (!channel || !isTrackableChannel(channel)) return
+      if (!playback || !channel || !isTrackableTarget(playback.target)) return
       if (!(state.currentTime > 0) || !(state.duration > 0)) return
 
       latestRef.current = {
+        target: playback.target,
+        mediaKey: playback.mediaKey,
         channel,
+        streamUrl: playback.streamUrl,
         position: state.currentTime,
         duration: state.duration
       }
@@ -51,9 +58,9 @@ export function useWatchProgress(): void {
   }, [])
 
   useEffect(() => {
-    if (!currentStreamUrl) return
+    if (!playbackId) return
 
-    const flush = (): void => {
+    const save = (): void => {
       const snapshot = latestRef.current
       if (!snapshot) return
       const state = useStore.getState()
@@ -61,26 +68,33 @@ export function useWatchProgress(): void {
       if (
         wouldRewindPendingResume(
           state.watchProgress,
-          snapshot.channel,
+          snapshot.mediaKey,
           snapshot.position,
-          state.pendingResumeStreamUrl
+          state.pendingResume,
+          legacyProgressKeyFor(snapshot.streamUrl)
         )
       ) {
         return
       }
-      state.saveWatchProgress(snapshot.channel, snapshot.position, snapshot.duration)
+      state.saveWatchProgress(snapshot, snapshot.position, snapshot.duration)
     }
 
-    const timer = window.setInterval(flush, SAVE_INTERVAL_MS)
     // Closing the window never runs React cleanup; without this the last
-    // interval's worth of progress (up to 10 s) is lost.
-    window.addEventListener('pagehide', flush)
+    // interval's worth of progress (up to 10 s) is lost. The store coalesces
+    // its writes, so this one is pushed to storage right away.
+    const saveOnPageHide = (): void => {
+      save()
+      flushPersistedStore()
+    }
+
+    const timer = window.setInterval(save, SAVE_INTERVAL_MS)
+    window.addEventListener('pagehide', saveOnPageHide)
 
     return () => {
       window.clearInterval(timer)
-      window.removeEventListener('pagehide', flush)
-      flush()
+      window.removeEventListener('pagehide', saveOnPageHide)
+      save()
       latestRef.current = null
     }
-  }, [currentStreamUrl, isPlaybackSuspended, playbackReloadToken])
+  }, [playbackId, isPlaybackSuspended])
 }

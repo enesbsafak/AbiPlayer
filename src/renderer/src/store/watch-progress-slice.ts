@@ -1,19 +1,16 @@
 import type { StateCreator } from 'zustand'
-import type { Channel } from '@/types/playlist'
 import {
-  isCompleted,
-  isTrackableChannel,
-  progressKeyFor,
+  planProgressUpdate,
   removeProgress,
-  shouldStoreProgress,
-  toProgressChannel,
   upsertProgress,
+  type ProgressSubject,
   type WatchProgressEntry
 } from '@/services/watch-progress'
 
 export interface WatchProgressSlice {
   watchProgress: WatchProgressEntry[]
-  saveWatchProgress: (channel: Channel, position: number, duration: number) => void
+  /** Records `position` for the item `subject` plays; live is never recorded. */
+  saveWatchProgress: (subject: ProgressSubject, position: number, duration: number) => void
   removeWatchProgress: (key: string) => void
   clearWatchProgress: () => void
 }
@@ -26,28 +23,22 @@ export const createWatchProgressSlice: StateCreator<
 > = (set) => ({
   watchProgress: [],
 
-  saveWatchProgress: (channel, position, duration) =>
+  saveWatchProgress: (subject, position, duration) =>
     set((state) => {
-      const key = isTrackableChannel(channel) ? progressKeyFor(channel) : null
-      if (!key) return state
-
-      if (!shouldStoreProgress(position, duration)) {
-        // Reaching the end is what retires an entry; anything else (a few
-        // seconds in, duration not known yet) leaves the stored position alone.
-        if (isCompleted(position, duration)) {
-          return { watchProgress: removeProgress(state.watchProgress, key) }
+      const update = planProgressUpdate(subject, position, duration)
+      switch (update.kind) {
+        case 'none':
+          return state
+        case 'remove': {
+          const next = update.keys.reduce(removeProgress, state.watchProgress)
+          return next.length === state.watchProgress.length ? state : { watchProgress: next }
         }
-        return state
-      }
-
-      return {
-        watchProgress: upsertProgress(state.watchProgress, {
-          key,
-          channel: toProgressChannel(channel),
-          position,
-          duration,
-          updatedAt: Date.now()
-        })
+        case 'upsert':
+          // Saving under the media key also retires a legacy entry for the
+          // same item, so it does not linger as a duplicate.
+          return {
+            watchProgress: upsertProgress(state.watchProgress, update.entry, update.replacesKey)
+          }
       }
     }),
 

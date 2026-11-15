@@ -29,25 +29,48 @@ import {
   pickPreferredSubtitleTrackId
 } from '@/services/track-preferences'
 import { useStore } from '@/store'
+import { isLiveTarget } from '../../../shared/playback'
 
 const MPV_AUDIO_TRACK_PREFIX = 'mpv-a:'
 const MPV_SUBTITLE_TRACK_PREFIX = 'mpv-s:'
 const MPV_STARTUP_OVERLAY_TIMEOUT_MS = 15000
 
+/**
+ * A snapshot as the renderer reads it. Main is being changed to stamp each one
+ * with the playback id it belongs to; until it does, `playbackId` is absent and
+ * the loaded path is the only hint.
+ */
+export type MpvSnapshotLike = MpvStateSnapshot & { playbackId?: string | null }
+
+/** The playback the renderer asked mpv to open. */
+export interface MpvPlaybackRef {
+  playbackId: string
+  url: string
+}
+
+/** Whether a snapshot is about a different playback than `expected`. */
+function belongsElsewhere(
+  snapshot: Pick<MpvSnapshotLike, 'path' | 'playbackId'>,
+  expected: MpvPlaybackRef
+): boolean {
+  if (snapshot.playbackId) return snapshot.playbackId !== expected.playbackId
+  return !!snapshot.path && snapshot.path !== expected.url
+}
+
 export function shouldKeepStartupOverlay(
-  snapshot: MpvStateSnapshot,
-  expectedUrl: string | null,
+  snapshot: MpvSnapshotLike,
+  expected: MpvPlaybackRef | null,
   startedAt: number | null,
   now = Date.now()
 ): boolean {
-  if (!expectedUrl || startedAt === null) return false
+  if (!expected || startedAt === null) return false
   if (snapshot.error) return false
   if (now - startedAt >= MPV_STARTUP_OVERLAY_TIMEOUT_MS) return false
   // Stream is already playing — no overlay needed
   if (snapshot.timePos > 0) return false
   if (snapshot.tracks.length > 0) return false
-  // MPV loaded a different path than we expected — it already moved on
-  if (snapshot.path && snapshot.path !== expectedUrl) return false
+  // MPV loaded something other than what we expected — it already moved on
+  if (belongsElsewhere(snapshot, expected)) return false
   // MPV is running and processing the stream (buffering or playing)
   if (snapshot.running && !snapshot.paused) return false
   return true
@@ -134,20 +157,23 @@ const STALL_THRESHOLD_MS = 12_000
 export const MPV_CONNECTION_LOST_MESSAGE = 'Yayın bağlantısı kesildi.'
 
 /**
- * Whether a polled snapshot describes the stream the renderer asked for.
+ * Whether a polled snapshot describes the playback the renderer asked for.
  *
- * Until `mpvOpen` for the current stream has resolved, mpv may still be on the
- * previous file, and applying that snapshot writes the old stream's tracks and
- * position into the new one. After that, a path equal to the stream just left
- * is still stale; any other path is mpv's own name for ours (a resolved
- * playlist entry, for instance) and is accepted.
+ * Until `mpvOpen` for the current playback has resolved, mpv may still be on
+ * the previous file, and applying that snapshot writes the old stream's tracks
+ * and position into the new one. A snapshot stamped with a playback id is
+ * accepted only for the current one. An unstamped one falls back to the path:
+ * equal to the stream just left is stale; any other path is mpv's own name for
+ * ours (a resolved playlist entry, for instance) and is accepted.
  */
 export function isSnapshotForCurrentStream(
-  snapshot: Pick<MpvStateSnapshot, 'path'>,
-  stream: { url: string | null; previousUrl: string | null; opened: boolean }
+  snapshot: Pick<MpvSnapshotLike, 'path' | 'playbackId'>,
+  stream: { playback: MpvPlaybackRef | null; previousUrl: string | null; opened: boolean }
 ): boolean {
-  if (!stream.url || !stream.opened) return false
-  if (snapshot.path === null || snapshot.path === stream.url) return true
+  const { playback } = stream
+  if (!playback || !stream.opened) return false
+  if (snapshot.playbackId) return snapshot.playbackId === playback.playbackId
+  if (snapshot.path === null || snapshot.path === playback.url) return true
   return snapshot.path !== stream.previousUrl
 }
 
@@ -299,12 +325,13 @@ export function useMpvPlayer(enabled: boolean) {
     subtitlePreferenceApplied: false,
     subtitlesOffByDefault: false
   })
-  const startupUrlRef = useRef<string | null>(null)
+  // The playback mpv was last asked to open, and the URL of the one before it.
+  const startupRef = useRef<MpvPlaybackRef | null>(null)
   const previousStreamUrlRef = useRef<string | null>(null)
-  // Bumped whenever a stream is (re)loaded; `openedGenerationRef` catches up
-  // once mpv has accepted it. Polls only trust snapshots taken after that.
-  const streamGenerationRef = useRef(0)
-  const openedGenerationRef = useRef(-1)
+  // The playback being loaded; `openedPlaybackIdRef` catches up once mpv has
+  // accepted it. Polls only trust snapshots taken after that.
+  const requestedPlaybackIdRef = useRef<string | null>(null)
+  const openedPlaybackIdRef = useRef<string | null>(null)
   const startupStartedAtRef = useRef<number | null>(null)
   const reconnectCountRef = useRef(0)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -313,8 +340,9 @@ export function useMpvPlayer(enabled: boolean) {
   const [isStartupVisible, setIsStartupVisible] = useState(false)
   // Select individually: a bare `useStore()` re-runs this hook on every store
   // write, and the poll below writes several times per second.
-  const currentChannel = useStore((s) => s.currentChannel)
-  const playbackReloadToken = useStore((s) => s.playbackReloadToken)
+  const currentPlayback = useStore((s) => s.currentPlayback)
+  const playbackId = currentPlayback?.playbackId ?? null
+  const mediaKey = currentPlayback?.mediaKey ?? null
   const currentAudioTrack = useStore((s) => s.currentAudioTrack)
   const currentSubtitleTrack = useStore((s) => s.currentSubtitleTrack)
   const currentVideoQuality = useStore((s) => s.currentVideoQuality)
@@ -332,13 +360,14 @@ export function useMpvPlayer(enabled: boolean) {
     setIsStartupVisible(next)
   }
 
+  // Track preferences are applied once per item, not again on a reload.
   useEffect(() => {
     trackSelectionRef.current = {
       audioPreferenceApplied: false,
       subtitlePreferenceApplied: false,
       subtitlesOffByDefault: false
     }
-  }, [enabled, currentChannel?.id, currentChannel?.streamUrl])
+  }, [enabled, mediaKey])
 
   const cancelPendingReconnect = () => {
     if (reconnectTimerRef.current) {
@@ -350,9 +379,10 @@ export function useMpvPlayer(enabled: boolean) {
   // Full MPV teardown when disabled or component unmounts
   useEffect(() => {
     const teardown = () => {
-      startupUrlRef.current = null
+      startupRef.current = null
       previousStreamUrlRef.current = null
-      openedGenerationRef.current = -1
+      requestedPlaybackIdRef.current = null
+      openedPlaybackIdRef.current = null
       startupStartedAtRef.current = null
       reconnectCountRef.current = 0
       cancelPendingReconnect()
@@ -394,15 +424,15 @@ export function useMpvPlayer(enabled: boolean) {
     cancelPendingReconnect()
     reconnectCountRef.current = 0
     lastGoodPlaybackRef.current = 0
-    streamGenerationRef.current += 1
-    const generation = streamGenerationRef.current
+    const playback = currentPlayback
+    requestedPlaybackIdRef.current = playback?.playbackId ?? null
 
     const syncChannel = async () => {
       const available = await mpvIsAvailable()
       if (cancelled) return
 
       if (!available) {
-        startupUrlRef.current = null
+        startupRef.current = null
         startupStartedAtRef.current = null
         updateStartupVisibility(false)
         setPlaybackEngine('html5')
@@ -411,8 +441,8 @@ export function useMpvPlayer(enabled: boolean) {
 
       setPlaybackEngine('mpv')
 
-      if (!currentChannel?.streamUrl) {
-        startupUrlRef.current = null
+      if (!playback) {
+        startupRef.current = null
         startupStartedAtRef.current = null
         updateStartupVisibility(false)
         await mpvStop().catch(() => undefined)
@@ -440,21 +470,24 @@ export function useMpvPlayer(enabled: boolean) {
         const { volume: currentVolume, isMuted: currentMuted } = useStore.getState()
         const safeVolume = clampVolume(currentVolume)
         // Only show startup overlay on first MPV launch, not on channel switches
-        const isFirstLaunch = !startupUrlRef.current
-        if (startupUrlRef.current && startupUrlRef.current !== currentChannel.streamUrl) {
-          previousStreamUrlRef.current = startupUrlRef.current
+        const previous = startupRef.current
+        const isFirstLaunch = !previous
+        // Only an unstamped snapshot is judged by its path, and the path of a
+        // reloaded stream is not stale.
+        if (previous && previous.url !== playback.streamUrl) {
+          previousStreamUrlRef.current = previous.url
         }
-        startupUrlRef.current = currentChannel.streamUrl
+        startupRef.current = { playbackId: playback.playbackId, url: playback.streamUrl }
         startupStartedAtRef.current = Date.now()
         if (isFirstLaunch) updateStartupVisibility(true)
-        await mpvOpen(currentChannel.streamUrl)
+        await mpvOpen(playback.streamUrl)
         if (cancelled) return
-        openedGenerationRef.current = generation
+        openedPlaybackIdRef.current = playback.playbackId
 
         await Promise.allSettled([mpvSetVolume(safeVolume), mpvSetMute(currentMuted)])
       } catch (error) {
         if (cancelled) return
-        startupUrlRef.current = null
+        startupRef.current = null
         startupStartedAtRef.current = null
         updateStartupVisibility(false)
         setPlaybackEngine('html5')
@@ -471,9 +504,9 @@ export function useMpvPlayer(enabled: boolean) {
       // switching natively via loadfile-replace. Full teardown only
       // happens when the enabled flag changes (separate effect).
     }
-    // `playbackReloadToken` is not read in the body: bumping it is how
-    // "Yeniden Bağlan" makes mpv load the same stream again.
-  }, [enabled, currentChannel, playbackReloadToken, applyPlayerPatch, setPlaybackEngine, setPlayerError])
+    // `currentPlayback` changes only with a new playback id: a start, a reload
+    // ("Yeniden Bağlan" loads the same stream again) or a return from the mini card.
+  }, [enabled, currentPlayback, applyPlayerPatch, setPlaybackEngine, setPlayerError])
 
   useEffect(() => {
     if (!enabled) return
@@ -483,26 +516,26 @@ export function useMpvPlayer(enabled: boolean) {
     let pollInFlight = false
 
     const pollOnce = async () => {
-      const generation = streamGenerationRef.current
-      const opened = openedGenerationRef.current === generation
+      const requested = requestedPlaybackIdRef.current
+      const opened = requested !== null && openedPlaybackIdRef.current === requested
       const [snapshot, windowFullscreen] = await Promise.all([
-        mpvGetState().catch(() => null),
+        mpvGetState().catch((): MpvSnapshotLike | null => null),
         windowIsFullscreen().catch(() => false)
       ])
       if (cancelled || !snapshot) return
 
       const now = Date.now()
       // Poll can only CLEAR the startup overlay, never re-enable it
-      if (startupVisibleRef.current && !shouldKeepStartupOverlay(snapshot, startupUrlRef.current, startupStartedAtRef.current, now)) {
+      if (startupVisibleRef.current && !shouldKeepStartupOverlay(snapshot, startupRef.current, startupStartedAtRef.current, now)) {
         updateStartupVisibility(false)
       }
 
-      // The stream changed while this request was out, or mpv has not taken
+      // The playback changed while this request was out, or mpv has not taken
       // the current one yet: the snapshot belongs to something else.
-      if (streamGenerationRef.current !== generation) return
+      if (requestedPlaybackIdRef.current !== requested) return
       if (
         !isSnapshotForCurrentStream(snapshot, {
-          url: startupUrlRef.current,
+          playback: startupRef.current,
           previousUrl: previousStreamUrlRef.current,
           opened
         })
@@ -525,6 +558,10 @@ export function useMpvPlayer(enabled: boolean) {
 
       const duration = snapshot.duration || 0
       if (store.duration !== duration) patch.duration = duration
+      // mpv has this playback's file open far enough to seek: a resume may run.
+      if (duration > 0 && requested && store.loadedPlaybackId !== requested) {
+        patch.loadedPlaybackId = requested
+      }
 
       const cacheDuration = snapshot.demuxerCacheDuration || 0
       if (store.demuxerCacheDuration !== cacheDuration) patch.demuxerCacheDuration = cacheDuration
@@ -543,7 +580,7 @@ export function useMpvPlayer(enabled: boolean) {
       // actually empty and no packets are arriving. The 12s threshold gives
       // mpv's own reconnect (reconnect_delay_max=5s) two attempts before we
       // forcibly reload.
-      const isLiveStream = store.currentChannel?.type === 'live'
+      const isLiveStream = store.currentPlayback ? isLiveTarget(store.currentPlayback.target) : false
       if (snapshot.running && !snapshot.error && !snapshot.buffering) {
         lastGoodPlaybackRef.current = now
         reconnectCountRef.current = 0
@@ -558,23 +595,25 @@ export function useMpvPlayer(enabled: boolean) {
         lastGoodPlaybackRef.current > 0 &&
         now - lastGoodPlaybackRef.current > STALL_THRESHOLD_MS
 
-      // Auto-reconnect on error OR stall for live streams
-      const reconnectUrl = startupUrlRef.current
+      // Auto-reconnect on error OR stall for live streams. A reconnect reopens
+      // the same playback (no new id) and is dropped if another one has
+      // started by the time it fires.
+      const reconnectFor = startupRef.current
       const reconnect = planMpvReconnect({
         isLive: isLiveStream,
         error: snapshot.error,
         isStalled: isStalledLive,
-        canReconnect: !!reconnectUrl && !reconnectTimerRef.current,
+        canReconnect: !!reconnectFor && !reconnectTimerRef.current,
         attempts: reconnectCountRef.current,
         currentPlayerError: store.playerError
       })
-      if (reconnect.scheduleAttempt !== null && reconnectUrl) {
+      if (reconnect.scheduleAttempt !== null && reconnectFor) {
         reconnectCountRef.current = reconnect.scheduleAttempt
         lastGoodPlaybackRef.current = now // reset stall timer
         reconnectTimerRef.current = setTimeout(() => {
           reconnectTimerRef.current = null
-          if (startupUrlRef.current !== reconnectUrl) return
-          void mpvOpen(reconnectUrl).catch(() => undefined)
+          if (startupRef.current?.playbackId !== reconnectFor.playbackId) return
+          void mpvOpen(reconnectFor.url).catch(() => undefined)
         }, RECONNECT_DELAY_MS * reconnect.scheduleAttempt)
       }
       if (store.playerError !== reconnect.playerError) patch.playerError = reconnect.playerError
@@ -669,13 +708,13 @@ export function useMpvPlayer(enabled: boolean) {
     }).catch(() => undefined)
   }, [enabled, settings.subtitleBackground, settings.subtitleColor, settings.subtitleFontSize])
 
-  // Also re-sent on channel change: mpv keeps audio-delay/sub-delay/speed across
+  // Also re-sent for every playback: mpv keeps audio-delay/sub-delay/speed across
   // loadfile, so the store resetting to defaults has to be pushed down or the
   // previous stream's correction stays applied to the new one.
   useEffect(() => {
     if (!enabled) return
     void mpvSetPlaybackTuning(playbackTuning).catch(() => undefined)
-  }, [enabled, playbackTuning, currentChannel?.streamUrl])
+  }, [enabled, playbackTuning, playbackId])
 
   useEffect(() => {
     if (!enabled || !currentAudioTrack?.startsWith(MPV_AUDIO_TRACK_PREFIX)) return
@@ -714,5 +753,5 @@ export function useMpvPlayer(enabled: boolean) {
     void mpvSetSubtitleTrack(rawId).catch(() => undefined)
   }, [enabled, currentSubtitleTrack, applyPlayerPatch])
 
-  return enabled && startupUrlRef.current !== null && isStartupVisible
+  return enabled && startupRef.current !== null && isStartupVisible
 }

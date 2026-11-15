@@ -1,6 +1,20 @@
-import type { Channel } from '@/types/playlist'
+import type { Channel, SourceType } from '@/types/playlist'
+import type { PendingResume } from '@/types/player'
+import {
+  episodeTarget,
+  isMediaKey,
+  isPlayableTarget,
+  isTrackableTarget,
+  m3uEntryId,
+  mediaKey,
+  sanitizePlaybackTarget,
+  targetFromCatalogItem,
+  type PlayableTarget,
+  type PlaybackTarget
+} from '../../../shared/playback'
+import { isHttpUrl } from './playback'
 
-/** Enough of a channel to start playing it again from the dashboard. */
+/** Enough of a channel to show it on the dashboard and start it again. */
 export type WatchProgressChannel = Pick<
   Channel,
   'id' | 'name' | 'streamUrl' | 'sourceId' | 'type'
@@ -8,12 +22,30 @@ export type WatchProgressChannel = Pick<
   Partial<Pick<Channel, 'logo' | 'coverUrl' | 'categoryName'>>
 
 export interface WatchProgressEntry {
-  /** Stream URL, not channel id — see `progressKeyFor`. */
+  /**
+   * `mediaKey(target)`. Only an entry the migration could not map to a target
+   * keeps its old key: the stream URL with the Xtream credentials redacted.
+   */
   key: string
+  /** Null only for such unmapped legacy entries. */
+  target: PlaybackTarget | null
+  /**
+   * Display data. `streamUrl` is the M3U entry's own URL (needed to play it
+   * again), empty for Xtream items (rebuilt from the source's credentials),
+   * and the redacted URL for a legacy entry.
+   */
   channel: WatchProgressChannel
   position: number
   duration: number
   updatedAt: number
+}
+
+/** What the recorder saves progress for: the current playback's target and display channel. */
+export interface ProgressSubject {
+  target: PlaybackTarget
+  channel: Channel
+  /** The URL being played; only used to find a legacy entry for the same item. */
+  streamUrl?: string | null
 }
 
 /** Below this a resume prompt is noise — the viewer barely started. */
@@ -26,16 +58,14 @@ export const MAX_ENTRIES = 20
 
 /**
  * Xtream stream URLs carry the account credentials in the path:
- * `{host}/movie/{username}/{password}/{id}.{ext}` (xtream-api.ts). The store
- * strips username/password out of every persisted source precisely so they
- * never reach localStorage — the real ones live in the OS-encrypted credential
- * store. Persisting a raw stream URL would put the password straight back into
- * cleartext, so the credential segments are replaced with a placeholder and
- * filled back in at playback time from the live source.
+ * `{host}/movie/{username}/{password}/{id}.{ext}`. History used to be keyed by
+ * that URL with the two segments replaced by a placeholder; those keys are only
+ * still read, to migrate and to match entries that could not be migrated.
  */
 const CREDENTIAL_PLACEHOLDER = '~abi~'
 const XTREAM_STREAM_URL = /^(https?:\/\/[^/]+)\/(live|movie|series)\/([^/]+)\/([^/]+)\/(.+)$/
 const REDACTED_SEGMENTS = `/${CREDENTIAL_PLACEHOLDER}/${CREDENTIAL_PLACEHOLDER}/`
+const XTREAM_TAIL = /^(\d+)\.([A-Za-z0-9]{1,8})(?:[?#].*)?$/
 
 export function redactStreamUrl(url: string): string {
   const match = url.match(XTREAM_STREAM_URL)
@@ -49,37 +79,10 @@ export function isRedactedStreamUrl(url: string): boolean {
   return url.includes(REDACTED_SEGMENTS)
 }
 
-/**
- * Returns null when a redacted URL cannot be rebuilt — the source was removed or
- * is no longer an Xtream account. Callers drop those entries rather than handing
- * the player a URL that would only fail to authenticate.
- */
-export function restoreStreamUrl(
-  url: string,
-  credentials: { username: string; password: string } | null
-): string | null {
-  if (!isRedactedStreamUrl(url)) return url
-  if (!credentials?.username || !credentials.password) return null
-
-  // Built the same way xtream-api builds it: raw, not percent-encoded.
-  return url.replace(REDACTED_SEGMENTS, `/${credentials.username}/${credentials.password}/`)
-}
-
-/**
- * Series episodes are handed to the player with `id: ep_${Date.now()}`
- * (SeriesPage.tsx), so a channel id is a different value every single time the
- * same episode is opened and could never match a stored entry. The stream URL is
- * the one identifier that stays put across sessions for both VOD and episodes —
- * redacted, so the key itself never holds a credential either.
- */
-export function progressKeyFor(channel: Pick<Channel, 'streamUrl'>): string | null {
-  const url = channel.streamUrl?.trim()
-  return url ? redactStreamUrl(url) : null
-}
-
-/** Live has no meaningful position — only VOD and episodes are tracked. */
-export function isTrackableChannel(channel: Pick<Channel, 'type' | 'streamUrl'>): boolean {
-  return channel.type !== 'live' && progressKeyFor(channel) !== null
+/** The key a legacy (URL-keyed) entry for this URL would have. */
+export function legacyProgressKeyFor(url: string | null | undefined): string | null {
+  const trimmed = url?.trim()
+  return trimmed ? redactStreamUrl(trimmed) : null
 }
 
 export function isCompleted(position: number, duration: number): boolean {
@@ -102,53 +105,72 @@ export function resumePositionFor(entry: WatchProgressEntry): number {
   return Math.max(0, entry.position - RESUME_BACKSTEP_SECONDS)
 }
 
+/**
+ * The entry for a media key; failing that, an unmigrated legacy entry stored
+ * under `legacyKey` (so an item the migration could not map still resumes
+ * when it is played again, and is re-keyed by the next save).
+ */
 export function findProgress(
   entries: WatchProgressEntry[],
-  channel: Pick<Channel, 'streamUrl'>
+  key: string,
+  legacyKey?: string | null
 ): WatchProgressEntry | null {
-  const key = progressKeyFor(channel)
-  if (!key) return null
-  return entries.find((entry) => entry.key === key) ?? null
+  const exact = entries.find((entry) => entry.key === key)
+  if (exact) return exact
+  if (!legacyKey) return null
+  return entries.find((entry) => entry.target === null && entry.key === legacyKey) ?? null
 }
 
 /**
- * A resume is pending when the stream was (re)started and has not been put back
+ * A resume is pending when the item was (re)started and has not been put back
  * at its saved position yet. Whatever the engine reports in that window is the
  * restart, not the viewer's progress, so it must not pull the entry backwards.
  */
 export function wouldRewindPendingResume(
   entries: WatchProgressEntry[],
-  channel: Pick<Channel, 'streamUrl'>,
+  key: string,
   position: number,
-  pendingResumeStreamUrl: string | null
+  pendingResume: Pick<PendingResume, 'mediaKey'> | null,
+  legacyKey?: string | null
 ): boolean {
-  if (!pendingResumeStreamUrl || pendingResumeStreamUrl !== channel.streamUrl) return false
-  const saved = findProgress(entries, channel)
+  if (!pendingResume || pendingResume.mediaKey !== key) return false
+  const saved = findProgress(entries, key, legacyKey)
   return saved !== null && position < saved.position
 }
 
 /**
- * Newest first, one entry per stream, capped. Callers pass the whole list back
+ * Newest first, one entry per key, capped. Callers pass the whole list back
  * so the store stays a plain array — ordering is the recency signal the
  * dashboard row renders directly.
  */
 export function upsertProgress(
   entries: WatchProgressEntry[],
-  entry: WatchProgressEntry
+  entry: WatchProgressEntry,
+  replacesKey?: string | null
 ): WatchProgressEntry[] {
-  const withoutKey = entries.filter((existing) => existing.key !== entry.key)
-  return [entry, ...withoutKey].slice(0, MAX_ENTRIES)
+  const rest = entries.filter(
+    (existing) =>
+      existing.key !== entry.key &&
+      !(replacesKey && existing.target === null && existing.key === replacesKey)
+  )
+  return [entry, ...rest].slice(0, MAX_ENTRIES)
 }
 
 export function removeProgress(entries: WatchProgressEntry[], key: string): WatchProgressEntry[] {
   return entries.filter((entry) => entry.key !== key)
 }
 
-export function toProgressChannel(channel: Channel): WatchProgressChannel {
+/**
+ * Display data to store. Only an M3U entry keeps a URL: it is the only way to
+ * open it again, and it belongs to a playlist whose own URL is stored as well.
+ * An Xtream URL would put the account password into localStorage.
+ */
+export function toProgressChannel(channel: Channel, target: PlaybackTarget): WatchProgressChannel {
+  const entryUrl = target.kind === 'm3u' && isHttpUrl(channel.streamUrl) ? channel.streamUrl.trim() : ''
   return {
     id: channel.id,
     name: channel.name,
-    streamUrl: redactStreamUrl(channel.streamUrl),
+    streamUrl: entryUrl,
     sourceId: channel.sourceId,
     type: channel.type,
     ...(channel.logo ? { logo: channel.logo } : {}),
@@ -157,50 +179,104 @@ export function toProgressChannel(channel: Channel): WatchProgressChannel {
   }
 }
 
+export type ProgressUpdate =
+  | { kind: 'none' }
+  | { kind: 'remove'; keys: string[] }
+  | { kind: 'upsert'; entry: WatchProgressEntry; replacesKey: string | null }
+
+/** What saving `position` for `subject` should do to the list. */
+export function planProgressUpdate(
+  subject: ProgressSubject,
+  position: number,
+  duration: number,
+  now = Date.now()
+): ProgressUpdate {
+  const { target } = subject
+  if (!isTrackableTarget(target)) return { kind: 'none' }
+  const key = mediaKey(target)
+  const legacyKey = legacyProgressKeyFor(subject.streamUrl ?? subject.channel.streamUrl)
+
+  if (!shouldStoreProgress(position, duration)) {
+    // Reaching the end is what retires an entry; anything else (a few
+    // seconds in, duration not known yet) leaves the stored position alone.
+    if (isCompleted(position, duration)) {
+      return { kind: 'remove', keys: legacyKey ? [key, legacyKey] : [key] }
+    }
+    return { kind: 'none' }
+  }
+
+  return {
+    kind: 'upsert',
+    entry: {
+      key,
+      target,
+      channel: toProgressChannel(subject.channel, target),
+      position,
+      duration,
+      updatedAt: now
+    },
+    replacesKey: legacyKey
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
 /**
  * Persisted entries come back from localStorage as unknown data — a shape change
  * or hand-edited payload must not crash the dashboard, so anything that does not
- * look like an entry is dropped.
+ * look like an entry is dropped. An entry with a valid target is keyed by it.
  */
 export function sanitizeProgressEntries(value: unknown): WatchProgressEntry[] {
   if (!Array.isArray(value)) return []
 
   const entries: WatchProgressEntry[] = []
+  const seen = new Set<string>()
   for (const raw of value) {
-    if (!raw || typeof raw !== 'object') continue
-    const candidate = raw as Partial<WatchProgressEntry>
-    const channel = candidate.channel as Partial<WatchProgressChannel> | undefined
+    if (!isRecord(raw)) continue
+    const channel = isRecord(raw.channel) ? raw.channel : null
 
-    if (typeof candidate.key !== 'string' || !candidate.key) continue
+    if (typeof raw.key !== 'string' || !raw.key) continue
     // A zero/negative duration would render as `NaN%` progress and "NaN dk
     // kaldı", so the guards match what the recorder can actually produce.
-    if (typeof candidate.position !== 'number' || !(candidate.position >= 0)) continue
-    if (typeof candidate.duration !== 'number' || !(candidate.duration > 0)) continue
-    if (!Number.isFinite(candidate.position) || !Number.isFinite(candidate.duration)) continue
-    if (!channel || typeof channel.name !== 'string' || typeof channel.streamUrl !== 'string') {
-      continue
-    }
+    if (typeof raw.position !== 'number' || !(raw.position >= 0)) continue
+    if (typeof raw.duration !== 'number' || !(raw.duration > 0)) continue
+    if (!Number.isFinite(raw.position) || !Number.isFinite(raw.duration)) continue
+    if (!channel || typeof channel.name !== 'string') continue
     // Live is never tracked, so a stored live entry can only be a corrupted or
     // hand-edited payload.
     if (channel.type !== 'vod' && channel.type !== 'series') continue
 
+    const target = sanitizePlaybackTarget(raw.target)
+    if (target && !isTrackableTarget(target)) continue
+    const key = target ? mediaKey(target) : raw.key
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    const storedUrl = typeof channel.streamUrl === 'string' ? channel.streamUrl : ''
+    const streamUrl = target
+      ? target.kind === 'm3u' && isHttpUrl(storedUrl)
+        ? storedUrl.trim()
+        : ''
+      : // Older payloads (and any hand-edited one) may still hold a raw URL.
+        redactStreamUrl(storedUrl || raw.key)
+
     entries.push({
-      key: candidate.key,
-      position: candidate.position,
-      duration: candidate.duration,
-      updatedAt: typeof candidate.updatedAt === 'number' ? candidate.updatedAt : 0,
+      key,
+      target,
+      position: raw.position,
+      duration: raw.duration,
+      updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : 0,
       channel: {
-        id: typeof channel.id === 'string' ? channel.id : candidate.key,
+        id: typeof channel.id === 'string' ? channel.id : key,
         name: channel.name,
-        // Older payloads (and any hand-edited one) may still hold a raw URL.
-        streamUrl: redactStreamUrl(channel.streamUrl),
-        sourceId: typeof channel.sourceId === 'string' ? channel.sourceId : '',
+        streamUrl,
+        sourceId: typeof channel.sourceId === 'string' ? channel.sourceId : target?.sourceId ?? '',
         type: channel.type,
         ...(typeof channel.logo === 'string' ? { logo: channel.logo } : {}),
         ...(typeof channel.coverUrl === 'string' ? { coverUrl: channel.coverUrl } : {}),
-        ...(typeof channel.categoryName === 'string'
-          ? { categoryName: channel.categoryName }
-          : {})
+        ...(typeof channel.categoryName === 'string' ? { categoryName: channel.categoryName } : {})
       }
     })
 
@@ -208,4 +284,154 @@ export function sanitizeProgressEntries(value: unknown): WatchProgressEntry[] {
   }
 
   return entries
+}
+
+/**
+ * The target an entry of the URL-keyed history stands for, when that can still
+ * be told. Xtream entries carry the kind, stream id and extension in the
+ * (redacted) path. An M3U entry is identified by its URL, so it maps only if
+ * the stored URL was not redacted; a redacted one has lost the credentials the
+ * real URL contains.
+ */
+export function legacyEntryTarget(
+  storedUrl: string,
+  sourceId: string,
+  sourceType: SourceType | null,
+  channelType: 'vod' | 'series'
+): { target: PlayableTarget; entryUrl: string } | null {
+  if (sourceType === 'xtream') {
+    const match = storedUrl.match(XTREAM_STREAM_URL)
+    if (!match) return null
+    const [, , kind, , , tail] = match
+    const parts = tail.match(XTREAM_TAIL)
+    if (!parts) return null
+    const streamId = Number(parts[1])
+    if (!Number.isSafeInteger(streamId)) return null
+    const containerExtension = parts[2].toLowerCase()
+    if (kind === 'movie') {
+      return { target: { kind: 'movie', sourceId, streamId, containerExtension }, entryUrl: '' }
+    }
+    if (kind === 'series') {
+      return { target: episodeTarget({ sourceId, episodeId: streamId, containerExtension }), entryUrl: '' }
+    }
+    return null
+  }
+
+  if (sourceType === 'm3u_url' || sourceType === 'm3u_file') {
+    if (!isHttpUrl(storedUrl) || isRedactedStreamUrl(storedUrl)) return null
+    const target: PlayableTarget = {
+      kind: 'm3u',
+      sourceId,
+      entryId: m3uEntryId(storedUrl),
+      mediaType: channelType
+    }
+    return { target, entryUrl: storedUrl.trim() }
+  }
+
+  return null
+}
+
+/**
+ * Migration of the persisted history from URL keys to media keys. Pure and
+ * idempotent: entries that already have a target, and anything it does not
+ * recognise, pass through unchanged, so it can run again on its own output.
+ * Entries that cannot be mapped are kept as they are (see `findProgress`).
+ */
+export function migrateProgressEntriesToMediaKeys(
+  entries: unknown,
+  sources: unknown
+): unknown {
+  if (!Array.isArray(entries)) return entries
+  const sourceTypes = new Map<string, SourceType>()
+  if (Array.isArray(sources)) {
+    for (const source of sources) {
+      if (isRecord(source) && typeof source.id === 'string' && typeof source.type === 'string') {
+        sourceTypes.set(source.id, source.type as SourceType)
+      }
+    }
+  }
+
+  return entries.map((raw) => {
+    if (!isRecord(raw) || raw.target !== undefined) return raw
+    if (typeof raw.key !== 'string' || isMediaKey(raw.key)) return raw
+    const channel = isRecord(raw.channel) ? raw.channel : null
+    if (!channel || (channel.type !== 'vod' && channel.type !== 'series')) return raw
+    const sourceId = typeof channel.sourceId === 'string' ? channel.sourceId : ''
+    const storedUrl = typeof channel.streamUrl === 'string' && channel.streamUrl ? channel.streamUrl : raw.key
+
+    const mapped = legacyEntryTarget(storedUrl, sourceId, sourceTypes.get(sourceId) ?? null, channel.type)
+    if (!mapped) return raw
+    return {
+      ...raw,
+      key: mediaKey(mapped.target),
+      target: mapped.target,
+      channel: { ...channel, streamUrl: mapped.entryUrl }
+    }
+  })
+}
+
+/** One card of the "Devam Et" row and what clicking it plays. */
+export interface ContinueWatchingItem {
+  entry: WatchProgressEntry
+  target: PlayableTarget
+  /** Display data; for M3U its `streamUrl` is the entry URL. */
+  channel: Channel
+}
+
+/**
+ * The playable part of the history, newest first. An Xtream item needs its
+ * source's credentials (the URL is rebuilt from them); an M3U item only needs
+ * its stored URL, so M3U entries with Xtream-looking URLs are shown too. A
+ * legacy entry is shown when the catalog still has the item it was keyed by.
+ */
+export function selectContinueWatching(
+  entries: WatchProgressEntry[],
+  options: {
+    hasCredentials: (sourceId: string) => boolean
+    findLegacyChannel?: (entry: WatchProgressEntry) => Channel | null
+    limit: number
+  }
+): ContinueWatchingItem[] {
+  const items: ContinueWatchingItem[] = []
+  for (const entry of entries) {
+    if (items.length >= options.limit) break
+
+    if (!entry.target) {
+      const channel = options.findLegacyChannel?.(entry) ?? null
+      const target = channel ? targetFromCatalogItem(channel) : null
+      if (channel && target && isTrackableTarget(target)) items.push({ entry, target, channel })
+      continue
+    }
+
+    if (!isPlayableTarget(entry.target)) continue
+    if (entry.target.kind === 'm3u') {
+      if (!isHttpUrl(entry.channel.streamUrl)) continue
+    } else if (!options.hasCredentials(entry.target.sourceId)) {
+      continue
+    }
+    items.push({ entry, target: entry.target, channel: { ...entry.channel } })
+  }
+  return items
+}
+
+/**
+ * Index for `findLegacyChannel`: catalog items of the given sources by the
+ * legacy key their URL would have had. Built only while legacy entries exist.
+ */
+export function indexChannelsByLegacyKey(
+  channels: Channel[],
+  sourceIds: ReadonlySet<string>
+): Map<string, Channel> {
+  const index = new Map<string, Channel>()
+  if (sourceIds.size === 0) return index
+  for (const channel of channels) {
+    if (!sourceIds.has(channel.sourceId) || channel.type === 'live') continue
+    const key = legacyProgressKeyFor(channel.streamUrl)
+    if (key && !index.has(`${channel.sourceId}\n${key}`)) index.set(`${channel.sourceId}\n${key}`, channel)
+  }
+  return index
+}
+
+export function legacyIndexKey(entry: WatchProgressEntry): string {
+  return `${entry.channel.sourceId}\n${entry.key}`
 }

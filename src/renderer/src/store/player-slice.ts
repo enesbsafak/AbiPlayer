@@ -1,8 +1,31 @@
 import type { StateCreator } from 'zustand'
-import type { AudioTrack, SubtitleTrack, SubtitleCue, VideoQualityOption } from '@/types/player'
+import type {
+  AudioTrack,
+  CurrentPlayback,
+  EpisodePlaybackRequest,
+  PendingResume,
+  PlaybackRequest,
+  SubtitleTrack,
+  SubtitleCue,
+  VideoQualityOption
+} from '@/types/player'
 import type { Channel } from '@/types/playlist'
 import type { MpvPlaybackTuning } from '@/services/platform'
-import { isPlayableChannel } from '@/services/playback'
+import {
+  resolveStreamUrl,
+  streamUrlContextFor,
+  targetFromChannel,
+  type PlaybackSourceState
+} from '@/services/playback'
+import {
+  createPlaybackId,
+  episodeTarget,
+  isPlayableTarget,
+  isTrackableTarget,
+  mediaKey,
+  type PlayableTarget,
+  type PlaybackId
+} from '../../../shared/playback'
 
 export const DEFAULT_PLAYBACK_TUNING: MpvPlaybackTuning = {
   audioDelay: 0,
@@ -32,6 +55,7 @@ type PlayerPatch = Partial<{
   subtitleCues: SubtitleCue[]
   activeSubtitleCues: SubtitleCue[]
   playerNotice: string | null
+  loadedPlaybackId: PlaybackId | null
 }>
 
 function sameSubtitleCues(a: SubtitleCue[], b: SubtitleCue[]): boolean {
@@ -66,12 +90,51 @@ const EMPTY_STREAM_STATE = {
   activeVideoQuality: null,
   subtitleCues: [],
   activeSubtitleCues: [],
-  playerNotice: null
+  playerNotice: null,
+  loadedPlaybackId: null
 } satisfies Partial<PlayerSlice>
+
+const NOT_PLAYABLE_MESSAGE = 'Seçilen içerik doğrudan oynatılamıyor.'
+
+function armResume(playback: CurrentPlayback): PendingResume | null {
+  if (!isTrackableTarget(playback.target)) return null
+  return {
+    playbackId: playback.playbackId,
+    mediaKey: playback.mediaKey,
+    phase: 'awaiting-load',
+    position: null
+  }
+}
+
+/** The episode as the player UI shows it. Its id is stable, not a timestamp. */
+export function episodeDisplayChannel(request: EpisodePlaybackRequest): Channel {
+  return {
+    id: `${request.sourceId}_episode_${request.episodeId}`,
+    name: request.title,
+    streamUrl: request.fallbackStreamUrl ?? '',
+    sourceId: request.sourceId,
+    // The player treats an episode like a film (seekable, resumable).
+    type: 'vod',
+    ...(request.coverUrl ? { coverUrl: request.coverUrl } : {})
+  }
+}
 
 export interface PlayerSlice {
   playbackEngine: 'html5' | 'mpv'
+  /** What the UI shows for the current item. Identity lives in `currentPlayback`. */
   currentChannel: Channel | null
+  /**
+   * The current playback intent: a fresh `playbackId` per start, deliberate
+   * reload and return from the mini card, the target and its media key, and the
+   * URL resolved for it. "Is this still the same stream?" is answered by
+   * comparing `playbackId` (this attempt) or `mediaKey` (this item), never URLs.
+   */
+  currentPlayback: CurrentPlayback | null
+  /**
+   * Set by the engine once the stream of that playback is open far enough to
+   * seek (mpv reported a duration for it, the `<video>` has metadata).
+   */
+  loadedPlaybackId: PlaybackId | null
   isPlaying: boolean
   isPaused: boolean
   isBuffering: boolean
@@ -97,14 +160,15 @@ export interface PlayerSlice {
   /** Session-scoped lip-sync / speed / aspect corrections; reset per channel. */
   playbackTuning: MpvPlaybackTuning
   /**
-   * Stream awaiting a resume seek, armed by the actions that start a stream
-   * from scratch (play, reload, and suspend — the mini player does not keep
-   * playing, so expanding it loads the stream again).
+   * Resume seek still owed to a playback, armed by the actions that start a
+   * stream from scratch (play, reload, and suspend: the mini player does not
+   * keep playing, so expanding it loads the stream again). Cleared only once
+   * the seek for that very playback has been carried out (`completeResume`).
    */
-  pendingResumeStreamUrl: string | null
+  pendingResume: PendingResume | null
   /**
-   * Bumped by `reloadPlayback`. Both engines' load paths depend on it, so the
-   * same channel can be loaded again without pretending it is a new one.
+   * Bumped by `reloadPlayback`, which also issues a new playback id. Kept for
+   * code that only needs to know "a reload happened".
    */
   playbackReloadToken: number
   /**
@@ -123,11 +187,22 @@ export interface PlayerSlice {
   setPlaybackEngine: (engine: 'html5' | 'mpv') => void
   setPlaybackTuning: (patch: Partial<MpvPlaybackTuning>) => void
   resetPlaybackTuning: () => void
+  /** Starts a target; `channel` is what the UI shows for it. */
+  startPlayback: (request: PlaybackRequest) => void
+  /** Starts a catalog item; the target is derived from the channel. */
   playChannel: (channel: Channel) => void
+  /** Starts one series episode with a real episode target. */
+  playEpisode: (request: EpisodePlaybackRequest) => void
   stopPlayback: () => void
   reloadPlayback: () => void
   suspendPlayback: () => void
   resumeSuspendedPlayback: () => void
+  /** Engine report: the stream of `playbackId` is open far enough to seek. */
+  markPlaybackLoaded: (playbackId: PlaybackId) => void
+  /** The resume seek for `playbackId` was sent to the engine. */
+  markResumeSeekIssued: (playbackId: PlaybackId, position: number) => void
+  /** The resume for `playbackId` is done (seek carried out, or nothing to resume). */
+  completeResume: (playbackId: PlaybackId) => void
   clearPendingResume: () => void
   setPlaying: (playing: boolean) => void
   setPaused: (paused: boolean) => void
@@ -159,9 +234,67 @@ export interface PlayerSlice {
   applyPlayerPatch: (patch: PlayerPatch) => void
 }
 
-export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> = (set) => ({
+type PlayerSliceState = PlayerSlice & PlaybackSourceState
+
+function failedStart(): Partial<PlayerSlice> {
+  return {
+    currentChannel: null,
+    currentPlayback: null,
+    loadedPlaybackId: null,
+    isPlaying: false,
+    isPaused: false,
+    isBuffering: false,
+    currentTime: 0,
+    duration: 0,
+    pendingResume: null,
+    playerError: NOT_PLAYABLE_MESSAGE
+  }
+}
+
+function resolveFor(
+  target: PlayableTarget,
+  channel: Channel,
+  state: PlaybackSourceState
+): string | null {
+  const stored = channel.streamUrl
+  return resolveStreamUrl(
+    target,
+    streamUrlContextFor(target, state, { entryUrl: stored, fallbackUrl: stored })
+  )
+}
+
+function startState(state: PlayerSliceState, request: PlaybackRequest): Partial<PlayerSlice> {
+  const { target, channel } = request
+  if (!isPlayableTarget(target)) return failedStart()
+  const streamUrl = resolveFor(target, channel, state)
+  if (!streamUrl) return failedStart()
+
+  const playback: CurrentPlayback = {
+    playbackId: createPlaybackId(),
+    target,
+    mediaKey: mediaKey(target),
+    streamUrl
+  }
+  return {
+    ...EMPTY_STREAM_STATE,
+    currentChannel: channel,
+    currentPlayback: playback,
+    isPlaying: true,
+    isPaused: false,
+    isPlaybackSuspended: false,
+    // Live has no position to return to; everything else may.
+    pendingResume: armResume(playback),
+    // A lip-sync offset that fixed the previous broadcast is wrong for this
+    // one, so corrections never carry across a channel change.
+    playbackTuning: DEFAULT_PLAYBACK_TUNING
+  }
+}
+
+export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSlice> = (set) => ({
   playbackEngine: 'html5',
   currentChannel: null,
+  currentPlayback: null,
+  loadedPlaybackId: null,
   isPlaying: false,
   isPaused: false,
   isBuffering: false,
@@ -184,7 +317,7 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
   subtitleCues: [],
   activeSubtitleCues: [],
   playbackTuning: DEFAULT_PLAYBACK_TUNING,
-  pendingResumeStreamUrl: null,
+  pendingResume: null,
   playbackReloadToken: 0,
   isPlaybackSuspended: false,
   isSubtitleTrackUserChoice: false,
@@ -198,69 +331,69 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
     set((state) => ({ playbackTuning: { ...state.playbackTuning, ...patch } })),
   resetPlaybackTuning: () => set({ playbackTuning: DEFAULT_PLAYBACK_TUNING }),
 
+  startPlayback: (request) => set((state) => startState(state, request)),
+
   playChannel: (channel) =>
     set((state) => {
-      if (!isPlayableChannel(channel)) {
-        return {
-          ...state,
-          currentChannel: null,
-          isPlaying: false,
-          isPaused: false,
-          isBuffering: false,
-          currentTime: 0,
-          duration: 0,
-          pendingResumeStreamUrl: null,
-          playerError: 'Seçilen içerik doğrudan oynatılamıyor.'
-        }
-      }
-
-      return {
-        ...EMPTY_STREAM_STATE,
-        currentChannel: channel,
-        isPlaying: true,
-        isPaused: false,
-        isPlaybackSuspended: false,
-        // Live has no position to return to; everything else may.
-        pendingResumeStreamUrl: channel.type === 'live' ? null : channel.streamUrl,
-        // A lip-sync offset that fixed the previous broadcast is wrong for this
-        // one, so corrections never carry across a channel change.
-        playbackTuning: DEFAULT_PLAYBACK_TUNING
-      }
+      const target = targetFromChannel(channel)
+      return target ? startState(state, { target, channel }) : failedStart()
     }),
+
+  playEpisode: (request) =>
+    set((state) =>
+      startState(state, {
+        target: episodeTarget({
+          sourceId: request.sourceId,
+          episodeId: request.episodeId,
+          containerExtension: request.containerExtension,
+          seriesId: request.seriesId,
+          season: request.season,
+          episode: request.episodeNum
+        }),
+        channel: episodeDisplayChannel(request)
+      })
+    ),
 
   stopPlayback: () =>
     set({
       ...EMPTY_STREAM_STATE,
       currentChannel: null,
+      currentPlayback: null,
       isPlaying: false,
       isPaused: false,
       playbackTuning: DEFAULT_PLAYBACK_TUNING,
-      pendingResumeStreamUrl: null,
+      pendingResume: null,
       isPlaybackSuspended: false,
       isPlayerSidebarOpen: false
     }),
 
-  // Same channel, same selections: only the engines start over. Position and
-  // duration are zeroed so a resume waits for the fresh load instead of firing
-  // on the stale duration.
+  // Same item, same selections: only the engines start over, as a new
+  // playback. Position and duration are zeroed so a resume waits for the fresh
+  // load instead of firing on the stale duration.
   reloadPlayback: () =>
     set((state) => {
-      if (!state.currentChannel) return state
+      const previous = state.currentPlayback
+      if (!state.currentChannel || !previous) return state
+      // Credentials may have changed since the start; keep the URL that was
+      // in use if nothing can be derived now.
+      const streamUrl = resolveFor(previous.target, state.currentChannel, state) ?? previous.streamUrl
+      const playback: CurrentPlayback = { ...previous, playbackId: createPlaybackId(), streamUrl }
       return {
+        currentPlayback: playback,
+        loadedPlaybackId: null,
         playbackReloadToken: state.playbackReloadToken + 1,
         playerError: null,
         isBuffering: false,
         currentTime: 0,
         duration: 0,
         demuxerCacheDuration: 0,
-        pendingResumeStreamUrl:
-          state.currentChannel.type === 'live' ? null : state.currentChannel.streamUrl
+        pendingResume: armResume(playback)
       }
     }),
 
   suspendPlayback: () =>
     set((state) => {
-      if (!state.currentChannel || state.isPlaybackSuspended) return state
+      if (!state.currentChannel || !state.currentPlayback || state.isPlaybackSuspended) return state
       return {
         ...EMPTY_STREAM_STATE,
         isPlaying: false,
@@ -268,15 +401,47 @@ export const createPlayerSlice: StateCreator<PlayerSlice, [], [], PlayerSlice> =
         isPlaybackSuspended: true,
         // Coming back starts the stream again, so a film or episode has to be
         // put back where it was. Live simply restarts.
-        pendingResumeStreamUrl:
-          state.currentChannel.type === 'live' ? null : state.currentChannel.streamUrl
+        pendingResume: armResume(state.currentPlayback)
       }
     }),
 
+  // Expanding the mini card loads the stream again: a new playback of the same
+  // item, and the armed resume moves over to it.
   resumeSuspendedPlayback: () =>
-    set((state) => (state.isPlaybackSuspended ? { isPlaybackSuspended: false } : state)),
+    set((state) => {
+      if (!state.isPlaybackSuspended) return state
+      if (!state.currentPlayback) return { isPlaybackSuspended: false }
+      const playback: CurrentPlayback = { ...state.currentPlayback, playbackId: createPlaybackId() }
+      const pending = state.pendingResume
+      return {
+        isPlaybackSuspended: false,
+        currentPlayback: playback,
+        loadedPlaybackId: null,
+        pendingResume:
+          pending && pending.mediaKey === playback.mediaKey
+            ? { ...pending, playbackId: playback.playbackId, phase: 'awaiting-load', position: null }
+            : pending
+      }
+    }),
 
-  clearPendingResume: () => set({ pendingResumeStreamUrl: null }),
+  markPlaybackLoaded: (playbackId) =>
+    set((state) =>
+      state.currentPlayback?.playbackId === playbackId && state.loadedPlaybackId !== playbackId
+        ? { loadedPlaybackId: playbackId }
+        : state
+    ),
+
+  markResumeSeekIssued: (playbackId, position) =>
+    set((state) =>
+      state.pendingResume?.playbackId === playbackId
+        ? { pendingResume: { ...state.pendingResume, phase: 'seek-issued', position } }
+        : state
+    ),
+
+  completeResume: (playbackId) =>
+    set((state) => (state.pendingResume?.playbackId === playbackId ? { pendingResume: null } : state)),
+
+  clearPendingResume: () => set({ pendingResume: null }),
 
   setPlaying: (playing) => set({ isPlaying: playing }),
   setPaused: (paused) => set({ isPaused: paused }),

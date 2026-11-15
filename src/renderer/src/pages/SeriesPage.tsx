@@ -10,7 +10,7 @@ import { openPlayerFromRoute } from '@/services/player-navigation'
 import { Spinner } from '@/components/ui/Spinner'
 import { Button } from '@/components/ui/Button'
 import type { Channel } from '@/types/playlist'
-import { isPlayableChannel } from '@/services/playback'
+import type { EpisodePlaybackRequest } from '@/types/player'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
 import { useCatalogView } from '@/hooks/useCatalogView'
 import { applyCatalogView, buildCatalogRetainResetKey } from '@/services/catalog-view'
@@ -151,7 +151,7 @@ function useSeriesPageContent() {
   const hydratedSourceIds = useStore((s) => s.hydratedSourceIds)
   const isSourceTypeHydrated = useStore((s) => s.isSourceTypeHydrated)
   const selectedCategoryId = useStore((s) => s.selectedCategoryId)
-  const playChannel = useStore((s) => s.playChannel)
+  const playEpisode = useStore((s) => s.playEpisode)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
   const addChannels = useStore((s) => s.addChannels)
   const addCategories = useStore((s) => s.addCategories)
@@ -469,18 +469,12 @@ function useSeriesPageContent() {
   }, [])
 
   const handlePlayEpisode = useCallback(
-    (url: string, title: string, seasonNumber?: number) => {
-      const episodeChannel = {
-        id: `ep_${Date.now()}`,
-        name: title,
-        streamUrl: url,
-        // Carries the owning source so watch progress can rebuild this URL
-        // later — the stored copy has its credentials stripped out.
-        sourceId: selectedSeries?.sourceId ?? '',
-        type: 'vod' as const
-      }
-      if (!isPlayableChannel(episodeChannel)) return
-      playChannel(episodeChannel)
+    (episode: EpisodePlaybackRequest) => {
+      // A real episode target: history and resume are keyed by the episode's
+      // own id and source, not by a throwaway channel id or its URL.
+      playEpisode(episode)
+      if (!useStore.getState().currentPlayback) return
+      const seasonNumber = episode.season
       setMiniPlayer(false)
       openPlayerFromRoute({
         location: routeLocation,
@@ -501,7 +495,7 @@ function useSeriesPageContent() {
         setPlayerReturnTarget
       })
     },
-    [routeLocation, navigate, playChannel, searchQuery, selectedCategoryId, selectedSeries, setMiniPlayer, setPlayerReturnTarget]
+    [routeLocation, navigate, playEpisode, searchQuery, selectedCategoryId, selectedSeries, setMiniPlayer, setPlayerReturnTarget]
   )
 
   if (selectedSeries) {
