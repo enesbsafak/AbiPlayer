@@ -369,14 +369,19 @@ function getPrimaryWindow(): BrowserWindow | null {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null
 }
 
+/**
+ * Read in the renderer before an install. Flushes first: the store coalesces
+ * its writes, and the install closes the app before a pending one would land.
+ */
+export const RENDERER_STORE_BACKUP_SCRIPT =
+  "(window.__abiPlayerFlushStore?.(), localStorage.getItem('iptv-player-store'))"
+
 async function backupRendererStore(): Promise<void> {
   const window = getPrimaryWindow()
   if (!window || window.isDestroyed()) return
 
   try {
-    const raw: unknown = await window.webContents.executeJavaScript(
-      `localStorage.getItem('iptv-player-store')`
-    )
+    const raw: unknown = await window.webContents.executeJavaScript(RENDERER_STORE_BACKUP_SCRIPT)
     if (typeof raw === 'string' && raw.length > 0) {
       writeFileSync(getStoreBackupPath(), raw, 'utf-8')
     }

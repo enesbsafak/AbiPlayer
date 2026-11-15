@@ -12,6 +12,9 @@ const platform = vi.hoisted(() => ({
 
 vi.mock('@/services/platform', () => platform)
 
+const store = vi.hoisted(() => ({ flushPersistedStore: vi.fn() }))
+vi.mock('@/store', () => store)
+
 import { useAppUpdate } from './useAppUpdate'
 import { describeCheckOutcome } from '@/components/layout/TitleBar'
 
@@ -69,6 +72,22 @@ describe('useAppUpdate', () => {
 
     expect(result.current.isChecking).toBe(true)
     expect(result.current.checkError).toBeNull()
+  })
+
+  it('writes the pending store state before the install closes the app', async () => {
+    const order: string[] = []
+    store.flushPersistedStore.mockImplementation(() => order.push('flush'))
+    platform.installAppUpdate.mockImplementation(async () => {
+      order.push('install')
+      return true
+    })
+    const { result } = renderHook(() => useAppUpdate())
+
+    await act(async () => {
+      await result.current.install()
+    })
+
+    expect(order).toEqual(['flush', 'install'])
   })
 
   it('clears the installing flag when install rejects', async () => {
