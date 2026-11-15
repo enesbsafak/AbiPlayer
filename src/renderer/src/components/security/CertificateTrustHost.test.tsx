@@ -19,6 +19,9 @@ const platform = vi.hoisted(() => {
 
 vi.mock('@/services/platform', () => platform)
 
+const lifecycle = vi.hoisted(() => ({ reloadAfterCertificateTrust: vi.fn(async () => undefined) }))
+vi.mock('@/catalog/cache-lifecycle', () => lifecycle)
+
 import { useStore } from '@/store'
 import { CertificateTrustHost } from './CertificateTrustHost'
 import { clearPendingSources, notePendingSource, useTrustPrompts } from './trust-prompts'
@@ -58,6 +61,7 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
+  lifecycle.reloadAfterCertificateTrust.mockClear()
   platform.listeners.clear()
   clearPendingSources()
   useTrustPrompts.setState({ queue: [], dismissedAt: {} })
@@ -90,6 +94,8 @@ describe('CertificateTrustHost', () => {
     })
     await waitFor(() => expect(screen.queryByText('Sunucunun sertifikası doğrulanamadı')).toBeNull())
     expect(useStore.getState().connectRetryToken).toBe(tokenBefore + 1)
+    // A list that failed after the sign-in worked is loaded again too.
+    expect(lifecycle.reloadAfterCertificateTrust).toHaveBeenCalledWith('s1')
   })
 
   it('reloads the current playback when its host is the one trusted', async () => {
@@ -132,6 +138,7 @@ describe('CertificateTrustHost', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Bu sunucuya güven' }))
     await waitFor(() => expect(resubmit).toHaveBeenCalledTimes(1))
     expect(useStore.getState().connectRetryToken).toBe(tokenBefore)
+    expect(lifecycle.reloadAfterCertificateTrust).not.toHaveBeenCalled()
   })
 
   it('after "Vazgeç" does not ask again for the same submission', async () => {

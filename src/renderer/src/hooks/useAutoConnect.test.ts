@@ -16,12 +16,17 @@ import { xtreamApi } from '@/services/xtream-api'
 import { XtreamRequestError } from '@/services/xtream-errors'
 import { readPickedFile } from '@/services/platform'
 import { secureCredentialService } from '@/services/secure-credentials'
+import { ingestM3uText } from '@/catalog/worker-ingest'
 import type { PlaylistSource } from '@/types/playlist'
 import type { XtreamAuthResponse } from '@/types/xtream'
 import {
   connectSource,
   describeConnectFailure,
+  fileReadFailureMessage,
   hydrateSecrets,
+  MISSING_M3U_URL_MESSAGE,
+  SECRET_STORE_UNREADABLE_MESSAGE,
+  SECRETS_UNAVAILABLE_MESSAGE,
   planSecretMigration,
   reconnectDelayMs,
   SECRET_MIGRATION_FAILED_MESSAGE,
@@ -60,7 +65,9 @@ function resetStore() {
     error: null,
     sourceErrors: {},
     legacySecretSourceIds: [],
-    secretMigrationError: null
+    secretMigrationError: null,
+    secretStoreError: null,
+    tmdbKeyPlainPending: false
   })
 }
 
@@ -106,7 +113,7 @@ describe('sourcesWithCatalogKey (C2c)', () => {
 })
 
 describe('connectSource', () => {
-  const deps = () => ({ setXtreamAuth: vi.fn(), replaceSourceCatalog: vi.fn() })
+  const deps = () => ({ setXtreamAuth: vi.fn() })
 
   it('reads a local playlist file again on start (F1-27)', async () => {
     const d = deps()
@@ -149,9 +156,61 @@ describe('connectSource', () => {
     expect(describeConnectFailure(error, 1, 0).kind).toBe('auth')
   })
 
-  it('needs the stored secret', async () => {
+  it('needs the stored secret, and asks for it to be entered again rather than the source re-added (K3)', async () => {
     const { url: _url, ...withoutUrl } = urlSource
-    await expect(connectSource(withoutUrl, deps())).rejects.toMatchObject({ kind: 'missing-secret' })
+    const error = await connectSource(withoutUrl, deps()).catch((caught: unknown) => caught)
+    expect(error).toMatchObject({ kind: 'missing-secret', message: MISSING_M3U_URL_MESSAGE })
+    expect((error as Error).message).not.toMatch(/silip/)
+    // While the store cannot be read, the secret is not gone: it is read again.
+    await expect(connectSource(withoutUrl, { ...deps(), secretsUnavailable: true })).rejects.toMatchObject({
+      kind: 'missing-secret',
+      message: SECRETS_UNAVAILABLE_MESSAGE
+    })
+  })
+
+  it('fetches the playlist again when the catalog dropped it for a source that still exists (K1)', async () => {
+    useStore.setState({ sources: [urlSource] })
+    let calls = 0
+    const ingestUrl = vi.fn(async (sourceId: string) => {
+      calls += 1
+      const pending = ingestM3uText(sourceId, PLAYLIST, 'x.m3u')
+      // The first download is overtaken by a refresh of the source.
+      if (calls === 1) catalog.replaceSource(sourceId, null)
+      return pending
+    })
+    await connectSource(urlSource, { ...deps(), ingestUrl })
+    expect(ingestUrl).toHaveBeenCalledTimes(2)
+    expect(catalog.getItems('mu', 'live').map((entry) => entry.name)).toEqual(['Kanal 1'])
+  })
+
+  it('does not fetch again for a removed source, and fails when the playlist keeps being dropped (K1)', async () => {
+    const dropping = vi.fn(async (sourceId: string) => {
+      const pending = ingestM3uText(sourceId, PLAYLIST, 'x.m3u')
+      catalog.replaceSource(sourceId, null)
+      return pending
+    })
+    await connectSource(urlSource, { ...deps(), ingestUrl: dropping, sourceExists: () => false })
+    expect(dropping).toHaveBeenCalledTimes(1)
+
+    dropping.mockClear()
+    const error = await connectSource(urlSource, { ...deps(), ingestUrl: dropping, sourceExists: () => true }).catch(
+      (caught: unknown) => caught
+    )
+    expect(dropping).toHaveBeenCalledTimes(3)
+    expect(describeConnectFailure(error, 1, 0)).toMatchObject({ kind: 'other', retryAt: expect.any(Number) })
+  })
+
+  it('says once, in one sentence, why a file of the old version must be picked again (K7)', () => {
+    const notPicked = new Error("Error invoking remote method 'read-picked-file': Error: Bu dosyayı okuma izni yok. Dosyayı yeniden seçin.")
+    const message = fileReadFailureMessage(notPicked, null)
+    expect(message.match(/seçin/g)).toHaveLength(1)
+    expect(message.match(/\./g)).toHaveLength(1)
+    expect(message).toMatch(/Dosyayı Yeniden Seç/)
+    const withCopy = fileReadFailureMessage(notPicked, Date.UTC(2026, 10, 14, 18, 30))
+    expect(withCopy).toMatch(/seçin; o zamana kadar dosyanın .+ tarihinde okunan kopyası gösteriliyor\.$/)
+    expect(withCopy.match(/seçin/g)).toHaveLength(1)
+    // Other failures keep their own reason and ask once.
+    expect(fileReadFailureMessage(new Error('Dosya bulunamadı: a.m3u'), null)).toBe('Dosya bulunamadı: a.m3u Dosyayı yeniden seçin.')
   })
 })
 
@@ -212,6 +271,44 @@ describe('useAutoConnect', () => {
       await vi.advanceTimersByTimeAsync(0)
     })
     expect(authenticate).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads an unreadable secure store again instead of sending the user to delete the source (K3)', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const getAllSecrets = vi
+      .spyOn(secureCredentialService, 'getAllSecrets')
+      .mockRejectedValueOnce(new Error('kilit zaman aşımı'))
+      .mockRejectedValueOnce(new Error('kilit zaman aşımı'))
+      .mockResolvedValue({ xtream: { xt: { url: xtream.url!, username: 'ali', password: 's3cret' } }, m3uUrls: {} })
+    const authenticate = vi.spyOn(xtreamApi, 'authenticate').mockResolvedValue(okAuth)
+    const { username: _u, password: _p, ...persisted } = xtream
+    useStore.setState({ sources: [persisted], activeSourceId: 'xt' })
+
+    renderHook(() => useAutoConnect())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(useStore.getState().secretStoreError).toBe(SECRET_STORE_UNREADABLE_MESSAGE)
+    expect(useStore.getState().sourceErrors.xt).toMatchObject({ kind: 'missing-secret', message: SECRETS_UNAVAILABLE_MESSAGE })
+    expect(authenticate).not.toHaveBeenCalled()
+
+    // Read again on a timer...
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000)
+    })
+    expect(getAllSecrets).toHaveBeenCalledTimes(2)
+
+    // ...and at once when the user asks; the source then connects by itself.
+    await act(async () => {
+      useStore.getState().requestSourceReconnect()
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(getAllSecrets).toHaveBeenCalledTimes(3)
+    expect(useStore.getState().secretStoreError).toBeNull()
+    expect(authenticate).toHaveBeenCalledTimes(1)
+    expect(useStore.getState().xtreamAuth.xt).toBe(okAuth)
+    expect(useStore.getState().sourceErrors).toEqual({})
   })
 
   it('re-reads a local playlist file on start, and reports a missing one on the source (F1-27)', async () => {
@@ -284,6 +381,36 @@ describe('secret migration (F3-02, F1-56)', () => {
     expect(useStore.getState().credentialsHydrated).toBe(true)
     expect(useStore.getState().secretMigrationError).toBe(SECRET_MIGRATION_FAILED_MESSAGE)
     expect(partialize().sources[0]).toMatchObject({ password: 's3cret' })
+  })
+
+  it('moves a plain TMDB key to the secure store and only then stops persisting it (K10)', async () => {
+    vi.spyOn(secureCredentialService, 'getAllSecrets').mockResolvedValue({ xtream: {}, m3uUrls: {} })
+    vi.spyOn(secureCredentialService, 'getTmdbApiKey').mockResolvedValue(null)
+    const setTmdbApiKey = vi.spyOn(secureCredentialService, 'setTmdbApiKey').mockRejectedValueOnce(new Error('yazılamadı'))
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    useStore.getState().updateSettings({ tmdbApiKey: 'plain-tmdb-key' })
+    useStore.setState({ tmdbKeyPlainPending: true })
+
+    await hydrateSecrets()
+    // The write failed: the plain copy stays for the next start.
+    expect(partialize().settings.tmdbApiKey).toBe('plain-tmdb-key')
+    expect(useStore.getState().secretMigrationError).toBe(SECRET_MIGRATION_FAILED_MESSAGE)
+
+    setTmdbApiKey.mockResolvedValue()
+    await hydrateSecrets()
+    expect(setTmdbApiKey).toHaveBeenLastCalledWith('plain-tmdb-key')
+    expect(useStore.getState().settings.tmdbApiKey).toBe('plain-tmdb-key')
+    expect(partialize().settings).not.toHaveProperty('tmdbApiKey')
+    expect(useStore.getState().secretMigrationError).toBeNull()
+    useStore.getState().updateSettings({ tmdbApiKey: '' })
+  })
+
+  it('puts the stored TMDB key in the settings', async () => {
+    vi.spyOn(secureCredentialService, 'getAllSecrets').mockResolvedValue({ xtream: {}, m3uUrls: {} })
+    vi.spyOn(secureCredentialService, 'getTmdbApiKey').mockResolvedValue('stored-tmdb-key')
+    await hydrateSecrets()
+    expect(useStore.getState().settings.tmdbApiKey).toBe('stored-tmdb-key')
+    useStore.getState().updateSettings({ tmdbApiKey: '' })
   })
 
   it('puts stored URLs on M3U sources that have none in memory', async () => {

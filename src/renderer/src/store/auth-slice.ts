@@ -12,7 +12,8 @@ export interface SourceConnectionError {
   /**
    * `auth`: the provider refused the account, no automatic retry.
    * `file`: a local playlist could not be read again; it has to be picked again.
-   * `missing-secret`: the stored credential or playlist URL is gone.
+   * `missing-secret`: the stored credential or playlist URL is gone (or the
+   *   secure store cannot be read right now); the user can enter it again.
    * `other`: anything else, retried automatically.
    */
   kind: 'auth' | 'file' | 'missing-secret' | 'other'
@@ -46,13 +47,18 @@ export interface AuthSlice {
   legacySecretSourceIds: string[]
   /** Set when moving plain secrets to the secure store failed; a user message. */
   secretMigrationError: string | null
+  /**
+   * Set while the secure store could not be read at all (a user message). The
+   * stored secrets are still there: the read is retried, and the sources wait
+   * for it instead of asking the user to add them again.
+   */
+  secretStoreError: string | null
   addSource: (source: PlaylistSource) => void
   /** Changes fields of a source in place (its position in the list stays). */
   updateSource: (id: string, patch: Partial<Omit<PlaylistSource, 'id' | 'type'>>) => void
   removeSource: (id: string) => void
   setActiveSource: (id: string | null) => void
   setXtreamAuth: (sourceId: string, auth: XtreamAuthResponse) => void
-  hydrateXtreamCredentials: (credentialsBySource: Record<string, XtreamCredentials>) => void
   /** Puts the stored secrets on the sources and marks the credentials hydrated. */
   hydrateSourceSecrets: (secrets: HydratedSourceSecrets) => void
   setCredentialsHydrated: (hydrated: boolean) => void
@@ -62,6 +68,7 @@ export interface AuthSlice {
   /** The secure store now holds these sources' secrets: stop writing the plain copy. */
   markSecretsMigrated: (sourceIds: readonly string[]) => void
   setSecretMigrationError: (message: string | null) => void
+  setSecretStoreError: (message: string | null) => void
   requestSourceReconnect: () => void
   getActiveSource: () => PlaylistSource | null
   getXtreamCredentials: (sourceId: string) => XtreamCredentials | null
@@ -118,6 +125,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
   sourceErrors: {},
   legacySecretSourceIds: [],
   secretMigrationError: null,
+  secretStoreError: null,
 
   addSource: (source) =>
     set((state) => ({
@@ -159,9 +167,6 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       sourceErrors: withoutKey(state.sourceErrors, sourceId)
     })),
 
-  hydrateXtreamCredentials: (credentialsBySource) =>
-    get().hydrateSourceSecrets({ xtream: credentialsBySource, m3uUrls: {} }),
-
   hydrateSourceSecrets: ({ xtream, m3uUrls }) =>
     set((state) => ({
       sources: state.sources.map((source) => {
@@ -199,6 +204,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     }),
 
   setSecretMigrationError: (message) => set({ secretMigrationError: message }),
+  setSecretStoreError: (message) => set({ secretStoreError: message }),
 
   requestSourceReconnect: () =>
     set((state) => ({ connectRetryToken: state.connectRetryToken + 1, error: null })),

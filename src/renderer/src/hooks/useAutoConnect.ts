@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
 import { XtreamRequestError } from '@/services/xtream-errors'
@@ -6,10 +6,9 @@ import { readPickedFile } from '@/services/platform'
 import { secureCredentialService, type SourceSecrets } from '@/services/secure-credentials'
 import { classifyError, toUserMessage } from '@/services/user-error'
 import { catalog } from '@/catalog/catalog-store'
-import type { m3uPlaylistToReplacement } from '@/catalog/convert'
 import { certificateAwareError } from '@/catalog/certificate-errors'
-import { isCatalogCacheSettled, watchCatalogCache } from '@/catalog/cache-lifecycle'
-import { ingestM3uText, ingestM3uUrl } from '@/catalog/worker-ingest'
+import { isCatalogCacheSettled, refreshCatalogCacheKey, watchCatalogCache } from '@/catalog/cache-lifecycle'
+import { ingestDropped, ingestM3uText, ingestM3uUrl, type IngestOutcome } from '@/catalog/worker-ingest'
 import { CATALOG_TYPES } from '@/catalog/types'
 import type { CatalogStatusMap } from '@/store/playlist-slice'
 import { plainSecretOf, type SourceConnectionError } from '@/store/auth-slice'
@@ -116,17 +115,72 @@ export function connectionSummary(
 
 export interface ConnectDeps {
   setXtreamAuth: (sourceId: string, auth: XtreamAuthResponse) => void
-  /** Unused: playlists go through the catalog worker. Kept so existing callers still type-check. */
-  replaceSourceCatalog?: (
-    sourceId: string,
-    replacement: ReturnType<typeof m3uPlaylistToReplacement>,
-    expectedRevision?: number
-  ) => void
+  /** The secure store could not be read (it is read again): a missing secret is not gone. */
+  secretsUnavailable?: boolean
   authenticate?: typeof xtreamApi.authenticate
   readFile?: typeof readPickedFile
   /** The catalog worker's playlist ingest (tests replace it). */
   ingestUrl?: typeof ingestM3uUrl
   ingestText?: typeof ingestM3uText
+  /** The source is still configured (default: it is in the store). */
+  sourceExists?: (sourceId: string) => boolean
+}
+
+export const SECRETS_UNAVAILABLE_MESSAGE = 'Kayıtlı giriş bilgileri şu an okunamıyor; uygulama yeniden deneyecek.'
+export const MISSING_XTREAM_SECRET_MESSAGE =
+  'Kayıtlı kullanıcı adı ve şifre bulunamadı. Ayarlar > Kaynaklar bölümünden bu kaynağın bilgilerini yeniden girin.'
+export const MISSING_M3U_URL_MESSAGE =
+  'Kayıtlı liste adresi bulunamadı. Ayarlar > Kaynaklar bölümünden bu kaynağın adresini yeniden girin.'
+
+function missingSecret(message: string, deps: ConnectDeps): SourceConnectError {
+  return new SourceConnectError('missing-secret', deps.secretsUnavailable ? SECRETS_UNAVAILABLE_MESSAGE : message)
+}
+
+/**
+ * Main reads again only files the user picked in its dialog, and the list of
+ * those starts empty after an update from a version that did not keep one.
+ */
+function isNotPickedError(message: string): boolean {
+  return message.includes('okuma izni yok')
+}
+
+/** Why a playlist file could not be read again, in one sentence, and what to do. */
+export function fileReadFailureMessage(error: unknown, cachedAt: number | null): string {
+  const kept = cachedAt ? ` Dosyanın ${formatCacheTime(cachedAt)} tarihinde okunan kopyası gösteriliyor.` : ''
+  const reason = toUserMessage(error, 'Liste dosyası okunamadı.')
+  if (isNotPickedError(reason)) {
+    const meanwhile = cachedAt ? `; o zamana kadar dosyanın ${formatCacheTime(cachedAt)} tarihinde okunan kopyası gösteriliyor.` : '.'
+    return `Uygulama yalnızca sizin seçtiğiniz dosyaları okuyabildiği için bu liste dosyasını Ayarlar > Kaynaklar bölümünde "Dosyayı Yeniden Seç" ile bir kez yeniden seçin${meanwhile}`
+  }
+  const ask = /yeniden seçin\.?$/i.test(reason) ? '' : ' Dosyayı yeniden seçin.'
+  return `${reason}${ask}${kept}`
+}
+
+/** A dropped playlist is fetched again this many times before the attempt fails (and is retried on a timer). */
+const DROPPED_INGEST_ATTEMPTS = 3
+
+/**
+ * Runs a playlist ingest until what it fetched is kept. The catalog drops it
+ * when the source was refreshed or removed meanwhile; a removed source needs
+ * nothing, and one whose fresh lists another load already put in place
+ * neither. Otherwise the source would stay empty while the attempt counted as
+ * a success, so the playlist is fetched again, and the attempt fails if that
+ * keeps happening.
+ */
+async function ingestUntilKept(source: PlaylistSource, deps: ConnectDeps, run: () => Promise<IngestOutcome>): Promise<void> {
+  const exists = deps.sourceExists ?? ((sourceId: string) => useStore.getState().sources.some((item) => item.id === sourceId))
+  for (let attempt = 1; ; attempt += 1) {
+    const outcome = await run()
+    if (!ingestDropped(outcome) || !exists(source.id)) return
+    const fresh = CATALOG_TYPES.every((type) => {
+      const status = catalog.getStatus(source.id, type)
+      return !!status?.complete && !status.fromCache
+    })
+    if (fresh) return
+    if (attempt >= DROPPED_INGEST_ATTEMPTS) {
+      throw new XtreamRequestError('network', 'Liste yüklenirken kaynak yeniden yüklendi. Yeniden denenecek.')
+    }
+  }
 }
 
 /**
@@ -140,9 +194,7 @@ export interface ConnectDeps {
 export async function connectSource(source: PlaylistSource, deps: ConnectDeps): Promise<void> {
   if (source.type === 'xtream') {
     const secret = plainSecretOf(source)
-    if (!secret || !('username' in secret)) {
-      throw new SourceConnectError('missing-secret', 'Kayıtlı kimlik bilgileri bulunamadı. Kaynağı silip yeniden ekleyin.')
-    }
+    if (!secret || !('username' in secret)) throw missingSecret(MISSING_XTREAM_SECRET_MESSAGE, deps)
     perfMark('connect:auth-start')
     let auth: XtreamAuthResponse
     try {
@@ -161,35 +213,36 @@ export async function connectSource(source: PlaylistSource, deps: ConnectDeps): 
   // The swap is dropped by the catalog when the source is removed or
   // refreshed meanwhile: the worker job's tokens are taken before it starts.
   if (source.type === 'm3u_url') {
-    if (!source.url) {
-      throw new SourceConnectError('missing-secret', 'Kayıtlı liste adresi bulunamadı. Kaynağı silip yeniden ekleyin.')
-    }
+    const url = source.url
+    if (!url) throw missingSecret(MISSING_M3U_URL_MESSAGE, deps)
     try {
-      await (deps.ingestUrl ?? ingestM3uUrl)(source.id, source.url)
+      await ingestUntilKept(source, deps, () => (deps.ingestUrl ?? ingestM3uUrl)(source.id, url))
     } catch (error) {
       throw await certificateAwareError(error)
     }
     return
   }
 
-  if (!source.filePath) {
+  const filePath = source.filePath
+  if (!filePath) {
     throw new SourceConnectError('file', 'Liste dosyasının yolu kayıtlı değil. Dosyayı yeniden seçin.')
   }
-  let file: Awaited<ReturnType<typeof readPickedFile>>
-  try {
-    file = await (deps.readFile ?? readPickedFile)(source.filePath)
-  } catch (error) {
-    // The cached copy may be all there is now: it stays, and the user is told.
-    await cacheSettled(source.id)
-    const cachedAt = cachedCopyFetchedAt(source.id)
-    const kept = cachedAt ? ` Dosyanın ${formatCacheTime(cachedAt)} tarihinde okunan kopyası gösteriliyor.` : ''
-    throw new SourceConnectError('file', `${toUserMessage(error, 'Liste dosyası okunamadı.')} Dosyayı yeniden seçin.${kept}`, {
-      cause: error
-    })
+  const readOnce = async () => {
+    try {
+      return await (deps.readFile ?? readPickedFile)(filePath)
+    } catch (error) {
+      // The cached copy may be all there is now: it stays, and the user is told.
+      await cacheSettled(source.id)
+      throw new SourceConnectError('file', fileReadFailureMessage(error, cachedCopyFetchedAt(source.id)), { cause: error })
+    }
   }
-  // Outside Electron there is nothing to read; the source stays empty.
-  if (!file) return
-  await (deps.ingestText ?? ingestM3uText)(source.id, file.content, file.path)
+  const empty: IngestOutcome = { results: {}, counts: {}, meta: null, epgUrls: [], job: { kind: 'ok' } }
+  await ingestUntilKept(source, deps, async () => {
+    const file = await readOnce()
+    // Outside Electron there is nothing to read; the source stays empty.
+    if (!file) return empty
+    return (deps.ingestText ?? ingestM3uText)(source.id, file.content, file.path)
+  })
 }
 
 export interface SecretMigrationPlan {
@@ -224,25 +277,71 @@ export function planSecretMigration(
 export const SECRET_MIGRATION_FAILED_MESSAGE =
   'Kayıtlı giriş bilgileri güvenli depoya taşınamadı. Bilgiler kaybolmasın diye şimdilik eski yerinde duruyor; uygulama her açılışta yeniden deneyecek.'
 
+export const SECRET_STORE_UNREADABLE_MESSAGE =
+  'Kayıtlı giriş bilgileri şu an okunamıyor. Bilgiler silinmedi; uygulama okumayı kendiliğinden yeniden deneyecek.'
+
+/**
+ * Moves a TMDB key an older version kept in the plain settings to the secure
+ * store, keeping the plain copy until that write succeeded; otherwise puts
+ * the stored key in the settings. True when the move failed.
+ */
+async function hydrateTmdbApiKey(stored: string | null): Promise<boolean> {
+  const state = useStore.getState()
+  if (!state.tmdbKeyPlainPending) {
+    if ((stored ?? '') !== state.settings.tmdbApiKey) state.updateSettings({ tmdbApiKey: stored ?? '' })
+    return false
+  }
+  // The store already has one (written by this version): it wins, like a source's stored secret.
+  if (stored) {
+    state.updateSettings({ tmdbApiKey: stored })
+    state.setTmdbKeyPlainPending(false)
+    return false
+  }
+  try {
+    if (state.settings.tmdbApiKey) await secureCredentialService.setTmdbApiKey(state.settings.tmdbApiKey)
+    useStore.getState().setTmdbKeyPlainPending(false)
+    return false
+  } catch (error) {
+    console.warn('[credentials] moving the TMDB key to the secure store failed:', toUserMessage(error))
+    return true
+  }
+}
+
 /**
  * Reads the secure store and puts the secrets on the sources. Secrets an older
  * version kept in plain text are copied there first; the plain copy is only
  * dropped (`markSecretsMigrated`) for the writes that succeeded, so a failed
  * write keeps it for the next start and the user is told.
+ *
+ * A store that cannot be read at all is not treated as empty: the sources
+ * wait (`secretStoreError`), the read is retried (useAutoConnect), and once
+ * it works the cache key is fetched again and every source reconnects.
+ * Returns whether the store could be read.
  */
-export async function hydrateSecrets(): Promise<void> {
+export async function hydrateSecrets(): Promise<boolean> {
   const store = useStore.getState()
+  const recovering = store.secretStoreError !== null
   let stored: SourceSecrets
+  let storedTmdbKey: string | null
   try {
     perfMark('connect:credentials-ipc-start')
-    stored = await secureCredentialService.getAllSecrets()
+    ;[stored, storedTmdbKey] = await Promise.all([
+      secureCredentialService.getAllSecrets(),
+      secureCredentialService.getTmdbApiKey()
+    ])
     perfMark('connect:credentials-ipc-done')
   } catch (error) {
     console.warn('[credentials] reading the secure store failed:', toUserMessage(error))
-    if (store.legacySecretSourceIds.length > 0) store.setSecretMigrationError(SECRET_MIGRATION_FAILED_MESSAGE)
+    if (store.legacySecretSourceIds.length > 0 || store.tmdbKeyPlainPending) {
+      store.setSecretMigrationError(SECRET_MIGRATION_FAILED_MESSAGE)
+    }
+    store.setSecretStoreError(SECRET_STORE_UNREADABLE_MESSAGE)
     store.setCredentialsHydrated(true)
-    return
+    return false
   }
+  // The key could not be fetched while the store was unreadable: the cache
+  // jobs these secrets start wait for it.
+  if (recovering) void refreshCatalogCacheKey()
 
   const plan = planSecretMigration(useStore.getState().sources, useStore.getState().legacySecretSourceIds, stored)
   const secrets: SourceSecrets = { xtream: { ...stored.xtream }, m3uUrls: { ...stored.m3uUrls } }
@@ -266,10 +365,16 @@ export async function hydrateSecrets(): Promise<void> {
     })
   )
 
+  const tmdbFailed = await hydrateTmdbApiKey(storedTmdbKey)
+
   const latest = useStore.getState()
   latest.hydrateSourceSecrets(secrets)
   latest.markSecretsMigrated(migrated)
-  latest.setSecretMigrationError(failed > 0 ? SECRET_MIGRATION_FAILED_MESSAGE : null)
+  latest.setSecretMigrationError(failed > 0 || tmdbFailed ? SECRET_MIGRATION_FAILED_MESSAGE : null)
+  latest.setSecretStoreError(null)
+  // Sources stopped while their secret could not be read start over.
+  if (recovering) latest.requestSourceReconnect()
+  return true
 }
 
 interface SourceAttempt {
@@ -302,14 +407,45 @@ export function useAutoConnect() {
   const sourcesWithCatalog = useStore((s) => sourcesWithCatalogKey(s.catalogStatus))
   const credentialsHydrated = useStore((s) => s.credentialsHydrated)
   const connectRetryToken = useStore((s) => s.connectRetryToken)
+  const secretStoreError = useStore((s) => s.secretStoreError)
+  const hydrationFailuresRef = useRef(0)
+  const [hydrationFailures, countHydrationFailure] = useReducer((value: number) => value + 1, 0)
+  const lastHydrationRetryTokenRef = useRef(connectRetryToken)
+
+  const runHydration = useCallback(() => {
+    if (hydratingRef.current) return
+    hydratingRef.current = true
+    void hydrateSecrets()
+      .then((ok) => {
+        if (ok) {
+          hydrationFailuresRef.current = 0
+          return
+        }
+        hydrationFailuresRef.current += 1
+        countHydrationFailure()
+      })
+      .finally(() => {
+        hydratingRef.current = false
+      })
+  }, [])
 
   useEffect(() => {
-    if (credentialsHydrated || hydratingRef.current) return
-    hydratingRef.current = true
-    void hydrateSecrets().finally(() => {
-      hydratingRef.current = false
-    })
-  }, [credentialsHydrated])
+    if (!credentialsHydrated) runHydration()
+  }, [credentialsHydrated, runHydration])
+
+  // An unreadable secure store (a lock held by an antivirus scan, say) is read
+  // again with the same backoff as a provider; "Yeniden Dene" reads it at once.
+  useEffect(() => {
+    if (!secretStoreError) return
+    const timer = setTimeout(runHydration, reconnectDelayMs(hydrationFailuresRef.current))
+    return () => clearTimeout(timer)
+  }, [secretStoreError, hydrationFailures, runHydration])
+
+  useEffect(() => {
+    if (connectRetryToken === lastHydrationRetryTokenRef.current) return
+    lastHydrationRetryTokenRef.current = connectRetryToken
+    if (useStore.getState().secretStoreError) runHydration()
+  }, [connectRetryToken, runHydration])
 
   useEffect(() => {
     if (!activeSourceId && sources.length > 0) useStore.getState().setActiveSource(sources[0].id)
@@ -351,7 +487,8 @@ export function useAutoConnect() {
         inFlightRef.current += 1
         useStore.getState().setAuthLoading(true)
       }
-      void connectSource(source, { setXtreamAuth: useStore.getState().setXtreamAuth })
+      const state = useStore.getState()
+      void connectSource(source, { setXtreamAuth: state.setXtreamAuth, secretsUnavailable: state.secretStoreError !== null })
         .then(
           () => {
             if (attempts.get(sourceId) !== attempt) return

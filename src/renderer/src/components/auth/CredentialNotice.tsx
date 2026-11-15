@@ -13,21 +13,27 @@ export function credentialLossMessage(notice: SecureCredentialsLossNotice): stri
     ? ` Okunamayan dosya "${notice.quarantinedAs}" adıyla saklandı.`
     : ''
   return (
-    'Şifreli kimlik bilgisi dosyası bu bilgisayarda açılamadı, bu yüzden kayıtlı Xtream şifreleri ve M3U liste adresleri kullanılamıyor. ' +
-    'Geri getirmek için Ayarlar > Kaynaklar bölümünde bu kaynakları silip aynı bilgilerle yeniden ekleyin.' +
+    'Şifreli kimlik bilgisi dosyası bu bilgisayarda açılamadı, bu yüzden kayıtlı Xtream şifreleri, M3U liste adresleri ve TMDB anahtarı kullanılamıyor. ' +
+    'Ayarlar > Kaynaklar bölümünde her kaynağın bilgilerini "Bilgileri Gir" ile yeniden girin; kaynakları silmeyin, böylece favorileriniz, izleme geçmişiniz ve gizlediğiniz kategoriler korunur.' +
     kept
   )
 }
 
+export const SECRET_STORE_NOTICE_TITLE = 'Kayıtlı giriş bilgileri okunamıyor'
+
 /**
  * Shown over the shell when the saved sign-ins are gone (main moved an
- * unreadable credential file aside) or could not be moved to the secure store.
- * Dismissible; it is about this run only, main reports a loss once per run.
+ * unreadable credential file aside), cannot be read right now, or could not
+ * be moved to the secure store. Dismissible; it is about this run only, main
+ * reports a loss once per run.
  */
 export function CredentialNotice() {
   const navigate = useNavigate()
   const migrationError = useStore((s) => s.secretMigrationError)
   const setSecretMigrationError = useStore((s) => s.setSecretMigrationError)
+  const secretStoreError = useStore((s) => s.secretStoreError)
+  const requestSourceReconnect = useStore((s) => s.requestSourceReconnect)
+  const [storeErrorDismissed, setStoreErrorDismissed] = useState<string | null>(null)
   const [loss, setLoss] = useState<SecureCredentialsLossNotice | null>(null)
   const [lossDismissed, setLossDismissed] = useState(false)
 
@@ -49,7 +55,8 @@ export function CredentialNotice() {
   }, [])
 
   const showLoss = loss !== null && !lossDismissed
-  if (!showLoss && !migrationError) return null
+  const showStoreError = secretStoreError !== null && storeErrorDismissed !== secretStoreError
+  if (!showLoss && !migrationError && !showStoreError) return null
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-12 z-50 flex flex-col items-center gap-2 px-4">
@@ -58,7 +65,15 @@ export function CredentialNotice() {
           title={CREDENTIAL_LOSS_TITLE}
           message={credentialLossMessage(loss)}
           onDismiss={() => setLossDismissed(true)}
-          action={{ label: 'Kaynak Ayarları', onClick: () => void navigate('/settings') }}
+          action={{ label: 'Bilgileri Yeniden Gir', onClick: () => void navigate('/settings') }}
+        />
+      )}
+      {showStoreError && secretStoreError && (
+        <NoticeCard
+          title={SECRET_STORE_NOTICE_TITLE}
+          message={secretStoreError}
+          onDismiss={() => setStoreErrorDismissed(secretStoreError)}
+          action={{ label: 'Tekrar Dene', onClick: requestSourceReconnect }}
         />
       )}
       {migrationError && (

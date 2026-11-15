@@ -9,7 +9,6 @@ import type {
   XtreamSeriesStream,
   XtreamSeriesInfo
 } from '@/types/xtream'
-import type { Channel } from '@/types/playlist'
 import {
   xtreamCategoriesToRecords,
   xtreamLiveToRecords,
@@ -32,8 +31,7 @@ import {
   normalizeXtreamSeries,
   normalizeXtreamSeriesInfo,
   normalizeXtreamVodInfo,
-  normalizeXtreamVodStreams,
-  parseXtreamTimestamp
+  normalizeXtreamVodStreams
 } from './xtream-normalize'
 import { perfXtreamMark } from './perf'
 
@@ -73,6 +71,19 @@ function evictCacheIfNeeded(): void {
   const entries = Array.from(requestCache.entries()).toSorted((a, b) => a[1].expiresAt - b[1].expiresAt)
   const toRemove = entries.slice(0, requestCache.size - CACHE_MAX_SIZE)
   for (const [key] of toRemove) requestCache.delete(key)
+}
+
+/**
+ * Forgets the cached and in-flight list requests of one account, so the next
+ * call goes to the panel. For a refresh the user asked for: within the cache
+ * window it would otherwise get the lists it is meant to replace.
+ */
+export function forgetXtreamRequests(creds: XtreamCredentials): void {
+  const prefix = buildUrl(creds, '')
+  const ofAccount = (url: string) => url === prefix || url.startsWith(`${prefix}&`)
+  for (const url of [...requestCache.keys()]) if (ofAccount(url)) requestCache.delete(url)
+  // A request still running keeps going for whoever joined it; new callers start their own.
+  for (const url of [...inflightRequests.keys()]) if (ofAccount(url)) inflightRequests.delete(url)
 }
 
 export interface XtreamRequestOptions {
@@ -220,7 +231,7 @@ async function fetchJSON<T>(
   try {
     return await request
   } finally {
-    if (shareable) inflightRequests.delete(url)
+    if (shareable && inflightRequests.get(url) === request) inflightRequests.delete(url)
   }
 }
 
@@ -228,33 +239,6 @@ async function fetchJSON<T>(
 function listOptions(categoryId: string | undefined, options?: XtreamRequestOptions): XtreamRequestOptions | undefined {
   if (categoryId || options?.headersTimeoutMs !== undefined) return options
   return { ...options, headersTimeoutMs: XTREAM_FULL_LIST_HEADERS_TIMEOUT_MS }
-}
-
-/** Options for converting Xtream live streams into channels. */
-export interface XtreamLiveChannelOptions {
-  /** Extension of the live stream URL. Defaults to 'm3u8'. */
-  liveFormat?: XtreamLiveFormat
-}
-
-/**
- * Catalog timestamps (unix seconds) keyed by the channel id the converters
- * produce: `added` for live and VOD, `last_modified` for series. Entries the
- * panel sent no timestamp for are left out. Catalog records carry the same
- * values as `added` / `lastModified`; this is the map form for raw lists.
- */
-export function collectXtreamTimestamps(
-  streams: Array<XtreamLiveStream | XtreamVODStream | XtreamSeriesStream>,
-  sourceId: string,
-  type: 'live' | 'vod' | 'series'
-): Map<string, number> {
-  const result = new Map<string, number>()
-  for (const stream of streams) {
-    const id = 'series_id' in stream ? stream.series_id : stream.stream_id
-    const value = 'last_modified' in stream ? stream.last_modified : stream.added
-    const timestamp = parseXtreamTimestamp(value)
-    if (timestamp !== null) result.set(`${sourceId}_${type}_${id}`, timestamp)
-  }
-  return result
 }
 
 export const xtreamApi = {
@@ -425,19 +409,5 @@ export const xtreamApi = {
 
   seriesToRecords(streams: XtreamSeriesStream[], sourceId: string): CatalogItem[] {
     return xtreamSeriesToRecords(streams, sourceId)
-  },
-
-  /**
-   * @deprecated Use `liveStreamsToRecords`. Kept for existing callers; the
-   * records it returns no longer carry a URL, so `creds` and `options` are
-   * not used (the live format is chosen when the stream is played).
-   */
-  liveStreamsToChannels(
-    streams: XtreamLiveStream[],
-    _creds: XtreamCredentials,
-    sourceId: string,
-    _options?: XtreamLiveChannelOptions
-  ): Channel[] {
-    return xtreamLiveToRecords(streams, sourceId)
   }
 }

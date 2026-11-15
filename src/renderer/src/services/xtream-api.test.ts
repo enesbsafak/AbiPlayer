@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   XtreamRequestError,
-  collectXtreamTimestamps,
+  forgetXtreamRequests,
   getAllowedLiveFormats,
   maskCredentialsInUrl,
   pickLiveFormat,
@@ -411,6 +411,23 @@ describe('xtream-api request layer', () => {
     expect(largeFetch).toHaveBeenCalledTimes(2)
   })
 
+  it('goes to the panel again after a refresh the user asked for, for that account only (K16)', async () => {
+    const refreshed = uniqueCreds()
+    const other = uniqueCreds()
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse([{ category_id: '1', category_name: 'A', parent_id: 0 }])))
+    vi.stubGlobal('fetch', fetchMock)
+    await xtreamApi.getLiveCategories(refreshed)
+    await xtreamApi.getLiveStreams(refreshed, '1')
+    await xtreamApi.getLiveCategories(other)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+
+    forgetXtreamRequests(refreshed)
+    await xtreamApi.getLiveCategories(refreshed)
+    await xtreamApi.getLiveStreams(refreshed, '1')
+    await xtreamApi.getLiveCategories(other)
+    expect(fetchMock).toHaveBeenCalledTimes(5)
+  })
+
   it('normalizes the auth flag when the panel sends it as a string', async () => {
     const creds = uniqueCreds()
     vi.stubGlobal(
@@ -486,9 +503,7 @@ describe('xtream-api stream URLs', () => {
     ]
     const [record] = xtreamApi.liveStreamsToRecords(streams, 's')
     expect(record).toMatchObject({ id: 's_live_5', streamId: 5, streamUrl: '' })
-    expect(JSON.stringify(xtreamApi.liveStreamsToChannels(streams, creds, 's', { liveFormat: 'ts' }))).not.toContain(
-      'ali'
-    )
+    expect(JSON.stringify(record)).not.toContain('ali')
   })
 })
 
@@ -516,22 +531,5 @@ describe('live output formats', () => {
     expect(pickLiveFormat(['m3u8', 'ts'], 'ts')).toBe('ts')
     expect(pickLiveFormat(['m3u8'], 'ts')).toBe('m3u8')
     expect(pickLiveFormat(['ts'], 'm3u8')).toBe('ts')
-  })
-})
-
-describe('collectXtreamTimestamps', () => {
-  it('maps channel ids to added / last_modified timestamps', () => {
-    const vod = [
-      { stream_id: 3, added: '1700000000' },
-      { stream_id: 4, added: '' }
-    ] as Parameters<typeof collectXtreamTimestamps>[0]
-    const series = [{ series_id: 8, last_modified: '1690000000' }] as Parameters<
-      typeof collectXtreamTimestamps
-    >[0]
-
-    expect(collectXtreamTimestamps(vod, 'src', 'vod')).toEqual(new Map([['src_vod_3', 1_700_000_000]]))
-    expect(collectXtreamTimestamps(series, 'src', 'series')).toEqual(
-      new Map([['src_series_8', 1_690_000_000]])
-    )
   })
 })

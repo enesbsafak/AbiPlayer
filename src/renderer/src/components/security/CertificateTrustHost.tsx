@@ -11,6 +11,7 @@ import {
   type UntrustedCertificateNotice
 } from '@/services/platform'
 import { toUserMessage } from '@/services/user-error'
+import { reloadAfterCertificateTrust } from '@/catalog/cache-lifecycle'
 import type { PlaylistSource } from '@/types/playlist'
 import {
   DISMISS_QUIET_MS,
@@ -141,6 +142,14 @@ export function CertificateTrustHost() {
     // A playback from that host failed as well, whichever request reported it.
     if (state.currentPlayback && hostOf(state.currentPlayback.streamUrl) === notice.host) state.reloadPlayback()
     if (owner.kind !== 'pending') state.requestSourceReconnect()
+    // A list that failed after the sign-in worked is not retried by the
+    // reconnect: the source's catalog is loaded again as well.
+    const sourceId = sourceIdOf(owner)
+    if (owner.kind !== 'pending' && sourceId) {
+      void reloadAfterCertificateTrust(sourceId).catch((cause: unknown) => {
+        console.warn('[tls] reloading the catalog after trust failed:', toUserMessage(cause))
+      })
+    }
   }, [current, busy, resolveFirst])
 
   if (!current) return null
