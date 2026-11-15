@@ -4,6 +4,11 @@
 //
 //   npm run perf:baseline                      all sizes, default run counts
 //   node e2e/perf/baseline.ts --sizes small --startup-runs 2 --playback-runs 2
+//   node e2e/perf/baseline.ts --only playback --playback-runs 6 --out <file> --label <name>
+//
+// `--only playback` skips the startup runs, `--no-throttled` the slow-link
+// playback runs; `--label` names the run in the report and in the raw summary
+// file (summary-<label>.json), so several variants can be compared.
 //
 // The app runs in the e2e test mode (ABI_E2E=1): off-screen, never focused,
 // muted, silent clips. Raw timelines go to e2e/.output/perf/.
@@ -29,9 +34,19 @@ const { values: args } = parseArgs({
     sizes: { type: 'string', default: 'small,medium,large' },
     'startup-runs': { type: 'string', default: '3' },
     'playback-runs': { type: 'string', default: '5' },
+    only: { type: 'string', default: 'all' },
+    'no-throttled': { type: 'boolean', default: false },
+    // The cold click waits for the pre-warmed idle mpv (main's prewarm, 1.5 s
+    // after the window is up) instead of racing it.
+    'wait-prewarm': { type: 'boolean', default: false },
+    label: { type: 'string' },
     out: { type: 'string' }
   }
 })
+
+const ONLY = args.only as 'all' | 'startup' | 'playback'
+if (!['all', 'startup', 'playback'].includes(ONLY)) throw new Error(`--only must be all, startup or playback, not ${ONLY}`)
+const LABEL = args.label?.replace(/[^\w.-]/g, '_') ?? null
 
 const SIZES = args.sizes!.split(',').map((size) => size.trim()) as CatalogPreset[]
 const STARTUP_RUNS = Number(args['startup-runs'])
@@ -174,7 +189,8 @@ async function clickAndTime(app: AbiApp, scenario: string, link: string, pathInc
   const clickedAt = Date.now()
   await click()
   const progressAt = await timing
-  // Let the app's own 250 ms poll catch up so its marks are in the timeline.
+  // Snapshots are pushed (time churn coalesced to 200 ms); give the renderer's
+  // own first-progress mark time to land in the timeline.
   await page.waitForTimeout(700)
   const timeline = await app.perf()
   const clickT = clickedAt - timeline.timeOrigin
@@ -187,17 +203,31 @@ async function clickAndTime(app: AbiApp, scenario: string, link: string, pathInc
     link,
     clickToProgress: progressAt === null ? null : progressAt - clickedAt,
     mpvAlreadyRunning,
-    steps: {
-      'play:request': after('play:request'),
-      'route:player-chunk-loaded': after('route:player-chunk-loaded'),
-      'player:engine-resolved': after('player:engine-resolved'),
-      'mpv:open-call': after('mpv:open-call'),
-      'mpv:open-resolved': after('mpv:open-resolved'),
-      'mpv:first-progress': after('mpv:first-progress'),
-      'player:overlay-hidden': after('player:overlay-hidden')
-    }
+    steps: Object.fromEntries(['play:request', 'player:overlay-hidden', ...PLAYBACK_STEPS].map((name) => [name, after(name)]))
   }
 }
+
+/**
+ * Renderer marks (route, engine, the `mpvOpen` call and its answer, the first
+ * pushed snapshot showing the new stream advancing) and main marks of the mpv
+ * session and load (src/main/mpv/session.ts). Spawn and pipe marks only appear
+ * when mpv was not already running (pre-warmed) at the click.
+ */
+const PLAYBACK_STEPS = [
+  'route:player-chunk-loaded',
+  'player:engine-resolved',
+  'mpv:open-call',
+  'mpv:open',
+  'mpv:spawn',
+  'mpv:session-ready',
+  'mpv:loadfile-sent',
+  'mpv:loadfile-replied',
+  'mpv:open-resolved',
+  'mpv:start-file',
+  'mpv:file-loaded',
+  'mpv:playback-restart',
+  'mpv:first-progress'
+]
 
 async function returnHome(page: Page) {
   await leavePlayer(page)
@@ -230,7 +260,9 @@ async function playbackRuns(link: LinkProfile, runs: number): Promise<PlaybackSa
           await expectHomeWithContent(page)
           await openRoute(page, '/live')
           await page.getByRole('button', { name: KNOWN.liveCategory, exact: true }).click()
-          samples.push(await clickAndTime(app, `${protocol}: soğuk ilk kanal`, link.name, `/1.${ext}`, () => cardButton(page, KNOWN.liveChannels[0]).click()))
+          if (args['wait-prewarm']) await waitForTimeline(app, (timeline) => !!mark(timeline, 'mpv:session-ready'), 15_000)
+          const coldName = args['wait-prewarm'] ? 'ilk kanal, mpv önceden ısıtılmış' : 'soğuk ilk kanal'
+          samples.push(await clickAndTime(app, `${protocol}: ${coldName}`, link.name, `/1.${ext}`, () => cardButton(page, KNOWN.liveChannels[0]).click()))
           await page.waitForTimeout(1500)
           await page.mouse.move(500, 400)
           samples.push(await clickAndTime(app, `${protocol}: sıcak kanal değişimi`, link.name, `/2.${ext}`, () =>
@@ -327,7 +359,8 @@ function playbackTable(samples: PlaybackSample[]): string[] {
     const key = `${sample.scenario}|${sample.link}`
     groups.set(key, [...(groups.get(key) ?? []), sample])
   }
-  const steps = ['route:player-chunk-loaded', 'player:engine-resolved', 'mpv:open-call', 'mpv:open-resolved', 'mpv:first-progress']
+  // Columns that stay empty in every group (spawn on a pre-warmed mpv) are left out.
+  const steps = PLAYBACK_STEPS.filter((step) => samples.some((sample) => sample.steps[step] !== null))
   const lines = [
     `| Senaryo | Bağlantı | n | Tıklamadan oynamaya (dış ölçüm) | ${steps.map((step) => `\`${step}\``).join(' | ')} |`,
     `|---|---|---|---|${steps.map(() => '---').join('|')}|`
@@ -342,14 +375,32 @@ function playbackTable(samples: PlaybackSample[]): string[] {
   return lines
 }
 
+/** Per scenario: in how many samples an mpv process existed at the click (pre-warmed or still running). */
+function mpvRunningSummary(samples: PlaybackSample[]): string {
+  const byScenario = new Map<string, { running: number; total: number }>()
+  for (const sample of samples) {
+    const entry = byScenario.get(sample.scenario) ?? { running: 0, total: 0 }
+    entry.total += 1
+    if (sample.mpvAlreadyRunning) entry.running += 1
+    byScenario.set(sample.scenario, entry)
+  }
+  return [...byScenario].map(([scenario, { running, total }]) => `${scenario} ${running}/${total}`).join('; ') || '–'
+}
+
 const startup: StartupRun[] = []
-for (const size of SIZES) startup.push(...(await startupRuns(size, LOCAL, STARTUP_RUNS)))
-if (SIZES.includes('medium')) startup.push(...(await startupRuns('medium', SLOW, STARTUP_RUNS)))
-const playback: PlaybackSample[] = [...(await playbackRuns(LOCAL, PLAYBACK_RUNS)), ...(await playbackRuns(SLOW, Math.max(2, Math.ceil(PLAYBACK_RUNS / 2))))]
-writeFileSync(join(RAW_DIR, 'summary.json'), JSON.stringify({ startup, playback }, null, 2))
+if (ONLY !== 'playback') {
+  for (const size of SIZES) startup.push(...(await startupRuns(size, LOCAL, STARTUP_RUNS)))
+  if (SIZES.includes('medium')) startup.push(...(await startupRuns('medium', SLOW, STARTUP_RUNS)))
+}
+const playback: PlaybackSample[] = []
+if (ONLY !== 'startup') {
+  playback.push(...(await playbackRuns(LOCAL, PLAYBACK_RUNS)))
+  if (!args['no-throttled']) playback.push(...(await playbackRuns(SLOW, Math.max(2, Math.ceil(PLAYBACK_RUNS / 2)))))
+}
+writeFileSync(join(RAW_DIR, LABEL ? `summary-${LABEL}.json` : 'summary.json'), JSON.stringify({ label: LABEL, startup, playback }, null, 2))
 
 const report = [
-  '# Ölçüm tabanı: açılış ve oynatma',
+  `# Ölçüm${LABEL ? ` (${LABEL})` : ' tabanı'}: ${ONLY === 'all' ? 'açılış ve oynatma' : ONLY === 'startup' ? 'açılış' : 'oynatma'}`,
   '',
   '> **Bu sayılar gerçek bir IPTV sağlayıcısından değil, bu makinede çalışan sentetik yerel bir sağlayıcıdan (`e2e/mock-provider`) alınmıştır.** Ağ gecikmesi ve bant genişliği yapaydır; gerçek panellerde sunucu yanıt süreleri ve yayın başlangıçları çok daha değişkendir. Sayılar mutlak hız iddiası değil, aynı düzenekte sonraki değişikliklerin karşılaştırılacağı tabandır.',
   '',
@@ -366,26 +417,27 @@ const report = [
   '- Süreler main sürecin başlangıcına göredir (`ABI_PERF=1` ile açılan `perfMark` zaman çizelgesi, bkz. `src/shared/perf.ts`). Değerler ortanca; parantez içinde en küçük ve en büyük.',
   '- **İlk boyama:** renderer `first-contentful-paint`. **Ana sayfada ilk içerik:** ana sayfanın kanal listesiyle ilk çizildiği an (`renderer:home-first-content`). **Tam katalog:** canlı, film ve dizi tam listelerinin üçünün de eklenmesi (`sync:done`). Küçük katalogda veri, pencere ilk kez boyanmadan önce gelebilir; kullanıcının içeriği gördüğü an ikisinden geç olanıdır. **Uzun görev:** renderer ana iş parçacığında 50 ms üstü görevler (Long Tasks API), ilk `sync:start` ile son `sync:done` arasında.',
   '- Oynatmada "tıklamadan oynamaya", tıklama anından, sayfanın içinden 40 ms aralıkla `mpv-get-state` okunarak yeni yayının konumunun ilk kez ilerlediği ana kadardır (önceki kanalın konumu yeni yola sızdığı için yalnızca `timePos > 0` yetmez; bkz. `createMpvProgressProbe`). Bu, mpv\'nin ilk kareyi göstermesini en çok bir örnekleme aralığı kadar geç yakalar.',
-  '- Adım sütunları tıklamaya göre uygulama içi işaretlerdir. `mpv:first-progress` uygulamanın 250 ms\'lik yoklamasıyla işaretlendiği için dış ölçümden kaba olabilir. Main taraftaki mpv adımları (süreç başlatma, boruya bağlanma, gözlemci kaydı, `loadfile`) bu pakette işaretlenemedi: `mpv-controller.ts` başka bir pakette yeniden yazılıyor. `mpv:open-call` ile `mpv:open-resolved` arası bunların toplamını verir.',
+  '- Adım sütunları tıklamaya göre uygulama içi işaretlerdir (ortanca). Renderer: `mpv:open-call` / `mpv:open-resolved` (`mpvOpen` çağrısı ve yanıtı), `mpv:first-progress` (itilen anlık görüntülerden yeni yayının ilk ilerlediği an; zaman değişimleri 200 ms\'de bir birleştirildiği için dış ölçümden kaba). Main (`src/main/mpv/session.ts`): `mpv:open` (denetleyiciye ulaştı, TLS denetiminden sonra), `mpv:spawn` / `mpv:session-ready` (süreç başlatma, boru ve gözlemciler; yalnızca mpv önceden ısıtılmamışsa), `mpv:loadfile-sent` / `-replied`, mpv\'nin kendi olayları `mpv:start-file`, `mpv:file-loaded`, `mpv:playback-restart` (ilk kare ve ses).',
   '- HLS ölçümleri Xtream kaynağıyla yapılır (uygulama canlı yayını her zaman `.m3u8` olarak açar). MPEG-TS ölçümleri aynı katalogdan `output=ts` ile üretilen M3U kaynağıyla yapılır. Canlı klip 2 sn\'lik parçalarla, yayıncı gibi gerçek zamanlı akar; TS bağlantısında ilk 1 sn\'lik veri hemen gönderilir.',
   `- Kısıtlı bağlantı: her yanıta ${THROTTLED.latencyMs} ms gecikme ve bağlantı başına ${THROTTLED.bandwidthBytesPerSec / 1024 / 1024} MB/s sınır.`,
   '',
-  '## Açılış',
-  '',
-  ...startupTable(startup),
-  '',
-  '## Oynatma açılışı',
-  '',
-  ...playbackTable(playback),
-  '',
-  `Soğuk açılışta mpv süreci yoktu; sıcak değişimde süreç ayaktaydı. Film ölçümünde mpv önceden çalışıyor muydu: ${[...new Set(playback.filter((sample) => sample.scenario.startsWith('Film')).map((sample) => (sample.mpvAlreadyRunning ? 'evet' : 'hayır')))].join(', ') || '–'} (oynatıcıdan çıkınca mpv durduruluyor).`,
-  '',
+  ...(startup.length > 0 ? ['## Açılış', '', ...startupTable(startup), ''] : []),
+  ...(playback.length > 0
+    ? [
+        '## Oynatma açılışı',
+        '',
+        ...playbackTable(playback),
+        '',
+        `Tıklama anında mpv süreci ayakta mıydı: ${mpvRunningSummary(playback)}.`,
+        ''
+      ]
+    : []),
   '## Ham veri',
   '',
   'Her turun birleşik zaman çizelgesi (main ve renderer işaretleri, uzun görevler) `e2e/.output/perf/` altına yazılır; bu dizin depoya girmez.'
 ]
 
-const outFile = args.out ?? join(REPO_ROOT, 'docs', 'olcumler', `${new Date().toISOString().slice(0, 10)}-taban.md`)
+const outFile = args.out ?? join(REPO_ROOT, 'docs', 'olcumler', `${new Date().toISOString().slice(0, 10)}-${LABEL ?? 'taban'}.md`)
 mkdirSync(join(REPO_ROOT, 'docs', 'olcumler'), { recursive: true })
 writeFileSync(outFile, report.join('\n') + '\n')
 log(`report written to ${outFile}`)

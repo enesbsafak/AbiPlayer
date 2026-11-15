@@ -62,6 +62,15 @@ export function buildMpvLaunchArgs(options: MpvLaunchOptions): string[] {
     '--demuxer-max-back-bytes=50MiB',
     '--cache=yes',
     '--cache-secs=30',
+    // Stream probing (avformat_find_stream_info) looks at no more than half a
+    // second of stream time. lavf's default (5 s) made every MPEG-TS start
+    // wait for paced live data past the panel's initial burst: measured on the
+    // synthetic provider, the TS channel switch went from about 380 ms to
+    // about 180 ms (docs/olcumler/2026-11-15-oynatma-acilisi.md). Streams are
+    // still all listed (MPEG-TS declares them in its PMT, MKV/MP4 in headers);
+    // only a stream with no packet in that half second would show without
+    // codec details, and it still plays when chosen.
+    '--demuxer-lavf-analyzeduration=0.5',
     // Verify TLS against the system store. A host the user trusted gets its
     // own options per load (loadfile file options, see src/main/tls/policy.ts),
     // so relaxing one host never relaxes another.
