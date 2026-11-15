@@ -1,4 +1,4 @@
-import { itemAt } from '../../../shared/checked'
+import { defined, itemAt } from '../../../shared/checked'
 import { describe, expect, it } from 'vitest'
 import { create } from 'zustand'
 import { createPlaylistSliceFor, selectedCategoryFor, type PlaylistSlice } from './playlist-slice'
@@ -284,7 +284,7 @@ describe('player-slice resume flag', () => {
     const store = createPlayerTestStore()
 
     store.getState().playChannel(movie)
-    store.getState().clearPendingResume()
+    store.getState().completeResume(defined(store.getState().pendingResume, 'the armed resume').playbackId)
 
     expect(store.getState().pendingResume).toBeNull()
   })

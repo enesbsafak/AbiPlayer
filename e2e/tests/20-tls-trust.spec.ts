@@ -56,7 +56,7 @@ test.describe('TLS sertifika politikası', () => {
 
     // Film through mpv: verified against a CA file holding the pin.
     await openRoute(page, '/vod')
-    await page.getByPlaceholder('Kanal ara...').fill('Kayıp Şehir')
+    await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Kayıp Şehir')
     await cardButton(page, KNOWN.film).click()
     await page.getByRole('button', { name: 'Filmi Oynat' }).click()
     await expect(page).toHaveURL(/#\/player/)
@@ -193,7 +193,7 @@ test.describe('TLS: süresi dolmuş sertifika', () => {
     await expectHomeWithContent(page)
 
     await openRoute(page, '/vod')
-    await page.getByPlaceholder('Kanal ara...').fill('Kayıp Şehir')
+    await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Kayıp Şehir')
     await cardButton(page, KNOWN.film).click()
     await page.getByRole('button', { name: 'Filmi Oynat' }).click()
     await waitForMpvProgress(page, { pathIncludes: FILM_PATH, advanceBy: 2, timeout: 45_000 })

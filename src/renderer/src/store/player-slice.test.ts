@@ -1,3 +1,4 @@
+import { defined } from '../../../shared/checked'
 import { describe, expect, it, vi } from 'vitest'
 import { create } from 'zustand'
 import { createPlayerSlice, type PlayerSlice } from './player-slice'
@@ -43,7 +44,7 @@ describe('player-slice reloadPlayback', () => {
       duration: 5400,
       currentAudioTrack: 'mpv-a:1'
     })
-    store.getState().clearPendingResume()
+    store.getState().completeResume(defined(store.getState().pendingResume, 'the armed resume').playbackId)
     const channelBefore = store.getState().currentChannel
 
     store.getState().reloadPlayback()
@@ -94,7 +95,7 @@ describe('player-slice suspendPlayback', () => {
   it('reports the item as paused, not playing, and arms the resume for a film', () => {
     const store = createPlayerTestStore()
     store.getState().playChannel(movie)
-    store.getState().clearPendingResume()
+    store.getState().completeResume(defined(store.getState().pendingResume, 'the armed resume').playbackId)
     store.getState().applyPlayerPatch({ isPlaying: true, isPaused: false, currentTime: 1800, duration: 5400 })
 
     store.getState().suspendPlayback()

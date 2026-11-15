@@ -7,8 +7,9 @@
  * rather than letting `undefined` travel on as a `T`.
  */
 
-export function defined<T>(value: T | undefined, what = 'value'): T {
-  if (value === undefined) throw new Error(`Expected ${what} to be defined`)
+/** `value`, which must be there (neither undefined nor null). */
+export function defined<T>(value: T | null | undefined, what = 'value'): T {
+  if (value === undefined || value === null) throw new Error(`Expected ${what} to be defined`)
   return value
 }
 

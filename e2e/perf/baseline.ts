@@ -276,9 +276,7 @@ async function playbackRuns(link: LinkProfile, runs: number): Promise<PlaybackSa
           if (protocol === 'HLS') {
             await returnHome(page)
             await openRoute(page, '/vod')
-            // The live category selected above leaks into this page (F1-20).
-            await page.getByRole('button', { name: 'Tüm Filmler' }).click()
-            await page.getByPlaceholder('Kanal ara...').fill('Kayıp Şehir')
+            await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill('Kayıp Şehir')
             await cardButton(page, KNOWN.film).click()
             const playButton = page.getByRole('button', { name: 'Filmi Oynat' })
             await playButton.waitFor()

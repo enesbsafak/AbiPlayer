@@ -129,10 +129,11 @@ export function perfMpvOpen(url: string): void {
 }
 
 /**
- * Feed each polled `mpv-get-state` snapshot. The main-side steps (process
+ * Feed each `mpv-state` snapshot main pushes. The main-side steps (process
  * spawn, pipe connect, observers, loadfile) cannot be marked from here; this
  * marks the first snapshot that shows the new stream advancing, which bounds
- * mpv's `playback-restart` from above by one poll interval.
+ * mpv's `playback-restart` from above by main's time-update coalescing
+ * (one snapshot per 200 ms).
  */
 export function perfMpvSnapshot(snapshot: { path: string | null; timePos: number }): void {
   if (!recorder.enabled) return

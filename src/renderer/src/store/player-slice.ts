@@ -252,7 +252,6 @@ export interface PlayerSlice {
   markResumeSeekIssued: (playbackId: PlaybackId, position: number) => void
   /** The resume for `playbackId` is done (seek carried out, or nothing to resume). */
   completeResume: (playbackId: PlaybackId) => void
-  clearPendingResume: () => void
   setPlaying: (playing: boolean) => void
   setPaused: (paused: boolean) => void
   setBuffering: (buffering: boolean) => void
@@ -519,8 +518,6 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
 
   completeResume: (playbackId) =>
     set((state) => (state.pendingResume?.playbackId === playbackId ? { pendingResume: null } : state)),
-
-  clearPendingResume: () => set({ pendingResume: null }),
 
   setPlaying: (playing) => set({ isPlaying: playing }),
   setPaused: (paused) => set({ isPaused: paused }),

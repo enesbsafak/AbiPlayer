@@ -1,3 +1,4 @@
+import { defined } from '../../../shared/checked'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { STORE_NAME, storePersistence, useStore } from '@/store'
@@ -96,7 +97,7 @@ describe('useWatchProgress', () => {
 
     // Once the resume has run, progress is recorded normally again.
     act(() => {
-      useStore.getState().clearPendingResume()
+      useStore.getState().completeResume(defined(useStore.getState().pendingResume, 'the armed resume').playbackId)
       useStore.getState().applyPlayerPatch({ currentTime: 1830 })
       vi.advanceTimersByTime(10_000)
     })

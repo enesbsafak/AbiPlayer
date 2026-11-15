@@ -1,3 +1,4 @@
+import { defined } from '../../../shared/checked'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useStore } from '@/store'
@@ -37,7 +38,7 @@ function currentPlaybackId(): string {
 function leaveFilmForMiniCard() {
   saveMovieAt(1800)
   useStore.getState().playChannel(movie)
-  useStore.getState().clearPendingResume()
+  useStore.getState().completeResume(defined(useStore.getState().pendingResume, 'the armed resume').playbackId)
   useStore.getState().suspendPlayback()
 }
 

@@ -104,7 +104,7 @@ test.describe('katalog sayfaları', () => {
     await waitForFullList(page)
 
     // One tab stop: from the search box straight into the grid.
-    await page.getByPlaceholder('Kanal ara...').click()
+    await page.getByRole('textbox', { name: 'Dizi ara', exact: true }).click()
     await page.keyboard.press('Tab')
     const names = await renderedCardNames(page, 'Diziler')
     expect(await focusedName(page)).toBe(names[0])
@@ -163,7 +163,7 @@ test.describe('katalog sayfaları', () => {
     await app.shot('full-sync-failed')
 
     const lastFilm = String(mock.catalog.vod[mock.catalog.vod.length - 1].name)
-    await page.getByPlaceholder('Kanal ara...').fill(lastFilm)
+    await page.getByRole('textbox', { name: 'Film ara', exact: true }).fill(lastFilm)
     await expect(page.getByText(/^0 sonuç/)).toBeVisible()
     await expect(cardButton(page, lastFilm)).toHaveCount(0)
 

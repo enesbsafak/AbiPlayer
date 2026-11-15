@@ -5,11 +5,12 @@ describe('defined', () => {
   it('returns a present value, falsy ones included', () => {
     expect(defined(0)).toBe(0)
     expect(defined('')).toBe('')
-    expect(defined(null)).toBeNull()
+    expect(defined(false)).toBe(false)
   })
 
-  it('throws on undefined, naming what was expected', () => {
+  it('throws on undefined and null, naming what was expected', () => {
     expect(() => defined(undefined, 'the stream id')).toThrow('Expected the stream id to be defined')
+    expect(() => defined(null)).toThrow('Expected value to be defined')
   })
 })
 
