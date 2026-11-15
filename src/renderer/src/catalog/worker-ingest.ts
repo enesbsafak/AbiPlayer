@@ -1,7 +1,6 @@
 import { catalogWorker, type CatalogWorkerClient, type JobHandlers } from '@/workers/client'
 import type { JobResult, ListMeta } from '@/workers/protocol'
 import { perfMark } from '@/services/perf'
-import { setPlaylistOffloader } from '@/services/m3u-parser'
 import type { PlaylistSource } from '@/types/playlist'
 import type { XtreamCredentials } from '@/types/xtream'
 import type { SourceIdentity } from './cache/catalog-cache'
@@ -11,7 +10,6 @@ import { cacheKeyReady } from './cache-key'
 import {
   CATALOG_TYPES,
   type CatalogCategory,
-  type CatalogItem,
   type CatalogType,
   type CommitResult,
   type GenerationToken
@@ -161,34 +159,6 @@ export async function ingestM3uText(
   if (outcome.results.live === 'committed') setSourceEpgUrls(sourceId, outcome.epgUrls)
   return outcome
 }
-
-/**
- * `fetchAndParseM3U` (the source manager's refresh, the import form) runs in
- * the worker too, and caches what it fetched. The parsed entries come back
- * as records, which the callers' `m3uPlaylistToReplacement` takes as is.
- */
-setPlaylistOffloader(async (url, sourceId) => {
-  const channels: CatalogItem[] = []
-  const categories: CatalogCategory[] = []
-  let epgUrls: string[] = []
-  await cacheKeyReady()
-  await catalogWorker().run(
-    { kind: 'm3u-url', sourceId, url, revision: defaultCatalog.getSourceRevision(sourceId), cache: true },
-    {
-      onItems: (_type, items) => {
-        for (const item of items) channels.push(item)
-      },
-      onCategories: (_type, list) => {
-        for (const category of list) categories.push(category)
-      },
-      onListEnd: (_types, _meta, urls) => {
-        epgUrls = urls
-      }
-    }
-  )
-  setSourceEpgUrls(sourceId, epgUrls)
-  return { channels, categories, epgUrls }
-})
 
 /** What the cache knows a source by, or null when it cannot be told yet (secret not loaded). */
 export function sourceIdentity(source: PlaylistSource): SourceIdentity | null {
