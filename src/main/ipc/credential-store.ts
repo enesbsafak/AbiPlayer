@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto'
 import { readFile, rename } from 'fs/promises'
 import { basename } from 'path'
 import type { SecureCredentialMap, SecureCredentialsLossNotice, SecureSourceSecret } from '../../shared/ipc/contract'
@@ -39,6 +40,23 @@ const nodeCredentialFs: CredentialStoreFs = {
 
 export { isValidCredential, isValidSourceId, isValidSourceSecret }
 
+/**
+ * Property of the stored JSON that holds the catalog cache key. Not a valid
+ * source id in practice (ids are generated), and an entry of the wrong shape
+ * for `sanitizeCredentialMap`, so older versions simply drop it.
+ */
+const CACHE_KEY_FIELD = '\u0000catalogCacheKey'
+const CACHE_KEY_BYTES = 32
+
+function isCacheKey(value: unknown): value is string {
+  return typeof value === 'string' && Buffer.from(value, 'base64').length === CACHE_KEY_BYTES
+}
+
+interface StoreContents {
+  secrets: SecureCredentialMap
+  cacheKey: string | null
+}
+
 class UnreadableStoreError extends Error {
   constructor(readonly reason: SecureCredentialsLossNotice['reason']) {
     super(reason)
@@ -75,13 +93,13 @@ export class CredentialStore {
   }
 
   getAll(): Promise<SecureCredentialMap> {
-    return this.withLock(() => this.read())
+    return this.withLock(async () => (await this.read()).secrets)
   }
 
   set(sourceId: string, credential: SecureSourceSecret): Promise<void> {
     return this.withLock(async () => {
       const store = await this.read()
-      store[sourceId] = credential
+      store.secrets[sourceId] = credential
       await this.write(store)
     })
   }
@@ -89,9 +107,24 @@ export class CredentialStore {
   delete(sourceId: string): Promise<void> {
     return this.withLock(async () => {
       const store = await this.read()
-      if (!(sourceId in store)) return
-      delete store[sourceId]
+      if (!(sourceId in store.secrets)) return
+      delete store.secrets[sourceId]
       await this.write(store)
+    })
+  }
+
+  /**
+   * The key that seals the renderer's cached M3U data (base64). Made once and
+   * kept in this encrypted file, so it is exactly as protected as the stored
+   * logins and is lost with them when the file is quarantined.
+   */
+  getCacheKey(): Promise<string> {
+    return this.withLock(async () => {
+      const store = await this.read()
+      if (store.cacheKey) return store.cacheKey
+      store.cacheKey = randomBytes(CACHE_KEY_BYTES).toString('base64')
+      await this.write(store)
+      return store.cacheKey
     })
   }
 
@@ -101,7 +134,7 @@ export class CredentialStore {
     }
   }
 
-  private async read(): Promise<SecureCredentialMap> {
+  private async read(): Promise<StoreContents> {
     this.ensureAvailable()
 
     let encryptedBase64: string
@@ -111,22 +144,22 @@ export class CredentialStore {
       // Only a missing file means "no credentials". Other I/O errors (a lock
       // held by an antivirus scan, say) are transient and must not cost the
       // user their stored logins.
-      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return {}
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return { secrets: {}, cacheKey: null }
       throw error
     }
 
-    if (encryptedBase64.trim().length === 0) return {}
+    if (encryptedBase64.trim().length === 0) return { secrets: {}, cacheKey: null }
 
     try {
       return this.decode(encryptedBase64)
     } catch (error) {
       if (!(error instanceof UnreadableStoreError)) throw error
       await this.quarantine(error.reason)
-      return {}
+      return { secrets: {}, cacheKey: null }
     }
   }
 
-  private decode(encryptedBase64: string): SecureCredentialMap {
+  private decode(encryptedBase64: string): StoreContents {
     const encrypted = Buffer.from(encryptedBase64, 'base64')
     if (encrypted.length === 0) throw new UnreadableStoreError('corrupt')
 
@@ -147,7 +180,8 @@ export class CredentialStore {
       throw new UnreadableStoreError('corrupt')
     }
 
-    return sanitizeCredentialMap(parsed)
+    const cacheKey = (parsed as Record<string, unknown>)[CACHE_KEY_FIELD]
+    return { secrets: sanitizeCredentialMap(parsed), cacheKey: isCacheKey(cacheKey) ? cacheKey : null }
   }
 
   private async quarantine(reason: SecureCredentialsLossNotice['reason']): Promise<void> {
@@ -168,9 +202,11 @@ export class CredentialStore {
     this.options.onLoss?.({ ...this.lossNotice })
   }
 
-  private async write(store: SecureCredentialMap): Promise<void> {
+  private async write(store: StoreContents): Promise<void> {
     this.ensureAvailable()
-    const encrypted = this.options.safeStorage.encryptString(JSON.stringify(store)).toString('base64')
+    const payload: Record<string, unknown> = { ...store.secrets }
+    if (store.cacheKey) payload[CACHE_KEY_FIELD] = store.cacheKey
+    const encrypted = this.options.safeStorage.encryptString(JSON.stringify(payload)).toString('base64')
     await writeFileAtomic(this.options.filePath, encrypted, this.fs)
   }
 

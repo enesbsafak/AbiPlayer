@@ -15,14 +15,18 @@ export interface EPGChannel {
   icon?: string
 }
 
+/** Why a guide is incomplete: the download ended mid-document, or it had more channels or programmes than are kept. */
+export type EPGTruncation = 'cut-off' | 'limit'
+
 export interface EPGData {
   channels: Record<string, EPGChannel>
   programs: Record<string, EPGProgram[]>
   lastUpdated: number
   /**
-   * True when the download hit the size limit and only the part before the
-   * cut was parsed. Channels and programmes past that point are missing, so
-   * the UI should say the guide is incomplete.
+   * True when only part of the guide could be read (see `truncatedReason`).
+   * Channels and programmes past that point are missing, so the UI says the
+   * guide is incomplete.
    */
   truncated?: boolean
+  truncatedReason?: EPGTruncation
 }

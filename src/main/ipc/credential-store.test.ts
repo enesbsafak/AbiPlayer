@@ -141,6 +141,39 @@ describe('CredentialStore', () => {
   })
 })
 
+describe('catalog cache key (C2c)', () => {
+  it('is made once, kept encrypted next to the logins, and never listed as a source', async () => {
+    const store = new CredentialStore({ filePath, safeStorage: fakeSafeStorage })
+    await store.set('src-1', CRED)
+    const key = await store.getCacheKey()
+    expect(Buffer.from(key, 'base64')).toHaveLength(32)
+
+    const reopened = new CredentialStore({ filePath, safeStorage: fakeSafeStorage })
+    expect(await reopened.getCacheKey()).toBe(key)
+    expect(await reopened.getAll()).toEqual({ 'src-1': CRED })
+    await reopened.delete('src-1')
+    await reopened.set('src-2', CRED)
+    expect(await new CredentialStore({ filePath, safeStorage: fakeSafeStorage }).getCacheKey()).toBe(key)
+    expect(await readFile(filePath, 'utf-8')).not.toContain(key)
+  })
+
+  it('is lost with the logins when the file cannot be read, so the old cache becomes unreadable', async () => {
+    const store = new CredentialStore({ filePath, safeStorage: fakeSafeStorage })
+    const key = await store.getCacheKey()
+    await writeFile(filePath, Buffer.from('not ours').toString('base64'), 'utf-8')
+
+    const after = new CredentialStore({ filePath, safeStorage: fakeSafeStorage })
+    const next = await after.getCacheKey()
+    expect(next).not.toBe(key)
+    expect(after.getLossNotice()).toMatchObject({ reason: 'decrypt-failed' })
+  })
+
+  it('is not handed out when secure storage is unavailable', async () => {
+    const store = new CredentialStore({ filePath, safeStorage: { ...fakeSafeStorage, isEncryptionAvailable: () => false } })
+    await expect(store.getCacheKey()).rejects.toThrow('Güvenli kimlik bilgisi saklama')
+  })
+})
+
 describe('writeFileAtomic', () => {
   it('leaves the previous file intact and no temp file behind when the write fails', async () => {
     await writeFile(filePath, 'previous', 'utf-8')

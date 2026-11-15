@@ -355,6 +355,17 @@ describe('xtream-api request layer', () => {
     expect(error.message).toBe('Sunucuya bağlanılamadı. İnternet bağlantısını ve sunucu adresini kontrol edin.')
   })
 
+  it('names the host of a failed request, so a refused certificate can be recognised (C2c)', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))))
+    const creds = { url: `https://Panel-${testSeq + 1}.Example:8443/`, username: 'u', password: 'p' }
+    testSeq += 1
+
+    const error = await captureError(xtreamApi.getLiveStreams(creds, undefined, { maxRetries: 0 }))
+
+    expect(error.host).toBe(`panel-${testSeq}.example`)
+    expect(error.message).not.toContain('Panel')
+  })
+
   it('turns a non-JSON body into a bad-response error with a Turkish message', async () => {
     const creds = uniqueCreds()
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('<html>Bakım</html>', { status: 200 }))))

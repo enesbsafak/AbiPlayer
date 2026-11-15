@@ -74,6 +74,15 @@ export interface CatalogCommit {
   items?: readonly CatalogItem[]
   categories?: readonly CatalogCategory[]
   categoryId?: string
+  /** `replace` only: where the complete list comes from (see `CatalogStatus.fromCache`). */
+  origin?: CatalogListOrigin
+}
+
+/** Where a complete list came from: the provider in this session, or the on-disk cache, and when it was fetched. */
+export interface CatalogListOrigin {
+  fromCache: boolean
+  /** When the provider sent the list (epoch ms). */
+  fetchedAt: number
 }
 
 /** What `commit` did. `stale`: the source was removed or refreshed; `superseded`: a newer list won. */
@@ -88,6 +97,8 @@ export interface CatalogSyncError {
   /** A retry may well succeed (network, timeout, 408/429/5xx). */
   retryable: boolean
   status?: number
+  /** Host of the request that failed (lower case), when the failure came from a request. */
+  host?: string
 }
 
 /** Small per-(source, type) status. Mirrored into the zustand store as `catalogStatus`. */
@@ -108,6 +119,13 @@ export interface CatalogStatus {
   syncing: boolean
   /** The last sync failed; cleared when a sync starts or succeeds. */
   error: CatalogSyncError | null
+  /**
+   * The complete list held was read from the on-disk cache and has not been
+   * replaced by the provider's list in this session yet. Absent means false.
+   */
+  fromCache?: boolean
+  /** When the complete list held was fetched from the provider (epoch ms); absent or null before the first one. */
+  fetchedAt?: number | null
 }
 
 /** The user's catalog preferences the view applies. */

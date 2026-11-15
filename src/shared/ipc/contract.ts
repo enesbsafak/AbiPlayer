@@ -28,10 +28,12 @@ export interface PickedFile {
 
 /**
  * Files read for the renderer (playlists, subtitles) are capped at this size.
- * Not below what the playlist parser accepts from a URL (128 MB), so a list
- * that imports from the web also imports from disk.
+ * The playlist parser itself has no limit any more (it streams in the
+ * catalog worker), but a local file still reaches the renderer as one string
+ * over IPC, and V8 caps a string at about 512 M characters; 256 MB keeps a
+ * wide margin below that for any encoding.
  */
-export const MAX_LOCAL_FILE_SIZE_BYTES = 128 * 1024 * 1024
+export const MAX_LOCAL_FILE_SIZE_BYTES = 256 * 1024 * 1024
 
 /**
  * The playlist URL of an `m3u_url` source. Such URLs usually carry the account
@@ -159,6 +161,12 @@ export interface IpcInvokeContract {
   'secure-credentials-set': Invoke<[sourceId: string, credential: SecureSourceSecret], void>
   'secure-credentials-delete': Invoke<[sourceId: string], void>
   'secure-credentials-get-loss': Invoke<[], SecureCredentialsLossNotice | null>
+  /**
+   * The key that seals cached M3U data (base64, 32 bytes), created on first
+   * use and kept in the encrypted credential file. A new key after the file
+   * was lost makes the old cache unreadable, which is the point.
+   */
+  'secure-credentials-get-cache-key': Invoke<[], string>
 
   'embedded-subtitles-probe': Invoke<
     [streamUrl: string, options?: MediaJobOptions],

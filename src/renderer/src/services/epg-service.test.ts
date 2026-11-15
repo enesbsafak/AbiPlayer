@@ -1,12 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  closeTruncatedXmltv,
-  decodeXmlEntities,
-  fetchAndParseEPG,
-  normalizeEpgChannelKey,
-  parseEPGXml,
-  pickLocalizedText
-} from './epg-service'
+import { decodeXmlEntities, normalizeEpgChannelKey, pickLocalizedText } from './epg-service'
+import { createXmltvParser, fetchAndParseEPG, parseEPGXml } from './xmltv-parser'
 
 describe('normalizeEpgChannelKey', () => {
   it('lowercases ASCII channel ids consistently', () => {
@@ -198,60 +192,133 @@ describe('pickLocalizedText', () => {
   })
 })
 
-describe('truncated XMLTV', () => {
-  it('closes a document cut off mid-programme at the last complete element', () => {
-    const cut = `<?xml version="1.0"?><tv><channel id="a"><display-name>A</display-name></channel><programme channel="a" start="1" stop="2"><title>Bir</title></programme><programme channel="a" start="2" stop="3"><title>Ya`
-    expect(closeTruncatedXmltv(cut)).toBe(
-      `<?xml version="1.0"?><tv><channel id="a"><display-name>A</display-name></channel><programme channel="a" start="1" stop="2"><title>Bir</title></programme>\n</tv>`
-    )
-    expect(closeTruncatedXmltv('<tv><channel id="a"><display-name>A</display-name></channel><chan')).toBe(
-      '<tv><channel id="a"><display-name>A</display-name></channel>\n</tv>'
-    )
-    expect(closeTruncatedXmltv('<tv><chan')).toBe('<tv></tv>')
+
+const pad = (n: number) => String(n).padStart(2, '0')
+const xmltvTime = (ms: number) => {
+  const d = new Date(ms)
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00 +0000`
+}
+const HOUR = 3600_000
+const NOW = Date.UTC(2026, 10, 15, 12, 0, 0)
+const WINDOW = { windowStart: NOW - 2 * HOUR, windowEnd: NOW + 24 * HOUR }
+const programme = (channel: string, startMs: number, title: string) =>
+  `<programme channel="${channel}" start="${xmltvTime(startMs)}" stop="${xmltvTime(startMs + HOUR)}"><title lang="tr">${title}</title></programme>`
+
+function streamOf(parts: Array<string | Uint8Array>): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  let index = 0
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (index >= parts.length) {
+        controller.close()
+        return
+      }
+      const part = parts[index++]
+      controller.enqueue(typeof part === 'string' ? encoder.encode(part) : part)
+    }
+  })
+}
+
+describe('streaming XMLTV parser', () => {
+  const doc = `<?xml version="1.0"?><!DOCTYPE tv SYSTEM "xmltv.dtd"><tv>
+  <channel id="Kanal.TR"><display-name lang="en">Channel</display-name><display-name lang="tr">Kanal &amp; Bir</display-name><icon src="http://img/k.png"/></channel>
+  <!-- a comment with <programme> inside -->
+  ${programme('kanal.tr', NOW - HOUR, 'Önce')}
+  ${programme('kanal.tr', NOW, 'Şimdi &lt;canlı&gt;')}
+  <programme channel="kanal.tr" start="${xmltvTime(NOW + HOUR)}" stop="${xmltvTime(NOW + 2 * HOUR)}"><title><![CDATA[Tom & Jerry <özel>]]></title><desc lang="tr">Açıklama</desc></programme>
+</tv>`
+
+  it('gives the same guide however the text is split', () => {
+    const whole = createXmltvParser(WINDOW)
+    whole.feed(doc)
+    const expected = whole.end()
+
+    for (const size of [1, 2, 7, 64]) {
+      const parser = createXmltvParser(WINDOW)
+      for (let i = 0; i < doc.length; i += size) parser.feed(doc.slice(i, i + size))
+      const result = parser.end()
+      expect(result).toEqual(expected)
+    }
+    expect(expected.truncated).toBeNull()
+    expect(expected.channels['kanal.tr']).toEqual({ id: 'Kanal.TR', displayName: 'Kanal & Bir', icon: 'http://img/k.png' })
+    expect(expected.programs['kanal.tr'].map((p) => p.title)).toEqual(['Önce', 'Şimdi <canlı>', 'Tom & Jerry <özel>'])
+    expect(expected.programs['kanal.tr'][2].description).toBe('Açıklama')
   })
 
-  it('marks a download that hit the size limit as truncated', async () => {
-    const now = new Date()
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const fmt = (d: Date) =>
-      `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00 +0000`
-    const start = fmt(now)
-    const stop = fmt(new Date(now.getTime() + 3600_000))
-    const programme = `<programme channel="kanal" start="${start}" stop="${stop}"><title>Program</title></programme>\n`
-    const encoder = new TextEncoder()
-    // closeTruncatedXmltv drops everything after the last complete programme, so
-    // only the programmes before the cut are ever parsed. The rest of the 50 MB
-    // limit is filled with an unfinished programme: the size-limit path is
-    // exercised without the test's CPU time (and its timeout) depending on load.
-    const head = encoder.encode(
-      `<?xml version="1.0"?>\n<tv>\n${programme.repeat(50)}<programme channel="kanal"><title>`
+  it('drops programmes outside the time window while parsing', () => {
+    const parser = createXmltvParser(WINDOW)
+    parser.feed(`<tv>${programme('a', NOW - 5 * HOUR, 'Eski')}${programme('a', NOW, 'Şimdi')}${programme('a', NOW + 30 * HOUR, 'Uzak')}</tv>`)
+    expect(parser.end().programs['a'].map((p) => p.title)).toEqual(['Şimdi'])
+  })
+
+  it('keeps only the channels asked for', () => {
+    const parser = createXmltvParser({ ...WINDOW, channelKeys: new Set(['b']) })
+    parser.feed(`<tv><channel id="a"><display-name>A</display-name></channel><channel id="B"><display-name>B</display-name></channel>${programme('a', NOW, 'x')}${programme('B', NOW, 'y')}</tv>`)
+    const result = parser.end()
+    expect(Object.keys(result.channels)).toEqual(['b'])
+    expect(Object.keys(result.programs)).toEqual(['b'])
+  })
+
+  it('never expands DOCTYPE entities', () => {
+    const parser = createXmltvParser(WINDOW)
+    parser.feed(`<!DOCTYPE tv [<!ENTITY boom "PATLADI"><!ENTITY big "&boom;&boom;&boom;">]><tv>${programme('a', NOW, '&big; &amp;')}</tv>`)
+    expect(parser.end().programs['a'][0].title).toBe('&big; &')
+  })
+
+  it('survives malformed markup and keeps what is well formed after it', () => {
+    const broken = `<tv><programme channel="a" start="${xmltvTime(NOW)}" stop="x><title>yarım` + ' kayıp'.repeat(400_000) + `</tv>`
+    const parser = createXmltvParser(WINDOW)
+    for (let i = 0; i < broken.length; i += 65_536) parser.feed(broken.slice(i, i + 65_536))
+    parser.feed(`<tv>${programme('b', NOW, 'Sağlam')}</tv>`)
+    expect(() => parser.end()).not.toThrow()
+
+    const garbage = createXmltvParser(WINDOW)
+    garbage.feed('<<<>>> &&& </nope> <tv attr=>< /tv>')
+    expect(garbage.end().programs).toEqual({})
+  })
+
+  it('reports a document cut off mid-programme and keeps the complete ones', () => {
+    const parser = createXmltvParser(WINDOW)
+    parser.feed(`<tv>${programme('a', NOW, 'Bir')}${programme('a', NOW + HOUR, 'İki')}<programme channel="a" start="${xmltvTime(NOW + 2 * HOUR)}"><title>Ya`)
+    const result = parser.end()
+    expect(result.truncated).toBe('cut-off')
+    expect(result.programs['a'].map((p) => p.title)).toEqual(['Bir', 'İki'])
+  })
+
+  it('reports a guide with more channels than are kept', () => {
+    const parser = createXmltvParser({ ...WINDOW, maxChannels: 2 })
+    parser.feed(`<tv>${programme('a', NOW, '1')}${programme('b', NOW, '2')}${programme('c', NOW, '3')}</tv>`)
+    const result = parser.end()
+    expect(result.truncated).toBe('limit')
+    expect(Object.keys(result.programs)).toEqual(['a', 'b'])
+  })
+
+  it('parses a guide far past the old 50 MB cut-off in full, without holding the text', async () => {
+    // 60 MB of programmes outside the window, then one inside it at the very end.
+    const old = programme('eski', NOW - 48 * HOUR, 'Geçmiş') + '\n'
+    const block = new TextEncoder().encode(old.repeat(Math.ceil((4 * 1024 * 1024) / old.length)))
+    const parts: Array<string | Uint8Array> = ['<?xml version="1.0"?><tv>']
+    for (let sent = 0; sent < 60 * 1024 * 1024; sent += block.length) parts.push(block)
+    parts.push(programme('son', NOW, 'Sonda'), '</tv>')
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(streamOf(parts), { status: 200 }))))
+
+    const data = await fetchAndParseEPG('https://epg.example/xmltv.php', { window: WINDOW })
+
+    expect(data.truncated).toBeUndefined()
+    expect(data.programs['son'].map((p) => p.title)).toEqual(['Sonda'])
+    expect(data.programs['eski']).toBeUndefined()
+    vi.unstubAllGlobals()
+  })
+
+  it('marks a download that ends mid-document as incomplete', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(streamOf([`<tv>${programme('kanal', NOW, 'Program')}<programme channel="kanal"><title>`]), { status: 200 })))
     )
-    const block = new Uint8Array(4 * 1024 * 1024).fill(0x78)
-    const limit = 50 * 1024 * 1024
-    let sent = 0
-    let headSent = false
-    const body = new ReadableStream<Uint8Array>({
-      pull(controller) {
-        if (!headSent) {
-          headSent = true
-          controller.enqueue(head)
-          return
-        }
-        if (sent > limit + block.length) {
-          // The server never gets to send </tv>: the reader cancels first.
-          controller.close()
-          return
-        }
-        controller.enqueue(block)
-        sent += block.length
-      }
-    })
-    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(body, { status: 200 }))))
-
-    const data = await fetchAndParseEPG('https://epg.example/xmltv.php')
-
+    const data = await fetchAndParseEPG('https://epg.example/xmltv.php', { window: WINDOW })
     expect(data.truncated).toBe(true)
-    expect(data.programs['kanal'].length).toBeGreaterThan(0)
+    expect(data.truncatedReason).toBe('cut-off')
+    expect(data.programs['kanal']).toHaveLength(1)
     vi.unstubAllGlobals()
   })
 
@@ -262,6 +329,12 @@ describe('truncated XMLTV', () => {
     )
     const data = await fetchAndParseEPG('https://epg.example/xmltv.php')
     expect(data.truncated).toBeUndefined()
+    vi.unstubAllGlobals()
+  })
+
+  it('carries the host on a failed download', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))))
+    await expect(fetchAndParseEPG('https://Epg.Example:8443/xmltv.php')).rejects.toMatchObject({ kind: 'network', host: 'epg.example' })
     vi.unstubAllGlobals()
   })
 })

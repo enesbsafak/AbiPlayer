@@ -5,6 +5,7 @@ import { ensureStagedSync } from '@/services/background-sync'
 import { classifyError, toUserMessage } from '@/services/user-error'
 import { perfMark } from '@/services/perf'
 import { catalog as defaultCatalog, type CatalogStore } from '@/catalog/catalog-store'
+import { useCatalogCacheSettled } from '@/catalog/cache-lifecycle'
 import {
   xtreamCategoriesToRecords,
   xtreamLiveToRecords,
@@ -39,6 +40,30 @@ export function sourceHasCatalog(status: CatalogStatusMap, sourceId: string | nu
 export function sourceCatalogComplete(status: CatalogStatusMap, sourceId: string | null): boolean {
   if (!sourceId) return false
   return CATALOG_TYPES.every((type) => status[sourceId]?.[type]?.complete === true)
+}
+
+/**
+ * When the cached copy the source shows was fetched, while the provider
+ * cannot be reached (its refresh failed, or the source failed to connect);
+ * null when there is nothing to say.
+ */
+export function offlineCopySince(status: CatalogStatusMap, sourceId: string | null, connectionFailed: boolean): number | null {
+  if (!sourceId) return null
+  let since: number | null = null
+  let refreshFailed = false
+  for (const type of CATALOG_TYPES) {
+    const entry = status[sourceId]?.[type]
+    if (!entry?.fromCache || !entry.fetchedAt) continue
+    since = since === null ? entry.fetchedAt : Math.min(since, entry.fetchedAt)
+    if (entry.error) refreshFailed = true
+  }
+  return since !== null && (refreshFailed || connectionFailed) ? since : null
+}
+
+/** The home page's notice for a provider that is down while a cached copy is shown. */
+export function offlineCopyMessage(since: number): string {
+  const when = new Date(since).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })
+  return `Kaynağa bağlanılamadı: çevrimdışı kopya gösteriliyor (${when} tarihinde güncellendi). Bağlantı otomatik olarak yeniden denenecek.`
 }
 
 /** Requests the bootstrap makes; injectable for tests. */
@@ -282,6 +307,11 @@ export function useHomeBootstrap(): HomeBootstrap {
   const credsKey = useStore((s) => (s.activeSourceId ? credentialsKey(s.getXtreamCredentials(s.activeSourceId)) : null))
   const isSourceComplete = useStore((s) => sourceCatalogComplete(s.catalogStatus, activeSourceId))
   const isAuthed = useStore((s) => !!(activeSourceId && s.xtreamAuth[activeSourceId]))
+  // The cached catalog is read first; a preview it is about to supply is not requested.
+  const cacheSettled = useCatalogCacheSettled(activeSourceId)
+  const offlineSince = useStore((s) =>
+    offlineCopySince(s.catalogStatus, activeSourceId, !!(activeSourceId && s.sourceErrors[activeSourceId]))
+  )
   const setPlaylistLoading = useStore((s) => s.setPlaylistLoading)
   const replaceSourceCatalog = useStore((s) => s.replaceSourceCatalog)
   const requestSourceReconnect = useStore((s) => s.requestSourceReconnect)
@@ -307,7 +337,7 @@ export function useHomeBootstrap(): HomeBootstrap {
       dispatch({ kind: 'reset' })
       setPlaylistLoading(false)
     }
-    if (!key || !activeSourceId || isSourceComplete) return
+    if (!key || !activeSourceId || isSourceComplete || !cacheSettled) return
     const sourceId = activeSourceId
 
     const creds = useStore.getState().getXtreamCredentials(sourceId)
@@ -349,7 +379,19 @@ export function useHomeBootstrap(): HomeBootstrap {
       // going when the page is left.
       if (isCurrent() && !summary.allFailed && !summary.cancelled) void ensureStagedSync(sourceId, 'live', creds)
     })()
-  }, [activeSourceId, sourceType, credsKey, isSourceComplete, isAuthed, reloadToken, setPlaylistLoading])
+  }, [activeSourceId, sourceType, credsKey, isSourceComplete, isAuthed, reloadToken, cacheSettled, setPlaylistLoading])
+
+  // A cached copy whose refresh failed (the provider was down at start) is
+  // refreshed again once the sign-in gets through.
+  useEffect(() => {
+    if (!isAuthed || !activeSourceId) return
+    const failed = CATALOG_TYPES.some((type) => {
+      const status = defaultCatalog.getStatus(activeSourceId, type)
+      return status?.fromCache && status.error && !status.syncing
+    })
+    const creds = useStore.getState().getXtreamCredentials(activeSourceId)
+    if (failed && creds) void ensureStagedSync(activeSourceId, 'live', creds)
+  }, [isAuthed, activeSourceId])
 
   // `isLoadingPlaylist` lives in the global store, so it must be released when
   // the page goes away mid-run; otherwise it pins the loader on later visits.
@@ -380,7 +422,7 @@ export function useHomeBootstrap(): HomeBootstrap {
 
   return {
     error: state.error,
-    partialError: state.partialError,
+    partialError: state.partialError ?? (offlineSince !== null ? offlineCopyMessage(offlineSince) : null),
     isBootstrapping: state.running,
     stage: bootstrapStageOf(state.phases, state.running),
     loadingTypes,

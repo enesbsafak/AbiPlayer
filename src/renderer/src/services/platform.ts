@@ -56,6 +56,20 @@ export async function readPickedFile(filePath: string): Promise<PickedFile | nul
 }
 
 /**
+ * The key that seals cached M3U data, raw bytes, held in memory only (main
+ * keeps it in the OS-protected credential file). Null outside Electron;
+ * rejects when secure storage is unavailable.
+ */
+export async function getCatalogCacheKey(): Promise<ArrayBuffer | null> {
+  if (!isElectron() || !window.electron?.getCatalogCacheKey) return null
+  const base64 = await window.electron.getCatalogCacheKey()
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes.buffer
+}
+
+/**
  * Starting a probe or an extraction cancels the previous one this window
  * started; the cancelled call rejects with an error that
  * `isMediaJobCancelledError` recognises.

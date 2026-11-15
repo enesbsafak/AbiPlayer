@@ -1,6 +1,6 @@
 import type { Channel, Category } from '@/types/playlist'
 import { isAdultLabel } from './adult-content'
-import { perfMark } from './perf'
+import { requestHost } from './xtream-errors'
 
 // Startup blocks on this: a 2-minute ceiling meant one unreachable playlist URL
 // pinned the "Kaynaklar bağlanıyor..." screen for two minutes with no feedback.
@@ -8,11 +8,8 @@ import { perfMark } from './perf'
 // it needs, but must not stall for more than 30 s.
 const M3U_HEADERS_TIMEOUT_MS = 30_000
 const M3U_BODY_IDLE_TIMEOUT_MS = 30_000
-// Real playlists with 100k+ entries run past 20 MB. Until parsing moves to a
-// worker (F4-04) the whole text still has to fit in renderer memory, so the
-// cap stays, just far above real lists.
-const MAX_M3U_SIZE_BYTES = 128 * 1024 * 1024
-const MAX_M3U_SIZE_LABEL = '128 MB'
+// No size limit: the text is parsed line by line as it arrives (in the
+// catalog worker), so no whole-playlist string is ever built.
 const VOD_EXTENSIONS = new Set(['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv'])
 
 type ContentType = 'live' | 'vod' | 'series'
@@ -146,22 +143,51 @@ function detectChannelType(url: string): ContentType {
   return 'live'
 }
 
+
+export interface ParsedPlaylist {
+  channels: Channel[]
+  categories: Category[]
+  /**
+   * Guide URLs from the `#EXTM3U` header (`url-tvg`, `x-tvg-url`), http(s)
+   * only. They often carry the account's credentials, like the entry URLs.
+   */
+  epgUrls: string[]
+}
+
+const HEADER_EPG_ATTRIBUTES = [attributePatterns('url-tvg'), attributePatterns('x-tvg-url')]
+
+/** `url-tvg` / `x-tvg-url` of an `#EXTM3U` line; either may list several URLs separated by commas. */
+export function parseHeaderEpgUrls(line: string): string[] {
+  const urls: string[] = []
+  for (const patterns of HEADER_EPG_ATTRIBUTES) {
+    const value = extractAttribute(line, patterns)
+    for (const part of value.split(',')) {
+      const url = part.trim()
+      if (/^https?:\/\/\S+$/i.test(url) && !urls.includes(url)) urls.push(url)
+    }
+  }
+  return urls
+}
+
 /**
- * Parse M3U/M3U8 playlist text. Pure and synchronous (no DOM, no fetch), so
- * it can run unchanged inside a worker.
+ * Incremental M3U/M3U8 parser: `feed` takes text in pieces of any size (a
+ * line may span two pieces), `end` returns the result. Pure and synchronous
+ * (no DOM, no fetch): runs in the catalog worker.
  *
  * Channel ids hash the stream URL. When the same URL appears more than once
  * (one stream listed in two groups), the first entry keeps the plain hash id
  * so existing favorites and history stay valid, and each later one gets a
  * deterministic `_<n>` suffix (n = 2, 3, ...) in playlist order.
  */
-export function parseM3U(content: string, sourceId: string): { channels: Channel[]; categories: Category[] } {
-  perfMark('m3u:parse-start', { chars: content.length })
+export function createM3uParser(sourceId: string): { feed(text: string): void; end(): ParsedPlaylist } {
   const channels: Channel[] = []
   const groupStats = new Map<string, GroupStats>()
   const idCounts = new Map<string, number>()
+  const epgUrls: string[] = []
   let current: ExtInf | null = null
   let pendingGroup: string | null = null
+  let carry = ''
+  let sawHeader = false
 
   const addChannel = (meta: ExtInf, url: string): void => {
     const baseId = stableChannelId(sourceId, url)
@@ -200,26 +226,23 @@ export function parseM3U(content: string, sourceId: string): { channels: Channel
     })
   }
 
-  // Walk the text line by line with indexOf instead of split(): no array of
-  // every line is ever built.
-  const length = content.length
-  let pos = 0
-  while (pos < length) {
-    let lineEnd = content.indexOf('\n', pos)
-    if (lineEnd === -1) lineEnd = length
+  const handleLine = (raw: string): void => {
     // trim() also drops '\r' and a leading BOM.
-    const line = content.slice(pos, lineEnd).trim()
-    pos = lineEnd + 1
-
-    if (!line) continue
+    const line = raw.trim()
+    if (!line) return
 
     if (line.startsWith('#EXTINF:')) {
       current = parseExtInf(line)
     } else if (line.startsWith('#EXTGRP:')) {
       // #EXTGRP provides the group name as an alternative to group-title.
       pendingGroup = line.substring(8).trim()
+    } else if (line.startsWith('#EXTM3U')) {
+      if (!sawHeader) {
+        sawHeader = true
+        for (const url of parseHeaderEpgUrls(line)) epgUrls.push(url)
+      }
     } else if (line.startsWith('#')) {
-      continue
+      return
     } else if (current) {
       if (!current.group && pendingGroup) current.group = pendingGroup
       addChannel(current, line)
@@ -232,102 +255,212 @@ export function parseM3U(content: string, sourceId: string): { channels: Channel
     }
   }
 
-  const categories: Category[] = []
-  const groupInfo = new Map<string, { id: string; type: ContentType; adult: boolean }>()
-  for (const [groupName, stats] of groupStats) {
-    const info = {
-      id: stableGroupId(sourceId, groupName),
-      type: detectCategoryType(groupName, stats),
-      // M3U has no adult flag of its own, so it is resolved from the labels
-      // here, once, instead of on the sort path.
-      adult: isAdultLabel(groupName)
+  return {
+    feed(text) {
+      // Walk with indexOf instead of split(): no array of every line is built,
+      // and only the unfinished last line is kept for the next piece.
+      const content = carry ? carry + text : text
+      let pos = 0
+      for (;;) {
+        const lineEnd = content.indexOf('\n', pos)
+        if (lineEnd === -1) break
+        handleLine(content.slice(pos, lineEnd))
+        pos = lineEnd + 1
+      }
+      carry = content.slice(pos)
+    },
+
+    end() {
+      if (carry) handleLine(carry)
+      carry = ''
+
+      const categories: Category[] = []
+      const groupInfo = new Map<string, { id: string; type: ContentType; adult: boolean }>()
+      for (const [groupName, stats] of groupStats) {
+        const info = {
+          id: stableGroupId(sourceId, groupName),
+          type: detectCategoryType(groupName, stats),
+          // M3U has no adult flag of its own, so it is resolved from the labels
+          // here, once, instead of on the sort path.
+          adult: isAdultLabel(groupName)
+        }
+        groupInfo.set(groupName, info)
+        categories.push({ id: info.id, name: groupName, sourceId, type: info.type })
+      }
+
+      for (const channel of channels) {
+        if (!channel.group) continue
+        const info = groupInfo.get(channel.group)
+        if (!info) continue
+        channel.categoryId = info.id
+        channel.type = info.type
+        if (info.adult) channel.isAdult = true
+      }
+
+      return { channels, categories, epgUrls }
     }
-    groupInfo.set(groupName, info)
-    categories.push({ id: info.id, name: groupName, sourceId, type: info.type })
   }
-
-  for (const channel of channels) {
-    if (!channel.group) continue
-    const info = groupInfo.get(channel.group)
-    if (!info) continue
-    channel.categoryId = info.id
-    channel.type = info.type
-    if (info.adult) channel.isAdult = true
-  }
-
-  perfMark('m3u:parse-done', { channels: channels.length })
-  return { channels, categories }
 }
 
-function playlistTooLargeError(): Error {
-  return new Error(`Liste boyutu çok büyük (en fazla ${MAX_M3U_SIZE_LABEL})`)
+/** Parse M3U/M3U8 playlist text in one go. See `createM3uParser`. */
+export function parseM3U(content: string, sourceId: string): ParsedPlaylist {
+  const parser = createM3uParser(sourceId)
+  parser.feed(content)
+  return parser.end()
 }
 
-async function readResponseTextWithLimit(
-  response: Response,
-  maxSizeBytes: number,
-  onProgress: () => void
-): Promise<string> {
-  const reader = response.body?.getReader()
-  if (!reader) {
-    const text = await response.text()
-    if (text.length > maxSizeBytes) throw playlistTooLargeError()
-    return text
+export type PlaylistErrorKind = 'network' | 'timeout' | 'http' | 'aborted' | 'bad-response' | 'certificate'
+
+/**
+ * A failed playlist (or guide) download. `kind` is what the user-error mapper
+ * reads; `host` lets a network failure be matched against a certificate main
+ * refused. The message is Turkish and never holds the URL.
+ */
+export class PlaylistRequestError extends Error {
+  readonly kind: PlaylistErrorKind
+  readonly status?: number
+  readonly host?: string
+
+  constructor(kind: PlaylistErrorKind, message: string, options: { status?: number; host?: string; cause?: unknown } = {}) {
+    super(message, options.cause === undefined ? undefined : { cause: options.cause })
+    this.name = 'PlaylistRequestError'
+    this.kind = kind
+    if (options.status !== undefined) this.status = options.status
+    if (options.host) this.host = options.host
   }
-
-  const streamReader = reader
-  const decoder = new TextDecoder()
-  const parts: string[] = []
-  async function readNext(totalSize: number): Promise<void> {
-    const { done, value } = await streamReader.read()
-    if (done) return
-    onProgress()
-
-    const nextSize = totalSize + value.length
-    if (nextSize > maxSizeBytes) {
-      await streamReader.cancel()
-      throw playlistTooLargeError()
-    }
-    parts.push(decoder.decode(value, { stream: true }))
-    await readNext(nextSize)
-  }
-
-  await readNext(0)
-  parts.push(decoder.decode())
-  return parts.join('')
 }
 
-export async function fetchAndParseM3U(url: string, sourceId: string): Promise<ReturnType<typeof parseM3U>> {
-  const parsedUrl = new URL(url)
-  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-    throw new Error('Yalnızca HTTP/HTTPS oynatma listesi adresleri destekleniyor')
-  }
+export interface StreamTextOptions {
+  signal?: AbortSignal
+  headersTimeoutMs?: number
+  bodyIdleTimeoutMs?: number
+  /** Total bytes received so far, after every piece. */
+  onProgress?: (bytes: number) => void
+  /** Message for a non-2xx answer. */
+  httpMessage: (status: number) => string
+  timeoutMessage: string
+}
 
+/**
+ * Downloads a text body and hands it on piece by piece, decoded, without ever
+ * holding all of it: headers within `headersTimeoutMs`, then the body may
+ * take as long as it needs but must not stall longer than `bodyIdleTimeoutMs`.
+ */
+export async function streamText(url: string, onText: (text: string) => void, options: StreamTextOptions): Promise<void> {
+  const host = requestHost(url)
   const controller = new AbortController()
   let timedOut = false
+  const signal = options.signal
+
+  const failure = (error: unknown): Error => {
+    if (error instanceof PlaylistRequestError) return error
+    if (timedOut) return new PlaylistRequestError('timeout', options.timeoutMessage, { host, cause: error })
+    if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+      return new PlaylistRequestError('aborted', 'İstek iptal edildi', { host, cause: error })
+    }
+    return new PlaylistRequestError(
+      'network',
+      'Oynatma listesi sunucusuna bağlanılamadı. İnternet bağlantısını ve adresi kontrol edin.',
+      { host, cause: error }
+    )
+  }
+
+  const abortFromCaller = () => controller.abort()
+  if (signal) {
+    if (signal.aborted) controller.abort()
+    else signal.addEventListener('abort', abortFromCaller, { once: true })
+  }
   let timer = setTimeout(() => {
     timedOut = true
     controller.abort()
-  }, M3U_HEADERS_TIMEOUT_MS)
+  }, options.headersTimeoutMs ?? M3U_HEADERS_TIMEOUT_MS)
   const restartIdleTimer = () => {
     clearTimeout(timer)
     timer = setTimeout(() => {
       timedOut = true
       controller.abort()
-    }, M3U_BODY_IDLE_TIMEOUT_MS)
+    }, options.bodyIdleTimeoutMs ?? M3U_BODY_IDLE_TIMEOUT_MS)
   }
 
   try {
-    const res = await fetch(parsedUrl.toString(), { signal: controller.signal, cache: 'no-store' })
-    if (!res.ok) throw new Error(`M3U listesi indirilemedi (HTTP ${res.status})`)
+    let res: Response
+    try {
+      res = await fetch(url, { signal: controller.signal, cache: 'no-store' })
+    } catch (error) {
+      throw failure(error)
+    }
+    if (!res.ok) {
+      res.body?.cancel().catch(() => undefined)
+      throw new PlaylistRequestError('http', options.httpMessage(res.status), { status: res.status, host })
+    }
     restartIdleTimer()
-    const content = await readResponseTextWithLimit(res, MAX_M3U_SIZE_BYTES, restartIdleTimer)
-    clearTimeout(timer)
-    return parseM3U(content, sourceId)
-  } catch (error) {
-    if (timedOut) throw new Error('M3U listesi indirilirken zaman aşımı oluştu', { cause: error })
-    throw error
+    const reader = res.body?.getReader()
+    if (!reader) {
+      onText(await res.text())
+      return
+    }
+    const decoder = new TextDecoder()
+    let bytes = 0
+    for (;;) {
+      let chunk: ReadableStreamReadResult<Uint8Array>
+      try {
+        chunk = await reader.read()
+      } catch (error) {
+        throw failure(error)
+      }
+      if (chunk.done) break
+      restartIdleTimer()
+      bytes += chunk.value.length
+      onText(decoder.decode(chunk.value, { stream: true }))
+      options.onProgress?.(bytes)
+    }
+    // A cancelled reader reports `done`, which must not pass for a full body.
+    if (controller.signal.aborted) throw failure(new DOMException('Aborted', 'AbortError'))
+    const rest = decoder.decode()
+    if (rest) onText(rest)
   } finally {
     clearTimeout(timer)
+    signal?.removeEventListener('abort', abortFromCaller)
   }
+}
+
+function checkPlaylistUrl(url: string): URL {
+  const parsedUrl = new URL(url)
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw new Error('Yalnızca HTTP/HTTPS oynatma listesi adresleri destekleniyor')
+  }
+  return parsedUrl
+}
+
+/** Downloads and parses a playlist in this thread, streamed. The worker's M3U job runs this. */
+export async function fetchM3uStreamed(
+  url: string,
+  sourceId: string,
+  options: { signal?: AbortSignal; onProgress?: (bytes: number) => void } = {}
+): Promise<ParsedPlaylist> {
+  const parsedUrl = checkPlaylistUrl(url)
+  const parser = createM3uParser(sourceId)
+  await streamText(parsedUrl.toString(), (text) => parser.feed(text), {
+    ...options,
+    httpMessage: (status) => `M3U listesi indirilemedi (HTTP ${status})`,
+    timeoutMessage: 'M3U listesi indirilirken zaman aşımı oluştu'
+  })
+  return parser.end()
+}
+
+type PlaylistOffloader = (url: string, sourceId: string) => Promise<ParsedPlaylist>
+let offloader: PlaylistOffloader | null = null
+
+/** The catalog worker's client registers itself here, so `fetchAndParseM3U` runs off the main thread. */
+export function setPlaylistOffloader(next: PlaylistOffloader | null): void {
+  offloader = next
+}
+
+/**
+ * Downloads and parses a playlist: in the catalog worker once its client is
+ * loaded (always, in the app), in this thread otherwise. No size limit.
+ */
+export async function fetchAndParseM3U(url: string, sourceId: string): Promise<ParsedPlaylist> {
+  checkPlaylistUrl(url)
+  return offloader ? offloader(url, sourceId) : fetchM3uStreamed(url, sourceId)
 }

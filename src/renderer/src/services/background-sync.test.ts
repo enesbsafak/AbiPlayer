@@ -34,6 +34,33 @@ describe('background sync', () => {
     expect(catalog.getStatus('s1', 'live')).toMatchObject({ complete: true, syncing: false, error: null })
   })
 
+  it('refreshes a list served from the disk cache, keeping it on screen until the fresh one is in (C2c)', async () => {
+    const catalog = createCatalogStore()
+    catalog.commit({ token: catalog.beginGeneration('s1', 'live'), mode: 'replace', items: [record('cached')], origin: { fromCache: true, fetchedAt: 1 } })
+    const fresh = deferred<CatalogItem[]>()
+    const sync = createBackgroundSync(catalog, () => fresh.promise)
+
+    const running = sync.ensureFullSync('s1', 'live', creds)
+    expect(catalog.getItems('s1', 'live').map((item) => item.id)).toEqual(['cached'])
+    expect(catalog.getStatus('s1', 'live')).toMatchObject({ complete: true, fromCache: true, syncing: true })
+    fresh.resolve([record('fresh')])
+    await running
+
+    expect(catalog.getItems('s1', 'live').map((item) => item.id)).toEqual(['fresh'])
+    expect(catalog.getStatus('s1', 'live')).toMatchObject({ complete: true, fromCache: false, syncing: false })
+  })
+
+  it('downloads a complete fresh list again only when asked to', async () => {
+    const catalog = createCatalogStore()
+    const fetcher: FullListFetcher = vi.fn(async () => [record('a')])
+    const sync = createBackgroundSync(catalog, fetcher)
+    await sync.ensureFullSync('s1', 'live', creds)
+    await sync.ensureFullSync('s1', 'live', creds)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    await sync.ensureFullSync('s1', 'live', creds, { refresh: true })
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
   it('shares one running sync and skips a complete list', async () => {
     const catalog = createCatalogStore()
     const fetcher: FullListFetcher = vi.fn(async () => [record('a')])

@@ -5,6 +5,7 @@ import {
   type CatalogChange,
   type CatalogCommit,
   type CatalogItem,
+  type CatalogListOrigin,
   type CatalogListener,
   type CatalogStatus,
   type CatalogSyncError,
@@ -30,6 +31,21 @@ export interface SyncStatePatch {
 }
 
 /**
+ * `commit({ mode: 'replace' })` for a complete list that arrives in chunks
+ * (from the worker or the disk cache). The chunks are collected and indexed
+ * out of sight as they come; `finish` swaps them in at once under exactly the
+ * guard of `commit`, so nothing is shown half-loaded and a stale or overtaken
+ * session changes nothing.
+ */
+export interface StagedReplace {
+  readonly token: GenerationToken
+  /** Items so far, after dropping repeated ids. */
+  readonly count: number
+  append(items: readonly CatalogItem[]): void
+  finish(options?: { categories?: readonly CatalogCategory[]; origin?: CatalogListOrigin }): CommitResult
+}
+
+/**
  * The normalized catalog, outside zustand. One partition per (source, type)
  * holds the ordered records, an id index and the category list; per-category
  * lists, adult-category sets and the filtered views are derived lazily and
@@ -52,6 +68,8 @@ export interface CatalogStore {
 
   /** The single write path for generations (see `CatalogCommit`). */
   commit(commit: CatalogCommit): CommitResult
+  /** A `replace` commit fed in chunks; see `StagedReplace`. */
+  beginReplace(token: GenerationToken): StagedReplace
   /** Sync state of the token's partition; ignored for a stale or overtaken token. */
   setSyncState(token: GenerationToken, patch: SyncStatePatch): boolean
   /**
@@ -198,7 +216,9 @@ export function createCatalogStore(): CatalogStore {
     complete: false,
     categoriesLoaded: false,
     syncing: false,
-    error: null
+    error: null,
+    fromCache: false,
+    fetchedAt: null
   })
 
   const ensurePartition = (sourceId: string, type: CatalogType): Partition => {
@@ -342,7 +362,7 @@ export function createCatalogStore(): CatalogStore {
       return controller.signal
     },
 
-    commit({ token, mode, items, categories, categoryId }) {
+    commit({ token, mode, items, categories, categoryId, origin }) {
       if (token.revision !== revisionOf(token.sourceId)) return 'stale'
       const existing = getPartition(token.sourceId, token.type)
       const itemsAccepted = !!items && token.generation > (existing?.itemsGeneration ?? 0)
@@ -358,6 +378,8 @@ export function createCatalogStore(): CatalogStore {
           partition.itemsGeneration = token.generation
           patch.complete = true
           patch.error = null
+          patch.fromCache = origin?.fromCache ?? false
+          patch.fetchedAt = origin?.fetchedAt ?? Date.now()
         } else {
           upsertItems(partition, items)
           if (categoryId) partition.loadedCategoryIds.add(categoryId)
@@ -375,6 +397,55 @@ export function createCatalogStore(): CatalogStore {
       updateStatus(partition, patch, true)
       emit(partition.sourceId, partition.type)
       return 'committed'
+    },
+
+    beginReplace(token) {
+      const items: CatalogItem[] = []
+      const idIndex = new Map<string, number>()
+      let finished = false
+      return {
+        token,
+        get count() {
+          return items.length
+        },
+        append(batch) {
+          if (finished) throw new Error('StagedReplace: append after finish')
+          for (const item of batch) {
+            if (idIndex.has(item.id)) continue
+            idIndex.set(item.id, items.length)
+            items.push(item)
+          }
+        },
+        finish(options = {}) {
+          if (finished) throw new Error('StagedReplace: finished twice')
+          finished = true
+          if (token.revision !== revisionOf(token.sourceId)) return 'stale'
+          const existing = getPartition(token.sourceId, token.type)
+          if (token.generation <= (existing?.itemsGeneration ?? 0)) return 'superseded'
+
+          const partition = existing ?? ensurePartition(token.sourceId, token.type)
+          partition.items = items
+          partition.idIndex = idIndex
+          partition.loadedCategoryIds = new Set()
+          partition.itemsGeneration = token.generation
+          const patch: Partial<CatalogStatus> = {
+            complete: true,
+            error: null,
+            count: items.length,
+            loaded: true,
+            fromCache: options.origin?.fromCache ?? false,
+            fetchedAt: options.origin?.fetchedAt ?? Date.now()
+          }
+          if (options.categories && token.generation > partition.categoriesGeneration) {
+            partition.categories = uniqueCategories(options.categories)
+            partition.categoriesGeneration = token.generation
+            patch.categoriesLoaded = true
+          }
+          updateStatus(partition, patch, true)
+          emit(partition.sourceId, partition.type)
+          return 'committed'
+        }
+      }
     },
 
     setSyncState(token, patch) {
@@ -411,6 +482,7 @@ export function createCatalogStore(): CatalogStore {
         return true
       }
 
+      const fetchedAt = Date.now()
       for (const type of CATALOG_TYPES) {
         const lists = replacement[type]
         const partition = ensurePartition(sourceId, type)
@@ -424,7 +496,9 @@ export function createCatalogStore(): CatalogStore {
           complete: true,
           categoriesLoaded: true,
           syncing: false,
-          error: null
+          error: null,
+          fromCache: false,
+          fetchedAt
         }
         updateStatus(partition, status, true)
         emit(sourceId, type)

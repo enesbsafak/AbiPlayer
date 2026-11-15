@@ -1,63 +1,187 @@
-import { useCallback, useMemo, useState } from 'react'
-import { RefreshCw, Search, X } from 'lucide-react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { AlertTriangle, RefreshCw, Search, X } from 'lucide-react'
 import { useStore } from '@/store'
-import { fetchAndParseEPG } from '@/services/epg-service'
 import { findCurrentProgram, getUpcomingPrograms, normalizeEpgChannelKey } from '@/services/epg-service'
 import { matchesSearch, normalizeSearchKey, useVisibleCatalogCategories, useVisibleCatalogItems } from '@/catalog'
-import { xtreamApi } from '@/services/xtream-api'
+import { loadEpg } from '@/hooks/useEPG'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
-import type { Channel } from '@/types/playlist'
-import type { EPGProgram } from '@/types/epg'
+import { LazyImage } from '@/components/ui/LazyImage'
+import type { CatalogItem } from '@/catalog/types'
+import type { EPGData, EPGProgram } from '@/types/epg'
+import type { UserSettings } from '@/types/settings'
 
-interface ChannelEPG {
-  channel: Channel
-  current: EPGProgram | null
-  upcoming: EPGProgram[]
-  progress: number
+/** Height of one channel row; rows are virtualized, so only the visible ones exist. */
+const ROW_HEIGHT = 76
+/** The "now" marker, progress bars and the current programme follow the clock this often. */
+const NOW_TICK_MS = 30_000
+
+export interface EpgRow {
+  channel: CatalogItem
+  programs: EPGProgram[]
 }
 
-function formatTime(ts: number) {
-  const d = new Date(ts)
-  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+/** The channels of the list that have guide data, in list order, optionally filtered by a search. */
+export function buildEpgRows(channels: readonly CatalogItem[], guide: EPGData | null, query: string): EpgRow[] {
+  if (!guide) return []
+  const normalizedQuery = query ? normalizeSearchKey(query) : ''
+  const rows: EpgRow[] = []
+  for (const channel of channels) {
+    if (!channel.epgChannelId) continue
+    if (normalizedQuery && !matchesSearch(channel, normalizedQuery)) continue
+    const key = normalizeEpgChannelKey(channel.epgChannelId)
+    const programs = key ? guide.programs[key] : undefined
+    if (!programs || programs.length === 0) continue
+    rows.push({ channel, programs })
+  }
+  return rows
 }
+
+/** "14:05" or, with the 12-hour setting, "2:05 ÖS". */
+export function createTimeFormatter(format: UserSettings['epgTimeFormat']): (ts: number) => string {
+  const formatter = new Intl.DateTimeFormat('tr-TR', {
+    hour: format === '12h' ? 'numeric' : '2-digit',
+    minute: '2-digit',
+    hour12: format === '12h'
+  })
+  return (ts) => formatter.format(ts)
+}
+
+/** What the notice above the list says, if anything. */
+export function epgNotice(input: {
+  guide: EPGData | null
+  fromCache: boolean
+  error: string | null
+  fetchedAt: number | null
+  loading: boolean
+}): { tone: 'warning' | 'info'; text: string } | null {
+  const { guide, fromCache, error, fetchedAt, loading } = input
+  if (!guide) return null
+  const when = fetchedAt ? new Date(fetchedAt).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' }) : null
+  if (error) {
+    return {
+      tone: 'warning',
+      text: `Yayın akışı güncellenemedi: ${error}${when ? ` ${when} tarihli kopya gösteriliyor.` : ''}`
+    }
+  }
+  if (guide.truncated) {
+    return {
+      tone: 'warning',
+      text:
+        guide.truncatedReason === 'limit'
+          ? 'Yayın akışı çok büyük: kanal ya da program sınırına ulaşıldı, bazı kanalların programları eksik.'
+          : 'Yayın akışının tamamı yüklenemedi: indirme yarıda kesildi, bazı kanalların programları eksik.'
+    }
+  }
+  if (fromCache && when) return { tone: 'info', text: `${when} tarihli kayıtlı yayın akışı gösteriliyor${loading ? ', güncelleniyor…' : '.'}` }
+  return null
+}
+
+/** The clock, ticking every `intervalMs`, so programmes and progress bars stay current. */
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), intervalMs)
+    return () => clearInterval(timer)
+  }, [intervalMs])
+  return now
+}
+
+const EpgRowView = memo(function EpgRowView({
+  row,
+  now,
+  formatTime
+}: {
+  row: EpgRow
+  now: number
+  formatTime: (ts: number) => string
+}) {
+  const { channel, programs } = row
+  const current = findCurrentProgram(programs, now)
+  const upcoming = getUpcomingPrograms(programs, 3, now).filter((program) => program !== current)
+  const progress = current ? Math.min(100, Math.max(0, ((now - current.start) / (current.end - current.start)) * 100)) : 0
+
+  return (
+    <div className="flex h-full border-b border-surface-800 hover:bg-surface-800/30 transition-colors">
+      <div className="w-48 shrink-0 flex items-center gap-3 px-4 py-3 border-r border-surface-800">
+        <LazyImage
+          src={channel.logo}
+          alt=""
+          fit="contain"
+          className="size-8 shrink-0 rounded bg-surface-800"
+          fallbackClassName="size-8 shrink-0 rounded"
+        />
+        <span className="text-sm font-medium truncate">{channel.name}</span>
+      </div>
+
+      <div className="flex-1 min-w-0 flex items-stretch">
+        {current ? (
+          <div className="flex-1 min-w-0 px-4 py-2.5 border-r border-surface-800/50">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-caption font-medium text-accent">Şimdi</span>
+              <span className="text-xs text-surface-500">
+                {formatTime(current.start)} - {formatTime(current.end)}
+              </span>
+            </div>
+            <p className="text-sm font-medium truncate">{current.title}</p>
+            {current.description && <p className="text-xs text-surface-500 truncate mt-0.5">{current.description}</p>}
+            <div
+              className="mt-1.5 h-1 w-full rounded-full bg-surface-700"
+              role="progressbar"
+              aria-label={`${current.title} ilerlemesi`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress)}
+            >
+              <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 min-w-0 px-4 py-3 border-r border-surface-800/50 flex items-center">
+            <span className="text-xs text-surface-600">Program bilgisi yok</span>
+          </div>
+        )}
+
+        <div className="w-72 shrink-0 p-3 flex flex-col justify-center gap-1">
+          {upcoming.length > 0 ? (
+            upcoming.slice(0, 2).map((prog) => (
+              <div key={prog.start} className="flex items-center gap-2 min-w-0">
+                <span className="shrink-0 text-caption text-surface-500 w-14">{formatTime(prog.start)}</span>
+                <p className="text-xs text-surface-400 truncate">{prog.title}</p>
+              </div>
+            ))
+          ) : (
+            <span className="text-xs text-surface-600">Sonraki program yok</span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+})
 
 export default function EPGPage() {
   const epgData = useStore((s) => s.epgData)
   const epgSourceId = useStore((s) => s.epgSourceId)
   const epgLoading = useStore((s) => s.epgLoading)
   const epgError = useStore((s) => s.epgError)
+  const epgFromCache = useStore((s) => s.epgFromCache)
+  const epgLastFetched = useStore((s) => s.epgLastFetched)
+  const timeFormat = useStore((s) => s.settings.epgTimeFormat)
   const activeSourceId = useStore((s) => s.activeSourceId)
-  const sources = useStore((s) => s.sources)
-  const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
-  const setEpgData = useStore((s) => s.setEpgData)
-  const setEpgLoading = useStore((s) => s.setEpgLoading)
-  const setEpgError = useStore((s) => s.setEpgError)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const visibleCategories = useVisibleCatalogCategories(activeSourceId, 'live')
   const visibleChannels = useVisibleCatalogItems(activeSourceId, 'live', selectedCategoryId)
   const sourceEpgData = activeSourceId && epgSourceId === activeSourceId ? epgData : null
+  const now = useNow(NOW_TICK_MS)
+  const formatTime = useMemo(() => createTimeFormatter(timeFormat), [timeFormat])
+  const scrollRef = useRef<HTMLDivElement>(null)
 
-  const refetchEPG = useCallback(async () => {
-    if (!activeSourceId) return
-    const source = sources.find((s) => s.id === activeSourceId)
-    if (!source || source.type !== 'xtream') return
-    const creds = getXtreamCredentials(source.id)
-    if (!creds) return
-
-    setEpgLoading(true)
-    setEpgError(null)
-    try {
-      const data = await fetchAndParseEPG(xtreamApi.buildEpgUrl(creds))
-      setEpgData(source.id, data)
-    } catch (err) {
-      setEpgError(err instanceof Error ? err.message : 'EPG verisi alınamadı')
-    } finally {
-      setEpgLoading(false)
-    }
-  }, [activeSourceId, sources, getXtreamCredentials, setEpgData, setEpgError, setEpgLoading])
+  const refetchEPG = useCallback(() => {
+    if (activeSourceId) void loadEpg(activeSourceId, { force: true })
+  }, [activeSourceId])
 
   // Live categories for filter — skip separator/decorative entries
   const liveCategories = useMemo(
@@ -70,30 +194,23 @@ export default function EPGPage() {
     [visibleCategories]
   )
 
-  // Build channel EPG list — only channels that have EPG data
-  const channelEpgList = useMemo<ChannelEPG[]>(() => {
-    if (!sourceEpgData) return []
-    const now = Date.now()
-    const normalizedQuery = searchQuery ? normalizeSearchKey(searchQuery) : ''
-    const list: ChannelEPG[] = []
+  // Channels with guide data. What is current is worked out per visible row.
+  const rows = useMemo(() => buildEpgRows(visibleChannels, sourceEpgData, searchQuery), [visibleChannels, sourceEpgData, searchQuery])
 
-    for (const channel of visibleChannels) {
-      if (!channel.epgChannelId) continue
-      if (normalizedQuery && !matchesSearch(channel, normalizedQuery)) continue
-      const key = normalizeEpgChannelKey(channel.epgChannelId)
-      const programs = key ? sourceEpgData.programs[key] : undefined
-      if (!programs || programs.length === 0) continue
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 6
+  })
 
-      const current = findCurrentProgram(programs, now)
-      const upcoming = getUpcomingPrograms(programs, 3, now).filter((program) => program !== current)
-      const progress = current
-        ? Math.min(100, ((now - current.start) / (current.end - current.start)) * 100)
-        : 0
-      list.push({ channel, current, upcoming, progress })
-    }
-
-    return list
-  }, [visibleChannels, sourceEpgData, searchQuery])
+  const notice = epgNotice({
+    guide: sourceEpgData,
+    fromCache: epgFromCache,
+    error: sourceEpgData ? epgError : null,
+    fetchedAt: epgLastFetched,
+    loading: epgLoading
+  })
 
   return (
     <div className="flex h-full gap-3 p-3">
@@ -158,7 +275,7 @@ export default function EPGPage() {
             )}
           </div>
 
-          <span className="text-xs text-surface-500 shrink-0">{channelEpgList.length} kanal</span>
+          <span className="text-xs text-surface-500 shrink-0">{rows.length.toLocaleString('tr-TR')} kanal</span>
 
           <Button variant="secondary" size="sm" onClick={refetchEPG} disabled={epgLoading}>
             {epgLoading ? <Spinner size={14} /> : <RefreshCw size={14} />}
@@ -166,8 +283,22 @@ export default function EPGPage() {
           </Button>
         </div>
 
+        {notice && (
+          <div
+            role={notice.tone === 'warning' ? 'alert' : 'status'}
+            className={`flex items-start gap-2 border-b px-4 py-2 text-xs ${
+              notice.tone === 'warning'
+                ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+                : 'border-surface-800 bg-surface-900 text-surface-400'
+            }`}
+          >
+            {notice.tone === 'warning' && <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden />}
+            <p>{notice.text}</p>
+          </div>
+        )}
+
         {/* Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto" data-testid="epg-scroll">
           {epgLoading && !sourceEpgData && (
             <div className="flex flex-col items-center justify-center py-20 text-surface-500">
               <Spinner size={24} />
@@ -175,14 +306,14 @@ export default function EPGPage() {
             </div>
           )}
 
-          {epgError && !sourceEpgData && (
+          {epgError && !sourceEpgData && !epgLoading && (
             <div className="flex flex-col items-center justify-center py-20">
               <p className="text-sm text-red-400">{epgError}</p>
               <p className="text-xs text-surface-500 mt-1">Yenile butonuyla tekrar deneyebilirsiniz</p>
             </div>
           )}
 
-          {sourceEpgData && channelEpgList.length === 0 && (
+          {sourceEpgData && rows.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-surface-500">
               <p className="text-sm">
                 {searchQuery ? 'Aramayla eşleşen kanal bulunamadı' : 'Bu kategoride EPG verisi olan kanal yok'}
@@ -190,56 +321,23 @@ export default function EPGPage() {
             </div>
           )}
 
-          {channelEpgList.map(({ channel, current, upcoming, progress }) => (
-            <div key={channel.id} className="flex border-b border-surface-800 hover:bg-surface-800/30 transition-colors">
-              {/* Channel info */}
-              <div className="w-48 shrink-0 flex items-center gap-3 px-4 py-3 border-r border-surface-800">
-                {channel.logo ? (
-                  <img src={channel.logo} alt="" className="size-8 shrink-0 rounded object-contain bg-surface-800" />
-                ) : (
-                  <div className="size-8 shrink-0 rounded bg-surface-800" />
-                )}
-                <span className="text-sm font-medium truncate">{channel.name}</span>
-              </div>
-
-              {/* Now playing */}
-              <div className="flex-1 min-w-0 flex items-stretch">
-                {current ? (
-                  <div className="flex-1 min-w-0 px-4 py-3 border-r border-surface-800/50">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-caption font-medium text-accent">Şimdi</span>
-                      <span className="text-xs text-surface-500">{formatTime(current.start)} - {formatTime(current.end)}</span>
-                    </div>
-                    <p className="text-sm font-medium truncate">{current.title}</p>
-                    {current.description && (
-                      <p className="text-xs text-surface-500 truncate mt-0.5">{current.description}</p>
-                    )}
-                    <div className="mt-2 h-1 w-full rounded-full bg-surface-700">
-                      <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${progress}%` }} />
-                    </div>
+          {rows.length > 0 && (
+            <div role="list" aria-label="Kanal yayın akışı" style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+              {virtualizer.getVirtualItems().map((item) => {
+                const row = rows[item.index]
+                return (
+                  <div
+                    key={row.channel.id}
+                    role="listitem"
+                    aria-label={row.channel.name}
+                    style={{ position: 'absolute', top: 0, left: 0, right: 0, height: item.size, transform: `translateY(${item.start}px)` }}
+                  >
+                    <EpgRowView row={row} now={now} formatTime={formatTime} />
                   </div>
-                ) : (
-                  <div className="flex-1 min-w-0 px-4 py-3 border-r border-surface-800/50 flex items-center">
-                    <span className="text-xs text-surface-600">Program bilgisi yok</span>
-                  </div>
-                )}
-
-                {/* Upcoming */}
-                <div className="w-72 shrink-0 p-3 flex flex-col justify-center gap-1">
-                  {upcoming.length > 0 ? (
-                    upcoming.slice(0, 2).map((prog) => (
-                      <div key={prog.start} className="flex items-center gap-2 min-w-0">
-                        <span className="shrink-0 text-caption text-surface-500 w-10">{formatTime(prog.start)}</span>
-                        <p className="text-xs text-surface-400 truncate">{prog.title}</p>
-                      </div>
-                    ))
-                  ) : (
-                    <span className="text-xs text-surface-600">Sonraki program yok</span>
-                  )}
-                </div>
-              </div>
+                )
+              })}
             </div>
-          ))}
+          )}
         </div>
       </div>
     </div>
