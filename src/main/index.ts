@@ -1,63 +1,49 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
-import { app, shell, BrowserWindow, screen, session } from 'electron'
+import { app, shell, BrowserWindow, dialog, screen, session } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { initializeAppUpdater } from './app-updater'
-import { registerIpcHandlers } from './ipc-handlers'
+import { cleanupStoreBackupIfUnneeded, initializeAppUpdater } from './app-updater'
+import { setPreventDisplaySleep } from './display-sleep'
+import { registerIpcHandlers, type MainServices } from './ipc-handlers'
+import { sendEvent } from './ipc/events'
+import {
+  attachRendererRecovery,
+  createMainLogger,
+  installProcessErrorLogging,
+  installQuitHandling
+} from './ipc/lifecycle'
+import { isTrustedRendererUrl } from './ipc/register'
+import { readWindowStateInfo } from './ipc/window'
+import {
+  isStateOnScreen,
+  parseWindowState,
+  WindowStateTracker,
+  type SavedWindowState
+} from './ipc/window-state'
 
-interface WindowState {
-  x?: number
-  y?: number
-  width: number
-  height: number
-  isMaximized: boolean
-}
+const logMainError = createMainLogger(join(app.getPath('userData'), 'logs', 'main-errors.log'))
+installProcessErrorLogging(process, logMainError)
 
 const WINDOW_STATE_FILE = join(app.getPath('userData'), 'window-state.json')
-const DEFAULT_STATE: WindowState = { width: 1280, height: 800, isMaximized: false }
+const QUIT_SHUTDOWN_TIMEOUT_MS = 3000
 
-function loadWindowState(): WindowState {
+function loadWindowState(): SavedWindowState {
   try {
     if (existsSync(WINDOW_STATE_FILE)) {
-      const data = JSON.parse(readFileSync(WINDOW_STATE_FILE, 'utf-8'))
-      return { ...DEFAULT_STATE, ...data }
+      return parseWindowState(JSON.parse(readFileSync(WINDOW_STATE_FILE, 'utf-8')))
     }
   } catch {
-    // ignore
+    // unreadable: fall back to the default
   }
-  return { ...DEFAULT_STATE }
+  return parseWindowState(null)
 }
 
-function saveWindowState(win: BrowserWindow): void {
-  const isMaximized = win.isMaximized()
-  const bounds = isMaximized ? (win as any)._normalBounds ?? win.getBounds() : win.getBounds()
-  const state: WindowState = {
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
-    isMaximized
-  }
+function saveWindowState(state: SavedWindowState): void {
   try {
     writeFileSync(WINDOW_STATE_FILE, JSON.stringify(state))
-  } catch {
-    // ignore
+  } catch (error) {
+    logMainError('window-state', error)
   }
-}
-
-function isStateInBounds(state: WindowState): boolean {
-  if (state.x === undefined || state.y === undefined) return true
-  const displays = screen.getAllDisplays()
-  // Ensure at least 50px of the window title area is visible on some display
-  return displays.some((d) => {
-    const { x, y, width, height } = d.workArea
-    return (
-      state.x! + state.width > x + 50 &&
-      state.x! < x + width - 50 &&
-      state.y! >= y - 10 &&
-      state.y! < y + height - 50
-    )
-  })
 }
 
 // Enable native audio track API in Chromium so multi-audio streams can be switched.
@@ -106,12 +92,41 @@ function isAllowedExternalUrl(url: string): boolean {
   }
 }
 
-function createWindow(): void {
+/**
+ * Nothing in the app needs camera, microphone, notifications, geolocation and
+ * the like; a page that asks is not ours. The one exception is the player's
+ * HTML fullscreen (`requestFullscreen`) from our own renderer.
+ */
+function installPermissionPolicy(services: MainServices): void {
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback, details) => {
+    const fromApp = isTrustedRendererUrl(details.requestingUrl, services.trustedRendererLocation)
+    callback(fromApp && permission === 'fullscreen')
+  })
+}
+
+function askReloadUnresponsive(window: BrowserWindow, signal: AbortSignal): Promise<boolean> {
+  return dialog
+    .showMessageBox(window, {
+      type: 'warning',
+      buttons: ['Yeniden Yükle', 'Bekle'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+      title: 'Uygulama yanıt vermiyor',
+      message: 'Abi Player bir süredir yanıt vermiyor.',
+      detail: 'Oynatma durduruldu. Pencereyi yeniden yükleyebilir ya da beklemeyi sürdürebilirsiniz.',
+      signal
+    })
+    .then((result) => result.response === 0)
+}
+
+function createWindow(services: MainServices): void {
   const windowIconPath = join(app.getAppPath(), 'build', 'icon.png')
   const savedState = loadWindowState()
+  const workAreas = screen.getAllDisplays().map((display) => display.workArea)
 
   const positionOpts =
-    savedState.x !== undefined && savedState.y !== undefined && isStateInBounds(savedState)
+    savedState.x !== undefined && savedState.y !== undefined && isStateOnScreen(savedState, workAreas)
       ? { x: savedState.x, y: savedState.y }
       : {}
 
@@ -137,43 +152,54 @@ function createWindow(): void {
     }
   })
 
-  // Track normal bounds so we can save them even when maximized.
-  // Handlers reference `mainWindow` by closure — we must detach them on
-  // `closed` so the window (and any subsequent GC) doesn't retain state.
-  ;(mainWindow as any)._normalBounds = mainWindow.getBounds()
-  const onResize = (): void => {
-    if (!mainWindow.isDestroyed() && !mainWindow.isMaximized()) {
-      ;(mainWindow as any)._normalBounds = mainWindow.getBounds()
-    }
+  const tracker = new WindowStateTracker(mainWindow, savedState.isMaximized)
+  const webContentsId = mainWindow.webContents.id
+
+  const emitWindowState = (): void => {
+    if (mainWindow.isDestroyed()) return
+    sendEvent(mainWindow.webContents, 'window-state-changed', readWindowStateInfo(mainWindow))
   }
-  const onMove = (): void => {
-    if (!mainWindow.isDestroyed() && !mainWindow.isMaximized()) {
-      ;(mainWindow as any)._normalBounds = mainWindow.getBounds()
-    }
+  const onMaximizeChanged = (): void => {
+    tracker.onMaximizeChanged()
+    emitWindowState()
   }
-  const onClose = (): void => {
-    if (!mainWindow.isDestroyed()) saveWindowState(mainWindow)
-  }
-  mainWindow.on('resize', onResize)
-  mainWindow.on('move', onMove)
-  mainWindow.on('close', onClose)
-  mainWindow.once('closed', () => {
-    mainWindow.removeListener('resize', onResize)
-    mainWindow.removeListener('move', onMove)
-    mainWindow.removeListener('close', onClose)
+
+  mainWindow.on('maximize', onMaximizeChanged)
+  mainWindow.on('unmaximize', onMaximizeChanged)
+  mainWindow.on('enter-full-screen', emitWindowState)
+  mainWindow.on('leave-full-screen', emitWindowState)
+  mainWindow.on('close', () => {
+    if (!mainWindow.isDestroyed()) saveWindowState(tracker.capture())
   })
 
-  if (savedState.isMaximized) {
-    mainWindow.maximize()
-  }
-
-  mainWindow.on('ready-to-show', () => {
+  // Maximizing a hidden window shows it on Windows, before anything is
+  // painted; so both happen once the first frame is ready.
+  mainWindow.once('ready-to-show', () => {
+    if (savedState.isMaximized) mainWindow.maximize()
     mainWindow.show()
+  })
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    void cleanupStoreBackupIfUnneeded(() =>
+      mainWindow.webContents.executeJavaScript(`localStorage.getItem('iptv-player-store')`)
+    ).catch((error) => logMainError('store-backup-cleanup', error))
+  })
+
+  mainWindow.webContents.once('destroyed', () => {
+    services.cancelMediaJobs(webContentsId)
+  })
+
+  attachRendererRecovery(mainWindow, {
+    stopPlayback: () => services.stopPlayback(),
+    releaseDisplaySleep: () => setPreventDisplaySleep(false),
+    cancelMediaJobs: (id) => services.cancelMediaJobs(id),
+    askReloadUnresponsive: (signal) => askReloadUnresponsive(mainWindow, signal),
+    log: logMainError
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) {
-      shell.openExternal(url)
+      void shell.openExternal(url)
     }
     return { action: 'deny' }
   })
@@ -193,9 +219,9 @@ function createWindow(): void {
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    void mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
 
@@ -216,7 +242,15 @@ if (!hasSingleInstanceLock) {
     existingWindow.focus()
   })
 
-  app.whenReady().then(() => {
+  app.on('child-process-gone', (_event, details) => {
+    if (details.reason === 'clean-exit') return
+    logMainError(
+      'child-process-gone',
+      new Error(`type=${details.type} reason=${details.reason} exitCode=${details.exitCode}`)
+    )
+  })
+
+  void app.whenReady().then(() => {
     electronApp.setAppUserModelId('com.abiplayer.beta')
 
     app.on('browser-window-created', (_, window) => {
@@ -224,12 +258,17 @@ if (!hasSingleInstanceLock) {
     })
 
     installCertificateVerifyProc()
-    registerIpcHandlers()
-    createWindow()
+    const services = registerIpcHandlers()
+    installPermissionPolicy(services)
+
+    app.once('before-quit', () => setPreventDisplaySleep(false))
+    installQuitHandling(app, () => services.shutdown(), QUIT_SHUTDOWN_TIMEOUT_MS)
+
+    createWindow(services)
     initializeAppUpdater()
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+      if (BrowserWindow.getAllWindows().length === 0) createWindow(services)
     })
   })
 }
