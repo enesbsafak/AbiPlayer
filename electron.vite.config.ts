@@ -24,6 +24,12 @@ export default defineConfig({
       __APP_VERSION__: JSON.stringify(packageJson.version)
     },
     plugins: [react()],
+    // electron-vite leaves the renderer unminified by default (F5-07). Source
+    // maps stay off: nothing in the package reads them.
+    build: {
+      minify: true,
+      sourcemap: false
+    },
     css: {
       postcss: resolve(__dirname, 'postcss.config.js')
     }

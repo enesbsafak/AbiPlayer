@@ -6,10 +6,8 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { join } from 'node:path'
-
-const require = createRequire(import.meta.url)
+import { FFMPEG_PATH } from '../support/paths.ts'
 
 export interface MediaSet {
   dir: string
@@ -28,9 +26,8 @@ export interface MediaSet {
 }
 
 export function ffmpegPath(): string {
-  const path = require('ffmpeg-static') as string | null
-  if (!path || !existsSync(path)) throw new Error('ffmpeg-static binary not found; run npm ci')
-  return path
+  if (!existsSync(FFMPEG_PATH)) throw new Error(`ffmpeg not found at ${FFMPEG_PATH}; run npm run prepare:ffmpeg:win`)
+  return FFMPEG_PATH
 }
 
 function run(binary: string, args: string[], cwd: string): Promise<void> {

@@ -6,6 +6,7 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { stripVTControlCharacters } from 'node:util'
 import { E2E_OUTPUT_DIR } from './support/paths.ts'
 
 interface Annotation { type: string; description?: string }
@@ -23,7 +24,6 @@ function* specs(suites: Suite[]): Generator<Spec> {
   }
 }
 
-const strip = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, '')
 
 for (const spec of specs(report.suites)) {
   for (const entry of spec.tests) {
@@ -39,7 +39,7 @@ for (const spec of specs(report.suites)) {
       const error = result?.errors?.[0]
       if (error) {
         const where = error.location ? `${error.location.file.split(/[\\/]/).pop()}:${error.location.line}` : '?'
-        console.log(`    failed at ${where}: ${strip(error.message ?? '').split('\n')[0].slice(0, 200)}`)
+        console.log(`    failed at ${where}: ${stripVTControlCharacters(error.message ?? '').split('\n')[0].slice(0, 200)}`)
       }
     }
   }

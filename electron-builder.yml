@@ -17,12 +17,13 @@ directories:
 files:
   - '!**/.vscode/*'
   - '!src/*'
-  - '!resources/mpv/**'
+  # mpv and ffmpeg are shipped as extraResources (see win: below), not in app.asar.
+  - '!resources/**'
   - '!docs/**'
   - '!{.agents,.claude,.react-doctor}/**'
   - '!electron.vite.config.*'
   - '!{postcss.config.js,tailwind.config.ts,vitest.config.ts,doctor.config.*}'
-  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md,LICENSE}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json,tsconfig.scripts.json,eslint.config.mjs}'
   # Repository-only trees. `.worktrees/` holds full parallel checkouts; without
   # this line every one of them was packed into app.asar. Checked by
@@ -30,24 +31,24 @@ files:
   - '!{.worktrees,e2e,scripts,.github}/**'
   - '!{test-results,playwright-report,coverage}/**'
   - '!**/*.tsbuildinfo'
-  # ffprobe-static ships a prebuilt binary for every platform it supports and
-  # all of them get packaged — 275MB of binaries that can never execute on a
-  # win32-x64 build. Only win32/x64 is reachable. This project builds Windows
-  # only (see the release:win / build:win scripts); restore these paths before
-  # producing a mac, linux or ia32 build.
-  - '!**/ffprobe-static/bin/{darwin,linux}/**'
-  - '!**/ffprobe-static/bin/win32/ia32/**'
-asarUnpack:
-  - resources/**
+  # Source maps of dependencies (electron-updater's chain); nothing reads them.
+  - '!**/*.map'
 win:
   icon: build/icon.ico
   executableName: abi-player
   forceCodeSigning: false
   target:
     - nsis
+  # Both directories are filled by `npm run prepare:binaries:win` from the
+  # pins in scripts/mpv-pin.json and scripts/ffmpeg-pin.json. The main process
+  # looks for them at <resources>/mpv and <resources>/ffmpeg.
   extraResources:
     - from: resources/mpv/win32-x64
       to: mpv
+      filter:
+        - '**/*'
+    - from: resources/ffmpeg/win32-x64
+      to: ffmpeg
       filter:
         - '**/*'
 nsis:
@@ -57,20 +58,6 @@ nsis:
   installerHeaderIcon: build/icon.ico
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
-  createDesktopShortcut: always
-mac:
-  entitlementsInherit: build/entitlements.mac.plist
-  extendInfo:
-    NSDocumentsFolderUsageDescription: Required for file access.
-  notarize: false
-  target:
-    - dmg
-dmg:
-  artifactName: ${name}-${version}.${ext}
-linux:
-  target:
-    - AppImage
-  maintainer: electronjs.org
-  category: Video
-appImage:
-  artifactName: ${name}-${version}.${ext}
+  # `true` creates the shortcut on the first install only; `always` brought a
+  # shortcut the user had deleted back on every update.
+  createDesktopShortcut: true

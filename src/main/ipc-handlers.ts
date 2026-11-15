@@ -1,12 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, type IpcMainInvokeEvent } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { spawn } from 'child_process'
+import { existsSync } from 'fs'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
-import ffmpegPath from 'ffmpeg-static'
-import ffprobeStatic from 'ffprobe-static'
 import { MpvController } from './mpv-controller'
-import { resolveUnpackedBinary } from './unpacked-binary'
+import { resolveMediaTools } from './unpacked-binary'
 import { registerAppHandlers } from './ipc/app'
 import { CredentialStore } from './ipc/credential-store'
 import { registerCredentialHandlers } from './ipc/credentials'
@@ -85,12 +84,20 @@ export function registerIpcHandlers(): MainServices {
   const tls = getTlsPolicy()
   const pickedFiles = new PickedFileRegistry({ storePath: join(userData, 'picked-files.json') })
 
+  const mediaTools = resolveMediaTools({
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appDir: __dirname,
+    cwd: process.cwd(),
+    exists: existsSync
+  })
   const media = createMediaService({
     runner: new MediaJobRunner((executable, args) =>
       spawn(executable, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
     ),
-    ffprobePath: resolveUnpackedBinary(ffprobeStatic.path),
-    ffmpegPath: resolveUnpackedBinary(ffmpegPath),
+    ffprobePath: mediaTools.ffprobe,
+    ffmpegPath: mediaTools.ffmpeg,
     tlsArgs: (streamUrl) => tls.ffmpegArgs(streamUrl)
   })
 
