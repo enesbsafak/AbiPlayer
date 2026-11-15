@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import { useStore } from '@/store'
 import { catalog, type CategoryViewRequest } from './catalog-store'
-import { searchCatalog } from './search'
+import { searchCatalog, searchCatalogWithTotal, type CatalogSearchResult } from './search'
 import type {
   CatalogCategory,
   CatalogItem,
@@ -108,6 +108,20 @@ export function useCatalogVersion(): number {
 export function useCatalogItem(id: string | null | undefined): CatalogItem | undefined {
   const getSnapshot = useCallback(() => (id ? catalog.getItem(id) : undefined), [id])
   return useSyncExternalStore(id ? catalog.subscribe : subscribeNothing, getSnapshot)
+}
+
+/**
+ * `searchCatalogWithTotal` over every source: up to `limit` matches and the
+ * true number of matches. Pass a deferred query (`useDeferredValue`) so
+ * typing is not held up by a scan of a large catalog.
+ */
+export function useCatalogSearchResults(query: string, limit: number): CatalogSearchResult {
+  const settings = useCatalogViewSettings()
+  const version = useCatalogVersion()
+  return useMemo(() => {
+    void version
+    return searchCatalogWithTotal(catalog, query, settings, limit)
+  }, [query, settings, limit, version])
 }
 
 /** `searchCatalog` over every source, recomputed when the query, the settings or the catalog change. */

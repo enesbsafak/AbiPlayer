@@ -442,9 +442,9 @@ export function SeriesDetail({
   // Offered for a series whose list record is in memory (the favourite keeps a
   // snapshot of it), and always for one that already is a favourite.
   const seriesItemId = xtreamItemId(sourceId, 'series', seriesId)
-  const isSeriesInCatalog = useCatalogItem(seriesItemId) !== undefined
+  const seriesItem = useCatalogItem(seriesItemId)
   const isSeriesFavorite = useStore((s) => s.favoriteIds.has(seriesItemId))
-  const favoriteChannelId = isSeriesInCatalog || isSeriesFavorite ? seriesItemId : null
+  const favoriteChannelId = seriesItem || isSeriesFavorite ? seriesItemId : null
 
   if (loading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>
   if (!detail) {
@@ -492,7 +492,7 @@ export function SeriesDetail({
             {detail.releaseDate && <span>{detail.releaseDate}</span>}
           </div>
           {favoriteChannelId && (
-            <FavoriteToggle channelId={favoriteChannelId} variant="button" className="mt-3 self-start" />
+            <FavoriteToggle channelId={favoriteChannelId} item={seriesItem} variant="button" className="mt-3 self-start" />
           )}
         </div>
       </div>
@@ -522,7 +522,7 @@ export function SeriesDetail({
               <button
                 key={ep.id}
                 type="button"
-                className="flex w-full items-center gap-4 rounded-lg border border-surface-800 bg-surface-900 p-3 text-left hover:border-surface-700 transition-colors"
+                className="flex w-full items-center gap-4 rounded-lg border border-surface-800 bg-surface-900 p-3 text-left hover:border-surface-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 onClick={() => {
                   const episodeId = parseEpisodeId(ep.id)
                   if (episodeId === null) return

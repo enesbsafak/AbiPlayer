@@ -24,6 +24,46 @@ export interface SyncProgress {
 /** `catalogStatus[sourceId][type]`, mirrored from the catalog store on every change. */
 export type CatalogStatusMap = Record<string, Partial<Record<ContentType, CatalogStatus>>>
 
+/** `selectedCategoryIds[sourceId][type]`: the category browsed on each catalog page. */
+export type CategorySelectionMap = Record<string, Partial<Record<ContentType, string>>>
+
+/** The category browsed for one (source, type), or null for "all". */
+export function selectedCategoryFor(
+  selection: CategorySelectionMap,
+  sourceId: string | null | undefined,
+  type: ContentType
+): string | null {
+  return sourceId ? (selection[sourceId]?.[type] ?? null) : null
+}
+
+function withSelection(
+  map: CategorySelectionMap,
+  sourceId: string,
+  type: ContentType,
+  categoryId: string | null
+): CategorySelectionMap {
+  const current = map[sourceId]
+  if ((current?.[type] ?? null) === categoryId) return map
+  const nextSource = { ...current }
+  if (categoryId) nextSource[type] = categoryId
+  else delete nextSource[type]
+  const next = { ...map }
+  if (Object.keys(nextSource).length > 0) next[sourceId] = nextSource
+  else delete next[sourceId]
+  return next
+}
+
+/** Drops every selection pointing at `categoryId`. */
+function withoutCategory(map: CategorySelectionMap, categoryId: string): CategorySelectionMap {
+  let next = map
+  for (const [sourceId, byType] of Object.entries(map)) {
+    for (const type of ['live', 'vod', 'series'] as const) {
+      if (byType[type] === categoryId) next = withSelection(next, sourceId, type, null)
+    }
+  }
+  return next
+}
+
 export interface PlaylistSlice {
   /**
    * Per-(source, type) catalog status: loaded, complete, syncing, error,
@@ -34,7 +74,11 @@ export interface PlaylistSlice {
   syncProgress: Record<string, SyncProgress>
   /** Categories the user chose to hide; their channels drop out of every list. */
   hiddenCategoryIds: Set<string>
-  selectedCategoryId: string | null
+  /**
+   * The category browsed per source and content type, so a category picked on
+   * Live TV never filters Films or Series (F1-20). Session state, not persisted.
+   */
+  selectedCategoryIds: CategorySelectionMap
   isLoadingPlaylist: boolean
   /**
    * @deprecated Merges channels into the catalog as partial batches. Kept for
@@ -58,7 +102,8 @@ export interface PlaylistSlice {
   ) => boolean
   /** A deleted source: drops its catalog and status, cancels its syncs, forgets its hidden categories. */
   removeSourceCatalog: (sourceId: string) => void
-  setSelectedCategory: (id: string | null) => void
+  /** Selects the category browsed for (source, type); null shows every category. */
+  setSelectedCategory: (sourceId: string, type: ContentType, id: string | null) => void
   setSyncProgress: (sourceId: string, progress: SyncProgress | null) => void
   toggleCategoryHidden: (categoryId: string) => void
   setHiddenCategories: (ids: string[]) => void
@@ -117,7 +162,7 @@ export function createPlaylistSliceFor(
       catalogStatus: {},
       syncProgress: {},
       hiddenCategoryIds: new Set<string>(),
-      selectedCategoryId: null,
+      selectedCategoryIds: {},
       isLoadingPlaylist: false,
 
       addChannels: (channels) => {
@@ -162,14 +207,24 @@ export function createPlaylistSliceFor(
           }
           const nextProgress = { ...state.syncProgress }
           delete nextProgress[sourceId]
+          let nextSelection = state.selectedCategoryIds
+          if (sourceId in nextSelection) {
+            nextSelection = { ...nextSelection }
+            delete nextSelection[sourceId]
+          }
           return {
             syncProgress: nextProgress,
+            selectedCategoryIds: nextSelection,
             ...(nextHidden ? { hiddenCategoryIds: nextHidden } : {})
           }
         })
       },
 
-      setSelectedCategory: (id) => set({ selectedCategoryId: id }),
+      setSelectedCategory: (sourceId, type, id) =>
+        set((state) => {
+          const next = withSelection(state.selectedCategoryIds, sourceId, type, id)
+          return next === state.selectedCategoryIds ? state : { selectedCategoryIds: next }
+        }),
 
       setSyncProgress: (sourceId, progress) =>
         set((state) => {
@@ -194,9 +249,10 @@ export function createPlaylistSliceFor(
           next.add(categoryId)
           // Hiding the category the user is currently browsing would leave them
           // staring at an empty grid with no way back, so fall back to "all".
-          return state.selectedCategoryId === categoryId
-            ? { hiddenCategoryIds: next, selectedCategoryId: null }
-            : { hiddenCategoryIds: next }
+          const selection = withoutCategory(state.selectedCategoryIds, categoryId)
+          return selection === state.selectedCategoryIds
+            ? { hiddenCategoryIds: next }
+            : { hiddenCategoryIds: next, selectedCategoryIds: selection }
         }),
 
       setHiddenCategories: (ids) => set({ hiddenCategoryIds: new Set(ids) }),

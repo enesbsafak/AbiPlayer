@@ -3,10 +3,11 @@ import { Play, Radio } from 'lucide-react'
 import { LazyImage } from '@/components/ui/LazyImage'
 import { ClampText, QualityBadge } from '@/components/ui'
 import { FavoriteToggle } from '@/components/ui/FavoriteToggle'
+import { CARD_FOCUS_CLASS, type CardFocusProps } from '@/components/catalog/card-focus'
 import { inferContentQualityLabel } from '@/services/quality'
 import type { Channel } from '@/types/playlist'
 
-interface ChannelCardProps {
+interface ChannelCardProps extends CardFocusProps {
   channel: Channel
   onPlay: (channel: Channel) => void
   eagerImage?: boolean
@@ -15,20 +16,23 @@ interface ChannelCardProps {
 export const ChannelCard = memo(function ChannelCard({
   channel,
   onPlay,
-  eagerImage = false
+  eagerImage = false,
+  focusProps,
+  secondaryTabIndex
 }: ChannelCardProps) {
   const artwork = channel.logo || channel.coverUrl
   const qualityLabel = inferContentQualityLabel(channel)
 
   return (
     <div
-      className="group relative flex flex-col overflow-hidden rounded-lg border border-surface-800 bg-surface-900 transition-colors hover:border-surface-700 focus-within:border-surface-700"
+      className={`group relative flex flex-col overflow-hidden rounded-lg border border-surface-800 bg-surface-900 transition-colors hover:border-surface-700 focus-within:border-surface-700 ${CARD_FOCUS_CLASS}`}
     >
       <button
         type="button"
-        className="flex w-full flex-1 flex-col text-left"
+        className="flex w-full flex-1 flex-col text-left outline-none"
         onClick={() => onPlay(channel)}
         aria-label={`${channel.name} oynat`}
+        {...focusProps}
       >
         <div className="relative flex aspect-video items-center justify-center bg-surface-800">
           {artwork ? (
@@ -78,7 +82,7 @@ export const ChannelCard = memo(function ChannelCard({
         </div>
       </button>
       <div className="absolute bottom-3 right-3">
-        <FavoriteToggle channelId={channel.id} />
+        <FavoriteToggle channelId={channel.id} item={channel} tabIndex={secondaryTabIndex} />
       </div>
     </div>
   )

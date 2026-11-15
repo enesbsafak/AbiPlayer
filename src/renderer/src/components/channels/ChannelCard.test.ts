@@ -48,6 +48,16 @@ describe('ChannelCard favourite star', () => {
   })
 })
 
+describe('favourite snapshot from the card', () => {
+  it('is taken from the item the card shows, even when it is not in the catalog', () => {
+    render(createElement(VODCard, { item: { ...movie, name: 'Arşivden Film' }, onPlay: () => {} }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Favorilere ekle' }))
+
+    expect(useStore.getState().favoriteSnapshots[movie.id]).toMatchObject({ id: movie.id, name: 'Arşivden Film' })
+  })
+})
+
 describe('VODCard favourite toggle', () => {
   it('adds the film without starting playback', () => {
     let played = 0

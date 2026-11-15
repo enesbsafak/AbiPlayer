@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { create } from 'zustand'
-import { createPlaylistSliceFor, type PlaylistSlice } from './playlist-slice'
+import { createPlaylistSliceFor, selectedCategoryFor, type PlaylistSlice } from './playlist-slice'
 import { createPlayerSlice, DEFAULT_PLAYBACK_TUNING, type PlayerSlice } from './player-slice'
 import { createCatalogStore, type CatalogStore } from '@/catalog/catalog-store'
 import { categoryToRecord, m3uEntryToRecord } from '@/catalog/convert'
@@ -48,21 +48,70 @@ describe('playlist-slice category visibility', () => {
   it('drops the selection when the browsed category gets hidden', () => {
     const { store } = createTestStore()
 
-    store.getState().setSelectedCategory('s1_live_2')
+    store.getState().setSelectedCategory('s1', 'live', 's1_live_2')
     store.getState().toggleCategoryHidden('s1_live_2')
 
-    expect(store.getState().selectedCategoryId).toBeNull()
+    expect(selectedCategoryFor(store.getState().selectedCategoryIds, 's1', 'live')).toBeNull()
   })
 
   it('keeps the selection when a different category gets hidden', () => {
     const { store } = createTestStore()
 
-    store.getState().setSelectedCategory('s1_live_1')
+    store.getState().setSelectedCategory('s1', 'live', 's1_live_1')
     store.getState().toggleCategoryHidden('s1_live_2')
 
-    expect(store.getState().selectedCategoryId).toBe('s1_live_1')
+    expect(selectedCategoryFor(store.getState().selectedCategoryIds, 's1', 'live')).toBe('s1_live_1')
+  })
+})
+
+describe('playlist-slice category selection (F1-20)', () => {
+  it('keeps one selection per content type', () => {
+    const { store } = createTestStore()
+
+    store.getState().setSelectedCategory('s1', 'live', 's1_live_2')
+
+    const selection = store.getState().selectedCategoryIds
+    expect(selectedCategoryFor(selection, 's1', 'live')).toBe('s1_live_2')
+    // A live category must not filter films or series.
+    expect(selectedCategoryFor(selection, 's1', 'vod')).toBeNull()
+    expect(selectedCategoryFor(selection, 's1', 'series')).toBeNull()
   })
 
+  it('keeps one selection per source', () => {
+    const { store } = createTestStore()
+
+    store.getState().setSelectedCategory('s1', 'vod', 's1_vod_3')
+    store.getState().setSelectedCategory('s2', 'vod', 's2_vod_9')
+    store.getState().setSelectedCategory('s1', 'vod', null)
+
+    const selection = store.getState().selectedCategoryIds
+    expect(selectedCategoryFor(selection, 's1', 'vod')).toBeNull()
+    expect(selectedCategoryFor(selection, 's2', 'vod')).toBe('s2_vod_9')
+    expect(selectedCategoryFor(selection, null, 'vod')).toBeNull()
+  })
+
+  it('does not notify for a selection that did not change', () => {
+    const { store } = createTestStore()
+    store.getState().setSelectedCategory('s1', 'live', 's1_live_1')
+    const before = store.getState().selectedCategoryIds
+
+    store.getState().setSelectedCategory('s1', 'live', 's1_live_1')
+
+    expect(store.getState().selectedCategoryIds).toBe(before)
+  })
+
+  it('forgets the selections of a removed source', () => {
+    const { store } = createTestStore()
+    store.getState().setSelectedCategory('s1', 'live', 's1_live_1')
+    store.getState().setSelectedCategory('s2', 'live', 's2_live_1')
+
+    store.getState().removeSourceCatalog('s1')
+
+    expect(store.getState().selectedCategoryIds).toEqual({ s2: { live: 's2_live_1' } })
+  })
+})
+
+describe('playlist-slice hidden categories per source', () => {
   it('restores only the requested source when showing all', () => {
     const { store, catalog } = createTestStore()
     commitCategories(catalog, categories)

@@ -42,25 +42,55 @@ export function searchCatalog(
   settings: CatalogViewSettings,
   limit: number
 ): CatalogItem[] {
+  return runCatalogSearch(store, rawQuery, settings, limit, false).items
+}
+
+export interface CatalogSearchResult {
+  /** At most `limit` matches, clean ones first (as `searchCatalog`). */
+  items: CatalogItem[]
+  /** Every match, not capped. */
+  total: number
+}
+
+/** `searchCatalog` plus the true number of matches, for "N sonuç" next to a capped list. */
+export function searchCatalogWithTotal(
+  store: CatalogStore,
+  rawQuery: string,
+  settings: CatalogViewSettings,
+  limit: number
+): CatalogSearchResult {
+  return runCatalogSearch(store, rawQuery, settings, limit, true)
+}
+
+function runCatalogSearch(
+  store: CatalogStore,
+  rawQuery: string,
+  settings: CatalogViewSettings,
+  limit: number,
+  countAll: boolean
+): CatalogSearchResult {
   const query = normalizeSearchKey(rawQuery)
-  if (!query) return []
+  if (!query) return { items: [], total: 0 }
   const clean: CatalogItem[] = []
   const adult: CatalogItem[] = []
+  let total = 0
 
-  for (const status of store.getStatuses()) {
-    if (clean.length >= limit) break
+  scan: for (const status of store.getStatuses()) {
+    if (!countAll && clean.length >= limit) break
     const adultCategoryIds = store.getAdultCategoryIds(status.sourceId, status.type)
     for (const item of store.getVisibleItems(status.sourceId, status.type, settings)) {
       if (!matchesSearch(item, query, true)) continue
+      total += 1
       const isAdult = item.isAdult || (!!item.categoryId && adultCategoryIds.has(item.categoryId))
       if (isAdult) {
         if (adult.length < limit) adult.push(item)
-      } else {
+      } else if (clean.length < limit) {
         clean.push(item)
-        if (clean.length >= limit) break
+        if (!countAll && clean.length >= limit) break scan
       }
     }
   }
 
-  return clean.length >= limit ? clean.slice(0, limit) : clean.concat(adult).slice(0, limit)
+  const items = clean.length >= limit ? clean.slice(0, limit) : clean.concat(adult).slice(0, limit)
+  return { items, total }
 }
