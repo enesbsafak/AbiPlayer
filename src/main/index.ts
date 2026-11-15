@@ -1,3 +1,5 @@
+import { perfLoadFileOptions, perfMark } from './perf'
+import { applyE2eWindowMode } from './e2e-mode'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { app, shell, BrowserWindow, screen, session } from 'electron'
 import { join } from 'path'
@@ -137,6 +139,10 @@ function createWindow(): void {
     }
   })
 
+  // --- ABI_E2E test mode (see e2e-mode.ts): off-screen, never activated, no taskbar. ---
+  applyE2eWindowMode(mainWindow)
+  // --- end ABI_E2E ---
+
   // Track normal bounds so we can save them even when maximized.
   // Handlers reference `mainWindow` by closure — we must detach them on
   // `closed` so the window (and any subsequent GC) doesn't retain state.
@@ -195,7 +201,7 @@ function createWindow(): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'), perfLoadFileOptions())
   }
 }
 
@@ -217,6 +223,7 @@ if (!hasSingleInstanceLock) {
   })
 
   app.whenReady().then(() => {
+    perfMark('main:when-ready')
     electronApp.setAppUserModelId('com.abiplayer.beta')
 
     app.on('browser-window-created', (_, window) => {
@@ -224,7 +231,9 @@ if (!hasSingleInstanceLock) {
     })
 
     installCertificateVerifyProc()
+    perfMark('main:ipc-register-start')
     registerIpcHandlers()
+    perfMark('main:ipc-register-done')
     createWindow()
     initializeAppUpdater()
 
