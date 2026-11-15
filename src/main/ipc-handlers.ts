@@ -14,7 +14,7 @@ import { broadcastEvent } from './ipc/events'
 import { PickedFileRegistry, registerFileHandlers } from './ipc/files'
 import { registerMediaHandlers, mediaJobOwner } from './ipc/media'
 import { createMediaService, MediaJobRunner } from './ipc/media-jobs'
-import { registerMpvHandlers } from './ipc/mpv'
+import { createMpvPrewarmTrigger, getNativeWindowId, registerMpvHandlers } from './ipc/mpv'
 import { createIpcRegistrar, isTrustedSenderFrame, type TrustedRendererLocation } from './ipc/register'
 import { registerWindowHandlers } from './ipc/window'
 
@@ -23,6 +23,10 @@ const mpvController = new MpvController()
 export interface MainServices {
   stopPlayback(): Promise<void>
   shutdown(): Promise<void>
+  /** Synchronous last resort on exit: no mpv process may outlive the app. */
+  killPlayerProcesses(): void
+  /** Tell it when `window` has been shown and each time its page has loaded. */
+  createPlayerPrewarm(window: BrowserWindow): { windowShown(): void; pageLoaded(): void }
   cancelMediaJobs(webContentsId: number): void
   trustedRendererLocation: TrustedRendererLocation
 }
@@ -107,6 +111,12 @@ export function registerIpcHandlers(): MainServices {
       media.cancelAll()
       await mpvController.shutdown()
     },
+    killPlayerProcesses: () => mpvController.killProcessesNow(),
+    createPlayerPrewarm: (window) =>
+      createMpvPrewarmTrigger({
+        controller: mpvController,
+        getWindowId: () => (window.isDestroyed() ? null : getNativeWindowId(window))
+      }),
     cancelMediaJobs: (webContentsId) => {
       media.cancel(mediaJobOwner({ id: webContentsId }))
     },

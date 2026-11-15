@@ -22,12 +22,7 @@ export interface MpvTrackInfo {
  */
 export type MpvPlaybackPhase = 'idle' | 'loading' | 'playing' | 'ended' | 'error'
 
-/**
- * Identity fields. The main-process controller always fills all three (see
- * `MpvIdentifiedSnapshot`); they are optional on `MpvStateSnapshot` only so
- * snapshots built elsewhere (renderer test fixtures) keep compiling until the
- * renderer switches over to them.
- */
+/** Which process, load and playback a snapshot describes, and its place in the stream of snapshots. */
 export interface MpvSnapshotIdentity {
   /**
    * Which mpv process this snapshot describes; null when none is running.
@@ -56,7 +51,7 @@ export interface MpvSnapshotIdentity {
   seq: number
 }
 
-export interface MpvStateSnapshot extends Partial<MpvSnapshotIdentity> {
+export interface MpvStateSnapshot extends MpvSnapshotIdentity {
   available: boolean
   running: boolean
   paused: boolean
@@ -81,8 +76,8 @@ export interface MpvStateSnapshot extends Partial<MpvSnapshotIdentity> {
   passthroughActive: boolean
 }
 
-/** What the controller emits: a snapshot whose identity is always present. */
-export type MpvIdentifiedSnapshot = MpvStateSnapshot & MpvSnapshotIdentity
+/** What the controller emits. Kept as a name of its own for existing imports. */
+export type MpvIdentifiedSnapshot = MpvStateSnapshot
 
 export interface MpvSubtitleStyle {
   fontSize: number

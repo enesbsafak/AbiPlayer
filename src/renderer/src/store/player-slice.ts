@@ -34,7 +34,7 @@ export const DEFAULT_PLAYBACK_TUNING: MpvPlaybackTuning = {
   aspectRatio: 'auto'
 }
 
-type PlayerPatch = Partial<{
+export type PlayerPatch = Partial<{
   playbackEngine: 'html5' | 'mpv'
   isPlaying: boolean
   isPaused: boolean
@@ -132,7 +132,7 @@ export interface PlayerSlice {
   currentPlayback: CurrentPlayback | null
   /**
    * Set by the engine once the stream of that playback is open far enough to
-   * seek (mpv reported a duration for it, the `<video>` has metadata).
+   * seek (a snapshot of that playback reports it loaded, the `<video>` has metadata).
    */
   loadedPlaybackId: PlaybackId | null
   isPlaying: boolean

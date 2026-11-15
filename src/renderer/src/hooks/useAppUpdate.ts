@@ -8,6 +8,7 @@ import {
   type AppUpdateState
 } from '@/services/platform'
 import { toUserMessage } from '@/services/user-error'
+import { flushPersistedStore } from '@/store'
 
 /**
  * Shared view of the updater. The main process is the single source of truth and
@@ -74,6 +75,9 @@ export function useAppUpdate() {
     setIsInstalling(true)
     let started = false
     try {
+      // The app closes for the install; a coalesced store write still waiting
+      // would be lost with it.
+      flushPersistedStore()
       started = await installAppUpdate()
     } catch (error) {
       setCheckError(toUserMessage(error, 'Güncelleme kurulamadı.'))

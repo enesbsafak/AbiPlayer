@@ -245,6 +245,11 @@ export class MpvSession {
     return this.closePromise
   }
 
+  /** Kills the process outright, without waiting; see `MpvController.killProcessesNow`. */
+  forceKill(): void {
+    if (this.proc && !this.exited) this.proc.kill('SIGKILL')
+  }
+
   private async teardown(): Promise<void> {
     const proc = this.proc
     if (proc && !this.exited) {

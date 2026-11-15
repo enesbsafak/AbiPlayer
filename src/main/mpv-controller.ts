@@ -243,6 +243,17 @@ export class MpvController {
     await Promise.allSettled(Array.from(this.closingSessions, (session) => session.close()))
   }
 
+  /**
+   * Last resort for the moment the app exits: SIGKILLs every mpv process still
+   * alive, synchronously. `shutdown` asks each one to quit first, but the quit
+   * is only held for so long, and on Windows a child is not taken down with
+   * its parent.
+   */
+  killProcessesNow(): void {
+    const sessions = new Set([this.starting, this.current, ...this.closingSessions])
+    for (const session of sessions) session?.forceKill()
+  }
+
   // ---------------------------------------------------------------------------
   // Snapshots
 
@@ -587,10 +598,10 @@ export class MpvController {
 
     // Pipelined ahead of loadfile; mpv runs them in order. The launch
     // arguments start mpv paused so an idle pre-warmed process stays silent.
-    const preload = [
-      session.request(['set_property', 'pause', false]),
-      ...this.applyTuning(session, playback.tuning)
-    ]
+    // Not awaited, but never left unhandled: a session dying right now rejects
+    // them, and that is reported through `ended`, not here.
+    void session.request(['set_property', 'pause', false]).catch(() => undefined)
+    void Promise.allSettled(this.applyTuning(session, playback.tuning))
 
     try {
       await session.load(seq, playback.url, { liveEdge: playback.liveEdge })

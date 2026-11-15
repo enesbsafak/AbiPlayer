@@ -201,6 +201,51 @@ describe('MpvController start-up and teardown', () => {
     expect(first && second).toBe(true)
   })
 
+  it('a session dying under the commands sent ahead of loadfile leaves no unhandled rejection', async () => {
+    const { mpv, controller } = setup()
+    await controller.prewarm('100')
+    const fake = mpv.last
+    fake.holding.add('set_property')
+    fake.holding.add('loadfile')
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason)
+    }
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      const opened = controller.open(URL_A, '100', {
+        playbackId: 'A',
+        tuning: { audioDelay: 0.5, subDelay: 0, speed: 1, aspectRatio: 'auto' }
+      })
+      const rejected = expect(opened).rejects.toThrow(MPV_UNEXPECTED_EXIT_MESSAGE)
+      await settle()
+      expect(fake.commands('set_property').map((command) => command[1])).toEqual(
+        expect.arrayContaining(['pause', 'audio-delay'])
+      )
+      fake.exit(1)
+      await rejected
+      // Node reports unhandled rejections after the microtask queue drains.
+      vi.useRealTimers()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
+    expect(unhandled).toEqual([])
+  })
+
+  it('kills every live process at once on exit, including a wedged one being torn down', async () => {
+    const { mpv, controller } = setup()
+    const fake = await play(controller, mpv, URL_A)
+    fake.holding.add('quit')
+    fake.ignoresSignals = true
+    void controller.shutdown()
+    await settle()
+    expect(fake.signals).toEqual([])
+
+    controller.killProcessesNow()
+    expect(fake.signals).toEqual(['SIGKILL'])
+  })
+
   it('pre-warms one idle process that the first open reuses', async () => {
     const { mpv, controller } = setup()
 

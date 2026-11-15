@@ -21,8 +21,9 @@ export function AppShell() {
   useAutoConnect()
   useKeyboard()
   useEPG()
-  // Lives here rather than in the player: playback continues in the mini player
-  // and survives leaving /player, so the recorder has to outlive that route.
+  // Lives here rather than in the player so it can write the final position
+  // when the player route is left (playback is suspended there), on reload, on
+  // stop and when the window closes.
   useWatchProgress()
   usePerfMarkOnce('renderer:shell-mounted')
 

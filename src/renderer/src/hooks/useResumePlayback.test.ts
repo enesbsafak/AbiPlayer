@@ -10,7 +10,7 @@ vi.mock('@/services/platform', async (importOriginal) => {
 })
 
 import { mpvSeekTo } from '@/services/platform'
-import { planResume, useResumePlayback } from './useResumePlayback'
+import { planResume, resumeSeekVerdict, useResumePlayback } from './useResumePlayback'
 import { targetFromChannel } from '@/services/playback'
 
 const movie: Channel = {
@@ -67,7 +67,7 @@ describe('useResumePlayback', () => {
     expect(useStore.getState().pendingResume).toBeNull()
   })
 
-  it('seeks mpv the same way, and finishes once mpv acknowledged the seek', async () => {
+  it('seeks mpv the same way, and finishes once its snapshots show the new position', async () => {
     let acknowledge: () => void = () => undefined
     vi.mocked(mpvSeekTo).mockReturnValueOnce(
       new Promise<void>((resolve) => {
@@ -83,8 +83,50 @@ describe('useResumePlayback', () => {
     expect(vi.mocked(mpvSeekTo)).toHaveBeenCalledWith(1795)
     expect(useStore.getState().pendingResume).toMatchObject({ phase: 'seek-issued', position: 1795 })
 
+    // The command was accepted, but the position has not moved yet.
     await act(async () => acknowledge())
+    act(() => useStore.getState().applyPlayerPatch({ currentTime: 0.4 }))
+    expect(useStore.getState().pendingResume?.phase).toBe('seek-issued')
+
+    act(() => useStore.getState().applyPlayerPatch({ currentTime: 1795.2 }))
     expect(useStore.getState().pendingResume).toBeNull()
+  })
+
+  it('stops waiting when mpv rejects the seek', async () => {
+    vi.mocked(mpvSeekTo).mockReturnValueOnce(Promise.reject(new Error('not seekable')))
+    leaveFilmForMiniCard()
+    useStore.getState().resumeSuspendedPlayback()
+    renderHook(() => useResumePlayback(fakeVideoRef(), true, true))
+
+    await act(async () => useStore.getState().markPlaybackLoaded(currentPlaybackId()))
+    expect(useStore.getState().pendingResume).toBeNull()
+  })
+
+  it('stops waiting when an accepted seek never lands and the film plays on from the start', async () => {
+    leaveFilmForMiniCard()
+    useStore.getState().resumeSuspendedPlayback()
+    renderHook(() => useResumePlayback(fakeVideoRef(), true, true))
+    await act(async () => useStore.getState().markPlaybackLoaded(currentPlaybackId()))
+
+    act(() => useStore.getState().applyPlayerPatch({ currentTime: 5 }))
+    expect(useStore.getState().pendingResume?.phase).toBe('seek-issued')
+    act(() => useStore.getState().applyPlayerPatch({ currentTime: 11 }))
+    expect(useStore.getState().pendingResume).toBeNull()
+  })
+
+  it('a position reported for another playback does not finish the resume', async () => {
+    leaveFilmForMiniCard()
+    useStore.getState().resumeSuspendedPlayback()
+    renderHook(() => useResumePlayback(fakeVideoRef(), true, true))
+    await act(async () => useStore.getState().markPlaybackLoaded(currentPlaybackId()))
+    const issuedFor = currentPlaybackId()
+
+    // The viewer reloads before the seek lands; the reload owes its own resume.
+    act(() => useStore.getState().reloadPlayback())
+    act(() => useStore.getState().applyPlayerPatch({ currentTime: 1795 }))
+
+    expect(useStore.getState().pendingResume).toMatchObject({ phase: 'awaiting-load' })
+    expect(useStore.getState().pendingResume?.playbackId).not.toBe(issuedFor)
   })
 
   it('does not seek, nor give up, merely because a duration appeared', () => {
@@ -145,5 +187,16 @@ describe('planResume', () => {
       kind: 'wait'
     })
     expect(planResume(base)).toEqual({ kind: 'seek', playbackId: 'p2', position: 100 })
+  })
+})
+
+describe('resumeSeekVerdict', () => {
+  it('lands near the target, waits before it, and gives up once playback ran on without it', () => {
+    expect(resumeSeekVerdict({ position: 600, currentTime: 601.5, acknowledgedAt: null })).toBe('landed')
+    expect(resumeSeekVerdict({ position: 600, currentTime: 0.2, acknowledgedAt: null })).toBe('waiting')
+    expect(resumeSeekVerdict({ position: 600, currentTime: 8, acknowledgedAt: 0.2 })).toBe('waiting')
+    expect(resumeSeekVerdict({ position: 600, currentTime: 10.5, acknowledgedAt: 0.2 })).toBe('gave-up')
+    // Without an acknowledgement nothing is given up on.
+    expect(resumeSeekVerdict({ position: 600, currentTime: 50, acknowledgedAt: null })).toBe('waiting')
   })
 })

@@ -1,7 +1,9 @@
 import type { BrowserWindow } from 'electron'
 import type { MpvController } from '../mpv-controller'
 import type { MpvStateSnapshot } from '../../shared/types/electron-ipc'
+import type { MpvOpenRequest } from '../../shared/ipc/contract'
 import { maskCredentials } from '../../shared/mask-credentials'
+import { sendEvent, type EventTarget } from './events'
 import type { IpcRegistrar } from './register'
 import { isValidFilePathArgument, type PickedFileRegistry } from './files'
 import {
@@ -37,6 +39,7 @@ export type MpvControllerApi = Pick<
   | 'setSubtitleStyle'
   | 'setVideoMarginRatio'
   | 'getState'
+  | 'subscribe'
 >
 
 export const SUBTITLE_NOT_PICKED_MESSAGE = 'Altyazı dosyası yalnızca dosya seçme penceresinden eklenebilir'
@@ -64,6 +67,124 @@ export function maskSnapshotError(state: MpvStateSnapshot): MpvStateSnapshot {
   return masked === state.error ? state : { ...state, error: masked }
 }
 
+const PLAYBACK_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
+
+export function parseMpvOpenRequest(value: unknown): MpvOpenRequest {
+  if (!value || typeof value !== 'object') throw new Error('Geçersiz oynatma isteği')
+  const { playbackId, tuning } = value as Partial<MpvOpenRequest>
+  if (typeof playbackId !== 'string' || !PLAYBACK_ID_PATTERN.test(playbackId)) {
+    throw new Error('Geçersiz oynatma kimliği')
+  }
+  if (tuning !== undefined && !isValidPlaybackTuning(tuning)) {
+    throw new Error('Geçersiz oynatma ayar verisi')
+  }
+  return tuning === undefined ? { playbackId } : { playbackId, tuning }
+}
+
+/** A window that receives `mpv-state` pushes. */
+export interface MpvStateSubscriber extends EventTarget {
+  id: number
+  once(event: 'destroyed', listener: () => void): unknown
+  removeListener(event: 'destroyed', listener: () => void): unknown
+}
+
+/**
+ * One controller subscription per window. Subscribing again (a renderer reload
+ * of the same window, a second hook) keeps the one there is; the window going
+ * away ends it.
+ */
+export class MpvStateSubscriptions {
+  private readonly active = new Map<number, { unsubscribe: () => void; onDestroyed: () => void }>()
+
+  constructor(private readonly controller: Pick<MpvControllerApi, 'subscribe' | 'getState'>) {}
+
+  /** Returns the current snapshot. */
+  subscribe(target: MpvStateSubscriber): MpvStateSnapshot {
+    if (!this.active.has(target.id)) {
+      const onDestroyed = (): void => this.unsubscribe(target)
+      target.once('destroyed', onDestroyed)
+      // The controller replays the current snapshot synchronously; registering
+      // first keeps a destroyed window from being subscribed forever.
+      const entry: { unsubscribe: () => void; onDestroyed: () => void } = {
+        unsubscribe: () => undefined,
+        onDestroyed
+      }
+      this.active.set(target.id, entry)
+      entry.unsubscribe = this.controller.subscribe((snapshot) => {
+        sendEvent(target, 'mpv-state', maskSnapshotError(snapshot))
+      })
+    }
+    return maskSnapshotError(this.controller.getState())
+  }
+
+  unsubscribe(target: MpvStateSubscriber): void {
+    const entry = this.active.get(target.id)
+    if (!entry) return
+    this.active.delete(target.id)
+    target.removeListener('destroyed', entry.onDestroyed)
+    entry.unsubscribe()
+  }
+
+  get size(): number {
+    return this.active.size
+  }
+}
+
+/**
+ * How long after the window is shown and its page has loaded the idle mpv is
+ * started. The page renders and hydrates in that time without a process
+ * launch (and its GPU init) competing for the machine.
+ */
+export const MPV_PREWARM_DELAY_MS = 1500
+
+export interface MpvPrewarmDeps {
+  controller: Pick<MpvControllerApi, 'isAvailable'> & Pick<MpvController, 'prewarm'>
+  /** The host window's handle, or null while it has none (or is gone). */
+  getWindowId: () => string | null
+  delayMs?: number
+  setTimer?: (callback: () => void, ms: number) => unknown
+}
+
+/**
+ * Pre-warms mpv once the window has been shown and its page has finished
+ * loading — in either order, and again after each reload — so the first play
+ * only has to send `loadfile`. Skipped quietly without an mpv binary or a
+ * window handle; the first `open` then starts mpv as before.
+ */
+export function createMpvPrewarmTrigger(deps: MpvPrewarmDeps): {
+  windowShown(): void
+  pageLoaded(): void
+} {
+  const delayMs = deps.delayMs ?? MPV_PREWARM_DELAY_MS
+  const setTimer = deps.setTimer ?? ((callback: () => void, ms: number) => setTimeout(callback, ms))
+  let shown = false
+  let loaded = false
+
+  const run = async (): Promise<void> => {
+    if (!(await deps.controller.isAvailable().catch(() => false))) return
+    const windowId = deps.getWindowId()
+    if (!windowId) return
+    await deps.controller.prewarm(windowId)
+  }
+
+  const maybeSchedule = (): void => {
+    if (!shown || !loaded) return
+    loaded = false
+    setTimer(() => void run().catch(() => undefined), delayMs)
+  }
+
+  return {
+    windowShown() {
+      shown = true
+      maybeSchedule()
+    },
+    pageLoaded() {
+      loaded = true
+      maybeSchedule()
+    }
+  }
+}
+
 export interface MpvHandlerDeps {
   controller: MpvControllerApi
   registry: Pick<PickedFileRegistry, 'wasPickedThisSession'>
@@ -72,14 +193,16 @@ export interface MpvHandlerDeps {
 
 export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDeps): void {
   const { controller } = deps
+  const subscriptions = new MpvStateSubscriptions(controller)
 
   registrar.handle('mpv-is-available', () => controller.isAvailable())
 
-  registrar.handle('mpv-open', async (event, streamUrl) => {
+  registrar.handle('mpv-open', async (event, streamUrl, request) => {
     if (!isValidStreamUrl(streamUrl)) throw new Error('Geçersiz yayın URL')
+    const { playbackId, tuning } = parseMpvOpenRequest(request)
     const window = deps.getWindow(event.sender)
     const nativeWindowId = window ? getNativeWindowId(window) : null
-    await controller.open(streamUrl, nativeWindowId ?? undefined)
+    await controller.open(streamUrl, nativeWindowId ?? undefined, tuning ? { playbackId, tuning } : { playbackId })
   })
 
   registrar.handle('mpv-stop', () => controller.stopPlayback())
@@ -162,7 +285,9 @@ export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDep
   })
 
   // mpv pushes every property this snapshot exposes via `observe_property`,
-  // so the cached state is already current; re-querying here would cost a
-  // dozen round-trips per renderer poll.
+  // so the cached state is already current.
   registrar.handle('mpv-get-state', () => maskSnapshotError(controller.getState()))
+
+  registrar.handle('mpv-subscribe', (event) => subscriptions.subscribe(event.sender))
+  registrar.handle('mpv-unsubscribe', (event) => subscriptions.unsubscribe(event.sender))
 }

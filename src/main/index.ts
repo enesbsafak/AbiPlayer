@@ -178,14 +178,20 @@ function createWindow(services: MainServices): void {
     if (!mainWindow.isDestroyed()) saveWindowState(tracker.capture())
   })
 
+  // Idle mpv for the first play; started only after the window is up and its
+  // page has loaded (see createMpvPrewarmTrigger).
+  const playerPrewarm = services.createPlayerPrewarm(mainWindow)
+
   // Maximizing a hidden window shows it on Windows, before anything is
   // painted; so both happen once the first frame is ready.
   mainWindow.once('ready-to-show', () => {
     if (savedState.isMaximized) mainWindow.maximize()
     mainWindow.show()
+    playerPrewarm.windowShown()
   })
 
   mainWindow.webContents.on('did-finish-load', () => {
+    playerPrewarm.pageLoaded()
     void cleanupStoreBackupIfUnneeded(() =>
       mainWindow.webContents.executeJavaScript(`localStorage.getItem('iptv-player-store')`)
     ).catch((error) => logMainError('store-backup-cleanup', error))
@@ -272,6 +278,9 @@ if (!hasSingleInstanceLock) {
 
     app.once('before-quit', () => setPreventDisplaySleep(false))
     installQuitHandling(app, () => services.shutdown(), QUIT_SHUTDOWN_TIMEOUT_MS)
+    // Runs once the quit is final, also when the shutdown above timed out on a
+    // wedged mpv: nothing may keep playing (or hold the pipe) after we exit.
+    app.once('quit', () => services.killPlayerProcesses())
 
     createWindow(services)
     initializeAppUpdater()
