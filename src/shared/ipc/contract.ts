@@ -63,6 +63,17 @@ export interface WindowStateInfo {
   isFullScreen: boolean
 }
 
+/** What the renderer hands mpv along with the URL of a playback. */
+export interface MpvOpenRequest {
+  /** The renderer's id for this playback; every snapshot about it carries it back. */
+  playbackId: string
+  /**
+   * Tuning for this playback. Omitted on a reconnect of the same playback,
+   * which keeps what mpv already has.
+   */
+  tuning?: MpvPlaybackTuning
+}
+
 type Invoke<Args extends unknown[], Result> = { args: Args; result: Result }
 
 export interface IpcInvokeContract {
@@ -85,7 +96,7 @@ export interface IpcInvokeContract {
   'media-job-cancel': Invoke<[jobId?: string], boolean>
 
   'mpv-is-available': Invoke<[], boolean>
-  'mpv-open': Invoke<[streamUrl: string], void>
+  'mpv-open': Invoke<[streamUrl: string, request: MpvOpenRequest], void>
   'mpv-stop': Invoke<[], void>
   'mpv-toggle-pause': Invoke<[], void>
   'mpv-set-pause': Invoke<[paused: boolean], void>
@@ -105,6 +116,12 @@ export interface IpcInvokeContract {
   'mpv-set-playback-tuning': Invoke<[tuning: MpvPlaybackTuning], void>
   'mpv-set-video-margin': Invoke<[right: number], void>
   'mpv-get-state': Invoke<[], MpvStateSnapshot>
+  /**
+   * Starts pushing `mpv-state` to the calling window (idempotent) and returns
+   * the current snapshot, so a subscriber never starts from nothing.
+   */
+  'mpv-subscribe': Invoke<[], MpvStateSnapshot>
+  'mpv-unsubscribe': Invoke<[], void>
 
   'display-sleep-set-prevented': Invoke<[prevented: boolean], void>
 
@@ -131,6 +148,11 @@ export interface IpcEventContract {
   'app-update-state': AppUpdateState
   'window-state-changed': WindowStateInfo
   'secure-credentials-lost': SecureCredentialsLossNotice
+  /**
+   * Full mpv snapshots for windows that called `mpv-subscribe`: lifecycle
+   * changes at once, time and cache churn about five per second. `seq` orders them.
+   */
+  'mpv-state': MpvStateSnapshot
 }
 
 export type IpcEventChannel = keyof IpcEventContract

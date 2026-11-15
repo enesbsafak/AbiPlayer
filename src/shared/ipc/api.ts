@@ -45,6 +45,8 @@ export const INVOKE_METHODS = {
   mpvSetPlaybackTuning: 'mpv-set-playback-tuning',
   mpvSetVideoMargin: 'mpv-set-video-margin',
   mpvGetState: 'mpv-get-state',
+  mpvSubscribe: 'mpv-subscribe',
+  mpvUnsubscribe: 'mpv-unsubscribe',
 
   setPreventDisplaySleep: 'display-sleep-set-prevented',
 
@@ -66,7 +68,8 @@ export const INVOKE_METHODS = {
 export const EVENT_METHODS = {
   onAppUpdateStateChange: 'app-update-state',
   onWindowStateChange: 'window-state-changed',
-  onSecureCredentialsLost: 'secure-credentials-lost'
+  onSecureCredentialsLost: 'secure-credentials-lost',
+  onMpvState: 'mpv-state'
 } as const satisfies Record<string, IpcEventChannel>
 
 type InvokeMethods = typeof INVOKE_METHODS

@@ -11,6 +11,7 @@ import {
   MEDIA_JOB_CANCELLED_MESSAGE,
   type FileFilter,
   type MediaJobOptions,
+  type MpvOpenRequest,
   type PickedFile,
   type WindowStateInfo
 } from '../../../shared/ipc/contract'
@@ -21,6 +22,7 @@ export type {
   EmbeddedSubtitleProbeTrack,
   FileFilter,
   MediaJobOptions,
+  MpvOpenRequest,
   MpvPlaybackTuning,
   MpvStateSnapshot,
   MpvSubtitleStyle,
@@ -91,9 +93,13 @@ export async function mpvIsAvailable(): Promise<boolean> {
   return window.electron.mpvIsAvailable()
 }
 
-export async function mpvOpen(streamUrl: string): Promise<void> {
+/**
+ * Opens `streamUrl` as the playback `request.playbackId`; every snapshot about
+ * it carries that id back. Opening the same id again is a reconnect.
+ */
+export async function mpvOpen(streamUrl: string, request: MpvOpenRequest): Promise<void> {
   if (!isElectron() || !window.electron?.mpvOpen) return
-  await window.electron.mpvOpen(streamUrl)
+  await window.electron.mpvOpen(streamUrl, request)
 }
 
 export async function mpvStop(): Promise<void> {
@@ -189,6 +195,42 @@ export async function mpvSetPlaybackTuning(tuning: MpvPlaybackTuning): Promise<v
 export async function mpvGetState(): Promise<MpvStateSnapshot | null> {
   if (!isElectron() || !window.electron?.mpvGetState) return null
   return window.electron.mpvGetState()
+}
+
+const mpvStateListeners = new Set<(snapshot: MpvStateSnapshot) => void>()
+let stopMpvStateEvents: (() => void) | null = null
+
+function deliverMpvState(snapshot: MpvStateSnapshot): void {
+  for (const listener of Array.from(mpvStateListeners)) listener(snapshot)
+}
+
+/**
+ * Listens to mpv's snapshots. The listener first gets the current snapshot
+ * (asynchronously), then every change main pushes. Deliveries can repeat or,
+ * around the first one, arrive out of order: order them by `seq`. One IPC
+ * subscription serves every listener in this window; it ends with the last.
+ * Returns the unsubscribe function, or null outside Electron.
+ */
+export function subscribeMpvState(listener: (snapshot: MpvStateSnapshot) => void): (() => void) | null {
+  const api = isElectron() ? window.electron : undefined
+  if (!api?.onMpvState || !api.mpvSubscribe) return null
+
+  const first = mpvStateListeners.size === 0
+  mpvStateListeners.add(listener)
+  if (first) stopMpvStateEvents = api.onMpvState(deliverMpvState)
+  api.mpvSubscribe().then(
+    (snapshot) => {
+      if (mpvStateListeners.has(listener)) listener(snapshot)
+    },
+    () => undefined
+  )
+
+  return () => {
+    if (!mpvStateListeners.delete(listener) || mpvStateListeners.size > 0) return
+    stopMpvStateEvents?.()
+    stopMpvStateEvents = null
+    void api.mpvUnsubscribe?.().catch(() => undefined)
+  }
 }
 
 export async function setPreventDisplaySleep(prevented: boolean): Promise<void> {
