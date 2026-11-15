@@ -6,7 +6,9 @@
 // 1. mpv, ffmpeg and ffprobe exist where the packaged app resolves them
 //    (mpv/binary.ts resolveMpvBinary; unpacked-binary.ts resolveMediaTools)
 //    and each starts and prints its version.
-// 2. The licence notices are under resources/legal (THIRD-PARTY-NOTICES.md).
+// 2. The licence notices are under resources/legal (THIRD-PARTY-NOTICES.md),
+//    and the mpv archive's extras (d3dcompiler_43.dll, installer and updater
+//    scripts, manual) are not in resources/mpv.
 // 3. Nothing from the worktrees, e2e/, docs/, scripts/, src/, licenses/ or
 //    test output is inside app.asar.
 // 4. Prints the package size.
@@ -94,6 +96,14 @@ for (const file of ['THIRD-PARTY-NOTICES.txt', 'LICENSE.txt', 'licenses/GPL-3.0.
   check(existsSync(join(legal, file)), `licence notice resources/legal/${file}`)
 }
 check(existsSync(join(resources, 'ffmpeg', 'LICENSE.txt')), 'FFmpeg licence resources/ffmpeg/LICENSE.txt')
+
+// The mpv archive's extras that electron-builder.yml filters out: Microsoft's
+// d3dcompiler_43.dll (mpv uses the d3dcompiler_47.dll of Windows), the
+// desktop installer and updater scripts, and the manual. mpv/fonts.conf stays.
+for (const extra of ['d3dcompiler_43.dll', 'doc', 'installer', 'updater.bat', 'mpv-register.bat', 'mpv-unregister.bat']) {
+  check(!existsSync(join(resources, 'mpv', extra)), `resources/mpv/${extra} is not shipped`)
+}
+check(existsSync(join(resources, 'mpv', 'mpv', 'fonts.conf')), 'mpv fontconfig file resources/mpv/mpv/fonts.conf')
 
 // Nothing that is not runtime code (the notices ship under resources/legal, not in app.asar).
 const FORBIDDEN = [/^\.worktrees\//, /^e2e\//, /^docs\//, /^scripts\//, /^src\//, /^test-results\//, /^playwright-report\//, /^coverage\//, /^dist\//, /\.tsbuildinfo$/, /\.test\.[cm]?[jt]sx?$/, /^\.github\//, /^licenses\//, /^THIRD-PARTY-NOTICES/]

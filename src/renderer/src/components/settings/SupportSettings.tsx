@@ -9,6 +9,8 @@ import {
 } from '@/constants/app-info'
 import { fetchReleaseNotes, type ReleaseNote } from '@/services/github-releases'
 import { openLegalNotice, type LegalNoticeTarget } from '@/services/platform'
+// Emitted as its own file (never inlined), so the shipped bytes are TMDB's.
+import tmdbLogoUrl from '@/assets/tmdb/tmdb-alt-short-blue.svg?no-inline'
 import { toUserMessage } from '@/services/user-error'
 import { LOCALE, strings } from '@/strings'
 import { ACTION, SettingsGroup } from './controls'
@@ -232,9 +234,21 @@ function Licenses() {
             {text.openFailed}
           </p>
         )}
-        <div className="flex max-w-[68ch] flex-col gap-1 text-sm text-surface-400">
-          <p>{text.tmdbAttribution}</p>
-          <p lang="en">{text.tmdbAttributionOriginal}</p>
+        <div className="flex max-w-[68ch] items-start gap-4">
+          {/* TMDB's official "alt short" logo, unmodified; kept small so it stays
+              less prominent than the app's own mark (TMDB API terms, section 3). */}
+          <img
+            src={tmdbLogoUrl}
+            alt={text.tmdbLogoAlt}
+            width={92}
+            height={12}
+            className="mt-1 h-3 w-auto shrink-0"
+            draggable={false}
+          />
+          <div className="flex min-w-0 flex-col gap-1 text-sm text-surface-400">
+            <p>{text.tmdbAttribution}</p>
+            <p lang="en">{text.tmdbAttributionOriginal}</p>
+          </div>
         </div>
       </div>
     </SettingsGroup>

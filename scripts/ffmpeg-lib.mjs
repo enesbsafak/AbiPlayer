@@ -7,7 +7,7 @@
 // tamamını ayrıca taşır. Günlük yapılar yaklaşık iki hafta tutuluyor, ay sonu
 // yapıları kalıcı; sabit bu yüzden yalnızca ay sonu yapısına bağlanır.
 
-import { isObject, pinFromAsset, readPinFile, validatePinShape } from './pin-lib.mjs'
+import { isObject, pinFromAsset, readPinFile, validatePinShape, validatePinSources } from './pin-lib.mjs'
 
 export const FFMPEG_REPOSITORY = 'FFmpeg-Builds/FFmpeg-Builds'
 export const FFMPEG_PIN_FILE_URL = new URL('./ffmpeg-pin.json', import.meta.url)
@@ -73,7 +73,25 @@ export function isRuntimeFile(name) {
 }
 
 export function validateFfmpegPin(pin) {
-  return validatePinShape(pin, { fileName: 'ffmpeg-pin.json', extensions: ['zip'] })
+  const problems = validatePinShape(pin, { fileName: 'ffmpeg-pin.json', extensions: ['zip'] })
+  if (!isObject(pin)) return problems
+  return [...problems, ...validatePinSources(pin.sources, FFMPEG_SOURCE_KEYS)]
+}
+
+/**
+ * `pin.sources` anahtarları: kurulumdaki FFmpeg ve derleme betikleri
+ * (FFmpeg-Builds, sürüm etiketinin commit'i).
+ */
+export const FFMPEG_SOURCE_KEYS = ['ffmpeg', 'buildScripts']
+
+/**
+ * Dosya adındaki FFmpeg sürümü ve kısa commit'i:
+ * `ffmpeg-n9.0.2-39-g7adfbe40dc-win64-…` → n9.0.2-39-g7adfbe40dc, 7adfbe40dc.
+ */
+export function ffmpegVersionOf(assetName) {
+  const match = /^ffmpeg-(n\d+(?:\.\d+)*-\d+-g([0-9a-f]{7,40}))-win64-/.exec(String(assetName))
+  if (!match?.[1] || !match[2]) throw new Error(`${assetName} adında FFmpeg sürümü yok.`)
+  return { version: match[1], shortHash: match[2] }
 }
 
 export function buildFfmpegPinFromRelease(release, repository) {

@@ -1,5 +1,9 @@
 import { createHash } from 'crypto'
+import { readFileSync } from 'fs'
+import { gzipSync } from 'zlib'
 import { describe, expect, it } from 'vitest'
+import { readFfmpegPin } from './ffmpeg-lib.mjs'
+import { readPin as readMpvPin } from './mpv-lib.mjs'
 import {
   assetSha256,
   buildDefaultNotes,
@@ -16,6 +20,10 @@ import {
   remoteTagProblem,
   replaceCommitTerms,
   resolveRemoteTagCommit,
+  sourceArchiveProblem,
+  sourceArchivesFromPins,
+  sourceTarballUrl,
+  tarballCommit,
   verifyRemoteAssets,
   verifyUpdateManifest
 } from './release-lib.mjs'
@@ -518,5 +526,156 @@ describe('varlık özeti', () => {
       sha256: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
     })
     expect(manifest.content).toEqual(Buffer.from('v'))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Kaynak arşivleri
+
+/** `git archive` gibi: pax genel başlığı (commit `comment` kaydında), sonra bir dosya. */
+function fakeTarball(commit, { typeflag = 'g', name = 'pax_global_header' } = {}) {
+  const header = (entryName, size, flag) => {
+    const block = Buffer.alloc(512)
+    block.write(entryName, 0, 'utf8')
+    block.write(size.toString(8).padStart(11, '0'), 124, 'utf8')
+    block.write(flag, 156, 'utf8')
+    return block
+  }
+  const record = `52 comment=${commit}\n`
+  const body = Buffer.alloc(512)
+  body.write(record, 0, 'utf8')
+  return gzipSync(
+    Buffer.concat([header(name, record.length, typeflag), body, header('repo-abc/README', 0, '0'), Buffer.alloc(1024)])
+  )
+}
+
+const MPV_PIN = {
+  repository: 'shinchiro/mpv-winbuild-cmake',
+  releaseTag: '20261111',
+  assetName: 'mpv-x86_64-20261111-git-bcde6b93cc.7z',
+  sources: {
+    mpv: { repository: 'mpv-player/mpv', commit: 'bcde6b93cca4d128d84e1a60d1a6db2cd81c889e' },
+    ffmpeg: { repository: 'FFmpeg/FFmpeg', commit: 'cd4e96eb314630788b7ff2f9820c395788c023e2' },
+    buildScripts: { repository: 'shinchiro/mpv-winbuild-cmake', commit: 'bda10a2816ce9908d419b3f4b564227330457e76' }
+  }
+}
+const FFMPEG_PIN = {
+  repository: 'FFmpeg-Builds/FFmpeg-Builds',
+  releaseTag: 'autobuild-2026-10-31-12-59',
+  assetName: 'ffmpeg-n9.0.2-39-g7adfbe40dc-win64-gpl-shared-9.0.zip',
+  sources: {
+    ffmpeg: { repository: 'FFmpeg/FFmpeg', commit: '7adfbe40dcde598f93a6963d2f7b22cd75202ccc' },
+    buildScripts: { repository: 'FFmpeg-Builds/FFmpeg-Builds', commit: '5031c6f1082414e53688d39e521849905071070d' }
+  }
+}
+
+describe('sourceArchivesFromPins', () => {
+  it('0.5.0-beta sürümüne elle yüklenen beş arşivin adlarını ve commitlerini verir', () => {
+    expect(sourceArchivesFromPins(MPV_PIN, FFMPEG_PIN)).toEqual([
+      { name: 'source-mpv-bcde6b93cc.tar.gz', ...MPV_PIN.sources.mpv },
+      { name: 'source-ffmpeg-n9.0.2-39-g7adfbe40dc.tar.gz', ...FFMPEG_PIN.sources.ffmpeg },
+      { name: 'source-ffmpeg-in-mpv-cd4e96eb3.tar.gz', ...MPV_PIN.sources.ffmpeg },
+      { name: 'source-mpv-build-scripts-20261111.tar.gz', ...MPV_PIN.sources.buildScripts },
+      { name: 'source-ffmpeg-build-scripts-2026-10-31.tar.gz', ...FFMPEG_PIN.sources.buildScripts }
+    ])
+    expect(sourceTarballUrl(sourceArchivesFromPins(MPV_PIN, FFMPEG_PIN)[0])).toBe(
+      'https://api.github.com/repos/mpv-player/mpv/tarball/bcde6b93cca4d128d84e1a60d1a6db2cd81c889e'
+    )
+  })
+
+  it('dosya adındaki kısa commit kayıtlı commitle uyuşmazsa ya da kayıt yoksa durur', () => {
+    const otherMpv = {
+      ...MPV_PIN,
+      sources: { ...MPV_PIN.sources, mpv: { ...MPV_PIN.sources.mpv, commit: 'a'.repeat(40) } }
+    }
+    expect(() => sourceArchivesFromPins(otherMpv, FFMPEG_PIN)).toThrow(/sources\.mpv\.commit/)
+    const otherFfmpeg = {
+      ...FFMPEG_PIN,
+      sources: { ...FFMPEG_PIN.sources, ffmpeg: { ...FFMPEG_PIN.sources.ffmpeg, commit: 'b'.repeat(40) } }
+    }
+    expect(() => sourceArchivesFromPins(MPV_PIN, otherFfmpeg)).toThrow(/sources\.ffmpeg\.commit/)
+    expect(() => sourceArchivesFromPins({ ...MPV_PIN, sources: undefined }, FFMPEG_PIN)).toThrow(/sources/)
+  })
+})
+
+describe('tarballCommit / sourceArchiveProblem', () => {
+  const archive = { name: 'source-x.tar.gz', repository: 'o/r', commit: 'c'.repeat(40) }
+
+  it('git archive çıktısının pax başlığından commiti okur', () => {
+    expect(tarballCommit(fakeTarball('c'.repeat(40)))).toBe('c'.repeat(40))
+    expect(sourceArchiveProblem(fakeTarball('c'.repeat(40)), archive)).toBeNull()
+  })
+
+  it('başka committen, gzip olmayan ya da pax başlığı olmayan arşivi reddeder', () => {
+    expect(sourceArchiveProblem(fakeTarball('d'.repeat(40)), archive)).toMatch(/made from d{40}, expected c{40}/)
+    expect(tarballCommit(Buffer.from('<html>rate limited</html>'))).toBeNull()
+    expect(tarballCommit(fakeTarball('c'.repeat(40), { typeflag: '0', name: 'README' }))).toBeNull()
+    expect(sourceArchiveProblem(Buffer.alloc(0), archive)).toMatch(/not a GitHub source archive/)
+  })
+})
+
+describe('kaynak arşivleriyle yayın', () => {
+  it('arşivleri kurulum dosyasıyla yükler, latest.yml yine en son gider ve hepsi doğrulanır', async () => {
+    const files = describeReleaseFiles([
+      { name: 'latest.yml', path: 'dist/latest.yml', content: Buffer.from('version: 1\n') },
+      { name: 'a.exe', path: 'dist/a.exe', content: Buffer.from('installer!') },
+      { name: 'source-mpv-bcde6b93cc.tar.gz', path: 'dist/source-archives/m.tar.gz', content: fakeTarball('c'.repeat(40)) }
+    ])
+    const uploads = []
+    const assets = new Map()
+    let release = null
+    const api = {
+      findReleaseByTag: async () => release,
+      createRelease: async (payload) => (release = { id: 1, html_url: 'x', ...payload }),
+      updateRelease: async (_id, payload) => (release = { ...release, ...payload }),
+      listAssets: async () => [...assets.values()],
+      deleteAsset: async () => {},
+      uploadFiles: async (_release, batch) => {
+        uploads.push(batch.map((file) => file.name))
+        for (const file of batch) {
+          assets.set(file.name, {
+            id: assets.size + 1,
+            name: file.name,
+            size: file.size,
+            state: 'uploaded',
+            digest: `sha256:${file.sha256}`,
+            content: file.content
+          })
+        }
+      },
+      downloadAsset: async (asset) => asset.content
+    }
+    const published = await publishRelease({
+      api,
+      tag: 'v1.0.0',
+      targetCommitish: 'a'.repeat(40),
+      releaseName: 'r',
+      notes: 'n',
+      prerelease: false,
+      keepDraft: false,
+      files
+    })
+    expect(published.draft).toBe(false)
+    expect(uploads).toEqual([['a.exe', 'source-mpv-bcde6b93cc.tar.gz'], ['latest.yml']])
+  })
+})
+
+describe('THIRD-PARTY-NOTICES.md ve sabitler', () => {
+  it('bildirimler, sabitlerdeki her ikiliyi ve her kaynak commitini aynen anar', async () => {
+    const notices = readFileSync(new URL('../THIRD-PARTY-NOTICES.md', import.meta.url), 'utf8')
+    const mpvPin = await readMpvPin()
+    const ffmpegPin = await readFfmpegPin()
+    const missing = []
+    for (const pin of [mpvPin, ffmpegPin]) {
+      for (const value of [pin.releaseTag, pin.assetName, pin.sha256, String(pin.size)]) {
+        if (!notices.includes(value)) missing.push(value)
+      }
+    }
+    for (const archive of sourceArchivesFromPins(mpvPin, ffmpegPin)) {
+      for (const value of [archive.name, archive.commit, archive.repository]) {
+        if (!notices.includes(value)) missing.push(value)
+      }
+    }
+    expect(missing).toEqual([])
   })
 })

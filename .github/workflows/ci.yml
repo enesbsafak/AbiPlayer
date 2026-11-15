@@ -98,6 +98,8 @@ jobs:
           name: e2e-report
           path: e2e/.output/
           retention-days: 14
+          # e2e/.output is a dot folder, which upload-artifact v4 skips unless told.
+          include-hidden-files: true
 
   packaged:
     name: Packaged app (smoke and end-to-end)
@@ -138,3 +140,5 @@ jobs:
           name: packaged-e2e-report
           path: e2e/.output/packaged/
           retention-days: 14
+          # e2e/.output is a dot folder, which upload-artifact v4 skips unless told.
+          include-hidden-files: true

@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 
 // Windows sürümünü derler ve GitHub'a yayınlar. Sıra (F0-04):
-//   sürüm denetimi → birim testleri → derleme → dosya doğrulaması → belirteç
-//   → push → taslak sürüm → yükleme → sunucuda doğrulama → yayın
+//   sürüm denetimi → birim testleri → derleme → dosya doğrulaması → kaynak
+//   arşivleri → belirteç → push → taslak sürüm → yükleme → sunucuda doğrulama
+//   → yayın
+// Kaynak arşivleri, pakete giren mpv ve FFmpeg'in derlendiği commit'lerin
+// GitHub arşivleridir (sabitlerdeki `sources`, THIRD-PARTY-NOTICES.md "Kaynak
+// kodu"); kurulum dosyasıyla birlikte yüklenir, latest.yml yine en son gider.
 // Push'tan sonraki herhangi bir hatada sürüm taslak kalır; yeniden çalıştırmak
 // aynı taslağı kaldığı yerden sürdürür. Saf mantık release-lib.mjs'te.
 
 import { spawnSync } from 'child_process'
 import { createHash } from 'crypto'
 import { existsSync } from 'fs'
-import { readFile } from 'fs/promises'
+import { mkdir, readFile, rename, writeFile } from 'fs/promises'
 import { basename, join, resolve } from 'path'
 import {
   HELP_TEXT,
@@ -21,18 +25,25 @@ import {
   inferPrerelease,
   isAssetIntact,
   normalizeReleaseText,
+  orderForUpload,
   parseArgs,
   parseGitHubRepo,
   publishRelease,
   remoteTagProblem,
   resolveRemoteTagCommit,
+  sourceArchiveProblem,
+  sourceArchivesFromPins,
+  sourceTarballUrl,
   verifyUpdateManifest
 } from './release-lib.mjs'
+import { readFfmpegPin } from './ffmpeg-lib.mjs'
+import { readPin as readMpvPin } from './mpv-lib.mjs'
 
 const API_TIMEOUT_MS = 60_000
 const UPLOAD_TIMEOUT_MS = 30 * 60_000
 const UPLOAD_MAX_ATTEMPTS = 3
 const UPLOAD_RETRY_DELAY_MS = 4000
+const SOURCE_DOWNLOAD_TIMEOUT_MS = 10 * 60_000
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -210,6 +221,53 @@ async function verifyArtifacts(packageName, version) {
   ])
 
   return { installerName, files }
+}
+
+/**
+ * Sabitlenmiş mpv ve FFmpeg'in kaynak arşivlerini dist/source-archives'a indirir
+ * (önceki çalıştırmadan kalan ve doğru commit'ten olan dosya yeniden indirilmez)
+ * ve yüklenecek dosyalar olarak döndürür. Her arşivin pax başlığındaki commit
+ * sabitteki commit'le aynı olmalı. GitHub'a yalnızca okuma isteği gider.
+ */
+async function prepareSourceArchives() {
+  const archives = sourceArchivesFromPins(await readMpvPin(), await readFfmpegPin())
+  const dir = join(process.cwd(), 'dist', 'source-archives')
+  await mkdir(dir, { recursive: true })
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN
+  const entries = []
+
+  for (const archive of archives) {
+    const path = join(dir, archive.name)
+    let content = existsSync(path) ? await readFile(path) : null
+    if (content && sourceArchiveProblem(content, archive)) content = null
+
+    if (content) {
+      console.log(`Reusing ${archive.name}`)
+    } else {
+      console.log(`Downloading ${archive.name} (${archive.repository}@${archive.commit.slice(0, 12)})...`)
+      const response = await fetch(sourceTarballUrl(archive), {
+        redirect: 'follow',
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'AbiPlayerReleaseScript',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        signal: AbortSignal.timeout(SOURCE_DOWNLOAD_TIMEOUT_MS)
+      })
+      if (!response.ok) {
+        throw new Error(`Source archive ${archive.name} could not be downloaded (${response.status} ${response.statusText}).`)
+      }
+      content = Buffer.from(await response.arrayBuffer())
+      const problem = sourceArchiveProblem(content, archive)
+      if (problem) throw new Error(problem)
+      await writeFile(`${path}.partial`, content)
+      await rename(`${path}.partial`, path)
+    }
+
+    entries.push({ name: archive.name, path, content })
+  }
+
+  return describeReleaseFiles(entries)
 }
 
 async function loadReleaseNotes(version, tag, notesFile) {
@@ -448,6 +506,10 @@ async function main() {
   }
 
   const artifacts = await verifyArtifacts(packageName, version)
+  // Push'tan önce: arşivler alınamazsa ne etiket gider ne sürüm açılır.
+  console.log('Preparing source archives of the pinned mpv and FFmpeg...')
+  const sourceArchives = await prepareSourceArchives()
+  const releaseFiles = [...artifacts.files, ...sourceArchives]
   const notes = await loadReleaseNotes(version, tag, options.notesFile)
 
   if (options.dryRun) {
@@ -457,7 +519,7 @@ async function main() {
     console.log(`Branch: ${options.push ? `${branch} (would be pushed)` : `${branch} (not pushed)`}`)
     console.log(`Repository: ${repo}`)
     console.log(`Release: ${releaseName}, prerelease=${prerelease}, ${options.draft ? 'left as draft' : 'published after verification'}`)
-    console.log(`Assets (upload order): ${artifacts.files.map((file) => file.name).join(', ')}`)
+    console.log(`Assets (upload order): ${orderForUpload(releaseFiles.map((file) => file.name)).join(', ')}`)
     console.log('Notes:\n' + notes)
     return
   }
@@ -490,7 +552,7 @@ async function main() {
     notes,
     prerelease,
     keepDraft: options.draft,
-    files: artifacts.files,
+    files: releaseFiles,
     log: (message) => console.log(message)
   })
 

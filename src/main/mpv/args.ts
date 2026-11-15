@@ -75,6 +75,12 @@ export function buildMpvLaunchArgs(options: MpvLaunchOptions): string[] {
     // own options per load (loadfile file options, see src/main/tls/policy.ts),
     // so relaxing one host never relaxes another.
     '--tls-verify=yes',
+    // With no audio device that opens (none plugged in, the Windows audio
+    // service off, a headless machine), mpv would drop the audio track
+    // (aid=no): the track menu and the preferred dubbing language stop
+    // working and a film ends "interrupted by error". The null output keeps
+    // the track chosen and playback timed; the picture plays silently.
+    '--audio-fallback-to-null=yes',
     `--input-ipc-server=${options.socketPath}`
   ]
 

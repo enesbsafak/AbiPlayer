@@ -19,10 +19,12 @@ import {
   FFMPEG_PIN_FILE_URL,
   FFMPEG_REPOSITORY,
   buildFfmpegPinFromRelease,
+  ffmpegVersionOf,
   pickLongLivedRelease,
   validateFfmpegPin
 } from './ffmpeg-lib.mjs'
-import { downloadWithSha256, fetchJson, pinDownloadUrl } from './pin-lib.mjs'
+import { FFMPEG_UPSTREAM_REPOSITORY } from './mpv-lib.mjs'
+import { downloadWithSha256, fetchJson, pinDownloadUrl, resolveShortCommit, resolveTagCommit } from './pin-lib.mjs'
 
 const API_TIMEOUT_MS = 30_000
 const DOWNLOAD_TIMEOUT_MS = Number(process.env['FFMPEG_DOWNLOAD_TIMEOUT_MS']) || 10 * 60_000
@@ -46,6 +48,21 @@ async function main() {
   log(`${requestedTag ?? 'en yeni ay sonu yapısı'} okunuyor...`)
   const release = await findRelease(requestedTag)
   const pin = buildFfmpegPinFromRelease(release, FFMPEG_REPOSITORY)
+
+  // Kaynak commit'leri (THIRD-PARTY-NOTICES.md ve sürüm betiğinin kaynak
+  // arşivleri bunlara dayanır): FFmpeg dosya adındaki sürümden, derleme
+  // betikleri sürüm etiketinden.
+  const { shortHash } = ffmpegVersionOf(pin.assetName)
+  pin.sources = {
+    ffmpeg: {
+      repository: FFMPEG_UPSTREAM_REPOSITORY,
+      commit: await resolveShortCommit(FFMPEG_UPSTREAM_REPOSITORY, shortHash, API_TIMEOUT_MS)
+    },
+    buildScripts: {
+      repository: FFMPEG_REPOSITORY,
+      commit: await resolveTagCommit(FFMPEG_REPOSITORY, pin.releaseTag, API_TIMEOUT_MS)
+    }
+  }
 
   const problems = validateFfmpegPin(pin)
   if (problems.length > 0) {
@@ -83,7 +100,8 @@ async function main() {
     log(`Sabit güncellendi: ${previous?.releaseTag ?? '(yok)'} -> ${pin.releaseTag}`)
     log(`  ${pin.assetName}`)
     log(`  sha256 ${pin.sha256}`)
-    log('Sonraki adım: npm run prepare:ffmpeg:win, npm run test:e2e, scripts/ffmpeg-pin.json dosyasını commit edin.')
+    log(`  kaynak: FFmpeg ${pin.sources.ffmpeg.commit}, betikler ${pin.sources.buildScripts.commit}`)
+    log("Sonraki adım: npm run prepare:ffmpeg:win, npm run test:e2e, THIRD-PARTY-NOTICES.md bölüm 2'yi güncelleyin, scripts/ffmpeg-pin.json dosyasını commit edin.")
   }
 }
 

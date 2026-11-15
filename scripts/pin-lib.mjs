@@ -49,6 +49,62 @@ export function validatePinShape(pin, { fileName, extensions }) {
   return problems
 }
 
+const COMMIT_PATTERN = /^[0-9a-f]{40}$/
+const REPOSITORY_PATTERN = /^[\w.-]+\/[\w.-]+$/
+
+/**
+ * Sabitlenmiş ikilinin derlendiği kaynakların kaydı (`pin.sources`): her
+ * anahtar için GitHub deposu ve tam commit. THIRD-PARTY-NOTICES.md ve sürüm
+ * betiğinin yüklediği kaynak arşivleri bu kayda dayanır; tek doğruluk kaynağı
+ * burasıdır. `keys`: zorunlu anahtarlar.
+ */
+export function validatePinSources(sources, keys) {
+  if (!isObject(sources)) return ['sources bir nesne değil (kaynak commit kaydı eksik)']
+  const problems = []
+  for (const key of keys) {
+    const entry = sources[key]
+    if (!isObject(entry)) {
+      problems.push(`sources.${key} eksik`)
+      continue
+    }
+    if (typeof entry.repository !== 'string' || !REPOSITORY_PATTERN.test(entry.repository)) {
+      problems.push(`sources.${key}.repository "sahip/depo" biçiminde olmalı`)
+    }
+    if (typeof entry.commit !== 'string' || !COMMIT_PATTERN.test(entry.commit)) {
+      problems.push(`sources.${key}.commit 40 haneli küçük harf onaltılık olmalı`)
+    }
+  }
+  for (const key of Object.keys(sources)) {
+    if (!keys.includes(key)) problems.push(`sources.${key} beklenmiyor`)
+  }
+  return problems
+}
+
+/** GitHub'da kısa bir commit'i tam commit'e çevirir; sonuç onunla başlamalı. */
+export async function resolveShortCommit(repository, shortHash, timeoutMs) {
+  const commit = await fetchJson(
+    `https://api.github.com/repos/${repository}/commits/${encodeURIComponent(shortHash)}`,
+    timeoutMs
+  )
+  const sha = isObject(commit) && typeof commit.sha === 'string' ? commit.sha.toLowerCase() : ''
+  if (!COMMIT_PATTERN.test(sha) || !sha.startsWith(shortHash.toLowerCase())) {
+    throw new Error(`${repository}@${shortHash} tam bir commit'e çözülemedi.`)
+  }
+  return sha
+}
+
+/** Bir sürüm etiketinin işaret ettiği commit (açıklamalı etiket de çözülür). */
+export async function resolveTagCommit(repository, tag, timeoutMs) {
+  const api = `https://api.github.com/repos/${repository}/git`
+  let object = (await fetchJson(`${api}/ref/tags/${encodeURIComponent(tag)}`, timeoutMs))?.object
+  for (let depth = 0; isObject(object) && object.type === 'tag' && depth < 5; depth++) {
+    object = (await fetchJson(`${api}/tags/${object.sha}`, timeoutMs))?.object
+  }
+  const sha = isObject(object) && object.type === 'commit' && typeof object.sha === 'string' ? object.sha : ''
+  if (!COMMIT_PATTERN.test(sha)) throw new Error(`${repository} etiketi ${tag} bir commit'e çözülemedi.`)
+  return sha
+}
+
 export function pinDownloadUrl(pin) {
   return `https://github.com/${pin.repository}/releases/download/${encodeURIComponent(pin.releaseTag)}/${encodeURIComponent(pin.assetName)}`
 }

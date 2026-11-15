@@ -31,6 +31,31 @@ async function firstCardInView(page: Page, gridName: string): Promise<string> {
   return name
 }
 
+/**
+ * Scrolls the grid to about `top`, then onto a row boundary: the topmost row
+ * that shows on screen is moved to the viewport's top edge. Whether some card
+ * is wholly in view at an arbitrary offset depends on the window: rows of
+ * 1024 × 768 (the hosted CI runner's screen) sit so that at 2400 px one row is
+ * cut at the top and the next at the bottom. A row on the very edge is also
+ * the hardest place to restore: it used to come back a screen higher.
+ * Returns the final scrollTop.
+ */
+async function scrollGridToWholeRow(page: Page, gridName: string, top: number): Promise<number> {
+  await scrollGridTo(page, gridName, top)
+  return grid(page, gridName).evaluate(async (element) => {
+    let scroller = element.parentElement
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement
+    if (!scroller) return -1
+    const view = scroller.getBoundingClientRect()
+    const first = Array.from(element.querySelectorAll<HTMLElement>('[data-roving-index]'))
+      .map((card) => card.getBoundingClientRect())
+      .find((box) => box.bottom > view.top)
+    if (first) scroller.scrollTop += Math.round(first.top - view.top)
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    return scroller.scrollTop
+  })
+}
+
 /** Distance of a card's top edge from the top of the grid's scroll viewport, px. */
 async function cardOffsetInView(page: Page, gridName: string, cardName: string): Promise<number> {
   return grid(page, gridName).evaluate((element, cardName) => {
@@ -61,7 +86,7 @@ test.describe('katalog sayfaları', () => {
     await expect(anyCard(page)).toBeVisible()
     await waitForFullList(page)
 
-    const top = await scrollGridTo(page, 'Filmler', 2400)
+    const top = await scrollGridToWholeRow(page, 'Filmler', 2400)
     expect(top, 'the film grid scrolls').toBeGreaterThan(1500)
     const cardName = await firstCardInView(page, 'Filmler')
     const filmName = cardName.replace(/ oynat$/, '')

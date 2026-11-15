@@ -173,6 +173,7 @@ export const settings = {
     openFailed: 'Açılamadı. Dosyalar kurulum klasöründe, resources\\legal altında.',
     tmdbAttribution:
       "Bu uygulama TMDB'yi ve TMDB API'lerini kullanır, ancak TMDB tarafından onaylanmış, sertifikalandırılmış ya da başka bir şekilde desteklenmiş değildir.",
+    tmdbLogoAlt: 'TMDB',
     // TMDB'nin kullanım koşullarındaki zorunlu bildirim, özgün dilinde.
     tmdbAttributionOriginal:
       'This application uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.'

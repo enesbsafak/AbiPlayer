@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   FFMPEG_REPOSITORY,
   buildFfmpegPinFromRelease,
+  ffmpegVersionOf,
   isLongLivedTag,
   isRuntimeFile,
   pickFfmpegAsset,
@@ -12,6 +13,10 @@ import {
 
 const SHA = 'a'.repeat(64)
 const ASSET = 'ffmpeg-n9.0.2-39-g7adfbe40dc-win64-gpl-shared-9.0.zip'
+const SOURCES = {
+  ffmpeg: { repository: 'FFmpeg/FFmpeg', commit: '7adfbe40dcde598f93a6963d2f7b22cd75202ccc' },
+  buildScripts: { repository: 'FFmpeg-Builds/FFmpeg-Builds', commit: '5031c6f1082414e53688d39e521849905071070d' }
+}
 
 const assets = [
   { name: 'ffmpeg-N-128227-g4811625b5f-win64-gpl-shared.zip', size: 1, digest: `sha256:${'1'.repeat(64)}` },
@@ -92,9 +97,26 @@ describe('buildFfmpegPinFromRelease', () => {
 
 describe('ffmpeg sabiti', () => {
   it('zip dışındaki arşivi reddeder', () => {
-    const pin = { repository: FFMPEG_REPOSITORY, releaseTag: 't', assetName: ASSET, size: 1, sha256: SHA }
+    const pin = { repository: FFMPEG_REPOSITORY, releaseTag: 't', assetName: ASSET, size: 1, sha256: SHA, sources: SOURCES }
     expect(validateFfmpegPin(pin)).toEqual([])
     expect(validateFfmpegPin({ ...pin, assetName: 'ffmpeg.7z' })).toHaveLength(1)
+  })
+
+  it('kaynak commit kaydını ister: iki anahtar, tam commit, fazlası yok', () => {
+    const pin = { repository: FFMPEG_REPOSITORY, releaseTag: 't', assetName: ASSET, size: 1, sha256: SHA }
+    expect(validateFfmpegPin(pin)).toEqual(['sources bir nesne değil (kaynak commit kaydı eksik)'])
+    expect(validateFfmpegPin({ ...pin, sources: { ...SOURCES, ffmpeg: { repository: 'FFmpeg/FFmpeg', commit: '7adfbe40dc' } } })).toEqual([
+      'sources.ffmpeg.commit 40 haneli küçük harf onaltılık olmalı'
+    ])
+    expect(validateFfmpegPin({ ...pin, sources: { buildScripts: SOURCES.buildScripts, extra: SOURCES.ffmpeg } })).toEqual([
+      'sources.ffmpeg eksik',
+      'sources.extra beklenmiyor'
+    ])
+  })
+
+  it('dosya adından FFmpeg sürümünü ve kısa commitini okur', () => {
+    expect(ffmpegVersionOf(ASSET)).toEqual({ version: 'n9.0.2-39-g7adfbe40dc', shortHash: '7adfbe40dc' })
+    expect(() => ffmpegVersionOf('ffmpeg-N-128227-g4811625b5f-win64-gpl-shared.zip')).toThrow(/sürümü yok/)
   })
 
   it('depodaki sabit geçerlidir ve ay sonu yapısına bağlıdır', async () => {

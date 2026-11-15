@@ -50,6 +50,8 @@ interface VirtualCardGridProps<T extends Channel> {
 }
 
 const MIN_WIDTH = 320
+/** How far past the viewport's edge a row may measure and still count as in view, px. */
+const EDGE_SLACK = 8
 
 function initialWidth(): number {
   return typeof window === 'undefined' ? 1280 : Math.max(360, window.innerWidth)
@@ -152,11 +154,22 @@ export function VirtualCardGrid<T extends Channel>({
       const measured = virtualizer.measurementsCache[row]
       if (measured && scrollRoot) {
         const top = scrollRoot.scrollTop
-        if (measured.start >= top && measured.end <= top + scrollRoot.clientHeight) return
+        const bottom = top + scrollRoot.clientHeight
+        // The cards, without the gap under them.
+        const cardsEnd = measured.end - layout.gap
+        // A row lying on the viewport's edge, as rows of a remounted page
+        // measure a few pixels from where they were, is in view.
+        if (measured.start >= top - EDGE_SLACK && cardsEnd <= bottom + EDGE_SLACK) return
+        // Otherwise scroll from where the page really is. The virtualizer's
+        // own scrollToIndex works from the offset of the last scroll event it
+        // saw, which after a restore can still be 0: it took a row at the top
+        // edge for one below the viewport and moved the page a screen up.
+        scrollRoot.scrollTop = measured.start < top ? measured.start : cardsEnd - scrollRoot.clientHeight
+        return
       }
       virtualizer.scrollToIndex(row, { align: 'auto' })
     },
-    [virtualized, virtualizer, columns, scrollRoot]
+    [virtualized, virtualizer, columns, scrollRoot, layout.gap]
   )
   const pageRows = Math.max(1, Math.floor((scrollRoot?.clientHeight ?? estimatedRowSize) / estimatedRowSize))
   const roving = useRovingFocus(containerRef, { count: items.length, columns, pageRows, reveal })

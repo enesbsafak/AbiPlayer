@@ -1,7 +1,7 @@
 // mpv sabitlemesi (F0-06). prepare-mpv-win.mjs sabitlenmiş sürümü kurar,
 // update-mpv-pin.mjs sabiti yeni bir sürüme taşır. Ortak parçalar pin-lib.mjs'te.
 
-import { isObject, pinFromAsset, readPinFile, validatePinShape } from './pin-lib.mjs'
+import { isObject, pinFromAsset, readPinFile, validatePinShape, validatePinSources } from './pin-lib.mjs'
 
 export {
   USER_AGENT,
@@ -32,8 +32,35 @@ export function pickMpvAsset(assets) {
   )
 }
 
+/**
+ * `pin.sources` anahtarları: mpv, mpv.exe'ye gömülü FFmpeg ve derleme
+ * betikleri (shinchiro/mpv-winbuild-cmake, sürüm etiketinin commit'i).
+ */
+export const MPV_SOURCE_KEYS = ['mpv', 'ffmpeg', 'buildScripts']
+export const MPV_UPSTREAM_REPOSITORY = 'mpv-player/mpv'
+export const FFMPEG_UPSTREAM_REPOSITORY = 'FFmpeg/FFmpeg'
+
 export function validatePin(pin) {
-  return validatePinShape(pin, { fileName: 'mpv-pin.json', extensions: ['7z'] })
+  const problems = validatePinShape(pin, { fileName: 'mpv-pin.json', extensions: ['7z'] })
+  if (!isObject(pin)) return problems
+  return [...problems, ...validatePinSources(pin.sources, MPV_SOURCE_KEYS)]
+}
+
+/**
+ * Sürümün dosya adlarındaki kısa commit'ler: mpv arşivinden (`…-git-<h>.7z`)
+ * mpv'nin, aynı sürümdeki `ffmpeg-x86_64-git-<h>.7z` dosyasından mpv'ye gömülü
+ * FFmpeg'in. İkisi de aynı derleme çalışmasının ürünüdür.
+ */
+export function mpvSourceShortHashes(release, assetName) {
+  const mpv = /-git-([0-9a-f]{7,40})\.7z$/.exec(assetName)?.[1]
+  const assets = isObject(release) && Array.isArray(release.assets) ? release.assets : []
+  const ffmpeg = assets
+    .map((asset) => (isObject(asset) && typeof asset.name === 'string' ? asset.name : ''))
+    .map((name) => /^ffmpeg-x86_64-git-([0-9a-f]{7,40})\.7z$/.exec(name)?.[1])
+    .find(Boolean)
+  if (!mpv) throw new Error(`${assetName} adında mpv commit'i yok.`)
+  if (!ffmpeg) throw new Error("Sürümde ffmpeg-x86_64-git-<commit>.7z dosyası yok; gömülü FFmpeg commit'i bulunamadı.")
+  return { mpv, ffmpeg }
 }
 
 /** GitHub sürüm yanıtından sabit taslağı; özet bildirilmemişse hata. */

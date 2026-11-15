@@ -48,8 +48,20 @@ win:
   extraResources:
     - from: resources/mpv/win32-x64
       to: mpv
+      # The archive's extras stay out of the package (THIRD-PARTY-NOTICES.md,
+      # section 1): its desktop installer and updater scripts (nothing in the
+      # app runs them; updater.bat would replace the pinned mpv), the manual,
+      # and d3dcompiler_43.dll, which mpv and libplacebo only try after
+      # d3dcompiler_47.dll, a part of Windows 8.1 and later. mpv.com and
+      # mpv/fonts.conf (libass's fontconfig setup) stay.
       filter:
         - '**/*'
+        - '!d3dcompiler_43.dll'
+        - '!doc{,/**}'
+        - '!installer{,/**}'
+        - '!updater.bat'
+        - '!mpv-register.bat'
+        - '!mpv-unregister.bat'
     - from: resources/ffmpeg/win32-x64
       to: ffmpeg
       filter:
@@ -75,6 +87,11 @@ nsis:
   # `true` creates the shortcut on the first install only; `always` brought a
   # shortcut the user had deleted back on every update.
   createDesktopShortcut: true
+  # elevate.exe is only needed by a per-machine install (or its updates), which
+  # asks for administrator rights. This installer is one-click and per-user, so
+  # the helper is never run; leaving it out also keeps one more third-party
+  # executable out of the package (see THIRD-PARTY-NOTICES.md).
+  packElevateHelper: false
   # build/installerSidebar.bmp and build/installerHeader.bmp (made by
   # `npm run make:icons`) are NOT wired here on purpose: `oneClick` is unset
   # (default true), and installerSidebar, uninstallerSidebar and

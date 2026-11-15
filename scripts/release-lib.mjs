@@ -4,6 +4,8 @@
 // `api` nesnesi üzerinden çalışır ki birim testlerle denenebilsin.
 
 import { createHash } from 'crypto'
+import { gunzipSync } from 'zlib'
+import { ffmpegVersionOf } from './ffmpeg-lib.mjs'
 
 export const UPDATE_MANIFEST = 'latest.yml'
 
@@ -84,8 +86,9 @@ export function parseArgs(argv) {
 
 export const HELP_TEXT = `Usage: npm run release:win -- [options]
 
-Steps: version check -> unit tests -> build -> verify artifacts -> resolve token
--> push branch and tag -> draft release -> upload -> verify -> publish.
+Steps: version check -> unit tests -> build -> verify artifacts -> download the
+source archives of the pinned mpv and FFmpeg -> resolve token -> push branch and
+tag -> draft release -> upload -> verify -> publish.
 
 Options:
   --notes-file <path>       Read release notes from a UTF-8 markdown file
@@ -394,6 +397,88 @@ export function buildDefaultNotes(version, subjects) {
   ]
 
   return ensureLegalNote(sections.join('\n'))
+}
+
+// ---------------------------------------------------------------------------
+// Kaynak arşivleri (THIRD-PARTY-NOTICES.md, "Kaynak kodu")
+
+/**
+ * Her sürüme yüklenen kaynak arşivleri, sabitlerdeki `sources` kaydından:
+ * mpv, kurulumdaki FFmpeg, mpv'ye gömülü FFmpeg ve iki derleme projesinin
+ * betikleri. Adlar 0.5.0-beta'da elle yüklenenlerle aynı kurala uyar:
+ *   source-mpv-<mpv commit, 10 hane>.tar.gz
+ *   source-ffmpeg-<FFmpeg sürümü, ör. n9.0.2-39-g7adfbe40dc>.tar.gz
+ *   source-ffmpeg-in-mpv-<FFmpeg commit, 9 hane>.tar.gz
+ *   source-mpv-build-scripts-<mpv sabitinin sürüm etiketi>.tar.gz
+ *   source-ffmpeg-build-scripts-<FFmpeg sabitinin yapı günü>.tar.gz
+ * Sabitlerin kendi içinde tutarsızlığı (dosya adındaki kısa commit ile kayıtlı
+ * commit farklı) hata sayılır.
+ */
+export function sourceArchivesFromPins(mpvPin, ffmpegPin) {
+  const mpv = mpvPin?.sources
+  const ffmpeg = ffmpegPin?.sources
+  if (!mpv?.mpv || !mpv.ffmpeg || !mpv.buildScripts || !ffmpeg?.ffmpeg || !ffmpeg.buildScripts) {
+    throw new Error('mpv-pin.json veya ffmpeg-pin.json içinde sources kaydı eksik.')
+  }
+
+  const mpvShort = /-git-([0-9a-f]{7,40})\.7z$/.exec(String(mpvPin.assetName))?.[1]
+  if (!mpvShort || !mpv.mpv.commit.startsWith(mpvShort)) {
+    throw new Error(`mpv-pin.json: ${mpvPin.assetName} ile sources.mpv.commit (${mpv.mpv.commit}) uyuşmuyor.`)
+  }
+  const { version, shortHash } = ffmpegVersionOf(ffmpegPin.assetName)
+  if (!ffmpeg.ffmpeg.commit.startsWith(shortHash)) {
+    throw new Error(`ffmpeg-pin.json: ${ffmpegPin.assetName} ile sources.ffmpeg.commit (${ffmpeg.ffmpeg.commit}) uyuşmuyor.`)
+  }
+  const buildDay = /^autobuild-(\d{4}-\d{2}-\d{2})-/.exec(String(ffmpegPin.releaseTag))?.[1]
+  if (!buildDay) throw new Error(`ffmpeg-pin.json: ${ffmpegPin.releaseTag} bir autobuild etiketi değil.`)
+  if (!/^[\w.-]+$/.test(String(mpvPin.releaseTag))) {
+    throw new Error(`mpv-pin.json: ${mpvPin.releaseTag} dosya adına uygun değil.`)
+  }
+
+  const entry = (name, source) => ({ name, repository: source.repository, commit: source.commit })
+  return [
+    entry(`source-mpv-${mpv.mpv.commit.slice(0, 10)}.tar.gz`, mpv.mpv),
+    entry(`source-ffmpeg-${version}.tar.gz`, ffmpeg.ffmpeg),
+    entry(`source-ffmpeg-in-mpv-${mpv.ffmpeg.commit.slice(0, 9)}.tar.gz`, mpv.ffmpeg),
+    entry(`source-mpv-build-scripts-${mpvPin.releaseTag}.tar.gz`, mpv.buildScripts),
+    entry(`source-ffmpeg-build-scripts-${buildDay}.tar.gz`, ffmpeg.buildScripts)
+  ]
+}
+
+/** GitHub'ın bir commit için verdiği kaynak arşivinin adresi (`git archive` çıktısı). */
+export function sourceTarballUrl(archive) {
+  return `https://api.github.com/repos/${archive.repository}/tarball/${archive.commit}`
+}
+
+/**
+ * GitHub kaynak arşivinin hangi commit'ten yapıldığı: `git archive` ilk girdi
+ * olarak bir pax genel başlığı yazar ve commit'i `comment` kaydına koyar.
+ * Arşiv gzip değilse ya da böyle bir başlık yoksa null.
+ */
+export function tarballCommit(gzipped) {
+  let tar
+  try {
+    tar = gunzipSync(gzipped)
+  } catch {
+    return null
+  }
+  if (tar.length < 512) return null
+  const typeflag = String.fromCharCode(tar[156])
+  const name = tar.subarray(0, 100).toString('utf8').replace(/\0.*$/s, '')
+  if (typeflag !== 'g' || name !== 'pax_global_header') return null
+  const size = Number.parseInt(tar.subarray(124, 136).toString('utf8').replace(/\0/g, '').trim(), 8)
+  if (!Number.isInteger(size) || size <= 0 || 512 + size > tar.length) return null
+  const records = tar.subarray(512, 512 + size).toString('utf8')
+  const match = /(?:^|\n)\d+ comment=([0-9a-f]{40})\n/.exec(records)
+  return match ? match[1] : null
+}
+
+/** İndirilen (veya önceki çalıştırmadan kalan) arşiv kullanılabilir mi; değilse neden. */
+export function sourceArchiveProblem(content, archive) {
+  const commit = tarballCommit(content)
+  if (!commit) return `${archive.name} is not a GitHub source archive (no commit in its pax header)`
+  if (commit !== archive.commit) return `${archive.name} was made from ${commit}, expected ${archive.commit}`
+  return null
 }
 
 // ---------------------------------------------------------------------------

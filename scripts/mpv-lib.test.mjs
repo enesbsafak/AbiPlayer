@@ -3,6 +3,7 @@ import {
   buildPinFromRelease,
   buildSourceInfo,
   getAssetSha256,
+  mpvSourceShortHashes,
   pickMpvAsset,
   pinDownloadUrl,
   readPin,
@@ -18,6 +19,12 @@ const pin = {
   assetName: 'mpv-x86_64-20261111-git-bcde6b93cc.7z',
   size: 1234,
   sha256: SHA
+}
+
+const sources = {
+  mpv: { repository: 'mpv-player/mpv', commit: 'bcde6b93cca4d128d84e1a60d1a6db2cd81c889e' },
+  ffmpeg: { repository: 'FFmpeg/FFmpeg', commit: 'cd4e96eb314630788b7ff2f9820c395788c023e2' },
+  buildScripts: { repository: 'shinchiro/mpv-winbuild-cmake', commit: 'bda10a2816ce9908d419b3f4b564227330457e76' }
 }
 
 describe('pickMpvAsset', () => {
@@ -51,15 +58,22 @@ describe('getAssetSha256', () => {
 
 describe('validatePin', () => {
   it('geçerli sabiti kabul eder', () => {
-    expect(validatePin(pin)).toEqual([])
+    expect(validatePin({ ...pin, sources })).toEqual([])
   })
 
   it('eksik veya bozuk alanları bildirir', () => {
-    expect(validatePin({ ...pin, sha256: 'ABC' })).toHaveLength(1)
-    expect(validatePin({ ...pin, assetName: '../evil.exe' })).toHaveLength(1)
-    expect(validatePin({ ...pin, size: 0 })).toHaveLength(1)
-    expect(validatePin({ ...pin, repository: 'bad' })).toHaveLength(1)
+    const pinned = { ...pin, sources }
+    expect(validatePin({ ...pinned, sha256: 'ABC' })).toHaveLength(1)
+    expect(validatePin({ ...pinned, assetName: '../evil.exe' })).toHaveLength(1)
+    expect(validatePin({ ...pinned, size: 0 })).toHaveLength(1)
+    expect(validatePin({ ...pinned, repository: 'bad' })).toHaveLength(1)
     expect(validatePin(null)).toHaveLength(1)
+  })
+
+  it('kaynak commit kaydını ister (mpv, gömülü FFmpeg, derleme betikleri)', () => {
+    expect(validatePin(pin)).toEqual(['sources bir nesne değil (kaynak commit kaydı eksik)'])
+    expect(validatePin({ ...pin, sources: { ...sources, ffmpeg: undefined } })).toEqual(['sources.ffmpeg eksik'])
+    expect(validatePin({ ...pin, sources: { ...sources, mpv: { repository: 'x', commit: 'bcde6b93cc' } } })).toHaveLength(2)
   })
 
   it('depodaki sabit geçerlidir', async () => {
@@ -101,6 +115,12 @@ describe('buildPinFromRelease', () => {
 
   it('bugünkü seçim kuralıyla sabit üretir', () => {
     expect(buildPinFromRelease(release, pin.repository)).toEqual(pin)
+  })
+
+  it('mpv ve gömülü FFmpeg için kısa commitleri dosya adlarından okur', () => {
+    const withFfmpeg = { ...release, assets: [...release.assets, { name: 'ffmpeg-x86_64-git-cd4e96eb3.7z' }] }
+    expect(mpvSourceShortHashes(withFfmpeg, pin.assetName)).toEqual({ mpv: 'bcde6b93cc', ffmpeg: 'cd4e96eb3' })
+    expect(() => mpvSourceShortHashes(release, pin.assetName)).toThrow(/gömülü FFmpeg/)
   })
 
   it('özet bildirilmemişse sabitlemez', () => {

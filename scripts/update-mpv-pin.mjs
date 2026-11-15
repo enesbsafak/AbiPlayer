@@ -14,13 +14,17 @@ import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
+  FFMPEG_UPSTREAM_REPOSITORY,
+  MPV_UPSTREAM_REPOSITORY,
   PIN_FILE_URL,
   buildPinFromRelease,
   downloadWithSha256,
   fetchJson,
+  mpvSourceShortHashes,
   pinDownloadUrl,
   validatePin
 } from './mpv-lib.mjs'
+import { resolveShortCommit, resolveTagCommit } from './pin-lib.mjs'
 
 const REPOSITORY = 'shinchiro/mpv-winbuild-cmake'
 const API_TIMEOUT_MS = 30_000
@@ -39,6 +43,22 @@ async function main() {
   log(`${requestedTag ?? 'son sürüm'} okunuyor...`)
   const release = await fetchJson(releaseUrl, API_TIMEOUT_MS)
   const pin = buildPinFromRelease(release, REPOSITORY)
+
+  // Kaynak commit'leri (THIRD-PARTY-NOTICES.md ve sürüm betiğinin kaynak
+  // arşivleri bunlara dayanır): mpv ve gömülü FFmpeg dosya adlarındaki kısa
+  // commit'lerden, derleme betikleri sürüm etiketinden.
+  const shortHashes = mpvSourceShortHashes(release, pin.assetName)
+  pin.sources = {
+    mpv: {
+      repository: MPV_UPSTREAM_REPOSITORY,
+      commit: await resolveShortCommit(MPV_UPSTREAM_REPOSITORY, shortHashes.mpv, API_TIMEOUT_MS)
+    },
+    ffmpeg: {
+      repository: FFMPEG_UPSTREAM_REPOSITORY,
+      commit: await resolveShortCommit(FFMPEG_UPSTREAM_REPOSITORY, shortHashes.ffmpeg, API_TIMEOUT_MS)
+    },
+    buildScripts: { repository: REPOSITORY, commit: await resolveTagCommit(REPOSITORY, pin.releaseTag, API_TIMEOUT_MS) }
+  }
 
   const problems = validatePin(pin)
   if (problems.length > 0) {
@@ -80,7 +100,8 @@ async function main() {
     log(`Sabit güncellendi: ${previous?.releaseTag ?? '(yok)'} -> ${pin.releaseTag}`)
     log(`  ${pin.assetName}`)
     log(`  sha256 ${pin.sha256}`)
-    log('Sonraki adım: npm run prepare:mpv:win, uygulamayı deneyin, scripts/mpv-pin.json dosyasını commit edin.')
+    log(`  kaynak: mpv ${pin.sources.mpv.commit}, FFmpeg ${pin.sources.ffmpeg.commit}, betikler ${pin.sources.buildScripts.commit}`)
+    log("Sonraki adım: npm run prepare:mpv:win, uygulamayı deneyin, THIRD-PARTY-NOTICES.md bölüm 1'i güncelleyin, scripts/mpv-pin.json dosyasını commit edin.")
   }
 }
 

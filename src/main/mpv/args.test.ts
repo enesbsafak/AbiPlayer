@@ -34,6 +34,10 @@ describe('buildMpvLaunchArgs', () => {
     ).toBe(false)
   })
 
+  it('keeps the audio track chosen when no audio device opens (headless CI runner)', () => {
+    expect(args).toContain('--audio-fallback-to-null=yes')
+  })
+
   it('verifies TLS by default; nothing at launch relaxes it', () => {
     expect(args).toContain('--tls-verify=yes')
     expect(args.some((arg) => arg === '--tls-verify=no' || arg.startsWith('--tls-ca-file'))).toBe(false)

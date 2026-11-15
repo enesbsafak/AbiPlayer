@@ -3,5 +3,19 @@
   "releaseTag": "20261111",
   "assetName": "mpv-x86_64-20261111-git-bcde6b93cc.7z",
   "size": 34181485,
-  "sha256": "f259b5fd4b5c395617c948a4fadcdf55bba1c5282fb7c13e88626b3f71072baf"
+  "sha256": "f259b5fd4b5c395617c948a4fadcdf55bba1c5282fb7c13e88626b3f71072baf",
+  "sources": {
+    "mpv": {
+      "repository": "mpv-player/mpv",
+      "commit": "bcde6b93cca4d128d84e1a60d1a6db2cd81c889e"
+    },
+    "ffmpeg": {
+      "repository": "FFmpeg/FFmpeg",
+      "commit": "cd4e96eb314630788b7ff2f9820c395788c023e2"
+    },
+    "buildScripts": {
+      "repository": "shinchiro/mpv-winbuild-cmake",
+      "commit": "bda10a2816ce9908d419b3f4b564227330457e76"
+    }
+  }
 }
