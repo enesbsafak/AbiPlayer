@@ -22,7 +22,7 @@ Karar noktalarında plandaki öneriler uygulanıyor: dürüst mini oynatıcı ka
 | C | C2d Açılış zinciri ve kaynak yaşam döngüsü | F4-06, F1-27, F1-31, F1-36, F1-43, F1-44, F1-56, F3-02 | Sürüyor |
 | C | C2c Worker, önbellek, EPG | F4-04, F4-05, F4-08, F1-34 | Bekliyor |
 | D | D1 Güvenlik | F3-01..03, F3-07 | TLS politikası birleştirildi; F3-02 C2d içinde |
-| D | D2 Electron 45 ve paket | F3-04, F3-09, F5-07 | Bekliyor |
+| D | D2 Electron 45 ve paket | F3-04, F3-09, F5-07 | Birleştirildi (hls.js tembel yükleme D3te) |
 | D | D3 Canlı biçim ve mini oynatıcı | F2-04, F2-15 | Bekliyor |
 | D | D4 Erişilebilirlik, metinler, temizlik | F5-01..06, F5-08, F5-09 | Bekliyor |
 | D | D5 Testler ve belgeler | F5-10, F5-12, F3-10 | Bekliyor |
@@ -54,3 +54,4 @@ Karar noktalarında plandaki öneriler uygulanıyor: dürüst mini oynatıcı ka
 - 2026-11-15: C1 birleştirildi: mpv durumu artık olayla geliyor (anket yok), mpv açılışta ön ısıtılıyor, usePlayer 1160 satırdan 505'e indi ve modüllere bölündü, iki motor tek yeniden bağlanma politikası ve tek parça uzlaştırıcı kullanıyor. 726 birim testi ve 19 uçtan uca test (gerçek mpv) geçiyor. Mini kart artık her çıkış yolunda görünüyor.
 - 2026-11-15: C2a birleştirildi: katalog zustand dışında indeksli depoda; kayıtlar kimlik bilgisi taşımıyor; yenileme ekleme yerine değiştiriyor ve geç kalan eşitleme sonucu düşürülüyor; favoriler anlık kayıtla kalıcı. 796 birim testi geçiyor; uçtan uca testlerde F1-42 düzeldi. 200 bin kayıt: dönüştürme 309 ms, yazma 44 ms, görünüm 9 ms, arama 5 ms. Davranış değişikliği: yetişkin içerik artık varsayılan olarak gizli (ayar kapalı).
 - 2026-11-15: D1 birleştirildi: sertifika doğrulaması varsayılan olarak sıkı; kaynağa özel onay ve sertifika iğneleme; TMDB ve GitHub için güven verilemez; mpv ve ffmpeg doğrulamayla çalışıyor (mpv 0.42 libcurl ile Windows sertifika deposunu kullanabiliyor). 880 birim testi, 22 uçtan uca test (kendinden imzalı ve süresi dolmuş sertifikalı gerçek HTTPS sunucuya karşı, gerçek mpv ile) geçiyor. Kalan risk: kullanıcının onayladığı, süresi dolmuş veya adı uyuşmayan sertifikalarda mpv o yükleme için doğrulamasız çalışıyor; yönlendirme hedefleri ve HLS parçaları ayrıca denetlenmiyor.
+- 2026-11-15: D2 birleştirildi: Electron 40 → 45.3.2 (npm audit: 0 yüksek, 12 orta; kalanlar yalnızca derleme araçlarında); ffmpeg-static ve ffprobe-static yerine tek, sabitlenmiş FFmpeg n9.0.2 (GPL, paylaşımlı); app.asar 72.4 → 2.5 MB; renderer paketi 2.63 → 1.31 MB; yalnızca Windows; MIT LICENSE dosyası; README güncel. 890 birim testi ve 22 uçtan uca test Electron 45 üzerinde geçiyor. Doğrulanmayanlar: CI'daki e2e işi (push yok), görünür pencerede şeffaflık, NSIS kurulumu.
