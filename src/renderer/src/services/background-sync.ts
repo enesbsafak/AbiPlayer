@@ -1,7 +1,5 @@
-import { xtreamApi } from './xtream-api'
 import { useStore } from '@/store'
 import { catalog as defaultCatalog, type CatalogStore } from '@/catalog/catalog-store'
-import { xtreamLiveToRecords, xtreamSeriesToRecords, xtreamVodToRecords } from '@/catalog/convert'
 import { toCatalogSyncError } from '@/catalog/sync-error'
 import { certificateAwareError } from '@/catalog/certificate-errors'
 import { ingestXtreamList } from '@/catalog/worker-ingest'
@@ -33,12 +31,6 @@ export type FullListFetcher = (
   sourceId: string,
   signal: AbortSignal
 ) => Promise<CatalogItem[]>
-
-export const fetchFullXtreamList: FullListFetcher = async (type, creds, sourceId, signal) => {
-  if (type === 'live') return xtreamLiveToRecords(await xtreamApi.getLiveStreams(creds, undefined, { signal }), sourceId)
-  if (type === 'vod') return xtreamVodToRecords(await xtreamApi.getVodStreams(creds, undefined, { signal }), sourceId)
-  return xtreamSeriesToRecords(await xtreamApi.getSeries(creds, undefined, { signal }), sourceId)
-}
 
 export interface FullSyncOptions {
   /**

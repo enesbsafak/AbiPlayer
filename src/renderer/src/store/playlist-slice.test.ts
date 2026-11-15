@@ -310,12 +310,14 @@ describe('player-slice', () => {
       type: 'vod'
     }
 
-    store.getState().setVideoQualityOptions([
-      { id: 'auto', label: 'Otomatik', shortLabel: 'Oto', auto: true },
-      { id: 'hls-v:0', label: '1080p · 5.6 Mbps', shortLabel: '1080p', height: 1080, bitrate: 5_600_000 }
-    ])
+    store.getState().applyPlayerPatch({
+      videoQualityOptions: [
+        { id: 'auto', label: 'Otomatik', shortLabel: 'Oto', auto: true },
+        { id: 'hls-v:0', label: '1080p · 5.6 Mbps', shortLabel: '1080p', height: 1080, bitrate: 5_600_000 }
+      ],
+      activeVideoQuality: 'hls-v:0'
+    })
     store.getState().setCurrentVideoQuality('hls-v:0')
-    store.getState().setActiveVideoQuality('hls-v:0')
 
     store.getState().playChannel(channel)
 
@@ -323,11 +325,11 @@ describe('player-slice', () => {
     expect(store.getState().currentVideoQuality).toBeNull()
     expect(store.getState().activeVideoQuality).toBeNull()
 
-    store.getState().setVideoQualityOptions([
-      { id: 'auto', label: 'Otomatik', shortLabel: 'Oto', auto: true }
-    ])
+    store.getState().applyPlayerPatch({
+      videoQualityOptions: [{ id: 'auto', label: 'Otomatik', shortLabel: 'Oto', auto: true }],
+      activeVideoQuality: 'hls-v:0'
+    })
     store.getState().setCurrentVideoQuality('auto')
-    store.getState().setActiveVideoQuality('hls-v:0')
 
     store.getState().stopPlayback()
 

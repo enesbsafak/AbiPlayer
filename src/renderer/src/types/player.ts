@@ -91,24 +91,3 @@ export interface SubtitleStyle {
   outline?: number
   shadow?: number
 }
-
-export interface PlayerState {
-  isPlaying: boolean
-  isPaused: boolean
-  isBuffering: boolean
-  currentTime: number
-  duration: number
-  volume: number
-  isMuted: boolean
-  isFullscreen: boolean
-  isPiP: boolean
-  error: string | null
-  audioTracks: AudioTrack[]
-  currentAudioTrack: string | null
-  subtitleTracks: SubtitleTrack[]
-  currentSubtitleTrack: string | null
-  videoQualityOptions: VideoQualityOption[]
-  currentVideoQuality: string | null
-  activeVideoQuality: string | null
-  subtitleCues: SubtitleCue[]
-}

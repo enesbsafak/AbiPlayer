@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { decodeXmlEntities, normalizeEpgChannelKey, pickLocalizedText } from './epg-service'
+import { PREFERRED_EPG_LANGUAGES, decodeXmlEntities, normalizeEpgChannelKey, pickPreferred } from './epg-service'
 import { createXmltvParser, fetchAndParseEPG, parseEPGXml } from './xmltv-parser'
 
 describe('normalizeEpgChannelKey', () => {
@@ -172,23 +172,23 @@ describe('parseEPGXml prototype pollution protection', () => {
   })
 })
 
-describe('pickLocalizedText', () => {
+describe('pickPreferred', () => {
   it('matches three-letter and regional language codes', () => {
     expect(
-      pickLocalizedText([
-        { '#text': 'News', '@_lang': 'eng' },
-        { '#text': 'Haberler', '@_lang': 'tur' }
-      ])
+      pickPreferred(
+        [
+          { text: 'News', lang: 'eng' },
+          { text: 'Haberler', lang: 'tur' }
+        ],
+        PREFERRED_EPG_LANGUAGES
+      )
     ).toEqual({ text: 'Haberler', lang: 'tur' })
-    expect(pickLocalizedText([{ '#text': 'A', '@_lang': 'en' }, { '#text': 'B', '@_lang': 'tr-TR' }])?.text).toBe('B')
+    expect(pickPreferred([{ text: 'A', lang: 'en' }, { text: 'B', lang: 'tr-TR' }], PREFERRED_EPG_LANGUAGES)?.text).toBe('B')
   })
 
-  it('handles a plain string, an object without lang and empty values', () => {
-    expect(pickLocalizedText('Haber')).toEqual({ text: 'Haber', lang: '' })
-    expect(pickLocalizedText({ '#text': 'Spor' })).toEqual({ text: 'Spor', lang: '' })
-    expect(pickLocalizedText([{ '#text': '  ', '@_lang': 'tr' }, 'Yedek'])).toEqual({ text: 'Yedek', lang: '' })
-    expect(pickLocalizedText(undefined)).toBeUndefined()
-    expect(pickLocalizedText([])).toBeUndefined()
+  it('falls back to the first text, and to nothing for an empty list', () => {
+    expect(pickPreferred([{ text: 'News', lang: 'en' }, { text: 'Nachrichten', lang: 'de' }], PREFERRED_EPG_LANGUAGES)?.text).toBe('News')
+    expect(pickPreferred([], PREFERRED_EPG_LANGUAGES)).toBeUndefined()
   })
 })
 

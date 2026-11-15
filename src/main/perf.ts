@@ -25,10 +25,6 @@ export function perfMark(name: string, detail?: PerfDetail): void {
   recorder.mark(name, detail)
 }
 
-export function isPerfEnabled(): boolean {
-  return recorder.enabled
-}
-
 export function getMainPerfTimeline(): PerfTimeline {
   return recorder.timeline()
 }

@@ -36,11 +36,6 @@ import {
 } from './xtream-normalize'
 import { perfXtreamMark } from './perf'
 
-export { XtreamRequestError, isXtreamRequestError, requestHost } from './xtream-errors'
-export { maskCredentialsInUrl, xtreamRetryDelayMs } from './xtream-request'
-export type { XtreamErrorKind } from './xtream-errors'
-export { getAllowedLiveFormats, pickLiveFormat } from './xtream-normalize'
-
 /** Responses larger than this (in UTF-16 code units) are not kept in the request cache. */
 const XTREAM_MAX_CACHEABLE_BODY_CHARS = 2 * 1024 * 1024
 const PREVIEW_SCAN_CATEGORY_LIMIT = 12

@@ -3,7 +3,6 @@ import {
   createMpvProgressProbe,
   createPerfRecorder,
   describeXtreamUrl,
-  findMark,
   isPerfFlag,
   perfOutputPath,
   mergeTimelines,
@@ -138,19 +137,6 @@ describe('mergeTimelines', () => {
 
   it('handles no input', () => {
     expect(mergeTimelines([])).toEqual({ version: 1, timeOrigin: 0, marks: [], longTasks: [], dropped: 0 })
-  })
-})
-
-describe('findMark', () => {
-  it('finds the first mark with the name at or after a time', () => {
-    const marks = [
-      { name: 'x', t: 1 },
-      { name: 'y', t: 2 },
-      { name: 'x', t: 3 }
-    ]
-    expect(findMark(marks, 'x')?.t).toBe(1)
-    expect(findMark(marks, 'x', 2)?.t).toBe(3)
-    expect(findMark(marks, 'z')).toBeNull()
   })
 })
 

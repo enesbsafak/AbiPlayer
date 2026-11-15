@@ -31,12 +31,6 @@ export const PREVIEW_LIMITS: Record<CatalogType, number> = { live: 50, vod: 30, 
 
 const TYPE_LABELS: Record<CatalogType, string> = { live: 'Canlı TV', vod: 'Filmler', series: 'Diziler' }
 
-/** Any type of the source has items in memory. */
-export function sourceHasCatalog(status: CatalogStatusMap, sourceId: string | null): boolean {
-  if (!sourceId) return false
-  return CATALOG_TYPES.some((type) => status[sourceId]?.[type]?.loaded === true)
-}
-
 /** Every type of the source holds a complete list. */
 export function sourceCatalogComplete(status: CatalogStatusMap, sourceId: string | null): boolean {
   if (!sourceId) return false

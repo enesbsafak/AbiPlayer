@@ -1,13 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  XtreamRequestError,
-  forgetXtreamRequests,
-  getAllowedLiveFormats,
-  maskCredentialsInUrl,
-  pickLiveFormat,
-  xtreamApi,
-  xtreamRetryDelayMs
-} from './xtream-api'
+import { forgetXtreamRequests, xtreamApi } from './xtream-api'
+import { XtreamRequestError } from './xtream-errors'
+import { getAllowedLiveFormats, pickLiveFormat } from './xtream-normalize'
+import { maskCredentialsInUrl, xtreamRetryDelayMs } from './xtream-request'
 import type { XtreamAuthResponse } from '@/types/xtream'
 
 // Give every test a unique url+user so it hits a distinct cache key and

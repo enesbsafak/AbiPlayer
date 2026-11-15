@@ -3,12 +3,10 @@ import { is } from '@electron-toolkit/utils'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { unlink } from 'fs/promises'
 import { join } from 'path'
-import type { AppUpdateState, AppUpdateStatus } from '../shared/types/electron-ipc'
+import type { AppUpdateState } from '../shared/types/electron-ipc'
 import { maskCredentials } from '../shared/mask-credentials'
 import { E2E_MODE } from './e2e-mode'
 import { broadcastEvent } from './ipc/events'
-
-export type { AppUpdateState, AppUpdateStatus }
 
 const AUTO_CHECK_DELAY_MS = 15_000
 const PERIODIC_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000

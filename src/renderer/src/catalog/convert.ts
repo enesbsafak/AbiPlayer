@@ -150,25 +150,6 @@ export function categoryToRecord(category: Category): CatalogCategory {
   }
 }
 
-/** Turns legacy `Channel` objects into records; items already converted pass through. */
-export function toCatalogItem(channel: Channel): CatalogItem {
-  const candidate = channel as Partial<CatalogItem>
-  if (typeof candidate.searchName === 'string' && typeof candidate.isAdult === 'boolean') {
-    return channel as CatalogItem
-  }
-  if (typeof channel.streamId === 'number' || typeof channel.seriesId === 'number') {
-    // An Xtream item built elsewhere: keep its ids, never its URL.
-    const record: CatalogItem = {
-      ...channel,
-      streamUrl: '',
-      searchName: normalizeSearchKey(channel.name),
-      isAdult: channel.isAdult === true
-    }
-    return record
-  }
-  return m3uEntryToRecord(channel)
-}
-
 /** A parsed M3U playlist as complete lists for each of the three types. */
 export function m3uPlaylistToReplacement(parsed: {
   channels: readonly Channel[]

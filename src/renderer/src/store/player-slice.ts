@@ -252,28 +252,16 @@ export interface PlayerSlice {
   markResumeSeekIssued: (playbackId: PlaybackId, position: number) => void
   /** The resume for `playbackId` is done (seek carried out, or nothing to resume). */
   completeResume: (playbackId: PlaybackId) => void
-  setPlaying: (playing: boolean) => void
-  setPaused: (paused: boolean) => void
-  setBuffering: (buffering: boolean) => void
-  setCurrentTime: (time: number) => void
-  setDuration: (duration: number) => void
-  setDemuxerCacheDuration: (seconds: number) => void
   setVolume: (volume: number) => void
   setMuted: (muted: boolean) => void
   setFullscreen: (fullscreen: boolean) => void
   setPiP: (pip: boolean) => void
   setPlayerError: (error: string | null) => void
-  setAudioTracks: (tracks: AudioTrack[]) => void
   setCurrentAudioTrack: (id: string | null) => void
-  setSubtitleTracks: (tracks: SubtitleTrack[]) => void
-  setCurrentSubtitleTrack: (id: string | null) => void
   /** A subtitle choice made by the viewer; engines must not override it. */
   selectSubtitleTrack: (id: string | null) => void
   setPlayerNotice: (notice: string | null) => void
-  setVideoQualityOptions: (options: VideoQualityOption[]) => void
   setCurrentVideoQuality: (id: string | null) => void
-  setActiveVideoQuality: (id: string | null) => void
-  setSubtitleCues: (cues: SubtitleCue[]) => void
   setActiveSubtitleCues: (cues: SubtitleCue[]) => void
   setShowControls: (show: boolean) => void
   setMiniPlayer: (mini: boolean) => void
@@ -519,27 +507,15 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
   completeResume: (playbackId) =>
     set((state) => (state.pendingResume?.playbackId === playbackId ? { pendingResume: null } : state)),
 
-  setPlaying: (playing) => set({ isPlaying: playing }),
-  setPaused: (paused) => set({ isPaused: paused }),
-  setBuffering: (buffering) => set({ isBuffering: buffering }),
-  setCurrentTime: (time) => set({ currentTime: time }),
-  setDuration: (duration) => set({ duration }),
-  setDemuxerCacheDuration: (seconds) => set({ demuxerCacheDuration: seconds }),
   setVolume: (volume) => set({ volume }),
   setMuted: (muted) => set({ isMuted: muted }),
   setFullscreen: (fullscreen) => set({ isFullscreen: fullscreen }),
   setPiP: (pip) => set({ isPiP: pip }),
   setPlayerError: (error) => set({ playerError: error }),
-  setAudioTracks: (tracks) => set({ audioTracks: tracks }),
   setCurrentAudioTrack: (id) => set({ currentAudioTrack: id }),
-  setSubtitleTracks: (tracks) => set({ subtitleTracks: tracks }),
-  setCurrentSubtitleTrack: (id) => set({ currentSubtitleTrack: id }),
   selectSubtitleTrack: (id) => set({ currentSubtitleTrack: id, isSubtitleTrackUserChoice: true }),
   setPlayerNotice: (notice) => set({ playerNotice: notice }),
-  setVideoQualityOptions: (options) => set({ videoQualityOptions: options }),
   setCurrentVideoQuality: (id) => set({ currentVideoQuality: id }),
-  setActiveVideoQuality: (id) => set({ activeVideoQuality: id }),
-  setSubtitleCues: (cues) => set({ subtitleCues: cues }),
   // Called on every cue tick (up to 10x/s); an identical list must not wake
   // every subscriber.
   setActiveSubtitleCues: (cues) =>

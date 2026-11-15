@@ -290,7 +290,7 @@ describe('usePlayer direct playback', () => {
     expect(useStore.getState().currentSubtitleTrack).toBe('probe:3')
 
     // The viewer goes for the other one, then reloads.
-    act(() => useStore.getState().setCurrentSubtitleTrack('probe:2'))
+    act(() => useStore.getState().selectSubtitleTrack('probe:2'))
     act(() => useStore.getState().reloadPlayback())
     await act(async () => {})
     act(() => {

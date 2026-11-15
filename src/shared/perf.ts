@@ -197,14 +197,6 @@ export function mergeTimelines(timelines: readonly PerfTimeline[]): MergedPerfTi
   return { version: 1, timeOrigin: origin, marks, longTasks, dropped }
 }
 
-/** First mark with this name at or after `after`, or null. */
-export function findMark<T extends PerfMark>(marks: readonly T[], name: string, after = -Infinity): T | null {
-  for (const mark of marks) {
-    if (mark.name === name && mark.t >= after) return mark
-  }
-  return null
-}
-
 /**
  * Only the action and whether a category filter was present: the request URL
  * itself carries the account's username and password and must never be

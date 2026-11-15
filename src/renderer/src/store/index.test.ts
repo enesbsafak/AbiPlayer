@@ -4,12 +4,12 @@ import type { PlaylistSource } from '@/types/playlist'
 import {
   createPartialize,
   mergePersistedState,
-  PERSIST_VERSION,
   STORE_NAME,
   storePersistence,
   useStore,
   type AppStore
 } from './index'
+import { PERSIST_VERSION } from './persist-migrations'
 
 const xtreamSource: PlaylistSource = {
   id: 'xt',

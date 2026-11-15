@@ -1,13 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { itemAt } from '../../../shared/checked'
-import {
-  cleanTitleForTmdbSearch,
-  normalizeTitleForMatch,
-  pickConfidentTmdbMatch,
-  resolveTmdbMovieDetails,
-  resolveTmdbSeasonEpisodes,
-  resolveTmdbTvDetails
-} from './tmdb-api'
+import { resolveTmdbMovieDetails, resolveTmdbSeasonEpisodes, resolveTmdbTvDetails } from './tmdb-api'
+import { cleanTitleForTmdbSearch, normalizeTitleForMatch, pickConfidentTmdbMatch } from './tmdb-match'
 
 describe('cleanTitleForTmdbSearch', () => {
   it('removes provider prefixes, years and quality tags', () => {

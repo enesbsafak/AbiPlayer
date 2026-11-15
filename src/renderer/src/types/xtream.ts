@@ -231,33 +231,12 @@ export interface XtreamSeriesStream {
   category_ids: number[]
 }
 
-export interface XtreamSeriesEpisode {
-  id: string
-  episode_num: number
-  title: string
-  container_extension: string
-  info: {
-    movie_image: string
-    plot: string
-    duration_secs: number
-    duration: string
-    rating: number
-    name: string
-    season: number
-  }
-  custom_sid: string
-  added: string
-  season: number
-  direct_source: string
-}
-
 /**
  * Series info is passed through with only its top-level shape guaranteed.
  * The nested values are still panel data (`info` is `[]` on some panels,
  * `episodes` is sometimes an array instead of a season map), so they are
  * typed as unknown: SeriesDetail normalizes them field by field into
- * `SeasonInfo` / `EpisodeInfo`. XtreamSeriesEpisode describes the usual
- * shape of one episode entry.
+ * `SeasonInfo` / `EpisodeInfo`.
  */
 export interface XtreamSeriesInfo {
   seasons: unknown[]

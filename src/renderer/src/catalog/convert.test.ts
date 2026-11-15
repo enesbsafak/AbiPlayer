@@ -6,7 +6,6 @@ import { targetFromCatalogItem } from '../../../shared/playback'
 import type { XtreamSeriesStream, XtreamVODStream } from '@/types/xtream'
 import {
   m3uPlaylistToReplacement,
-  toCatalogItem,
   xtreamCategoriesToRecords,
   xtreamLiveToRecords,
   xtreamSeriesToRecords,
@@ -146,18 +145,5 @@ http://cdn.test/gece.m3u8`
       ['XXX', true]
     ])
     expect(replacement.live!.items[1]?.isAdult).toBe(true)
-  })
-
-  it('turns an Xtream-shaped legacy channel into a record without its URL', () => {
-    const record = toCatalogItem({
-      id: 'x_live_1',
-      name: 'Kanal',
-      streamUrl: 'http://panel/live/user/pass/1.m3u8',
-      streamId: 1,
-      sourceId: 'x',
-      type: 'live'
-    })
-    expect(record.streamUrl).toBe('')
-    expect(record.searchName).toBe('kanal')
   })
 })
