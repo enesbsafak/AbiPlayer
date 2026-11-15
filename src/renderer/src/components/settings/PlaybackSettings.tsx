@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useStore } from '@/store'
 import { Dropdown } from '@/components/ui/Dropdown'
+import type { UserSettings } from '@/types/settings'
 import { formatLanguageLabel, useLanguageCodes } from './language-options'
 
 export function PlaybackSettings() {
@@ -61,6 +62,28 @@ export function PlaybackSettings() {
         </p>
       </div>
 
+      <div className="rounded-lg border border-surface-800 bg-surface-900 p-5">
+        <p id="live-stream-format-label" className="mb-2 text-sm text-surface-400">
+          Canlı yayın biçimi
+        </p>
+        <Dropdown
+          id="live-stream-format"
+          labelledBy="live-stream-format-label"
+          items={LIVE_STREAM_FORMAT_ITEMS}
+          value={settings.liveStreamFormat}
+          onSelect={(id) => {
+            const format = LIVE_STREAM_FORMAT_ITEMS.find((item) => item.id === id)?.id
+            if (format) updateSettings({ liveStreamFormat: format })
+          }}
+          placeholder="Canlı yayın biçimi"
+        />
+        <p className="mt-1 text-xs text-surface-500">
+          Xtream canlı kanallarının mpv ile hangi biçimde isteneceği. Hesabın izin vermediği biçim
+          istenmez. HLS ya da MPEG-TS seçiliyken o biçimde açılmayan kanal bir kez diğer biçimle
+          denenir. Yedek oynatıcı (mpv yokken) her zaman HLS kullanır.
+        </p>
+      </div>
+
       <div className="flex flex-col gap-4 rounded-lg border border-surface-800 bg-surface-900 p-5">
         <div>
           <label className="flex cursor-pointer items-center gap-2">
@@ -102,7 +125,31 @@ export function PlaybackSettings() {
             </p>
           )}
         </div>
+
+        <div>
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={settings.keepPlayingInCorner}
+              onChange={(e) => updateSettings({ keepPlayingInCorner: e.target.checked })}
+              className="rounded border-surface-700 bg-surface-900 text-accent focus:ring-accent"
+            />
+            <span className="text-sm text-surface-300">
+              Oynatıcıdan çıkınca köşede oynatmaya devam et (deneysel)
+            </span>
+          </label>
+          <p className="mt-1 text-xs text-surface-500">
+            Gezinirken yayın pencerenin sağ alt köşesinde küçük olarak sürer. Yalnızca mpv ile
+            çalışır; kapalıyken oynatıcıdan çıkmak yayını duraklatır.
+          </p>
+        </div>
       </div>
     </div>
   )
 }
+
+const LIVE_STREAM_FORMAT_ITEMS: Array<{ id: UserSettings['liveStreamFormat']; label: string }> = [
+  { id: 'auto', label: 'Otomatik (hesap izin veriyorsa HLS)' },
+  { id: 'm3u8', label: 'HLS' },
+  { id: 'ts', label: 'MPEG-TS' }
+]

@@ -50,9 +50,19 @@ export interface MpvSessionOptions {
   connect: MpvConnector
   removeSocketFile?: (socketPath: string) => Promise<void>
   listener: MpvSessionListener
+  /** Timing marks (src/main/perf.ts); a no-op unless ABI_PERF is set. */
+  mark?: (name: string, detail?: Record<string, number>) => void
 }
 
 type SessionState = 'new' | 'starting' | 'ready' | 'closing' | 'closed'
+
+/** mpv's own event names, for the timing marks of the load they belong to. */
+const VERDICT_MARKS: Record<MpvLoadVerdict['kind'], string> = {
+  start: 'mpv:start-file',
+  loaded: 'mpv:file-loaded',
+  restart: 'mpv:playback-restart',
+  end: 'mpv:end-file'
+}
 
 function entryIdOf(value: unknown): number | null {
   return typeof value === 'number' && Number.isInteger(value) ? value : null
@@ -141,6 +151,7 @@ export class MpvSession {
     const guard = <T>(promise: Promise<T>): Promise<T> => Promise.race([promise, aborted])
 
     try {
+      this.mark('mpv:spawn')
       const proc = this.options.spawn(this.options.binary, this.options.args)
       this.proc = proc
       proc.onExit((info) => this.handleExit(info))
@@ -151,6 +162,7 @@ export class MpvSession {
       })
 
       const stream = await guard(this.connectWithRetry())
+      this.mark('mpv:pipe-connected')
       this.client = new MpvIpcClient(stream, {
         onEvent: (message) => this.handleMessage(message),
         onRemoteClose: () => this.handleIpcLost()
@@ -165,6 +177,7 @@ export class MpvSession {
       if (this.state !== 'starting') throw new Error('mpv oturumu kapatıldı')
       this.clearTimers()
       this.state = 'ready'
+      this.mark('mpv:session-ready')
     } catch (error) {
       void this.close()
       throw error instanceof Error ? error : new Error(String(error))
@@ -202,6 +215,7 @@ export class MpvSession {
     options: { liveEdge?: boolean; fileOptions?: Record<string, string> } = {}
   ): Promise<void> {
     const fileOptions = loadFileOptions(options)
+    this.mark('mpv:loadfile-sent', { load: token })
     const reply = fileOptions
       ? await this.request(['loadfile', url, 'replace', -1, fileOptions]).catch((error: unknown) => {
           if (error instanceof MpvIpcClosedError) throw error
@@ -215,6 +229,7 @@ export class MpvSession {
       reply && typeof reply === 'object'
         ? entryIdOf((reply as Record<string, unknown>)['playlist_entry_id'])
         : null
+    this.mark('mpv:loadfile-replied', { load: token })
     this.deliver(this.tracker.replied(token, entryId))
   }
 
@@ -408,6 +423,7 @@ export class MpvSession {
   private deliver(verdicts: MpvLoadVerdict[]): void {
     for (const verdict of verdicts) {
       if (this.closing) return
+      this.mark(VERDICT_MARKS[verdict.kind], { load: verdict.token })
       if (verdict.kind === 'restart') {
         this.restartedToken = verdict.token
         this.settleRestartWaiters(verdict.token, true)
@@ -454,6 +470,10 @@ export class MpvSession {
     const waiters = this.restartWaiters
     this.restartWaiters = []
     for (const waiter of waiters) waiter.resolve(false)
+  }
+
+  private mark(name: string, detail: Record<string, number> = {}): void {
+    this.options.mark?.(name, { session: this.id, ...detail })
   }
 
   private schedule(ms: number, callback: () => void): ReturnType<typeof setTimeout> {

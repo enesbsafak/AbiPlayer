@@ -15,7 +15,7 @@ import {
   installQuitHandling
 } from './ipc/lifecycle'
 import { isTrustedRendererUrl, type TrustedRendererLocation } from './ipc/register'
-import { readWindowStateInfo } from './ipc/window'
+import { installCaptionDoubleClick, readWindowStateInfo } from './ipc/window'
 import { getTlsPolicy } from './tls'
 import {
   isStateOnScreen,
@@ -159,6 +159,7 @@ function createWindow(services: MainServices): void {
   mainWindow.on('unmaximize', onMaximizeChanged)
   mainWindow.on('enter-full-screen', emitWindowState)
   mainWindow.on('leave-full-screen', emitWindowState)
+  installCaptionDoubleClick(mainWindow)
   mainWindow.on('close', () => {
     if (!mainWindow.isDestroyed()) saveWindowState(tracker.capture())
   })

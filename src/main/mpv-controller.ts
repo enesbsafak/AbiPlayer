@@ -11,6 +11,8 @@ import type {
 } from '../shared/types/electron-ipc'
 import { buildMpvLaunchArgs, createMpvSocketPath, hwdecValue } from './mpv/args'
 import { resolveMpvBinary } from './mpv/binary'
+import { perfMark } from './perf'
+import { NO_VIDEO_MARGINS, type VideoMarginRatios } from './mpv/video-rect'
 import {
   connectMpvSocket,
   spawnMpvProcess,
@@ -68,10 +70,13 @@ export interface MpvControllerDeps {
   createSocketPath: () => string
   /** Removes a unix socket file after its session ended (unused on win32). */
   removeSocketFile?: (socketPath: string) => Promise<void>
+  /** Timing marks for the startup steps; `perfMark` (inert unless ABI_PERF is set). */
+  mark?: (name: string, detail?: Record<string, number>) => void
 }
 
 function defaultDeps(): MpvControllerDeps {
   return {
+    mark: perfMark,
     resolveBinary: () =>
       resolveMpvBinary({
         platform: process.platform,
@@ -149,6 +154,8 @@ export class MpvController {
   private muted: boolean | null = null
   private fullscreen: boolean | null = null
   private videoMarginRatio = 0
+  /** The picture is confined to a rectangle (corner player); overrides the right margin. */
+  private videoRect: VideoMarginRatios | null = null
 
   private playback: Playback | null = null
   private loadSeq = 0
@@ -219,6 +226,7 @@ export class MpvController {
       liveEdge: false,
       fileOptions: { ...options.fileOptions }
     })
+    this.deps.mark?.('mpv:open', { load: playback.seq })
     const handed = this.waitFor(playback)
     void this.kick()
     return handed
@@ -441,6 +449,16 @@ export class MpvController {
     await this.syncDurable()
   }
 
+  /**
+   * Confines the picture to a rectangle of the window, given as margins in
+   * mpv's own unit (fractions of the window); null gives the whole window back
+   * (minus the right margin above). Used by the experimental corner player.
+   */
+  async setVideoRect(margins: VideoMarginRatios | null): Promise<void> {
+    this.videoRect = margins ? { ...margins } : null
+    await this.syncDurable()
+  }
+
   /** Takes effect in place: mpv reinitialises the decoder without a reload. */
   async setHardwareDecoding(enabled: boolean): Promise<void> {
     this.hardwareDecoding = enabled
@@ -552,13 +570,17 @@ export class MpvController {
       // What a fresh process already runs with, so only differences are sent.
       launchProperties: [
         ['hwdec', hwdecValue(this.hardwareDecoding)],
+        ['video-margin-ratio-left', 0],
         ['video-margin-ratio-right', 0],
+        ['video-margin-ratio-top', 0],
+        ['video-margin-ratio-bottom', 0],
         ...tuningProperties(DEFAULT_TUNING)
       ],
       spawn: this.deps.spawn,
       connect: this.deps.connect,
       removeSocketFile: this.deps.removeSocketFile,
-      listener: (source, event) => this.onSessionEvent(source, event)
+      listener: (source, event) => this.onSessionEvent(source, event),
+      mark: this.deps.mark
     })
 
     this.starting = session
@@ -657,9 +679,13 @@ export class MpvController {
   }
 
   private durableProperties(): Array<[string, unknown]> {
+    const rect = this.videoRect ?? { ...NO_VIDEO_MARGINS, right: this.videoMarginRatio }
     const properties: Array<[string, unknown]> = [
       ['hwdec', hwdecValue(this.hardwareDecoding)],
-      ['video-margin-ratio-right', this.videoMarginRatio],
+      ['video-margin-ratio-left', rect.left],
+      ['video-margin-ratio-right', rect.right],
+      ['video-margin-ratio-top', rect.top],
+      ['video-margin-ratio-bottom', rect.bottom],
       ...subtitleStyleProperties(this.subtitleStyle)
     ]
     if (this.volume !== null) properties.push(['volume', this.volume])

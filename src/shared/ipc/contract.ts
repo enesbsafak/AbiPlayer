@@ -90,6 +90,14 @@ export interface MpvOpenRequest {
   tuning?: MpvPlaybackTuning
 }
 
+/** A rectangle of the window's content area in CSS pixels (the corner player's picture). */
+export interface MpvVideoRect {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
 /** Why a server certificate failed verification, in the user's terms. */
 export type CertificateProblem = 'authority' | 'expired' | 'not-yet-valid' | 'name-mismatch' | 'other'
 
@@ -182,6 +190,8 @@ export interface IpcInvokeContract {
   'mpv-set-subtitle-style': Invoke<[style: MpvSubtitleStyle], void>
   'mpv-set-playback-tuning': Invoke<[tuning: MpvPlaybackTuning], void>
   'mpv-set-video-margin': Invoke<[right: number], void>
+  /** Confines the picture to `rect`; null gives it the whole window again. */
+  'mpv-set-video-rect': Invoke<[rect: MpvVideoRect | null], void>
   'mpv-get-state': Invoke<[], MpvStateSnapshot>
   /**
    * Starts pushing `mpv-state` to the calling window (idempotent) and returns

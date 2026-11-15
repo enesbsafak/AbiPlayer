@@ -1,6 +1,13 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react'
-import { Minus, X, Maximize2, Download, Loader2 } from 'lucide-react'
-import { isElectron, windowMinimize, windowMaximize, windowClose } from '@/services/platform'
+import { useEffect, useRef, useState } from 'react'
+import { Minus, X, Maximize2, Minimize2, Download, Loader2 } from 'lucide-react'
+import {
+  isElectron,
+  onWindowStateChange,
+  windowClose,
+  windowGetState,
+  windowMaximize,
+  windowMinimize
+} from '@/services/platform'
 import type { AppUpdateState } from '@/services/platform'
 import { useAppUpdate } from '@/hooks/useAppUpdate'
 import { APP_NAME, APP_VERSION_LABEL } from '@/constants/app-info'
@@ -125,12 +132,49 @@ const CONTROL_BUTTON =
   'flex h-8 w-10 items-center justify-center text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-50'
 
 /**
+ * Whether the window is maximized, as main reports it: read once, then
+ * followed through its state events (the button, a double click on the bar,
+ * Windows snapping and keyboard shortcuts all go through them).
+ */
+export function useWindowMaximized(): boolean {
+  const [maximized, setMaximized] = useState(false)
+  useEffect(() => {
+    let active = true
+    // The first read can answer after an event; the event is newer then.
+    let eventSeen = false
+    const stop = onWindowStateChange((state) => {
+      eventSeen = true
+      setMaximized(state.isMaximized)
+    })
+    void windowGetState()
+      .then((state) => {
+        if (active && state && !eventSeen) setMaximized(state.isMaximized)
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+      stop?.()
+    }
+  }, [])
+  return maximized
+}
+
+/** The maximize button's label follows what a click would do. */
+export function maximizeButtonText(maximized: boolean): { title: string; label: string } {
+  return maximized
+    ? { title: 'Önceki Boyut', label: 'Pencereyi önceki boyutuna getir' }
+    : { title: 'Büyüt', label: 'Pencereyi büyüt' }
+}
+
+/**
  * Minimize / maximize / close for the frameless window. Exported so the
  * full-screen error screens can keep the window closable when the shell itself
  * is gone.
  */
 export function WindowControls() {
+  const maximized = useWindowMaximized()
   if (!isElectron()) return null
+  const maximizeText = maximizeButtonText(maximized)
 
   return (
     <div className="no-drag flex items-center">
@@ -146,11 +190,12 @@ export function WindowControls() {
       <button
         type="button"
         onClick={windowMaximize}
-        title="Boyut Değiştir"
-        aria-label="Pencere boyutunu değiştir"
+        title={maximizeText.title}
+        aria-label={maximizeText.label}
+        aria-pressed={maximized}
         className={CONTROL_BUTTON}
       >
-        <Maximize2 size={12} />
+        {maximized ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
       </button>
       <button
         type="button"
@@ -165,20 +210,14 @@ export function WindowControls() {
   )
 }
 
-function handleTitleBarDoubleClick(event: MouseEvent<HTMLDivElement>) {
-  // Only the bare bar maximizes; a double click on a button is two clicks.
-  if ((event.target as HTMLElement).closest('.no-drag')) return
-  windowMaximize()
-}
-
+// A double click on the bar is handled in main (src/main/ipc/window.ts): the
+// bar is a drag region, and on Windows a drag region of this frameless,
+// transparent window never delivers DOM mouse events.
 export function TitleBar() {
   if (!isElectron()) return null
 
   return (
-    <div
-      className="drag-region relative z-titlebar flex h-11 items-center justify-between border-b border-surface-800 bg-surface-950 px-4"
-      onDoubleClick={handleTitleBarDoubleClick}
-    >
+    <div className="drag-region relative z-titlebar flex h-11 items-center justify-between border-b border-surface-800 bg-surface-950 px-4">
       <div className="no-drag flex items-center gap-2.5">
         <span className="text-body-sm font-semibold text-surface-50">{APP_NAME}</span>
         <UpdateBadge />

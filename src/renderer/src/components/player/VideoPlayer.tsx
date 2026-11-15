@@ -1,7 +1,8 @@
 import { useRef, useEffect, useCallback, useMemo, useState, type MouseEvent } from 'react'
 import { useStore } from '@/store'
 import { usePlayer } from '@/hooks/usePlayer'
-import { useMpvPlayer } from '@/hooks/useMpvPlayer'
+import { useMpvPlayer, type MpvPlayerOptions } from '@/hooks/useMpvPlayer'
+import { shouldKeepPlayingInCorner } from '@/store/player-slice'
 import { useKeepDisplayAwake } from '@/hooks/useKeepDisplayAwake'
 import { useResumePlayback } from '@/hooks/useResumePlayback'
 import { PlayerControls, formatTime } from './PlayerControls'
@@ -19,6 +20,12 @@ interface VideoPlayerProps {
 }
 
 const DEFAULT_PLAYER_SIZE = { width: 1280, height: 720 }
+
+// Leaving the route with the experimental corner setting on hands mpv to the
+// corner player instead of stopping it (the same decision the store makes).
+const MPV_ROUTE_HOST: MpvPlayerOptions = {
+  keepPlayingOnUnmount: () => shouldKeepPlayingInCorner(useStore.getState())
+}
 const PLAYER_NOTICE_MS = 8_000
 
 function formatVttTime(seconds: number): string {
@@ -74,7 +81,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
   const captionsTrackSrc = useMemo(() => buildCaptionsTrackSrc(subtitleCues), [subtitleCues])
 
   usePlayer(videoRef, { disabled: mpvEnabled || !isEngineResolved })
-  const isMpvStarting = useMpvPlayer(mpvEnabled)
+  const isMpvStarting = useMpvPlayer(mpvEnabled, MPV_ROUTE_HOST)
   useKeepDisplayAwake()
   const { resumedFrom, dismissResumeNotice, restartFromStart } = useResumePlayback(
     videoRef,

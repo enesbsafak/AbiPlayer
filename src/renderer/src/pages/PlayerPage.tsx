@@ -19,9 +19,13 @@ export default function PlayerPage() {
 
   // Both engines live only on this route, so leaving it stops playback. Say so
   // in the store (and arm the resume) instead of leaving it claiming to play.
+  // The experimental corner setting keeps mpv playing instead (AppShell shows
+  // the corner player then).
   useEffect(() => {
-    useStore.getState().resumeSuspendedPlayback()
-    return () => useStore.getState().suspendPlayback()
+    const store = useStore.getState()
+    store.returnFromCornerPlayback()
+    store.resumeSuspendedPlayback()
+    return () => useStore.getState().leavePlayerRoute()
   }, [])
 
   if (!currentChannel) return null

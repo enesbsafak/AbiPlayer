@@ -39,6 +39,12 @@ describe('buildMpvLaunchArgs', () => {
     expect(args.some((arg) => arg === '--tls-verify=no' || arg.startsWith('--tls-ca-file'))).toBe(false)
   })
 
+  it('probes streams for half a second of stream time, not lavf’s five (F2-03, measured)', () => {
+    expect(args).toContain('--demuxer-lavf-analyzeduration=0.5')
+    // Tried and rejected (docs/olcumler/2026-11-15-oynatma-acilisi.md): no gain, or more risk.
+    expect(args.some((arg) => arg.startsWith('--demuxer-lavf-probe-info') || arg.startsWith('--demuxer-lavf-probesize'))).toBe(false)
+  })
+
   it('uses the safe hardware decoder whitelist, or software decoding when off', () => {
     // `auto` would let mpv choose decoders known to misbehave on some drivers.
     expect(hwdecValue(true)).toBe('auto-safe')
