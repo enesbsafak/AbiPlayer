@@ -13,6 +13,7 @@ import {
   shouldStoreProgress,
   toProgressChannel,
   upsertProgress,
+  wouldRewindPendingResume,
   type WatchProgressEntry
 } from './watch-progress'
 
@@ -213,5 +214,27 @@ describe('sanitizeProgressEntries', () => {
     expect(restored.channel.id).toBe('http://x/1.mkv')
     expect(restored.channel.sourceId).toBe('')
     expect(restored.updatedAt).toBe(0)
+  })
+})
+
+describe('wouldRewindPendingResume', () => {
+  const saved = [entry(REDACTED_URL, 1800)]
+  const channel = { streamUrl: XTREAM_URL }
+
+  it('blocks a lower position while the resume for that stream is still pending', () => {
+    expect(wouldRewindPendingResume(saved, channel, 40, XTREAM_URL)).toBe(true)
+  })
+
+  it('lets a higher position through even while pending', () => {
+    expect(wouldRewindPendingResume(saved, channel, 1900, XTREAM_URL)).toBe(false)
+  })
+
+  it('does not block once no resume is pending, or when another stream is pending', () => {
+    expect(wouldRewindPendingResume(saved, channel, 40, null)).toBe(false)
+    expect(wouldRewindPendingResume(saved, channel, 40, 'http://h/movie/u/p/other.mkv')).toBe(false)
+  })
+
+  it('does not block a stream with nothing saved', () => {
+    expect(wouldRewindPendingResume([], channel, 40, XTREAM_URL)).toBe(false)
   })
 })

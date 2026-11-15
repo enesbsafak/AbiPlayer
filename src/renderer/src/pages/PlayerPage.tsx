@@ -15,6 +15,13 @@ export default function PlayerPage() {
     }
   }, [currentChannel, navigate, playerReturnTarget])
 
+  // Both engines live only on this route, so leaving it stops playback. Say so
+  // in the store (and arm the resume) instead of leaving it claiming to play.
+  useEffect(() => {
+    useStore.getState().resumeSuspendedPlayback()
+    return () => useStore.getState().suspendPlayback()
+  }, [])
+
   if (!currentChannel) return null
 
   return <VideoPlayer className="h-full w-full" />
