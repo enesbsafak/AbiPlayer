@@ -198,7 +198,7 @@ npm run dev
 
 ### Gereksinimler
 
-- Node.js **20+**
+- Node.js **20.19+** (CI Node 26 kullanır)
 - npm **10+**
 - Windows (aktif geliştirilen ve test edilen hedef)
 
@@ -216,12 +216,42 @@ npm run dev
 ```bash
 npm run dev            # Geliştirme (Electron + renderer, hot reload)
 npm run typecheck      # TypeScript denetimi (main + renderer)
-npm test               # Test paketi (Vitest)
+npm run lint           # ESLint (src/ ve scripts/)
+npm run lint:changed   # origin/main'e göre değişen dosyalar, uyarıya izin vermeden
+npm test               # Test paketi (Vitest: main ve scripts Node'da, renderer jsdom'da)
 npm run build          # Production build (typecheck dahil)
 npm run build:unpack   # Paketlenmiş ama kurulum dosyası üretmeden derle
 npm run build:win      # Windows kurulum dosyası
-npm run release:win    # Derle, etiketle ve GitHub release'i yayınla
+npm run release:win    # Test et, derle, etiketle, taslak release yükle, doğrula, yayınla
+npm run update:mpv-pin # Pakete giren mpv'yi yeni bir sürüme sabitle
 ```
+
+### Sürüm çıkarma
+
+Sürüm numarası `package.json` ve `package-lock.json` içinde birlikte artırılır; ikisi farklıysa `release:win` çalışmaz:
+
+```bash
+npm version 0.4.16-beta --no-git-tag-version
+```
+
+`npm run release:win` sırasıyla sürüm eşleşmesini denetler, birim testlerini çalıştırır, derler, `dist/latest.yml` dosyasının kurulum dosyasıyla (sürüm, boyut, sha512) tutarlı olduğunu doğrular, GitHub belirtecini çözer ve ancak ondan sonra dalı ve etiketi push eder. Release önce taslak olarak oluşturulur; dosyalar yüklenir (`latest.yml` en son), sunucudaki boyutlar ve `latest.yml` içeriği doğrulanır, yalnızca o zaman yayınlanır. Herhangi bir adımda hata olursa release taslak kalır; betiği yeniden çalıştırmak aynı taslağı kaldığı yerden sürdürür.
+
+- `--dry-run`: denetimler, testler ve derleme çalışır; push yapılmaz, GitHub'a hiçbir şey gönderilmez.
+- `--draft`: dosyalar yüklenip doğrulanır ama release taslak bırakılır.
+- `--no-push`: etiket uzak depoda zaten bulunmalı ve HEAD'i göstermelidir.
+
+### mpv sabitlemesi
+
+Windows paketindeki mpv, `scripts/mpv-pin.json` dosyasındaki sürüm etiketi, dosya adı, boyut ve SHA256 ile sabitlenmiştir. `npm run prepare:mpv:win` (dev ve build komutları bunu çağırır) yalnızca bu dosyayı indirir; özet tutmazsa derleme durur. Kurulu mpv'nin `.mpv-source.json` kaydı sabitle eşleşmiyorsa yeniden kurulur.
+
+Yeni bir mpv sürümüne geçmek için:
+
+```bash
+npm run update:mpv-pin              # son sürüm; belirli etiket için: npm run update:mpv-pin -- 20261111
+npm run prepare:mpv:win             # yeni sabiti kur
+```
+
+Ardından uygulamayı deneyip `scripts/mpv-pin.json` değişikliğini commit edin.
 
 ### Proje yapısı
 
@@ -240,8 +270,10 @@ docs/          Sürüm notları ve görseller
 Değişiklik gönderirken şunların geçtiğinden emin olun:
 
 ```bash
-npm run typecheck && npm test
+npm run lint && npm run typecheck && npm test
 ```
+
+Aynı denetimler ve `electron-vite build`, her push ve PR'da GitHub Actions üzerinde (Windows) çalışır. PR'larda ayrıca değişen dosyalar uyarısız olmalıdır (`npm run lint:changed`).
 
 Arayüz tarafında değişiklik yaptıysanız statik analiz puanının düşmediğini de kontrol edebilirsiniz:
 
@@ -279,7 +311,7 @@ npx react-doctor@latest --verbose --scope changed
 1. Bir issue açın ve ne yapmak istediğinizi anlatın.
 2. Dal oluşturun: `git checkout -b feat/degisiklik-adi`
 3. Değişikliğinizi yapın; mevcut kod stiline uyun.
-4. `npm run typecheck && npm test` çalıştırın.
+4. `npm run lint && npm run typecheck && npm test` çalıştırın.
 5. PR gönderin.
 
 Hata bildirirken tekrar üretme adımları, ekran görüntüsü ve varsa log eklemek süreci çok hızlandırır.
