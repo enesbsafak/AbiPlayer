@@ -1,7 +1,7 @@
 import { test, expect } from '../support/fixtures.ts'
 import { KNOWN } from '../mock-provider/catalog.ts'
 import { addXtreamSource, anyCard, cardButton, expectHomeWithContent, openRoute } from '../support/flows.ts'
-import { knownBug, observe } from '../support/known-bugs.ts'
+import { observe } from '../support/known-bugs.ts'
 
 test.describe('yeniden başlatma', () => {
   test('aynı profille yeniden açılınca kaynak kalır ve içerik yeniden yüklenir', async ({ launch, mock, closeApp }) => {
@@ -27,7 +27,6 @@ test.describe('yeniden başlatma', () => {
   })
 
   test('F1-42: yeniden başlatmadan sonra Favoriler hemen dolu gelir', async ({ launch, mock, closeApp }) => {
-    knownBug('F1-42', 'Favoriler yeniden başlatmadan sonra "Henüz favori yok" gösteriyor')
     const first = await launch({ label: 'first' })
     await addXtreamSource(first.page, mock)
     await expectHomeWithContent(first.page)
