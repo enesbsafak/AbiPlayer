@@ -10,11 +10,19 @@ vi.mock('@/services/platform', async (importOriginal) => {
   return {
     ...actual,
     probeEmbeddedSubtitles: vi.fn(),
-    extractEmbeddedSubtitle: vi.fn()
+    extractEmbeddedSubtitle: vi.fn(),
+    cancelMediaJob: vi.fn(() => Promise.resolve(true)),
+    cancelAllMediaJobs: vi.fn(() => Promise.resolve(true))
   }
 })
 
-import { extractEmbeddedSubtitle, probeEmbeddedSubtitles } from '@/services/platform'
+import {
+  cancelAllMediaJobs,
+  cancelMediaJob,
+  extractEmbeddedSubtitle,
+  probeEmbeddedSubtitles
+} from '@/services/platform'
+import { MEDIA_JOB_CANCELLED_MESSAGE } from '../../../shared/ipc/contract'
 import {
   HLS_MAX_CONSECUTIVE_FATAL_ERRORS,
   SUBTITLE_PROBE_TIMEOUT_MS,
@@ -140,10 +148,12 @@ function film(id: string): Channel {
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((res) => {
+  let reject!: (error: Error) => void
+  const promise = new Promise<T>((res, rej) => {
     resolve = res
+    reject = rej
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 
 describe('usePlayer direct playback', () => {
@@ -241,6 +251,59 @@ describe('usePlayer direct playback', () => {
 
     expect(useStore.getState().subtitleCues).toHaveLength(1)
     expect(useStore.getState().playerNotice).toBe(TRUNCATED_SUBTITLE_NOTICE)
+  })
+
+  it('cancels a probe still running when the playback changes, without reporting it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const firstProbe = deferred<EmbeddedSubtitleProbeTrack[]>()
+    vi.mocked(probeEmbeddedSubtitles)
+      .mockReturnValueOnce(firstProbe.promise)
+      .mockResolvedValueOnce([])
+    act(() => useStore.getState().playChannel(film('a')))
+    renderPlayer()
+    const jobId = vi.mocked(probeEmbeddedSubtitles).mock.calls[0][1]?.jobId
+    expect(jobId).toEqual(expect.any(String))
+
+    act(() => useStore.getState().playChannel(film('b')))
+    expect(vi.mocked(cancelMediaJob)).toHaveBeenCalledWith(jobId)
+
+    // Main answers the cancelled call with its cancellation error.
+    await act(async () => firstProbe.reject(new Error(MEDIA_JOB_CANCELLED_MESSAGE)))
+    expect(warn).not.toHaveBeenCalled()
+    expect(video.getAttribute('src')).toBe(film('b').streamUrl)
+  })
+
+  it('cancels every media job when the player goes away', () => {
+    vi.mocked(probeEmbeddedSubtitles).mockReturnValue(new Promise(() => undefined))
+    act(() => useStore.getState().playChannel(film('a')))
+    const { unmount } = renderPlayer()
+    unmount()
+    expect(vi.mocked(cancelAllMediaJobs)).toHaveBeenCalled()
+  })
+
+  it('keeps the subtitle chosen for a film when that film is reloaded', async () => {
+    vi.mocked(probeEmbeddedSubtitles).mockResolvedValue([
+      { index: 2, codec: 'subrip', language: 'eng' },
+      { index: 3, codec: 'subrip', language: 'tur' }
+    ])
+    useStore.getState().updateSettings({ defaultSubtitleEnabled: true, preferredSubtitleLanguage: 'tr' })
+    act(() => useStore.getState().playChannel(film('a')))
+    renderPlayer()
+    await act(async () => {})
+    act(() => {
+      video.dispatchEvent(new Event('loadedmetadata'))
+    })
+    expect(useStore.getState().currentSubtitleTrack).toBe('probe:3')
+
+    // The viewer goes for the other one, then reloads.
+    act(() => useStore.getState().setCurrentSubtitleTrack('probe:2'))
+    act(() => useStore.getState().reloadPlayback())
+    await act(async () => {})
+    act(() => {
+      video.dispatchEvent(new Event('loadedmetadata'))
+    })
+    expect(useStore.getState().currentSubtitleTrack).toBe('probe:2')
+    useStore.getState().resetSettings()
   })
 
   it('stays quiet about a complete extraction', async () => {
