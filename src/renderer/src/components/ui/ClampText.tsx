@@ -12,7 +12,10 @@ function getClampStyle(lines: number): CSSProperties {
     display: '-webkit-box',
     WebkitBoxOrient: 'vertical',
     WebkitLineClamp: lines,
-    overflow: 'hidden'
+    overflow: 'hidden',
+    // Names written without spaces ("Some.Film.Name.2018") wrap onto the next
+    // line instead of running out of the box as one long word.
+    overflowWrap: 'anywhere'
   }
 }
 

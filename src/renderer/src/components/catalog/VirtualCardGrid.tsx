@@ -200,7 +200,11 @@ export function VirtualCardGrid<T extends Channel>({
 
   const cell = (item: T, index: number) => (
     // A one-cell grid, so the card fills the row height like a direct grid child.
-    <div key={item.id} data-roving-cell={index} className="grid min-w-0">
+    // `grid-cols-1` (minmax(0, 1fr)) and not the implicit `auto` track: an auto
+    // track grows to the card's min-content width, so a title that is one long
+    // unbreakable word ("Some.Film.Name.2018") or a long meta line made the
+    // card, and with it the 2:3 poster, wider and taller than its column.
+    <div key={item.id} data-roving-cell={index} className="grid min-w-0 grid-cols-1">
       {renderCard({
         item,
         index,

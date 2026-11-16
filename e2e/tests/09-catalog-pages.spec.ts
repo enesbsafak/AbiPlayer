@@ -69,6 +69,33 @@ async function cardOffsetInView(page: Page, gridName: string, cardName: string):
   }, cardName)
 }
 
+/**
+ * Widths of the first two cards while the first one carries a title that is
+ * one long unbreakable word and a long meta line, as provider lists have them
+ * ("Some.Film.Name.2018"). The texts are put back before returning. A card
+ * used to grow to the width of such a word, and its 2:3 poster with it, over
+ * the cards beside and below it.
+ */
+async function cardWidthsWithUnbreakableTitle(page: Page, gridName: string): Promise<{ plain: number; long: number; neighbour: number }> {
+  return grid(page, gridName).evaluate((element) => {
+    const cards = Array.from(element.querySelectorAll<HTMLElement>('[data-roving-index]'))
+    const [first, second] = cards
+    // The card's last child holds its two text lines: the title, then the meta line.
+    const title = first?.lastElementChild?.firstElementChild as HTMLElement | null | undefined
+    const meta = title?.nextElementSibling as HTMLElement | null | undefined
+    if (!first || !second || !title || !meta) return { plain: -1, long: -2, neighbour: -3 }
+    const plain = first.getBoundingClientRect().width
+    const texts = [title.textContent, meta.textContent]
+    title.textContent = 'Uzun.Ve.Bosluksuz.Yazilmis.Bir.Film.Adi.Extended.Cut.1080p-2018'
+    meta.textContent = 'Kartın genişliğine sığmayacak kadar uzun bir kategori adı'
+    const long = first.getBoundingClientRect().width
+    const neighbour = second.getBoundingClientRect().width
+    title.textContent = texts[0] ?? ''
+    meta.textContent = texts[1] ?? ''
+    return { plain, long, neighbour }
+  })
+}
+
 /** The focused element is inside the open detail view. */
 async function focusIsInDetail(page: Page, label: string): Promise<boolean> {
   return page.evaluate((label) => {
@@ -85,6 +112,12 @@ test.describe('katalog sayfaları', () => {
     await openRoute(page, '/vod')
     await expect(anyCard(page)).toBeVisible()
     await waitForFullList(page)
+
+    // A name without spaces stays inside its column.
+    const widths = await cardWidthsWithUnbreakableTitle(page, 'Filmler')
+    expect(widths.plain, 'cards are found').toBeGreaterThan(100)
+    expect(Math.abs(widths.long - widths.plain), `card is ${widths.long}px wide with a long name, ${widths.plain}px without`).toBeLessThan(1)
+    expect(Math.abs(widths.neighbour - widths.plain), 'the card beside it keeps its width').toBeLessThan(1)
 
     const top = await scrollGridToWholeRow(page, 'Filmler', 2400)
     expect(top, 'the film grid scrolls').toBeGreaterThan(1500)
