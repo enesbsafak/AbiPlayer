@@ -1,0 +1,65 @@
+# Kurulum paketini GitHub'ın makinesinde derler ve çıktı olarak yükler.
+# Elle başlatılır: `gh workflow run installer.yml --ref main`.
+#
+# Neden burada: NSIS, kaldırıcıyı üretmek için derleme sırasında imzasız küçük
+# bir .exe çalıştırır. Akıllı Uygulama Denetimi (Smart App Control) açık bir
+# Windows bunu engeller ve `electron-builder --win` "spawn UNKNOWN" ile durur.
+# Çıktı indirilip dist/ içine konur, sürüm `npm run release:win -- --skip-build`
+# ile yayınlanır (betik dosyaları latest.yml'e karşı doğrular).
+name: Installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '26'
+
+jobs:
+  build:
+    name: Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Node satisfies package.json engines
+        run: node -e "const want = require('./package.json').engines.node; if (!require('semver').satisfies(process.version, want)) { console.error(process.version + ' does not satisfy ' + want); process.exit(1) }"
+
+      # The pinned, hash-checked mpv and ffmpeg (scripts/*-pin.json).
+      - name: Fetch pinned mpv and ffmpeg
+        run: npm run prepare:binaries:win
+
+      - name: Build
+        run: npm run build
+
+      # `--publish never`: on a CI machine electron-builder would otherwise try
+      # to publish by itself. The release is made by scripts/release-win.mjs.
+      - name: Installer
+        run: npx electron-builder --win --publish never
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: |
+            dist/*-setup.exe
+            dist/*-setup.exe.blockmap
+            dist/latest.yml
+          if-no-files-found: error
+          retention-days: 7
+          # The installer is already compressed.
+          compression-level: 0
