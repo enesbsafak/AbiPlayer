@@ -1,3 +1,8 @@
+import { formatCount, LOCALE } from './common'
+import { settingsPath } from './settings'
+
+const sizeFormat = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 1 })
+
 export const player = {
   videoLabel: (name: string) => `${name} oynatıcı`,
   reconnect: 'Yeniden Bağlan',
@@ -128,6 +133,40 @@ export const player = {
     connectionLost: 'Yayın bağlantısı kesildi.',
     reconnecting: (attempt: number, max: number) => `Bağlantı kesildi, yeniden bağlanılıyor... (${attempt}/${max})`,
     liveFormatFallback: (failed: string, next: string) => `Kanal ${failed} biçiminde açılamadı; ${next} ile deneniyor.`
+  },
+
+  /** Choosing one of the streams the add-ons offer for a film or an episode. */
+  addonStreams: {
+    title: 'Yayın seç',
+    /** The player's pill that opens the picker again. */
+    open: 'Yayınlar',
+    openTitle: 'Başka bir yayın seç',
+    /** On the player's error card. */
+    chooseAnother: 'Başka yayın seç',
+    listLabel: 'Yayın adayları',
+    asking: 'Eklentilere soruluyor…',
+    addonAsking: 'Soruluyor…',
+    addonEmpty: 'Yayın bulamadı',
+    addonFailed: (reason: string) => `Yanıt vermedi. ${reason}`,
+    candidateCount: (count: number) => `${formatCount(count)} yayın`,
+    /** Looking for the add-on and release the viewer chose for the previous episode. */
+    autoWaiting: 'Son seçtiğin yayın aranıyor…',
+    noAddons: 'Yayın sağlayan bir eklenti kurulu değil',
+    noAddonsHint: `Filmler ve diziler için yayın bulan bir eklentiyi ${settingsPath('sources')} bölümünden ekleyebilirsin.`,
+    openSettings: 'Kaynak ayarlarına git',
+    noneFound: 'Oynatılabilir bir yayın bulunamadı',
+    noneFoundHint: 'Eklentiler bu içerik için doğrudan oynatılabilen bir yayın vermedi. Daha sonra tekrar dene ya da başka bir eklenti ekle.',
+    allFailed: 'Eklentilerin hiçbiri yanıt vermedi',
+    allFailedHint: 'İnternet bağlantını kontrol edip tekrar dene.',
+    /** One line while mpv is missing and the built-in `<video>` would play the file. */
+    html5Warning: 'mpv bulunamadı: yerleşik oynatıcı bu yayınların çoğunu oynatamaz.',
+    unnamed: 'Adsız yayın',
+    /** A file size from bytes: "1,4 GB", "700 MB". */
+    size: (bytes: number) => {
+      const gb = bytes / 1024 ** 3
+      if (gb >= 1) return `${sizeFormat.format(gb)} GB`
+      return `${sizeFormat.format(Math.max(1, Math.round(bytes / 1024 ** 2)))} MB`
+    }
   },
 
   deferred: {

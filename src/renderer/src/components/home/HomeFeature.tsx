@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { LazyImage } from '@/components/ui/LazyImage'
-import { CloseIcon, LiveIcon, PlayIcon } from '@/components/ui/icons'
+import { CloseIcon, FilmIcon, LiveIcon, PlayIcon, SeriesIcon } from '@/components/ui/icons'
 import type { CatalogItem } from '@/catalog/types'
 import type { ContinueWatchingItem } from '@/services/watch-progress'
 import { strings } from '@/strings'
@@ -207,6 +207,30 @@ export function IdleTile() {
       <Link to="/live" {...spatial} className={`${TILE_PRIMARY} mt-2 self-start`}>
         <PlayIcon size={22} />
         {text.openLive}
+      </Link>
+    </Feature>
+  )
+}
+
+/**
+ * An add-on source with nothing unfinished and no film to suggest (a series
+ * add-on, or its film page still on its way): a way into its catalogues.
+ * An add-on has no live TV, so the idle tile's "Canlı TV" would lead nowhere.
+ */
+export function AddonIdleTile({ section }: { section: 'vod' | 'series' }) {
+  const Icon = section === 'series' ? SeriesIcon : FilmIcon
+  return (
+    <Feature
+      labelId="home-idle"
+      badge={text.idleBadge}
+      emblem={
+        <Icon size={132} weight={1.8} className={`shrink-0 short:hidden ${section === 'series' ? 'text-sky' : 'text-mint'}`} />
+      }
+    >
+      <h2 className={FEATURE_TITLE}>{text.addonIdleTitle}</h2>
+      <p className="max-w-md text-lg text-surface-400">{text.addonIdleHint}</p>
+      <Link to={section === 'series' ? '/series' : '/vod'} {...spatial} className={`${TILE_PRIMARY} mt-2 self-start`}>
+        {section === 'series' ? text.browseSeries : text.browseFilms}
       </Link>
     </Feature>
   )

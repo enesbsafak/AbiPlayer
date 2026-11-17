@@ -1,4 +1,5 @@
-import { settingsPath } from './settings'
+import { formatCount } from './common'
+import { settings, settingsPath } from './settings'
 
 /** Adding, listing and signing in to sources. */
 export const sources = {
@@ -14,7 +15,8 @@ export const sources = {
     serverUrl: 'Sunucu adresi',
     playlistUrl: 'Liste adresi',
     username: 'Kullanıcı adı',
-    password: 'Şifre'
+    password: 'Şifre',
+    addonUrl: 'Eklenti adresi'
   },
 
   /** One line under each field: what it is and where to find it. */
@@ -25,7 +27,9 @@ export const sources = {
     xtreamName: 'Kaynak listesinde bu adla görünür; boş bırakırsan kullanıcı adı ve sunucudan bir ad konur.',
     playlistUrl: 'Sağlayıcının verdiği, çoğunlukla .m3u, .m3u8 ya da get.php içeren bağlantı.',
     playlistName: 'Kaynak listesinde bu adla görünür; boş bırakırsan adresten ya da dosya adından bir ad konur.',
-    file: 'Bilgisayarındaki .m3u, .m3u8 ya da .txt uzantılı liste dosyası.'
+    file: 'Bilgisayarındaki .m3u, .m3u8 ya da .txt uzantılı liste dosyası.',
+    addonUrl:
+      'Eklentinin kendi sayfasındaki yükleme ya da bağlantıyı kopyalama düğmesinden alınır; o sayfada yaptığın ayarlar adresin bir parçasıdır.'
   },
 
   validation: {
@@ -44,7 +48,19 @@ export const sources = {
     duplicateFile: (name: string) => `Bu dosya zaten "${name}" olarak ekli`,
     authFailed: 'Kimlik doğrulama başarısız oldu',
     /** Shown beside the password when the panel refuses the sign-in. */
-    credentialsRefused: 'Kullanıcı adı veya şifre kabul edilmedi. İkisini de sağlayıcının mesajındakiyle karşılaştır.'
+    credentialsRefused: 'Kullanıcı adı veya şifre kabul edilmedi. İkisini de sağlayıcının mesajındakiyle karşılaştır.',
+    emptyAddonUrl: 'Eklenti adresini gir.',
+    invalidAddonUrl: 'Geçersiz eklenti adresi',
+    httpOnlyAddon: 'Yalnızca https://, http:// ya da stremio:// ile başlayan eklenti adresleri destekleniyor',
+    addonUrlTooLong: 'Eklenti adresi çok uzun',
+    duplicateAddon: (name: string) => `Bu eklenti bu adresle zaten "${name}" olarak ekli`,
+    /** An add-on answered 401/403: it has no user name or password, its address was refused. */
+    addonRefused:
+      'Eklenti bu adresi kabul etmedi. Adresi eklentinin sayfasından yeniden kopyala; içindeki kişisel anahtar değişmiş ya da süresi dolmuş olabilir.',
+    notAnAddon: 'Bu adreste bir eklenti bulunamadı. Eklentinin sayfasındaki bağlantıyı olduğu gibi yapıştır.',
+    addonUnusable: (name: string) =>
+      `"${name}" uygulamanın kullanabildiği bir film ya da dizi kataloğu veya yayın sağlamıyor.`,
+    otherAddon: (name: string) => `Bu adres başka bir eklentiye ait ("${name}"). Bu kaynağın kendi eklentisinin adresini gir.`
   },
 
   /** The guided step that adds a source. */
@@ -57,8 +73,39 @@ export const sources = {
     xtreamChoiceHint: 'Sunucu adresi, kullanıcı adı ve şifre',
     m3uChoice: 'M3U listem var',
     m3uChoiceHint: 'Bir liste bağlantısı ya da dosyası',
+    addonChoice: 'Eklenti adresim var',
+    addonChoiceHint: 'Bir eklentinin kendi sayfasından aldığın bağlantı',
     reassurance: 'Giriş bilgilerin şifrelenerek yalnızca bu bilgisayarda, işletim sisteminin güvenli deposunda saklanır.',
-    fileReassurance: 'Dosya bilgisayarında kalır; uygulama yalnızca senin seçtiğin dosyayı okur.'
+    fileReassurance: 'Dosya bilgisayarında kalır; uygulama yalnızca senin seçtiğin dosyayı okur.',
+    addonReassurance:
+      'Adres eklentideki ayarlarını ve kişisel bir anahtarı içerebilir. Şifrelenerek yalnızca bu bilgisayarda saklanır ve uygulamada hiçbir yerde gösterilmez.'
+  },
+
+  /** The add step's add-on form: check the address, review what was found, add. */
+  addon: {
+    title: 'Eklenti',
+    urlPlaceholder: 'https://addon.example/manifest.json',
+    checking: 'Kontrol ediliyor…',
+    check: 'Eklentiyi kontrol et',
+    checkFailed: 'Eklenti kontrol edilemedi.',
+    foundLabel: 'Bulunan eklenti',
+    version: (version: string) => `Sürüm ${version}`,
+    provides: 'Sağladıkları',
+    movieCatalogs: (count: number) => `${formatCount(count)} film kataloğu`,
+    seriesCatalogs: (count: number) => `${formatCount(count)} dizi kataloğu`,
+    streams: 'Film ve dizi yayınları',
+    subtitles: 'Altyazılar',
+    unusedCatalogs: (count: number) =>
+      `Bu eklentinin ${formatCount(count)} kataloğu uygulamada henüz kullanılmıyor; yalnızca film ve dizi katalogları gösterilir.`,
+    unusedSubtitles: 'Bu eklentinin altyazıları uygulamada henüz kullanılmıyor.',
+    streamOnly:
+      'Bu eklenti yalnızca yayın sağlar: katalog eklentilerinden açtığın film ve bölümler için oynatılacak yayını bulur. İçeriklere göz atmak için bir katalog eklentisi de eklemen gerekir.',
+    catalogOnly: 'Bu eklenti yayın sağlamaz: içeriklerini oynatmak için yayın sağlayan bir eklenti de eklemen gerekir.',
+    adult: `Eklenti içeriğini yetişkin içeriği olarak işaretliyor; ${settingsPath('catalog')} bölümünde yetişkin içeriği kapalıyken görünmez.`,
+    add: 'Eklentiyi ekle',
+    adding: 'Ekleniyor…',
+    addFailed: 'Eklenti eklenemedi.',
+    added: (name: string) => `"${name}" eklendi.`
   },
 
   xtream: {
@@ -114,7 +161,20 @@ export const sources = {
       `"${name}" kaldırıldı, ancak kayıtlı giriş bilgisi güvenli depodan silinemedi: ${reason}`,
     noCredentials: 'Giriş bilgileri bulunamadı',
     reloadedDuringLoad: 'Liste yüklenirken kaynak yeniden yüklendi. Tekrar dene.',
-    refreshFailed: 'Yenileme başarısız oldu.'
+    refreshFailed: 'Yenileme başarısız oldu.',
+    refreshAddon: (name: string) => `${name} eklentisinin bilgilerini yenile`,
+    /** Status suffix of an add-on whose manifest could not be fetched in this session. */
+    addonUnreachable: 'eklentiye ulaşılamadı, kayıtlı bilgileri kullanılıyor',
+    streamOnlyNotActive:
+      'Yalnızca yayın sağlar, bu yüzden kullanılan kaynak olamaz; katalog eklentilerinden açtığın içerikler için yayın bulur.',
+    addonsOff: `Eklenti kaynakları kapalı. ${settingsPath('sources')} → ${settings.sources.experimentalGroup} bölümünden açabilirsin.`,
+    addonLabelsName: 'Sağladıkları',
+    addonLabels: {
+      movieCatalogs: 'Film kataloğu',
+      seriesCatalogs: 'Dizi kataloğu',
+      streams: 'Yayın',
+      subtitles: 'Altyazı'
+    }
   },
 
   secretForm: {

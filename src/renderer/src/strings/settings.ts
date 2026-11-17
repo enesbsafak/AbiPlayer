@@ -22,6 +22,13 @@ export const settings = {
   tabsLabel: 'Ayar bölümleri',
   tabs,
 
+  sources: {
+    experimentalGroup: 'Deneysel',
+    addonSources: 'Eklenti kaynakları (deneysel)',
+    addonSourcesHint:
+      'Stremio eklenti protokolüyle çalışan kaynakları adresleriyle eklemeni sağlar; uygulamayla birlikte hiçbir eklenti gelmez.'
+  },
+
   playback: {
     audioGroup: 'Ses',
     videoGroup: 'Görüntü ve yayın',

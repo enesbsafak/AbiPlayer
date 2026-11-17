@@ -1,5 +1,7 @@
-import type { CatalogStatus, CatalogType } from '@/catalog/types'
+import type { CatalogCategory, CatalogStatus, CatalogSyncError, CatalogType } from '@/catalog/types'
+import type { AddonCategoryPaging } from '@/addons/catalog'
 import { formatDateTime, strings } from '@/strings'
+import { isAddonId } from '../../../shared/playback'
 
 /**
  * Pure parts of the catalog page model: which banner the status calls for,
@@ -73,6 +75,8 @@ export interface CatalogDetailRef {
   itemId: string
   sourceId: string
   seriesId?: number
+  /** An add-on film or series: its meta id (the detail comes from the add-on's meta). */
+  addonMetaId?: string
   season?: number
 }
 
@@ -105,10 +109,12 @@ function parseDetail(raw: unknown): CatalogDetailRef | undefined {
   if (typeof raw.itemId !== 'string' || !raw.itemId || typeof raw.sourceId !== 'string') return undefined
   const seriesId = finiteNumber(raw.seriesId)
   const season = finiteNumber(raw.season)
+  const addonMetaId = isAddonId(raw.addonMetaId) ? raw.addonMetaId : undefined
   return {
     itemId: raw.itemId,
     sourceId: raw.sourceId,
     ...(seriesId !== undefined ? { seriesId } : {}),
+    ...(addonMetaId !== undefined ? { addonMetaId } : {}),
     ...(season !== undefined ? { season } : {})
   }
 }
@@ -142,8 +148,8 @@ export function parseCatalogRouteState(state: unknown, type: CatalogType): Catal
       }
     }
   }
-  // A series detail can only be opened with its provider id.
-  if (detail && type === 'series' && detail.seriesId === undefined) detail = undefined
+  // A series detail can only be opened with its provider id (or an add-on's meta id).
+  if (detail && type === 'series' && detail.seriesId === undefined && detail.addonMetaId === undefined) detail = undefined
   if (detail) restore.detail = detail
 
   return Object.keys(restore).length > 0 ? restore : null
@@ -169,4 +175,85 @@ export function providerCategoryId(sourceId: string | null, type: CatalogType, c
   if (!sourceId || !categoryId) return null
   const prefix = `${sourceId}_${type}_`
   return categoryId.startsWith(prefix) ? categoryId.slice(prefix.length) : null
+}
+
+/**
+ * The category an add-on page shows: the one picked, while it is listed,
+ * else the first listed. An add-on has no "all" (it cannot list everything).
+ */
+export function effectiveAddonCategoryId(
+  picked: string | null,
+  visible: readonly Pick<CatalogCategory, 'id'>[]
+): string | null {
+  if (picked && visible.some((category) => category.id === picked)) return picked
+  return visible[0]?.id ?? null
+}
+
+export interface AddonPagerViewInput {
+  isAddon: boolean
+  /** The add-on's address is in memory (read from the secure store). */
+  addressLoaded: boolean
+  /** Its catalogues are in the store as categories (it has connected). */
+  categoriesLoaded: boolean
+  hasCategory: boolean
+  paging: AddonCategoryPaging | null
+  /** A query filters the grid: no page is asked for by scrolling then. */
+  searching: boolean
+  /** The source cannot load (no address, or it failed to connect): its banner says why. */
+  sourceFailed: boolean
+}
+
+export interface AddonPagerView {
+  /** The first page is in: the grid shows the category. */
+  started: boolean
+  /** Waiting for the categories or the first page, with nothing to show yet. */
+  firstPageLoading: boolean
+  /** The first page failed (a banner with a retry). */
+  firstPageError: CatalogSyncError | null
+  loadingMore: boolean
+  /** A later page failed (a retry under the grid). */
+  laterPageError: CatalogSyncError | null
+  ended: boolean
+  /** Nearing the end of the grid may ask for the next page. */
+  canLoadMore: boolean
+}
+
+const NO_PAGER: AddonPagerView = {
+  started: false,
+  firstPageLoading: false,
+  firstPageError: null,
+  loadingMore: false,
+  laterPageError: null,
+  ended: false,
+  canLoadMore: false
+}
+
+/** What an add-on page shows of its category's paging: never a spinner without something on its way. */
+export function addonPagerView(input: AddonPagerViewInput): AddonPagerView {
+  if (!input.isAddon || input.sourceFailed) return NO_PAGER
+  const { paging } = input
+  if (!input.hasCategory) return { ...NO_PAGER, firstPageLoading: !input.categoriesLoaded }
+  if (!paging) {
+    // About to ask (the page's effect runs after this render), or waiting
+    // for the address to be read.
+    return { ...NO_PAGER, firstPageLoading: true }
+  }
+  const started = paging.pages > 0
+  if (!started) {
+    // Not loading and no error: forgotten, and asked again right away.
+    return {
+      ...NO_PAGER,
+      firstPageLoading: paging.loading || !paging.error,
+      firstPageError: paging.loading ? null : paging.error
+    }
+  }
+  return {
+    started,
+    firstPageLoading: false,
+    firstPageError: null,
+    loadingMore: paging.loading,
+    laterPageError: paging.loading ? null : paging.error,
+    ended: paging.ended,
+    canLoadMore: !paging.ended && !paging.loading && !paging.error && !input.searching
+  }
 }

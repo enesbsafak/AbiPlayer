@@ -214,6 +214,30 @@ export function describeTiles(input: TileInput): Record<SectionKey, TileLine> {
   return { live, epg, vod, series }
 }
 
+/** Catalogue names shown under a tile's count, at most. */
+const ADDON_TILE_NAMES = 3
+
+/**
+ * The tiles of an add-on source. Its catalogues' sizes are unknown (they
+ * load page by page), so the film and series tiles count catalogues and
+ * name the first few; it has no channels and no guide, and says so.
+ */
+export function describeAddonTiles(input: {
+  vodCatalogs: readonly string[]
+  seriesCatalogs: readonly string[]
+}): Record<SectionKey, TileLine> {
+  const catalogs = (names: readonly string[], noun: string): TileLine =>
+    names.length > 0
+      ? { text: text.tiles.catalogCount(names.length), detail: names.slice(0, ADDON_TILE_NAMES).join(', '), busy: false }
+      : { text: text.tiles.empty(noun), busy: false }
+  return {
+    live: { text: text.tiles.noLive, busy: false },
+    epg: { text: text.tiles.noGuide, busy: false },
+    vod: catalogs(input.vodCatalogs, strings.catalog.types.vod.noun),
+    series: catalogs(input.seriesCatalogs, strings.catalog.types.series.noun)
+  }
+}
+
 /** Channels of `channels` with programmes in the guide; null without a guide. */
 export function countGuideChannels(guide: EPGData | null, channels: readonly Channel[]): number | null {
   if (!guide) return null

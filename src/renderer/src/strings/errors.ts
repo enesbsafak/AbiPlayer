@@ -19,6 +19,11 @@ export const errors = {
       limit ? `Liste veya dosya çok büyük (en fazla ${limit}).` : 'Liste veya dosya çok büyük.'
   },
 
+  /** An add-on answered 401 or 403: it has no user name, its settings are in its address. */
+  addonRefused:
+    'Eklenti bu adresi kabul etmedi. Eklentinin ayarları değişmiş ya da süresi dolmuş olabilir; ' +
+    `eklentiyi ${settingsPath('sources')} bölümünden yeniden eklemeyi dene.`,
+
   /** The error screens: what to do next, under what happened. */
   screens: {
     pageHint: 'Tekrar dene; düzelmezse ana sayfaya dönüp oradan devam et.',

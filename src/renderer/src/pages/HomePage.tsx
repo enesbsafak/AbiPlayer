@@ -1,19 +1,25 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useStore } from '@/store'
-import { ContinueTile, IdleTile, NewestFilmTile } from '@/components/home/HomeFeature'
+import { AddonIdleTile, ContinueTile, IdleTile, NewestFilmTile } from '@/components/home/HomeFeature'
 import { HomeStage, useMediaQuery, type HomeRow, type SourceTone } from '@/components/home/HomeRows'
 import { HomeChannelPanel, type PanelChannel } from '@/components/home/HomeChannelPanel'
 import { HomeTiles } from '@/components/home/HomeTiles'
 import { HomeError, HomeLoading, HomeNotice, HomeWelcome } from '@/components/home/HomeStates'
 import { useSpatialArrowKeys } from '@/components/home/spatial-focus'
 import { useHomeBootstrap } from '@/hooks/useHomeBootstrap'
-import { useOpenCatalogItem, useOpenPlayback } from '@/hooks/useOpenCatalogItem'
+import { useOpenCatalogItem, useOpenPlayback, useOpenPlayerRoute } from '@/hooks/useOpenCatalogItem'
+import { useAddonPlayback } from '@/components/addons/useAddonPlayback'
+import { addonCatalogPager, useAddonCategoryPaging } from '@/addons/pager'
+import type { AddonCategoryPaging } from '@/addons/catalog'
+import { addonErrorMessage } from '@/addons/messages'
 import { useDeferredPlayback } from '@/hooks/useDeferredPlayback'
 import { formatClockTime, useMinuteClock } from '@/hooks/useMinuteClock'
 import type { Channel } from '@/types/playlist'
+import type { CatalogItem } from '@/catalog/types'
 import {
   buildHomeCatalog,
   countGuideChannels,
+  describeAddonTiles,
   describeTiles,
   HOME_MAX_FILMS,
   findGuideHighlights,
@@ -29,7 +35,7 @@ import {
   useVisibleCatalogItems
 } from '@/catalog'
 import type { CatalogStatusMap } from '@/store/playlist-slice'
-import { findM3uEntry } from '@/services/playback'
+import { findM3uEntry, targetFromChannel } from '@/services/playback'
 import { findCurrentProgram, normalizeEpgChannelKey } from '@/services/epg-service'
 import {
   indexChannelsByLegacyKey,
@@ -55,6 +61,11 @@ const FAVORITES_ROW_MIN = 4
 /** From this width the tile block gains the channel panel (HomeStage). */
 const PANEL_QUERY = '(min-width: 1600px)'
 const INCLUDE_HIDDEN = { includeHidden: true } as const
+
+/** Nothing asked for this add-on category yet, or it was forgotten (the source was refreshed). */
+function needsFirstPage(paging: AddonCategoryPaging | null): boolean {
+  return paging === null || (paging.pages === 0 && !paging.loading && !paging.error)
+}
 
 /** Items the source holds in every type, before any view rule. */
 function sourceItemCount(status: CatalogStatusMap, sourceId: string | null): number {
@@ -86,6 +97,13 @@ export default function HomePage() {
   const epgData = useStore((s) => (activeSourceId && s.epgSourceId === activeSourceId ? s.epgData : null))
 
   const bootstrap = useHomeBootstrap()
+  // An add-on as the active source: no live TV, catalogues instead of
+  // counts, the first page of its first film and series catalogue as rows.
+  const isAddonSource = activeSource?.type === 'addon'
+  const addonAddressLoaded = isAddonSource && !!activeSource?.url
+  const addonPlayback = useAddonPlayback()
+  const { play: playAddon } = addonPlayback
+  const openPlayerHere = useOpenPlayerRoute()
   const now = useMinuteClock()
   const onArrowKey = useSpatialArrowKeys()
 
@@ -98,6 +116,12 @@ export default function HomePage() {
   const handleContinue = useCallback(
     (item: ContinueWatchingItem) => {
       const { target, channel } = item
+      // An add-on item plays its stream chosen in this session, else the
+      // viewer chooses again (nothing of a stream survives a restart).
+      if (target.kind === 'addon') {
+        playAddon({ target, channel, onStarted: () => openPlayerHere() })
+        return
+      }
       if (target.kind !== 'm3u') {
         openPlayback({ target, channel })
         return
@@ -114,7 +138,7 @@ export default function HomePage() {
         (resolved) => openPlayback({ target, channel: resolved })
       )
     },
-    [openPlayback, playWhenReady]
+    [openPlayback, playWhenReady, playAddon, openPlayerHere]
   )
   // Starting over: without a saved position the player has nothing to resume
   // from, and the recorder writes a new entry as the film plays.
@@ -209,7 +233,9 @@ export default function HomePage() {
   const categoryRows = useMemo(() => {
     void catalogVersion
     const result: Array<{ categoryId: string; title: string; items: readonly Channel[] }> = []
-    if (!activeSourceId) return result
+    // An add-on's other catalogues are in memory only once visited: rows of
+    // them would come and go with the viewer's browsing.
+    if (!activeSourceId || isAddonSource) return result
     for (const category of visibleVodCategories) {
       if (result.length >= CATEGORY_ROWS) break
       if (category.isAdult) continue
@@ -218,7 +244,59 @@ export default function HomePage() {
       result.push({ categoryId: category.id, title: category.name, items: items.slice(0, HOME_MAX_FILMS) })
     }
     return result
-  }, [catalogVersion, activeSourceId, visibleVodCategories, viewSettings])
+  }, [catalogVersion, activeSourceId, isAddonSource, visibleVodCategories, viewSettings])
+
+  // An add-on's first film and series catalogue (adult ones passed over, as
+  // the category rows do): their first page fills the rows and the tile.
+  const visibleSeriesCategories = useVisibleCatalogCategories(activeSourceId, 'series')
+  const addonFirstVod = isAddonSource ? (visibleVodCategories.find((category) => !category.isAdult) ?? null) : null
+  const addonFirstSeries = isAddonSource ? (visibleSeriesCategories.find((category) => !category.isAdult) ?? null) : null
+  const addonVodPaging = useAddonCategoryPaging(isAddonSource ? activeSourceId : null, 'vod', addonFirstVod?.id ?? null)
+  const addonSeriesPaging = useAddonCategoryPaging(isAddonSource ? activeSourceId : null, 'series', addonFirstSeries?.id ?? null)
+  const needVodPage = !!addonFirstVod && needsFirstPage(addonVodPaging)
+  const needSeriesPage = !!addonFirstSeries && needsFirstPage(addonSeriesPaging)
+  const addonFirstVodId = addonFirstVod?.id ?? null
+  const addonFirstSeriesId = addonFirstSeries?.id ?? null
+  useEffect(() => {
+    if (!activeSourceId || !addonAddressLoaded) return
+    if (needVodPage && addonFirstVodId) void addonCatalogPager.loadFirstPage(activeSourceId, 'vod', addonFirstVodId)
+    if (needSeriesPage && addonFirstSeriesId) void addonCatalogPager.loadFirstPage(activeSourceId, 'series', addonFirstSeriesId)
+  }, [activeSourceId, addonAddressLoaded, needVodPage, needSeriesPage, addonFirstVodId, addonFirstSeriesId])
+  const addonRows = useMemo(() => {
+    void catalogVersion
+    const itemsOf = (type: 'vod' | 'series', categoryId: string | null): CatalogItem[] =>
+      activeSourceId && categoryId
+        ? catalog
+            .getVisibleItems(activeSourceId, type, viewSettings, categoryId)
+            .filter((item) => !item.isAdult)
+            .slice(0, HOME_MAX_FILMS)
+        : []
+    return { vod: itemsOf('vod', addonFirstVodId), series: itemsOf('series', addonFirstSeriesId) }
+  }, [catalogVersion, activeSourceId, viewSettings, addonFirstVodId, addonFirstSeriesId])
+  // Waiting for a first page (or the address it needs), never for a page nobody asks for.
+  const pageOnItsWay = (paging: AddonCategoryPaging | null) => paging === null || (paging.pages === 0 && !paging.error)
+  const addonVodLoading = isAddonSource && !activeSourceFailed && !!addonFirstVod && pageOnItsWay(addonVodPaging)
+  const addonSeriesLoading = isAddonSource && !activeSourceFailed && !!addonFirstSeries && pageOnItsWay(addonSeriesPaging)
+  const addonLoading = addonVodLoading || addonSeriesLoading
+  const addonPageErrors = [addonVodPaging, addonSeriesPaging].flatMap((paging) =>
+    paging && paging.pages === 0 && !paging.loading && paging.error ? [paging.error] : []
+  )
+  const addonHomeError =
+    isAddonSource && !addonLoading && addonPageErrors.length > 0 && addonRows.vod.length === 0 && addonRows.series.length === 0
+      ? addonErrorMessage(addonPageErrors[0], text.loadFailed)
+      : null
+  const retryAddonHome = useCallback(() => {
+    if (!activeSourceId) return
+    if (addonFirstVodId) void addonCatalogPager.retry(activeSourceId, 'vod', addonFirstVodId)
+    if (addonFirstSeriesId) void addonCatalogPager.retry(activeSourceId, 'series', addonFirstSeriesId)
+  }, [activeSourceId, addonFirstVodId, addonFirstSeriesId])
+  const playAddonFilm = useCallback(
+    (film: CatalogItem) => {
+      const target = targetFromChannel(film)
+      if (target?.kind === 'addon') playAddon({ target, channel: film, onStarted: () => openPlayerHere() })
+    },
+    [playAddon, openPlayerHere]
+  )
 
   const continueItem = continueItems[0] ?? null
   const moreContinue = useMemo(() => continueItems.slice(1), [continueItems])
@@ -250,11 +328,13 @@ export default function HomePage() {
   }, [favoriteLive, visibleLive, epgData, now])
 
   const hasNoContent = !home.hasSourceContent
-  const isBusy = isLoading || isLoadingPlaylist || bootstrap.isBootstrapping
+  const isConnecting = isLoading || isLoadingPlaylist || bootstrap.isBootstrapping
+  const isBusy = isConnecting || addonLoading
   const showInitialLoading = sources.length > 0 && hasNoContent && isBusy
   // `bootstrap.error` only covers the catalog fetch; connection failures live in
   // the auth slice, so a wrong password or a dead server shows here too.
-  const blockingError = bootstrap.error ?? authError
+  const blockingError = bootstrap.error ?? authError ?? addonHomeError
+  const retryHome = isAddonSource ? retryAddonHome : bootstrap.retry
   const showError = sources.length > 0 && !showInitialLoading && !!blockingError && hasNoContent
 
   let sourceState: HomeSourceState
@@ -263,7 +343,12 @@ export default function HomePage() {
   else if (isBusy) sourceState = 'loading'
   else sourceState = 'ready'
 
-  const lines = describeTiles({
+  const lines = isAddonSource
+    ? describeAddonTiles({
+        vodCatalogs: visibleVodCategories.map((category) => category.name),
+        seriesCatalogs: visibleSeriesCategories.map((category) => category.name)
+      })
+    : describeTiles({
     source: sourceState,
     counts: home.counts,
     loaded: {
@@ -282,19 +367,30 @@ export default function HomePage() {
   if (sources.length === 0) feature = <HomeWelcome />
   else if (showInitialLoading) {
     feature = (
-      <HomeLoading isConnectingSources={isLoading && !isLoadingPlaylist} stage={bootstrap.stage} onRetry={bootstrap.retry} />
+      <HomeLoading
+        isConnectingSources={isLoading && !isLoadingPlaylist}
+        stage={isAddonSource && !isConnecting ? 'preview' : bootstrap.stage}
+        onRetry={retryHome}
+      />
     )
   } else if (showError && blockingError) {
     feature = (
       <HomeError
         message={blockingError}
-        onRetry={bootstrap.retry}
+        onRetry={retryHome}
         detail={activeSourceRetryAt !== null ? text.autoRetry : undefined}
       />
     )
   } else if (continueItem) {
     feature = (
       <ContinueTile item={continueItem} onResume={handleContinue} onRestart={handleRestart} onRemove={removeWatchProgress} />
+    )
+  } else if (isAddonSource) {
+    const film = addonRows.vod[0]
+    feature = film ? (
+      <NewestFilmTile film={film} dated={false} onPlay={playAddonFilm} />
+    ) : (
+      <AddonIdleTile section={addonFirstVod || !addonFirstSeries ? 'vod' : 'series'} />
     )
   } else if (home.films.items[0]) {
     feature = <NewestFilmTile film={home.films.items[0]} dated={home.films.dated} onPlay={handlePlay} />
@@ -314,7 +410,7 @@ export default function HomePage() {
           strings.catalog.types[syncProgress.currentType].section
         )
       }
-    } else if (isBusy) {
+    } else if (isConnecting) {
       source = { tone: 'busy', text: text.source.connecting(name) }
     } else {
       source = { tone: 'ok', text: activeSource.type === 'xtream' ? text.source.connected(name) : text.source.ready(name) }
@@ -340,7 +436,34 @@ export default function HomePage() {
     if (activeSourceId) setSelectedCategory(activeSourceId, type, categoryId)
   }
   const rows: HomeRow[] = []
-  if (home.films.items.length > 0 || filmsLoading) {
+  if (isAddonSource) {
+    // Named after the catalogue the items come from ("Filmler: Popüler").
+    if (addonFirstVod && (addonRows.vod.length > 0 || addonVodLoading)) {
+      rows.push({
+        id: 'addon-vod',
+        title: text.addonRow(strings.catalog.types.vod.section, addonFirstVod.name),
+        shape: 'poster',
+        tone: 'mint',
+        link: { to: '/vod', onClick: openSection('vod', addonFirstVod.id) },
+        items: addonRows.vod,
+        loading: addonVodLoading,
+        onOpen: handlePlay
+      })
+    }
+    if (addonFirstSeries && (addonRows.series.length > 0 || addonSeriesLoading)) {
+      rows.push({
+        id: 'addon-series',
+        title: text.addonRow(strings.catalog.types.series.section, addonFirstSeries.name),
+        shape: 'poster',
+        tone: 'sky',
+        link: { to: '/series', onClick: openSection('series', addonFirstSeries.id) },
+        items: addonRows.series,
+        loading: addonSeriesLoading,
+        onOpen: handlePlay
+      })
+    }
+  }
+  if (!isAddonSource && (home.films.items.length > 0 || filmsLoading)) {
     rows.push({
       id: 'films',
       title: filmsDated ? text.newestFilms : text.listFilms,
@@ -352,7 +475,7 @@ export default function HomePage() {
       onOpen: handlePlay
     })
   }
-  if (home.newestSeries.items.length > 0) {
+  if (!isAddonSource && home.newestSeries.items.length > 0) {
     rows.push({
       id: 'series',
       title: home.newestSeries.dated ? text.newestSeries : text.listSeries,
@@ -422,6 +545,7 @@ export default function HomePage() {
       <h1 className="sr-only">{text.pageTitle}</h1>
 
       {bootstrap.partialError && <HomeNotice message={bootstrap.partialError} onRetry={bootstrap.retry} />}
+      {addonPlayback.picker}
       {deferred.notice && (
         <HomeNotice
           message={deferred.notice.message}

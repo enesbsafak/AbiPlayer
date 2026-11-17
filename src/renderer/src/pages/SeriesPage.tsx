@@ -3,6 +3,9 @@ import { useStore } from '@/store'
 import { CatalogPage, type CatalogPageLabels } from '@/components/catalog/CatalogPage'
 import { POSTER_GRID_LAYOUT, PosterGridEmpty, renderPosterCard } from '@/components/vod/VODGrid'
 import { SeriesDetail } from '@/components/series/SeriesDetail'
+import { AddonSeriesDetail, type AddonEpisodeRequest } from '@/components/series/AddonSeriesDetail'
+import { useAddonPlayback } from '@/components/addons/useAddonPlayback'
+import { useAddonDetailItem } from '@/components/addons/detail-item'
 import { useCatalogPage } from '@/hooks/useCatalogPage'
 import type { Channel } from '@/types/playlist'
 import { strings } from '@/strings'
@@ -25,14 +28,26 @@ const MESSAGES = {
   loadFailed: TYPE_TEXT.loadFailed
 }
 
+const NO_CATALOGS = {
+  title: strings.catalog.addon.noCatalogs(TYPE_TEXT.noun),
+  hint: strings.catalog.addon.noCatalogsHint(strings.catalog.types.vod.section)
+}
+
 /** Series: opening a card shows its seasons and episodes; an episode plays. */
 export default function SeriesPage() {
   const page = useCatalogPage('series', MESSAGES)
   const playEpisode = useStore((s) => s.playEpisode)
   const { detail, openDetail, closeDetail, updateDetail, openPlayer } = page
+  const addonPlayback = useAddonPlayback()
+  const { play: playAddon } = addonPlayback
+  const addonItem = useAddonDetailItem(detail?.addonMetaId !== undefined ? detail : null, 'series', null)
 
   const handleOpen = useCallback(
     (series: Channel) => {
+      if (series.addonMetaId !== undefined) {
+        openDetail({ itemId: series.id, sourceId: series.sourceId, addonMetaId: series.addonMetaId })
+        return
+      }
       if (typeof series.seriesId !== 'number') return
       openDetail({ itemId: series.id, sourceId: series.sourceId, seriesId: series.seriesId })
     },
@@ -52,35 +67,58 @@ export default function SeriesPage() {
     [detail?.itemId, openPlayer, playEpisode]
   )
 
+  // An add-on episode: one of the add-ons' streams, chosen in the picker (or
+  // the remembered add-on and release, for the next episode).
+  const handlePlayAddonEpisode = useCallback(
+    ({ target, channel, season }: AddonEpisodeRequest) =>
+      playAddon({ target, channel, onStarted: () => openPlayer(detail?.itemId ?? null, { season }) }),
+    [detail?.itemId, openPlayer, playAddon]
+  )
+
   const seriesId = detail?.seriesId
+  let content = null
+  if (detail && detail.addonMetaId !== undefined && addonItem) {
+    content = (
+      <AddonSeriesDetail
+        key={`${detail.sourceId}\n${detail.addonMetaId}`}
+        item={addonItem}
+        metaId={detail.addonMetaId}
+        initialSeasonNumber={detail.season}
+        onBack={closeDetail}
+        onSeasonChange={handleSeasonChange}
+        onPlayEpisode={handlePlayAddonEpisode}
+        onOpenSeries={handleOpen}
+      />
+    )
+  } else if (detail && seriesId !== undefined) {
+    content = (
+      <SeriesDetail
+        key={seriesId}
+        seriesId={seriesId}
+        sourceId={detail.sourceId}
+        initialSeasonNumber={detail.season}
+        onBack={closeDetail}
+        onSeasonChange={handleSeasonChange}
+        onPlayEpisode={handlePlayEpisode}
+        onOpenSeries={handleOpen}
+      />
+    )
+  }
+
   return (
-    <CatalogPage
-      page={page}
-      labels={LABELS}
-      tone={TONE_OF_PAGE}
-      layout={POSTER_GRID_LAYOUT}
-      renderCard={renderPosterCard}
-      onOpen={handleOpen}
-      empty={<PosterGridEmpty />}
-      detail={
-        detail && seriesId !== undefined
-          ? {
-              label: strings.catalog.detail.seriesLabel,
-              content: (
-                <SeriesDetail
-                  key={seriesId}
-                  seriesId={seriesId}
-                  sourceId={detail.sourceId}
-                  initialSeasonNumber={detail.season}
-                  onBack={closeDetail}
-                  onSeasonChange={handleSeasonChange}
-                  onPlayEpisode={handlePlayEpisode}
-                  onOpenSeries={handleOpen}
-                />
-              )
-            }
-          : null
-      }
-    />
+    <>
+      <CatalogPage
+        page={page}
+        labels={LABELS}
+        tone={TONE_OF_PAGE}
+        layout={POSTER_GRID_LAYOUT}
+        renderCard={renderPosterCard}
+        onOpen={handleOpen}
+        empty={<PosterGridEmpty />}
+        noCategories={NO_CATALOGS}
+        detail={content ? { label: strings.catalog.detail.seriesLabel, content } : null}
+      />
+      {addonPlayback.picker}
+    </>
   )
 }

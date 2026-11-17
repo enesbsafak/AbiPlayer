@@ -2,7 +2,7 @@ import type { Channel } from '@/types/playlist'
 import type { XtreamAuthResponse, XtreamCredentials, XtreamLiveFormat } from '@/types/xtream'
 import { xtreamApi } from './xtream-api'
 import { getAllowedLiveFormats, pickLiveFormat } from './xtream-normalize'
-import { chosenAddonStreamUrl } from '@/addons/stream-registry'
+import { chosenAddonStreamUrl, hasChosenAddonStream } from '@/addons/stream-registry'
 import {
   isPlayableTarget,
   m3uEntryId,
@@ -29,13 +29,16 @@ export function targetFromChannel(channel: Channel): PlaybackTarget | null {
 /**
  * Whether clicking the item starts playback. Xtream items only need their
  * provider id (the URL is built from the source's credentials when played); an
- * M3U entry needs its own URL. An add-on film plays once a stream was chosen
- * for it among the add-ons' candidates. A series container never plays.
+ * M3U entry needs its own URL. An add-on film plays only once a stream was
+ * chosen for it in this session; until then it goes through the stream
+ * picker (so the player's previous/next and its list skip it). A series
+ * container never plays.
  */
 export function isPlayableChannel(channel: Channel): boolean {
   const target = targetFromChannel(channel)
   if (!target || !isPlayableTarget(target)) return false
   if (target.kind === 'm3u') return isHttpUrl(channel.streamUrl)
+  if (target.kind === 'addon') return hasChosenAddonStream(target)
   return true
 }
 

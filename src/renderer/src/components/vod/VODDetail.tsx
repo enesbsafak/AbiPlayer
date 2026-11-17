@@ -12,6 +12,8 @@ import { PlayIcon } from '@/components/ui/icons'
 import { QualityBadge } from '@/components/ui/QualityBadge'
 import { Spinner } from '@/components/ui/Spinner'
 import { inferContentQualityLabel } from '@/services/quality'
+import { loadAddonMeta, addonMetaToVodInfo } from '@/addons/detail'
+import { addonErrorMessage } from '@/addons/messages'
 import type { Channel } from '@/types/playlist'
 import { strings } from '@/strings'
 import { BackPill, DETAIL_PRIMARY, DetailPoster, DetailTitle, FactPill, MoreInCategory, WatchLine } from './DetailParts'
@@ -49,6 +51,10 @@ export function VODDetail({ item, onBack, onPlay, onOpen }: VODDetailProps) {
   const [loading, setLoading] = useState(true)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const tmdbApiKeySetting = useStore((s) => s.settings.tmdbApiKey)
+  // An add-on film's detail comes from its add-on, once the add-on's address is in memory.
+  const addonReady = useStore(
+    (s) => item.addonMetaId !== undefined && !!s.sources.find((source) => source.id === item.sourceId)?.url
+  )
   // Loaded per film id: the catalog replaces the record object on a full
   // sync, and that must not reload the detail on screen.
   const itemRef = useRef(item)
@@ -81,7 +87,23 @@ export function VODDetail({ item, onBack, onPlay, onOpen }: VODDetailProps) {
       }
 
       try {
-        if (creds && item.streamId) {
+        if (item.addonMetaId !== undefined) {
+          // The add-on's meta, or (no meta resource, the add-on did not
+          // answer) what the card knows: the film can be played either way.
+          const source = useStore.getState().sources.find((entry) => entry.id === item.sourceId)
+          const meta = source ? await loadAddonMeta(source, 'movie', item.addonMetaId, { signal: controller.signal }) : null
+          if (cancelled) return
+          if (meta) {
+            const addonInfo = addonMetaToVodInfo(meta)
+            baseInfo = {
+              ...addonInfo,
+              name: addonInfo.name || item.name,
+              rating: addonInfo.rating || baseInfo.rating,
+              year: addonInfo.year || baseInfo.year,
+              cover: addonInfo.cover || baseInfo.cover
+            }
+          }
+        } else if (creds && item.streamId) {
           const vodInfo = await xtreamApi.getVodInfo(creds, item.streamId, { signal: controller.signal })
           if (cancelled) return
           tmdbId = vodInfo.info?.tmdb_id
@@ -99,7 +121,9 @@ export function VODDetail({ item, onBack, onPlay, onOpen }: VODDetailProps) {
           }
         }
       } catch (err) {
-        if (!cancelled) console.error('Failed to load VOD info:', err)
+        // An add-on's message holds no address (addons/request.ts); its error object is not logged.
+        if (!cancelled && item.addonMetaId !== undefined) console.warn('[addon] film detail not loaded:', addonErrorMessage(err))
+        else if (!cancelled) console.error('Failed to load VOD info:', err)
       }
 
       const tmdbApiKey = resolveTmdbApiKey(tmdbApiKeySetting)
@@ -147,7 +171,7 @@ export function VODDetail({ item, onBack, onPlay, onOpen }: VODDetailProps) {
       cancelled = true
       controller.abort()
     }
-  }, [itemId, getXtreamCredentials, tmdbApiKeySetting])
+  }, [itemId, getXtreamCredentials, tmdbApiKeySetting, addonReady])
 
   if (loading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>
 

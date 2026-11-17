@@ -11,6 +11,8 @@ import { PlayerControls, formatTime } from './PlayerControls'
 import { PlayerSidebar, SIDEBAR_WIDTH } from './PlayerSidebar'
 import { SubtitleOverlay } from './SubtitleOverlay'
 import { OVER_VIDEO } from './player-ui'
+import { AddonStreamChoiceContext } from './addon-stream-choice'
+import { useAddonPlayback } from '@/components/addons/useAddonPlayback'
 import { Spinner } from '@/components/ui/Spinner'
 import { CloseIcon } from '@/components/ui/icons'
 import { AlertCircle, Info, RefreshCw, RotateCcw } from 'lucide-react'
@@ -84,6 +86,16 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
   const playerNotice = useStore((s) => s.playerNotice)
   const isEngineResolved = mpvAvailable !== null
   const mpvEnabled = mpvAvailable === true && playbackEngine === 'mpv'
+
+  // An add-on film or episode: another of the add-ons' streams can be chosen
+  // from the dock, and from the error card when this one does not play.
+  const addonTarget = useStore((s) => (s.currentPlayback?.target.kind === 'addon' ? s.currentPlayback.target : null))
+  const addonPlayback = useAddonPlayback()
+  const { chooseAgain } = addonPlayback
+  const chooseAddonStream = useMemo(
+    () => (addonTarget && currentChannel ? () => chooseAgain({ target: addonTarget, channel: currentChannel }) : null),
+    [addonTarget, currentChannel, chooseAgain]
+  )
   const captionsTrackSrc = useMemo(() => buildCaptionsTrackSrc(subtitleCues), [subtitleCues])
 
   usePlayer(videoRef, { disabled: mpvEnabled || !isEngineResolved })
@@ -207,7 +219,8 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
   const handleContainerDoubleClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null
     if (!target) return
-    if (target.closest('[data-player-controls]') || target.closest('[data-player-sidebar]')) return
+    // A dialog (the stream picker) is a portal: its events bubble here through React.
+    if (target.closest('[data-player-controls]') || target.closest('[data-player-sidebar]') || target.closest('dialog')) return
     toggleFullscreenDetached()
   }, [toggleFullscreenDetached])
 
@@ -267,14 +280,25 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
               {playerError}
             </p>
             {currentChannel && (
-              <button
-                type="button"
-                onClick={() => useStore.getState().reloadPlayback()}
-                className="mt-1 flex h-[52px] items-center gap-2.5 rounded-full bg-white px-6 text-[16px] font-bold text-ink transition-colors hover:bg-surface-300"
-              >
-                <RefreshCw size={18} strokeWidth={2.6} aria-hidden="true" />
-                {strings.player.reconnect}
-              </button>
+              <div className="mt-1 flex flex-wrap items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => useStore.getState().reloadPlayback()}
+                  className="flex h-[52px] items-center gap-2.5 rounded-full bg-white px-6 text-[16px] font-bold text-ink transition-colors hover:bg-surface-300"
+                >
+                  <RefreshCw size={18} strokeWidth={2.6} aria-hidden="true" />
+                  {strings.player.reconnect}
+                </button>
+                {chooseAddonStream && (
+                  <button
+                    type="button"
+                    onClick={chooseAddonStream}
+                    className="flex h-[52px] items-center rounded-full border-2 border-white/50 px-6 text-[16px] font-medium text-white transition-colors hover:border-white"
+                  >
+                    {strings.player.addonStreams.chooseAnother}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -341,12 +365,16 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
         onBlur={autoHide.onControlsBlur}
         className={`pointer-events-none absolute inset-0 transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 [&_*]:!pointer-events-none'}`}
       >
-        <PlayerControls
-          videoRef={videoRef}
-          onToggleFullscreen={toggleFullscreenDetached}
-          onDockChange={setDock}
-        />
+        <AddonStreamChoiceContext.Provider value={chooseAddonStream}>
+          <PlayerControls
+            videoRef={videoRef}
+            onToggleFullscreen={toggleFullscreenDetached}
+            onDockChange={setDock}
+          />
+        </AddonStreamChoiceContext.Provider>
       </div>
+
+      {addonPlayback.picker}
     </div>
   )
 }

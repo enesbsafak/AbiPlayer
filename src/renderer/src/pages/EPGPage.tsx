@@ -19,6 +19,7 @@ import type { CatalogItem } from '@/catalog/types'
 import type { EPGData } from '@/types/epg'
 import type { UserSettings } from '@/types/settings'
 import { LOCALE, strings } from '@/strings'
+import { NoLiveTv, useActiveSourceIsAddon } from '@/components/addons/NoLiveTv'
 
 const text = strings.epg
 
@@ -116,7 +117,13 @@ function useNow(intervalMs: number): number {
  * primary action on top, a toolbar (search, category, count, back to now,
  * refresh), and the timeline of every listed channel that has guide data.
  */
+/** An add-on as the active source has no channels: the page says so instead of loading nothing. */
 export default function EPGPage() {
+  const isAddon = useActiveSourceIsAddon()
+  return isAddon ? <NoLiveTv section="epg" /> : <EPGPageContent />
+}
+
+function EPGPageContent() {
   const navigate = useNavigate()
   const epgData = useStore((s) => s.epgData)
   const epgSourceId = useStore((s) => s.epgSourceId)

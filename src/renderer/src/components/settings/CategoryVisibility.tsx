@@ -3,6 +3,7 @@ import { useStore } from '@/store'
 import { Dropdown } from '@/components/ui/Dropdown'
 import { normalizeSearchText } from '@/services/text-normalize'
 import { useCatalogCategories, useVisibleCatalogCategories } from '@/catalog'
+import { canBeActiveSource } from '@/addons/manifest'
 import { strings } from '@/strings'
 import { ACTION, INPUT_CLASS, PillChoice, SettingRow, SettingsCard, SettingsGroup, Switch, type ChoiceOption } from './controls'
 
@@ -18,7 +19,14 @@ const TYPE_TABS: Array<ChoiceOption<ContentType>> = [
 ]
 
 export function CategoryVisibility() {
-  const sources = useStore((s) => s.sources)
+  const allSources = useStore((s) => s.sources)
+  const addonsEnabled = useStore((s) => s.settings.addonSourcesEnabled)
+  // Sources with categories of their own: no stream-only add-on, and no
+  // add-on at all while add-on sources are off.
+  const sources = useMemo(
+    () => allSources.filter((source) => source.type !== 'addon' || (addonsEnabled && canBeActiveSource(source))),
+    [allSources, addonsEnabled]
+  )
   const activeSourceId = useStore((s) => s.activeSourceId)
   const hiddenCategoryIds = useStore((s) => s.hiddenCategoryIds)
   const toggleCategoryHidden = useStore((s) => s.toggleCategoryHidden)
@@ -33,7 +41,9 @@ export function CategoryVisibility() {
   const effectiveSourceId =
     selectedSourceId && sources.some((s) => s.id === selectedSourceId)
       ? selectedSourceId
-      : activeSourceId
+      : activeSourceId && sources.some((s) => s.id === activeSourceId)
+        ? activeSourceId
+        : (sources[0]?.id ?? null)
 
   const sourceItems = useMemo(
     () => sources.map((source) => ({ id: source.id, label: source.name })),

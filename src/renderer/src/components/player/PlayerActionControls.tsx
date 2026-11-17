@@ -1,5 +1,6 @@
-import { List, Maximize, Minimize, PictureInPicture2 } from 'lucide-react'
+import { Layers, List, Maximize, Minimize, PictureInPicture2 } from 'lucide-react'
 import { useStore } from '@/store'
+import { useAddonStreamChoice } from './addon-stream-choice'
 import { AudioTrackSelector } from './AudioTrackSelector'
 import { PlaybackTuningSelector } from './PlaybackTuningSelector'
 import { QualitySelector } from './QualitySelector'
@@ -34,9 +35,27 @@ export function PlayerActionControls({ onTogglePiP, onToggleFullscreen }: Player
   const onToggleSidebar = useStore((s) => s.togglePlayerSidebar)
   const { size, tone } = useDockLayout()
   const icon = CONTROL_SIZE[size].icon
+  const chooseAddonStream = useAddonStreamChoice()
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
+      {/* An add-on film or episode: the other streams the add-ons offered. */}
+      {chooseAddonStream && (
+        <button
+          type="button"
+          onClick={chooseAddonStream}
+          className={
+            size === 'l'
+              ? `flex ${CONTROL_SIZE[size].height} shrink-0 items-center gap-2 rounded-full bg-raised pl-4 pr-5 text-[15px] font-bold text-white transition-colors hover:bg-surface-800`
+              : roundButton(size)
+          }
+          title={strings.player.addonStreams.openTitle}
+          aria-label={strings.player.addonStreams.openTitle}
+        >
+          <Layers size={icon} strokeWidth={2.6} aria-hidden="true" />
+          {size === 'l' && <span>{strings.player.addonStreams.open}</span>}
+        </button>
+      )}
       <AudioTrackSelector />
       <SubtitleSelector />
       <QualitySelector />

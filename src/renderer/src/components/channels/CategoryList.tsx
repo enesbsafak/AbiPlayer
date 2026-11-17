@@ -28,6 +28,10 @@ interface CategoryListProps {
   onRetry?: () => void
   /** Categories are being fetched and none is known yet. */
   loading?: boolean
+  /** The "all" entry first (default). An add-on has no list of everything. */
+  showAll?: boolean
+  /** Item counts of fully loaded categories (default). An add-on's sizes are unknown. */
+  showCounts?: boolean
 }
 
 /** A pill (44 px) and the gap under it. */
@@ -48,7 +52,9 @@ export const CategoryList = memo(function CategoryList({
   allLabel,
   error,
   onRetry,
-  loading = false
+  loading = false,
+  showAll = true,
+  showCounts = true
 }: CategoryListProps) {
   const hiddenCategoryIds = useStore((s) => s.hiddenCategoryIds)
   const toggleCategoryHidden = useStore((s) => s.toggleCategoryHidden)
@@ -65,25 +71,26 @@ export const CategoryList = memo(function CategoryList({
   const counts = useMemo(() => {
     void visibleItems
     const result = new Map<string, number>()
-    if (!sourceId) return result
+    if (!sourceId || !showCounts) return result
     for (const category of categories) {
       if (catalog.isCategoryLoaded(sourceId, type, category.id)) {
         result.set(category.id, catalog.getCategoryItems(sourceId, type, category.id).length)
       }
     }
     return result
-  }, [visibleItems, categories, sourceId, type])
-  const allComplete = !!sourceId && catalog.getStatus(sourceId, type)?.complete === true
+  }, [visibleItems, categories, sourceId, type, showCounts])
+  const allComplete = showCounts && !!sourceId && catalog.getStatus(sourceId, type)?.complete === true
 
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
-  // Row 0 is "all"; row n is categories[n - 1].
-  const count = categories.length + 1
+  // Row 0 is "all" and row n is categories[n - 1]; without "all", row n is categories[n].
+  const offset = showAll ? 1 : 0
+  const count = categories.length + offset
 
   // Stable between renders, or the virtualizer recomputes every row's position on each one.
   const getItemKey = useCallback(
-    (index: number) => (index === 0 ? '__all__' : (categories[index - 1]?.id ?? index)),
-    [categories]
+    (index: number) => (showAll && index === 0 ? '__all__' : (categories[index - offset]?.id ?? index)),
+    [categories, showAll, offset]
   )
   const virtualizer = useVirtualizer({
     count,
@@ -111,7 +118,7 @@ export const CategoryList = memo(function CategoryList({
 
   const renderRow = (index: number) => {
     const focus = { tabIndex: index === tabStop ? 0 : -1, [ROVING_INDEX_ATTR]: index }
-    if (index === 0) {
+    if (showAll && index === 0) {
       const selected = !selectedCategoryId
       const allCount = allComplete ? visibleItems.length : null
       return (
@@ -134,7 +141,7 @@ export const CategoryList = memo(function CategoryList({
         </button>
       )
     }
-    const category = categories[index - 1]
+    const category = categories[index - offset]
     if (!category) return null
     const selected = category.id === selectedCategoryId
     const itemCount = counts.get(category.id)

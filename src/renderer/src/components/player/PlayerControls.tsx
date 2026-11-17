@@ -6,6 +6,7 @@ import { PlayerActionControls } from './PlayerActionControls'
 import { PlayerTransportControls } from './PlayerTransportControls'
 import { LiveBanner, MediaBanner } from './PlayerBanner'
 import { SIDEBAR_WIDTH } from './PlayerSidebar'
+import { useAddonStreamChoice } from './addon-stream-choice'
 import { DockLayoutContext, OVER_VIDEO, dockSizeFor, playerTone, useElementWidth } from './player-ui'
 import { navigateToPlayerReturnTarget } from '@/services/player-navigation'
 import { AUTO_VIDEO_QUALITY_ID, inferContentQualityLabel } from '@/services/quality'
@@ -73,6 +74,7 @@ export function PlayerControls({ videoRef, onToggleFullscreen, onDockChange }: P
   // Which pickers draw themselves (each hides when there is nothing to pick).
   const hasAudioPicker = useStore((s) => s.audioTracks.length > 1)
   const hasQualityPicker = useStore((s) => s.videoQualityOptions.length > 0)
+  const hasAddonStreams = useAddonStreamChoice() !== null
 
   const [dock, setDock] = useState<HTMLElement | null>(null)
   useEffect(() => {
@@ -86,8 +88,8 @@ export function PlayerControls({ videoRef, onToggleFullscreen, onDockChange }: P
   const isMpv = playbackEngine === 'mpv'
   const size = dockSizeFor(dockInnerWidth, {
     seeks: !isLive,
-    // Subtitles are always there; tuning only on mpv.
-    pickers: 1 + (hasAudioPicker ? 1 : 0) + (hasQualityPicker ? 1 : 0) + (isMpv ? 1 : 0),
+    // Subtitles are always there; tuning only on mpv; the add-on streams pill for an add-on item.
+    pickers: 1 + (hasAudioPicker ? 1 : 0) + (hasQualityPicker ? 1 : 0) + (isMpv ? 1 : 0) + (hasAddonStreams ? 1 : 0),
     pip: !isMpv
   })
   const tone = playerTone(currentPlayback, currentChannel)

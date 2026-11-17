@@ -11,6 +11,7 @@ import { useMinuteClock } from '@/hooks/useMinuteClock'
 import { isPlayableChannel } from '@/services/playback'
 import type { Channel } from '@/types/playlist'
 import { strings } from '@/strings'
+import { NoLiveTv, useActiveSourceIsAddon } from '@/components/addons/NoLiveTv'
 
 const TYPE_TEXT = strings.catalog.types.live
 
@@ -35,7 +36,13 @@ const MESSAGES = {
  * on a row, or "Bu kanalı izle" in the panel. So "look first" never costs a
  * click and "just play" never costs two.
  */
+/** An add-on as the active source has no channels: the page says so instead of loading nothing. */
 export default function LiveTVPage() {
+  const isAddon = useActiveSourceIsAddon()
+  return isAddon ? <NoLiveTv section="live" /> : <LiveTVPageContent />
+}
+
+function LiveTVPageContent() {
   const page = useCatalogPage('live', MESSAGES)
   const playChannel = useStore((s) => s.playChannel)
   const { openPlayer, items } = page

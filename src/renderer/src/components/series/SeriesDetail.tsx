@@ -1,4 +1,4 @@
-import { useState, useReducer, useEffect, useRef } from 'react'
+import { useState, useReducer, useEffect, useRef, type ReactNode } from 'react'
 import { Play } from 'lucide-react'
 import { useStore } from '@/store'
 import { xtreamApi } from '@/services/xtream-api'
@@ -16,7 +16,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { inferContentQualityLabel } from '@/services/quality'
 import { toUserMessage } from '@/services/user-error'
 import { useCatalogItem, xtreamItemId } from '@/catalog'
-import type { Channel, EpisodeInfo, SeriesDetail as SeriesDetailType } from '@/types/playlist'
+import type { Channel, EpisodeInfo, SeasonInfo, SeriesDetail as SeriesDetailType } from '@/types/playlist'
 import { BackPill, DETAIL_PRIMARY, DetailPoster, DetailTitle, FactPill, MoreInCategory, WatchLine } from '@/components/vod/DetailParts'
 import { episodeKey, watchShareOf } from '@/components/vod/watch-share'
 import type { WatchProgressEntry } from '@/services/watch-progress'
@@ -457,26 +457,8 @@ export function SeriesDetail({
   const watchProgress = useStore((s) => s.watchProgress)
 
   if (loading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>
-  if (!detail) {
-    return (
-      <div className="flex flex-col gap-6">
-        <BackPill onBack={onBack} />
-        <div role="alert" className="flex flex-col items-center gap-4 rounded-tile bg-raised px-8 py-12 text-center">
-          <p className="font-title text-[28px]">{loadError || text.seriesLoadFailed}</p>
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <Button variant="primary" onClick={retry}>
-              {strings.common.retry}
-            </Button>
-            <Button variant="secondary" onClick={onBack}>
-              {strings.common.goBack}
-            </Button>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  if (!detail) return <SeriesDetailFailure message={loadError || text.seriesLoadFailed} onRetry={retry} onBack={onBack} />
 
-  const episodes = detail.episodes[selectedSeason] || []
   // The history of this series' episodes, by the media key the player keys
   // them with: progress on each row, and where "Devam et" picks up.
   const progressOf = (episode: EpisodeInfo): WatchProgressEntry | null => {
@@ -485,18 +467,6 @@ export function SeriesDetail({
     const key = episodeKey(sourceId, episodeId)
     return watchProgress.find((entry) => entry.key === key) ?? null
   }
-  const allEpisodes = detail.seasons.flatMap((season) => detail.episodes[season.seasonNumber] ?? [])
-  let resumeEpisode: EpisodeInfo | null = null
-  let resumedAt = -1
-  for (const episode of allEpisodes) {
-    const entry = progressOf(episode)
-    if (entry && entry.updatedAt > resumedAt) {
-      resumeEpisode = episode
-      resumedAt = entry.updatedAt
-    }
-  }
-  const firstEpisode = (detail.episodes[detail.seasons[0]?.seasonNumber ?? selectedSeason] ?? episodes)[0] ?? null
-  const primaryEpisode = resumeEpisode ?? firstEpisode
 
   const play = (ep: EpisodeInfo) => {
     const episodeId = parseEpisodeId(ep.id)
@@ -513,6 +483,105 @@ export function SeriesDetail({
       fallbackStreamUrl: ep.streamUrl
     })
   }
+
+  return (
+    <SeriesDetailView
+      detail={detail}
+      selectedSeason={selectedSeason}
+      onSelectSeason={(season) => {
+        setSelectedSeason(season)
+        onSeasonChange?.(season)
+      }}
+      onBack={onBack}
+      progressOf={progressOf}
+      onPlay={play}
+      favorite={favoriteChannelId ? { channelId: favoriteChannelId, item: seriesItem } : null}
+      moreItem={seriesItem ?? null}
+      onOpenSeries={onOpenSeries}
+    />
+  )
+}
+
+/** The detail could not be loaded: says why, with a retry and the way back. */
+export function SeriesDetailFailure({ message, onRetry, onBack }: { message: string; onRetry: () => void; onBack: () => void }) {
+  return (
+    <div className="flex flex-col gap-6">
+      <BackPill onBack={onBack} />
+      <div role="alert" className="flex flex-col items-center gap-4 rounded-tile bg-raised px-8 py-12 text-center">
+        <p className="font-title text-[28px]">{message}</p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Button variant="primary" onClick={onRetry}>
+            {strings.common.retry}
+          </Button>
+          <Button variant="secondary" onClick={onBack}>
+            {strings.common.goBack}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** A season's pill: its own name, else "Sezon n"; season 0 holds the specials. */
+export function seasonLabel(season: Pick<SeasonInfo, 'seasonNumber' | 'name'>): string {
+  if (season.name) return season.name
+  return season.seasonNumber === 0 ? strings.catalog.addon.specials : text.season(season.seasonNumber)
+}
+
+/** The primary action's episode, under it: "2. sezon 3. bölüm", or a special. */
+function episodeLabel(episode: Pick<EpisodeInfo, 'season' | 'episodeNum'>): string {
+  return episode.season === 0
+    ? strings.catalog.addon.specialEpisodeLabel(episode.episodeNum)
+    : text.playEpisodeLabel(episode.season, episode.episodeNum)
+}
+
+export interface SeriesDetailViewProps {
+  detail: SeriesDetailType
+  selectedSeason: number
+  onSelectSeason: (seasonNumber: number) => void
+  onBack: () => void
+  /** The history entry of an episode (its progress, and where "Devam et" picks up). */
+  progressOf: (episode: EpisodeInfo) => WatchProgressEntry | null
+  onPlay: (episode: EpisodeInfo) => void
+  /** The favourite star, when the series can be a favourite. */
+  favorite: { channelId: string; item?: Channel } | null
+  /** The series' list record: the row of others from its category. */
+  moreItem: Channel | null
+  onOpenSeries?: (series: Channel) => void
+  /** What stands where the episodes would be, when there are none to show and the reason is known. */
+  episodesNotice?: ReactNode
+}
+
+/**
+ * A series as the page shows it, wherever its detail came from (an Xtream
+ * panel, an add-on's meta): poster and facts, the one primary action (the
+ * episode to resume, else the first), seasons as pills, the episodes.
+ */
+export function SeriesDetailView({
+  detail,
+  selectedSeason,
+  onSelectSeason,
+  onBack,
+  progressOf,
+  onPlay,
+  favorite,
+  moreItem,
+  onOpenSeries,
+  episodesNotice
+}: SeriesDetailViewProps) {
+  const episodes = detail.episodes[selectedSeason] || []
+  const allEpisodes = detail.seasons.flatMap((season) => detail.episodes[season.seasonNumber] ?? [])
+  let resumeEpisode: EpisodeInfo | null = null
+  let resumedAt = -1
+  for (const episode of allEpisodes) {
+    const entry = progressOf(episode)
+    if (entry && entry.updatedAt > resumedAt) {
+      resumeEpisode = episode
+      resumedAt = entry.updatedAt
+    }
+  }
+  const firstEpisode = (detail.episodes[detail.seasons[0]?.seasonNumber ?? selectedSeason] ?? episodes)[0] ?? null
+  const primaryEpisode = resumeEpisode ?? firstEpisode
   const genres = detail.genre ? detail.genre.split(',').map((genre) => genre.trim()).filter(Boolean) : []
 
   return (
@@ -532,12 +601,17 @@ export function SeriesDetail({
             ))}
           </div>
           {detail.plot && <p className="max-w-[68ch] text-base leading-relaxed text-surface-300 min-[1800px]:text-lg">{detail.plot}</p>}
-          {detail.director && <p className="text-[15px] text-surface-400">{text.director(detail.director)}</p>}
+          {(detail.director || detail.cast) && (
+            <div className="flex flex-col gap-1 text-[15px] text-surface-400">
+              {detail.director && <span>{text.director(detail.director)}</span>}
+              {detail.cast && <span>{text.cast(detail.cast)}</span>}
+            </div>
+          )}
           <div className="mt-2 flex flex-wrap items-center gap-3">
             {primaryEpisode && (
               <button
                 type="button"
-                onClick={() => play(primaryEpisode)}
+                onClick={() => onPlay(primaryEpisode)}
                 aria-describedby="series-primary-episode"
                 className={DETAIL_PRIMARY}
               >
@@ -545,91 +619,98 @@ export function SeriesDetail({
                 {resumeEpisode ? text.resume : text.playFilm}
               </button>
             )}
-            {favoriteChannelId && (
-              <FavoriteToggle channelId={favoriteChannelId} item={seriesItem} variant="button" className="h-[60px]" />
+            {favorite && (
+              <FavoriteToggle channelId={favorite.channelId} item={favorite.item} variant="button" className="h-[60px]" />
             )}
           </div>
           {primaryEpisode && (
             <p id="series-primary-episode" className="text-[15px] text-surface-400">
-              {text.playEpisodeLabel(primaryEpisode.season, primaryEpisode.episodeNum)}
+              {episodeLabel(primaryEpisode)}
               {primaryEpisode.title ? ` · ${primaryEpisode.title}` : ''}
             </p>
           )}
         </div>
       </div>
 
-      <section aria-labelledby="series-seasons" className="flex flex-col gap-3">
-        <div className="flex h-7 items-center gap-3">
-          <span aria-hidden="true" className="size-3 shrink-0 rounded-[4px] bg-sky" />
-          <h2 id="series-seasons" className="font-title text-[23px] leading-[1.2]">
-            {text.seasons}
-          </h2>
+      {episodesNotice && detail.seasons.length === 0 && (
+        <div role="status" className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-card bg-raised px-5 py-4 text-[15px] text-surface-300">
+          {episodesNotice}
         </div>
-        <div className="flex flex-wrap gap-2">
-          {detail.seasons.map((s) => {
-            const selected = s.seasonNumber === selectedSeason
-            return (
-              <button
-                key={s.seasonNumber}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => {
-                  setSelectedSeason(s.seasonNumber)
-                  onSeasonChange?.(s.seasonNumber)
-                }}
-                className={`flex h-11 items-center rounded-full px-5 text-base ${
-                  selected ? 'bg-sky font-bold text-ink' : 'bg-raised font-medium text-white hover:bg-surface-800'
-                }`}
-              >
-                {s.name || text.season(s.seasonNumber)}
-              </button>
-            )
-          })}
-        </div>
-      </section>
+      )}
 
-      <section aria-labelledby="series-episodes" className="flex flex-col gap-3">
-        <div className="flex h-7 items-center gap-3">
-          <span aria-hidden="true" className="size-3 shrink-0 rounded-[4px] bg-sky" />
-          <h2 id="series-episodes" className="font-title text-[23px] leading-[1.2]">
-            {text.episodes}
-          </h2>
-          <span className="text-[15px] font-bold tabular-nums text-surface-500">{episodes.length}</span>
-        </div>
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,560px),1fr))] gap-2.5">
-          {episodes.map((ep) => {
-            const qualityLabel = inferContentQualityLabel(ep)
-            const share = watchShareOf(progressOf(ep))
-            return (
-              <button
-                key={ep.id}
-                type="button"
-                className="flex min-h-[72px] w-full items-center gap-4 rounded-card bg-raised py-3 pl-3 pr-5 text-left transition-colors hover:bg-surface-800"
-                onClick={() => play(ep)}
-              >
-                <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-sky text-ink">
-                  <Play size={18} fill="currentColor" aria-hidden="true" />
-                </span>
-                <span className="flex min-w-0 flex-1 flex-col gap-1">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 truncate text-[17px] font-bold">{text.episode(ep.episodeNum, ep.title)}</span>
-                    {qualityLabel && <QualityBadge label={qualityLabel} className="shrink-0" />}
+      {detail.seasons.length > 0 && (
+        <section aria-labelledby="series-seasons" className="flex flex-col gap-3">
+          <div className="flex h-7 items-center gap-3">
+            <span aria-hidden="true" className="size-3 shrink-0 rounded-[4px] bg-sky" />
+            <h2 id="series-seasons" className="font-title text-[23px] leading-[1.2]">
+              {text.seasons}
+            </h2>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {detail.seasons.map((s) => {
+              const selected = s.seasonNumber === selectedSeason
+              return (
+                <button
+                  key={s.seasonNumber}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => onSelectSeason(s.seasonNumber)}
+                  className={`flex h-11 items-center rounded-full px-5 text-base ${
+                    selected ? 'bg-sky font-bold text-ink' : 'bg-raised font-medium text-white hover:bg-surface-800'
+                  }`}
+                >
+                  {seasonLabel(s)}
+                </button>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {detail.seasons.length > 0 && (
+        <section aria-labelledby="series-episodes" className="flex flex-col gap-3">
+          <div className="flex h-7 items-center gap-3">
+            <span aria-hidden="true" className="size-3 shrink-0 rounded-[4px] bg-sky" />
+            <h2 id="series-episodes" className="font-title text-[23px] leading-[1.2]">
+              {text.episodes}
+            </h2>
+            <span className="text-[15px] font-bold tabular-nums text-surface-500">{episodes.length}</span>
+          </div>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,560px),1fr))] gap-2.5">
+            {episodes.map((ep) => {
+              const qualityLabel = inferContentQualityLabel(ep)
+              const share = watchShareOf(progressOf(ep))
+              return (
+                <button
+                  key={ep.id}
+                  type="button"
+                  className="flex min-h-[72px] w-full items-center gap-4 rounded-card bg-raised py-3 pl-3 pr-5 text-left transition-colors hover:bg-surface-800"
+                  onClick={() => onPlay(ep)}
+                >
+                  <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-sky text-ink">
+                    <Play size={18} fill="currentColor" aria-hidden="true" />
                   </span>
-                  {ep.plot && <span className="truncate text-[15px] text-surface-400">{ep.plot}</span>}
-                  {share && (
-                    <span className="mt-1 block max-w-[320px]">
-                      <WatchLine share={share} label={text.watched(share.percent)} />
+                  <span className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="min-w-0 truncate text-[17px] font-bold">{text.episode(ep.episodeNum, ep.title)}</span>
+                      {qualityLabel && <QualityBadge label={qualityLabel} className="shrink-0" />}
                     </span>
-                  )}
-                </span>
-                {ep.duration && <span className="shrink-0 text-[15px] font-bold tabular-nums text-surface-400">{ep.duration}</span>}
-              </button>
-            )
-          })}
-        </div>
-      </section>
+                    {ep.plot && <span className="truncate text-[15px] text-surface-400">{ep.plot}</span>}
+                    {share && (
+                      <span className="mt-1 block max-w-[320px]">
+                        <WatchLine share={share} label={text.watched(share.percent)} />
+                      </span>
+                    )}
+                  </span>
+                  {ep.duration && <span className="shrink-0 text-[15px] font-bold tabular-nums text-surface-400">{ep.duration}</span>}
+                </button>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
-      {seriesItem && onOpenSeries && <MoreInCategory item={seriesItem} onOpen={onOpenSeries} />}
+      {moreItem && onOpenSeries && <MoreInCategory item={moreItem} onOpen={onOpenSeries} />}
     </div>
   )
 }

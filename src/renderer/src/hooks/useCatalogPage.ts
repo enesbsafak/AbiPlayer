@@ -10,10 +10,14 @@ import { toUserMessage } from '@/services/user-error'
 import { certificateAwareError } from '@/catalog/certificate-errors'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
 import type { VirtualCardGridHandle } from '@/components/catalog/VirtualCardGrid'
+import { addonCatalogPager, useAddonCategoryPaging } from '@/addons/pager'
+import { addonErrorMessage } from '@/addons/messages'
 import {
   catalog,
   filterBySearch,
+  useCatalogCategories,
   useCatalogStatus,
+  useVisibleCatalogCategories,
   useVisibleCatalogItems,
   xtreamCategoriesToRecords,
   xtreamLiveToRecords,
@@ -24,8 +28,10 @@ import {
 } from '@/catalog'
 import type { XtreamCategory, XtreamCredentials } from '@/types/xtream'
 import {
+  addonPagerView,
   buildCatalogRouteState,
   catalogBanner,
+  effectiveAddonCategoryId,
   parseCatalogRouteState,
   providerCategoryId,
   type CatalogBanner,
@@ -107,10 +113,30 @@ function foregroundReducer(state: ForegroundLoad, action: ForegroundAction): For
   }
 }
 
+/** Paging of an add-on category: the pages after the first, loaded as the grid nears its end. */
+export interface CatalogPagerModel {
+  /** A page after the first is on its way. */
+  loadingMore: boolean
+  /** The catalogue has no further page. */
+  ended: boolean
+  /** A page after the first failed: a message for the screen. */
+  error: string | null
+  /** Whether nearing the end of the grid may ask for the next page now. */
+  canLoadMore: boolean
+  loadMore: () => void
+  retry: () => void
+}
+
 export interface CatalogPageModel {
   type: CatalogType
   sourceId: string | null
   isXtream: boolean
+  /** The active source is an add-on: its catalogues are the categories, loaded page by page. */
+  isAddon: boolean
+  /** An add-on without any catalogue of this type (its categories are in and there is none). */
+  noCategories: boolean
+  /** Add-on paging below the grid; null for other sources. */
+  pager: CatalogPagerModel | null
 
   selectedCategoryId: string | null
   selectCategory: (categoryId: string | null) => void
@@ -126,6 +152,8 @@ export interface CatalogPageModel {
   items: readonly CatalogItem[]
   /** Every match of the query, not capped. */
   matchCount: number
+  /** Items of the category in memory before the query (an add-on's pages so far). */
+  loadedCount: number
   /** The query the shown items were filtered with. */
   appliedQuery: string
 
@@ -178,7 +206,7 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
   const setSelectedCategory = useStore((s) => s.setSelectedCategory)
   const setMiniPlayer = useStore((s) => s.setMiniPlayer)
   const setPlayerReturnTarget = useStore((s) => s.setPlayerReturnTarget)
-  const selectedCategoryId = useStore((s) => selectedCategoryFor(s.selectedCategoryIds, s.activeSourceId, type))
+  const storedCategoryId = useStore((s) => selectedCategoryFor(s.selectedCategoryIds, s.activeSourceId, type))
   const status = useCatalogStatus(sourceId, type)
   const isComplete = status?.complete === true
   const categoriesLoaded = status?.categoriesLoaded === true
@@ -197,9 +225,21 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
 
   const source = useMemo(() => sources.find((item) => item.id === sourceId) ?? null, [sources, sourceId])
   const isXtream = source?.type === 'xtream'
+  const isAddon = source?.type === 'addon'
+  const addonAddressLoaded = isAddon && !!source?.url
   // Without its secret an Xtream source loads nothing: its page says so
   // instead of waiting for a preview and a category list that never come.
-  const missingSecret = isXtream && credentialsHydrated && !!sourceId && !getXtreamCredentials(sourceId)
+  // An add-on without its address cannot ask for a page either.
+  const missingSecret =
+    credentialsHydrated &&
+    !!sourceId &&
+    ((isXtream && !getXtreamCredentials(sourceId)) || (isAddon && !addonAddressLoaded))
+  // An add-on has no "all": its first visible catalogue stands in for none
+  // (or for a selection that is hidden now).
+  const visibleCategories = useVisibleCatalogCategories(isAddon ? sourceId : null, type)
+  // Hidden ones (by the viewer, or adult with that setting off) still exist.
+  const addonCategoryCount = useCatalogCategories(isAddon ? sourceId : null, type).length
+  const selectedCategoryId = isAddon ? effectiveAddonCategoryId(storedCategoryId, visibleCategories) : storedCategoryId
   const rawCategoryId = providerCategoryId(sourceId, type, selectedCategoryId)
   const messagesRef = useRef(messages)
   useEffect(() => {
@@ -341,6 +381,17 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
     }
   }, [sourceId, source, type, rawCategoryId, isComplete, getXtreamCredentials, reloadToken])
 
+  // An add-on category: its first page when it is opened. The pages after
+  // it come as the grid nears its end (`pager.loadMore`). A failed first
+  // page waits for the banner's retry.
+  const paging = useAddonCategoryPaging(isAddon ? sourceId : null, type, selectedCategoryId)
+  // Nothing asked yet, or forgotten (the source was refreshed, an error cleared).
+  const needsFirstPage = paging === null || (paging.pages === 0 && !paging.loading && !paging.error)
+  useEffect(() => {
+    if (!isAddon || !addonAddressLoaded || !sourceId || !selectedCategoryId || !needsFirstPage) return
+    void addonCatalogPager.loadFirstPage(sourceId, type, selectedCategoryId)
+  }, [isAddon, addonAddressLoaded, sourceId, type, selectedCategoryId, needsFirstPage])
+
   const visibleItems = useVisibleCatalogItems(sourceId, type, selectedCategoryId)
   // Typing updates the box at once; the filter over a large list follows as
   // a deferred render that the next keystroke can interrupt.
@@ -350,6 +401,15 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
   // unfiltered cards next to "0 sonuç" while a load runs.
   const retainKey = `${buildCatalogRetainResetKey(sourceId, selectedCategoryId)}\n${appliedQuery}`
   const items = useRetainedListWhileLoading(filtered, foreground.active, retainKey)
+  const addonView = addonPagerView({
+    isAddon,
+    addressLoaded: addonAddressLoaded,
+    categoriesLoaded,
+    hasCategory: !!selectedCategoryId,
+    paging,
+    searching: appliedQuery.trim().length > 0,
+    sourceFailed: missingSecret || !!sourceError
+  })
 
   // Read on every render; `status` changes with every commit to this slice.
   const categoryLoaded = !!sourceId && !!selectedCategoryId && catalog.isCategoryLoaded(sourceId, type, selectedCategoryId)
@@ -359,12 +419,21 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
     categoryLoaded,
     status,
     // An error of another category (or of "all") does not belong here.
-    loadError: foreground.errorScope === selectionScope(sourceId, selectedCategoryId) ? foreground.error : null,
+    loadError: isAddon
+      ? addonView.firstPageError && addonErrorMessage(addonView.firstPageError, messages.loadFailed)
+      : foreground.errorScope === selectionScope(sourceId, selectedCategoryId)
+        ? foreground.error
+        : null,
     sourceError: missingSecret ? (sourceError?.message ?? strings.sources.connect.secretsLoadFailed) : null,
     connectionFailed: !!sourceError
   })
 
   const retry = useCallback(() => {
+    if (isAddon) {
+      if (banner?.kind === 'source-error') requestSourceReconnect()
+      else if (sourceId && selectedCategoryId) void addonCatalogPager.retry(sourceId, type, selectedCategoryId)
+      return
+    }
     if (banner?.kind === 'sync-error' || banner?.kind === 'offline') {
       // An offline copy of a source that did not connect: connect it again.
       if (banner.kind === 'offline' && sourceError) requestSourceReconnect()
@@ -374,7 +443,29 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
     }
     dispatch({ type: 'reset' })
     bumpReload()
-  }, [banner?.kind, getXtreamCredentials, requestSourceReconnect, sourceError, sourceId, type])
+  }, [banner?.kind, getXtreamCredentials, isAddon, requestSourceReconnect, selectedCategoryId, sourceError, sourceId, type])
+
+  const loadMore = useCallback(() => {
+    if (sourceId && selectedCategoryId) void addonCatalogPager.loadNextPage(sourceId, type, selectedCategoryId)
+  }, [sourceId, selectedCategoryId, type])
+  const retryPage = useCallback(() => {
+    if (sourceId && selectedCategoryId) void addonCatalogPager.retry(sourceId, type, selectedCategoryId)
+  }, [sourceId, selectedCategoryId, type])
+  const pagerError = addonView.laterPageError
+  const pager = useMemo<CatalogPagerModel | null>(
+    () =>
+      isAddon && addonView.started
+        ? {
+            loadingMore: addonView.loadingMore,
+            ended: addonView.ended,
+            error: pagerError ? addonErrorMessage(pagerError, strings.catalog.addon.pageFailed) : null,
+            canLoadMore: addonView.canLoadMore,
+            loadMore,
+            retry: retryPage
+          }
+        : null,
+    [isAddon, addonView.started, addonView.loadingMore, addonView.ended, addonView.canLoadMore, pagerError, loadMore, retryPage]
+  )
 
   const retryCategories = useCallback(() => {
     setCategoriesError(null)
@@ -420,19 +511,23 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
     type,
     sourceId,
     isXtream,
+    isAddon,
+    noCategories: isAddon && categoriesLoaded && addonCategoryCount === 0,
+    pager,
     selectedCategoryId,
     selectCategory,
     categoriesError,
-    categoriesLoading: isXtream && !missingSecret && !categoriesLoaded && !categoriesError,
+    categoriesLoading: (isXtream || isAddon) && !missingSecret && !categoriesLoaded && !categoriesError && !(isAddon && sourceError),
     retryCategories,
     searchQuery,
     setSearchQuery,
     isSearchPending: searchQuery !== appliedQuery,
     items,
     matchCount: filtered.length,
+    loadedCount: visibleItems.length,
     appliedQuery,
-    loading: foreground.active,
-    loadingMessage: foreground.message,
+    loading: isAddon ? addonView.firstPageLoading : foreground.active,
+    loadingMessage: isAddon ? (addonView.firstPageLoading ? strings.catalog.addon.pageLoading : null) : foreground.message,
     banner,
     retry,
     detail,

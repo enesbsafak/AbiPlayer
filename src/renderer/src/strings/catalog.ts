@@ -58,6 +58,29 @@ export const catalog = {
     checkSourceSettings: ' Kaynak bilgilerini Ayarlar bölümünden kontrol et.'
   },
 
+  /** An add-on as the active source: its catalogues load page by page; it has no live TV. */
+  addon: {
+    pageLoading: 'Katalog yükleniyor...',
+    loadingMore: 'Daha fazlası yükleniyor…',
+    loadMore: 'Daha fazlasını yükle',
+    pageFailed: 'Sonraki sayfa yüklenemedi',
+    end: 'Katalogun sonuna geldin',
+    /** Under the result count: the box searches what has been loaded, not the add-on. */
+    searchLoadedOnly: (count: number) =>
+      `Arama yalnızca bu katalogdan şimdiye kadar yüklenen ${formatCount(count)} öğede yapılır.`,
+    noCatalogs: (noun: string) => `Bu eklentide ${noun} kataloğu yok`,
+    noCatalogsHint: (otherSection: string) => `Eklentinin sunduklarına ${otherSection} bölümünden göz atabilirsin.`,
+    noLive: 'Bu kaynakta canlı TV yok',
+    noLiveHint:
+      'Eklentiler film ve dizi sunar. Canlı kanallar ve yayın akışı için Xtream ya da M3U kaynaklarından birine geç.',
+    openFilms: 'Filmlere göz at',
+    /** Season 0 of an add-on series. */
+    specials: 'Özel bölümler',
+    specialEpisodeLabel: (episode: number) => `Özel bölüm ${episode}`,
+    episodesUnavailable: 'Bu eklenti dizinin bölüm listesini vermiyor; bölümler gösterilemiyor.',
+    episodesFailed: 'Bölüm listesi alınamadı.'
+  },
+
   /** Canlı TV: the channel rows and the panel of the channel in focus. */
   live: {
     panelLabel: 'Seçili kanal',
@@ -198,8 +221,19 @@ export const catalog = {
       loading: 'Yükleniyor…',
       noSource: 'Önce bir kaynak ekle',
       waiting: 'Kaynak bekleniyor',
-      empty: (noun: string) => `Bu kaynakta ${noun} yok`
+      empty: (noun: string) => `Bu kaynakta ${noun} yok`,
+      /** An add-on source: how many catalogues of the type it has (their sizes are unknown). */
+      catalogCount: (count: number) => `${formatCount(count)} katalog`,
+      noLive: 'Bu kaynakta canlı TV yok',
+      noGuide: 'Bu kaynakta yayın akışı yok'
     },
+
+    /** An add-on source's rows: the first page of its first catalogue of each type. */
+    addonRow: (section: string, catalogName: string) => `${section}: ${catalogName}`,
+    /** The large tile of an add-on source with nothing unfinished and no film to suggest. */
+    addonIdleTitle: 'Göz atmaya hazır',
+    addonIdleHint: 'Yarım kalan bir şey yok. Eklentinin kataloglarına göz at.',
+    browseSeries: 'Dizilere göz at',
 
     /** The rows under the tiles, shown as the window's height allows. */
     viewAll: 'Tümünü gör',

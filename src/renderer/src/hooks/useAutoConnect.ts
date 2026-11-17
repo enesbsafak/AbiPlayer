@@ -460,6 +460,7 @@ export function useAutoConnect() {
   const aliveRef = useRef(true)
   const sources = useStore((s) => s.sources)
   const activeSourceId = useStore((s) => s.activeSourceId)
+  const addonSourcesEnabled = useStore((s) => s.settings.addonSourcesEnabled)
   const authedKey = useStore((s) => authedSourcesKey(s.xtreamAuth))
   const connectedAddonKey = useStore((s) => connectedAddonsKey(s.addonSessions))
   const sourcesWithCatalog = useStore((s) => sourcesWithCatalogKey(s.catalogStatus))
@@ -506,10 +507,12 @@ export function useAutoConnect() {
   }, [connectRetryToken, runHydration])
 
   useEffect(() => {
-    // A stream-only add-on has no catalogue to show: it is never the active source.
-    const first = sources.find(canBeActiveSource)
+    // A stream-only add-on has no catalogue to show: it is never the active
+    // source. Nor is any add-on picked by itself while add-on sources are
+    // switched off (one that is already in use stays in use).
+    const first = sources.find((source) => canBeActiveSource(source) && (source.type !== 'addon' || addonSourcesEnabled))
     if (!activeSourceId && first) useStore.getState().setActiveSource(first.id)
-  }, [activeSourceId, sources])
+  }, [activeSourceId, sources, addonSourcesEnabled])
 
   useEffect(() => {
     if (!credentialsHydrated) return

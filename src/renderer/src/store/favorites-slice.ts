@@ -1,6 +1,7 @@
 import type { StateCreator } from 'zustand'
 import { catalog as defaultCatalog, type CatalogStore } from '@/catalog/catalog-store'
 import type { Channel } from '@/types/playlist'
+import { isAddonId } from '../../../shared/playback'
 
 const CONTENT_TYPES = new Set<Channel['type']>(['live', 'vod', 'series'])
 
@@ -21,6 +22,8 @@ export interface FavoriteSnapshot {
   seriesId?: number
   /** An M3U entry: played by looking its id up in the loaded playlist. */
   m3u?: true
+  /** An add-on film or series: its meta id (it opens its detail; its stream is chosen there). */
+  addonMetaId?: string
   containerExtension?: string
   logo?: string
   coverUrl?: string
@@ -44,7 +47,8 @@ export function favoriteSnapshotOf(channel: Channel): FavoriteSnapshot {
   const isXtream = typeof channel.streamId === 'number' || typeof channel.seriesId === 'number'
   if (typeof channel.streamId === 'number') snapshot.streamId = channel.streamId
   if (typeof channel.seriesId === 'number') snapshot.seriesId = channel.seriesId
-  if (!isXtream && isHttpUrlText(channel.streamUrl)) snapshot.m3u = true
+  if (isAddonId(channel.addonMetaId)) snapshot.addonMetaId = channel.addonMetaId
+  else if (!isXtream && isHttpUrlText(channel.streamUrl)) snapshot.m3u = true
   if (channel.containerExtension) snapshot.containerExtension = channel.containerExtension
   if (channel.logo) snapshot.logo = channel.logo
   if (channel.coverUrl) snapshot.coverUrl = channel.coverUrl
@@ -68,7 +72,12 @@ export function channelFromFavoriteSnapshot(snapshot: FavoriteSnapshot): Channel
 
 /** A card for an M3U entry whose playlist is not loaded: it needs the URL looked up before playing. */
 export function isM3uSnapshotChannel(channel: Channel): boolean {
-  return typeof channel.streamId !== 'number' && typeof channel.seriesId !== 'number' && !channel.streamUrl
+  return (
+    typeof channel.streamId !== 'number' &&
+    typeof channel.seriesId !== 'number' &&
+    channel.addonMetaId === undefined &&
+    !channel.streamUrl
+  )
 }
 
 /**
@@ -110,12 +119,13 @@ export function sanitizeFavoriteSnapshot(raw: unknown): FavoriteSnapshot | null 
   const seriesId = optionalId(input.seriesId)
   if (streamId !== undefined) snapshot.streamId = streamId
   if (seriesId !== undefined) snapshot.seriesId = seriesId
-  // No URL is ever kept: an Xtream one would carry the credentials, and an M3U
-  // entry is found again by its id in the loaded playlist. A snapshot that is
-  // neither cannot be played.
+  // No URL is ever kept: an Xtream one would carry the credentials, an M3U
+  // entry is found again by its id in the loaded playlist, and an add-on item
+  // is opened by its meta id. A snapshot that is none of these cannot be played.
   if (streamId === undefined && seriesId === undefined) {
-    if (input.m3u !== true) return null
-    snapshot.m3u = true
+    if (isAddonId(input.addonMetaId)) snapshot.addonMetaId = input.addonMetaId
+    else if (input.m3u === true) snapshot.m3u = true
+    else return null
   }
   for (const key of ['containerExtension', 'logo', 'coverUrl', 'categoryId', 'categoryName', 'rating', 'year'] as const) {
     const value = optionalString(input[key])

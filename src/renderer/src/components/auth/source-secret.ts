@@ -1,5 +1,6 @@
 import { useStore } from '@/store'
 import { secureCredentialService } from '@/services/secure-credentials'
+import type { AddonManifestSummary } from '@/types/addon'
 import type { PlaylistSource } from '@/types/playlist'
 import type { XtreamCredentials } from '@/types/xtream'
 import { strings } from '@/strings'
@@ -8,7 +9,8 @@ const { validation } = strings.sources
 
 /*
  * Entering the secret of an existing source again (K3): the Xtream username
- * and password, or the M3U playlist URL, when the stored one is gone (the
+ * and password, the M3U playlist URL or an add-on's address (checked in
+ * addon-entry.ts, which fetches its manifest), when the stored one is gone (the
  * credential file could not be read and was moved aside) or was refused.
  * The source keeps its id, so its favourites, history and hidden categories
  * stay attached; deleting and adding it again would give it a new id.
@@ -20,13 +22,17 @@ export interface SecretFields {
   password?: string
 }
 
-export type SourceSecret = XtreamCredentials | { m3uUrl: string }
+export type SourceSecret =
+  | XtreamCredentials
+  | { m3uUrl: string }
+  /** An add-on's base address with the manifest summary fetched from it. */
+  | { addonUrl: string; addon: AddonManifestSummary }
 
 export type SecretInputResult = { ok: true; secret: SourceSecret } | { ok: false; error: string }
 
 /** The source can have its secret entered again here. */
 export function canEnterSecretAgain(source: PlaylistSource): boolean {
-  return source.type === 'xtream' || source.type === 'm3u_url'
+  return source.type === 'xtream' || source.type === 'm3u_url' || source.type === 'addon'
 }
 
 function withScheme(value: string): string {
@@ -72,6 +78,13 @@ export function normalizeSecretInput(
 export interface SaveSecretDeps {
   setXtream?: (sourceId: string, credentials: XtreamCredentials) => Promise<void>
   setM3uUrl?: (sourceId: string, url: string) => Promise<void>
+  setAddonUrl?: (sourceId: string, url: string) => Promise<void>
+}
+
+function patchFor(secret: SourceSecret): Partial<PlaylistSource> {
+  if ('m3uUrl' in secret) return { url: secret.m3uUrl }
+  if ('addonUrl' in secret) return { url: secret.addonUrl, addon: secret.addon }
+  return { ...secret }
 }
 
 /**
@@ -82,12 +95,14 @@ export interface SaveSecretDeps {
 export async function saveSourceSecret(sourceId: string, secret: SourceSecret, deps: SaveSecretDeps = {}): Promise<void> {
   if ('m3uUrl' in secret) {
     await (deps.setM3uUrl ?? secureCredentialService.setM3uUrl)(sourceId, secret.m3uUrl)
+  } else if ('addonUrl' in secret) {
+    await (deps.setAddonUrl ?? secureCredentialService.setAddonUrl)(sourceId, secret.addonUrl)
   } else {
     await (deps.setXtream ?? secureCredentialService.set)(sourceId, secret)
   }
   const state = useStore.getState()
   if (!state.sources.some((source) => source.id === sourceId)) return
-  state.updateSource(sourceId, 'm3uUrl' in secret ? { url: secret.m3uUrl } : { ...secret })
+  state.updateSource(sourceId, patchFor(secret))
   // The secure store holds it now: no plain copy is kept for it.
   state.markSecretsMigrated([sourceId])
   state.setSourceError(sourceId, null)

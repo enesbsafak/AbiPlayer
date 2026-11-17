@@ -11,9 +11,13 @@ import { catalog } from '@/catalog/catalog-store'
 import { reloadSourceCatalog } from '@/catalog/cache-lifecycle'
 import { ingestDropped, ingestM3uText } from '@/catalog/worker-ingest'
 import { keepsSecretInStore, needsStoredSecret } from '@/store/auth-slice'
+import { addonHost } from '@/addons/address'
+import { refreshAddonSource } from '@/addons/connect'
+import { fetchAddonManifest } from '@/addons/client'
 import type { PlaylistSource } from '@/types/playlist'
 import { strings } from '@/strings'
 import { SourceSecretForm } from './SourceSecretForm'
+import { addonOfferLabels, describeAddonOffer, notChoosableReason, placeAddonError } from './addon-entry'
 
 const text = strings.sources.manager
 
@@ -30,6 +34,9 @@ function sourceStillExists(sourceId: string): boolean {
 
 const SOURCE_TYPE_LABELS: Record<PlaylistSource['type'], string> = strings.sources.typeLabels
 
+/** The source was removed while its add-on's manifest was being fetched. */
+class SourceGone extends Error {}
+
 /** `onEditingChange`: a source's sign-in form opened or closed (it then holds the primary action). */
 export function SourceManager({ onEditingChange }: { onEditingChange?: (editing: boolean) => void } = {}) {
   const sources = useStore((s) => s.sources)
@@ -45,6 +52,9 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
   const sourceErrors = useStore((s) => s.sourceErrors)
   const setSourceError = useStore((s) => s.setSourceError)
   const updateSource = useStore((s) => s.updateSource)
+  const addonSessions = useStore((s) => s.addonSessions)
+  const setAddonSession = useStore((s) => s.setAddonSession)
+  const addonsEnabled = useStore((s) => s.settings.addonSourcesEnabled)
   const [removalError, setRemovalError] = useState<string | null>(null)
 
   // A set, not one id: two refreshes can overlap, and the first to finish
@@ -133,9 +143,28 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
         // The file may have been picked from a new place: the next start reads it from there.
         if (result.path !== source.filePath) updateSource(sourceId, { filePath: result.path })
         setSourceError(sourceId, null)
+      } else if (source.type === 'addon' && source.url) {
+        // The manifest again: what the add-on provides now, and its catalogues
+        // as categories. A failure says so and keeps the stored summary.
+        const { session } = await refreshAddonSource(
+          source,
+          {
+            fetchManifest: async (base, options) => {
+              const summary = await fetchAddonManifest(base, options)
+              if (!sourceStillExists(sourceId)) throw new SourceGone()
+              return summary
+            },
+            updateSummary: (id, summary) => updateSource(id, { addon: summary })
+          },
+          { strict: true }
+        )
+        setAddonSession(sourceId, session)
       }
     } catch (err) {
-      setRefreshError((prev) => ({ ...prev, [sourceId]: toUserMessage(err, text.refreshFailed) }))
+      if (err instanceof SourceGone) return
+      const message =
+        source.type === 'addon' ? placeAddonError(err, text.refreshFailed).message : toUserMessage(err, text.refreshFailed)
+      setRefreshError((prev) => ({ ...prev, [sourceId]: message }))
     } finally {
       setRefreshing(sourceId, false)
     }
@@ -151,18 +180,29 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
     const failure = sourceErrors[source.id]?.kind
     if (source.type === 'xtream') return needsStoredSecret(source) || failure === 'missing-secret' || failure === 'auth'
     if (source.type === 'm3u_url') return needsStoredSecret(source) || failure === 'missing-secret'
+    // An add-on that refused its address (a personal key changed, say) gets
+    // a new one in place, keeping its id.
+    if (source.type === 'addon') {
+      const refused = refreshError[source.id] === strings.sources.validation.addonRefused
+      return addonsEnabled && (needsStoredSecret(source) || failure === 'missing-secret' || refused)
+    }
     return false
   }
 
+  /** Refreshing applies: an add-on's manifest is fetched again (it needs its address and the setting on). */
+  const refreshOffered = (source: PlaylistSource): boolean => source.type !== 'addon' || (addonsEnabled && !!source.url)
+
   const isConnected = (sourceId: string, type: string) => {
     if (type === 'xtream') return !!xtreamAuth[sourceId]
+    if (type === 'addon') return !!addonSessions[sourceId]
     return !sourceErrors[sourceId]
   }
 
   const statusText = (source: PlaylistSource, connected: boolean): string | null => {
     const failure = sourceErrors[source.id]
     if (failure?.retryAt != null) return text.reconnecting
-    if (source.type === 'xtream' && !connected && !failure) return text.connecting
+    if ((source.type === 'xtream' || source.type === 'addon') && !connected && !failure) return text.connecting
+    if (source.type === 'addon' && addonSessions[source.id]?.manifestFresh === false) return text.addonUnreachable
     return null
   }
 
@@ -203,40 +243,77 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
           const offerSecret = secretEntryOffered(source)
           const status = statusText(source, connected)
           const problem = refreshError[source.id] ?? sourceErrors[source.id]?.message
+          const notChoosable = notChoosableReason(source, addonsEnabled)
+          const host = source.type === 'addon' ? addonHost(source.url) : null
+          const labels = source.type === 'addon' && source.addon ? addonOfferLabels(describeAddonOffer(source.addon)) : []
+
+          const rowClass = `flex min-h-[60px] min-w-[min(100%,260px)] flex-1 items-center gap-4 rounded-[14px] px-4 py-2.5 text-left transition-colors ${
+            isActive ? 'bg-sky text-ink' : 'text-white'
+          }`
+          const rowContent = (
+            <>
+              <span
+                aria-hidden="true"
+                className={`flex size-4 shrink-0 items-center justify-center rounded-full ${isActive ? 'bg-ink' : ''}`}
+              >
+                <span className={`size-2.5 rounded-full ${connected ? 'bg-mint' : 'bg-surface-600'}`} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-base font-bold">{source.name}</span>
+                <span className={`block truncate text-sm ${isActive ? 'text-ink/75' : 'text-surface-400'}`}>
+                  {SOURCE_TYPE_LABELS[source.type]}
+                  {host && ` · ${host}`}
+                  {' · '}
+                  {connected ? text.connected : text.disconnected}
+                  {status && text.statusSuffix(status)}
+                </span>
+                {labels.length > 0 && (
+                  <span role="list" aria-label={text.addonLabelsName} className="mt-1.5 flex flex-wrap gap-1.5">
+                    {labels.map((label) => (
+                      <span
+                        key={label}
+                        role="listitem"
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          isActive ? 'bg-ink/15 text-ink' : 'bg-ground text-surface-300'
+                        }`}
+                      >
+                        {label}
+                      </span>
+                    ))}
+                  </span>
+                )}
+                {notChoosable && (
+                  <span className={`mt-1.5 block text-sm ${isActive ? 'text-ink/75' : 'text-surface-400'}`}>{notChoosable}</span>
+                )}
+              </span>
+              {(!notChoosable || isActive) && (
+                <span className={`shrink-0 text-sm max-sm:hidden ${isActive ? 'font-bold' : 'font-medium text-surface-500'}`}>
+                  {isActive ? text.inUse : text.useThis}
+                </span>
+              )}
+            </>
+          )
 
           return (
             <li key={source.id} className="flex min-w-0 flex-col rounded-card bg-raised p-2">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
-                {/* Choosing the source in use: the one in use is filled with sky. */}
-                <button
-                  type="button"
-                  className={`flex min-h-[60px] min-w-[min(100%,260px)] flex-1 items-center gap-4 rounded-[14px] px-4 py-2.5 text-left transition-colors ${
-                    isActive ? 'bg-sky text-ink' : 'text-white hover:bg-surface-800'
-                  }`}
-                  onClick={() => setActiveSource(source.id)}
-                  aria-current={isActive ? 'true' : undefined}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`flex size-4 shrink-0 items-center justify-center rounded-full ${isActive ? 'bg-ink' : ''}`}
+                {/* Choosing the source in use: the one in use is filled with sky. A
+                    source that cannot be in use (a stream-only add-on) is no choice
+                    at all and says why. */}
+                {notChoosable ? (
+                  <div className={rowClass} aria-current={isActive ? 'true' : undefined}>
+                    {rowContent}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className={`${rowClass} ${isActive ? '' : 'hover:bg-surface-800'}`}
+                    onClick={() => setActiveSource(source.id)}
+                    aria-current={isActive ? 'true' : undefined}
                   >
-                    <span className={`size-2.5 rounded-full ${connected ? 'bg-mint' : 'bg-surface-600'}`} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-base font-bold">{source.name}</span>
-                    <span className={`block truncate text-sm ${isActive ? 'text-ink/75' : 'text-surface-400'}`}>
-                      {SOURCE_TYPE_LABELS[source.type]}
-                      {' · '}
-                      {connected ? text.connected : text.disconnected}
-                      {status && text.statusSuffix(status)}
-                    </span>
-                  </span>
-                  <span
-                    className={`shrink-0 text-sm max-sm:hidden ${isActive ? 'font-bold' : 'font-medium text-surface-500'}`}
-                  >
-                    {isActive ? text.inUse : text.useThis}
-                  </span>
-                </button>
+                    {rowContent}
+                  </button>
+                )}
                 <div className="flex shrink-0 items-center gap-2 pr-1">
                   {offerSecret && editingSecret !== source.id && (
                     <button type="button" className={ACTION.secondary} onClick={() => setEditingSecret(source.id)}>
@@ -255,22 +332,24 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
                       {text.repickFile}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className={ACTION.icon}
-                    disabled={isRefreshing}
-                    onClick={() => {
-                      void handleRefresh(source.id)
-                    }}
-                    aria-label={text.refresh(source.name)}
-                    title={strings.common.refresh}
-                  >
-                    {isRefreshing ? (
-                      <Loader2 size={18} className="animate-spin" aria-hidden="true" />
-                    ) : (
-                      <RefreshCw size={18} aria-hidden="true" />
-                    )}
-                  </button>
+                  {refreshOffered(source) && (
+                    <button
+                      type="button"
+                      className={ACTION.icon}
+                      disabled={isRefreshing}
+                      onClick={() => {
+                        void handleRefresh(source.id)
+                      }}
+                      aria-label={source.type === 'addon' ? text.refreshAddon(source.name) : text.refresh(source.name)}
+                      title={strings.common.refresh}
+                    >
+                      {isRefreshing ? (
+                        <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+                      ) : (
+                        <RefreshCw size={18} aria-hidden="true" />
+                      )}
+                    </button>
+                  )}
                   {/* Removing is apart from the rest, in coral, and asks first. */}
                   <span aria-hidden="true" className="mx-1 h-6 w-0.5 rounded-full bg-ground" />
                   <button
@@ -289,7 +368,16 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
                   <FieldError>{problem}</FieldError>
                 </div>
               )}
-              {editingSecret === source.id && <SourceSecretForm source={source} onDone={() => setEditingSecret(null)} />}
+              {editingSecret === source.id && (
+                <SourceSecretForm
+                  source={source}
+                  onDone={(saved) => {
+                    setEditingSecret(null)
+                    // What the old secret's refusal said no longer holds.
+                    if (saved) setRefreshError((prev) => withoutKey(prev, source.id))
+                  }}
+                />
+              )}
             </li>
           )
         })}

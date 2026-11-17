@@ -7,14 +7,16 @@ import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 import type { Tone } from '@/components/layout/sections'
 import { isTextEntryTarget } from '@/hooks/useKeyboard'
-import type { CatalogPageModel } from '@/hooks/useCatalogPage'
+import type { CatalogPageModel, CatalogPagerModel } from '@/hooks/useCatalogPage'
 import { offlineCopyBannerText, type CatalogBanner } from '@/hooks/catalog-page-state'
 import type { Channel } from '@/types/playlist'
 import { strings } from '@/strings'
 import { SectionHeading } from './SectionHeading'
+import { useNearEnd } from './near-end'
 import { VirtualCardGrid, type CardGridLayout, type CardRenderProps } from './VirtualCardGrid'
 
 const text = strings.catalog.page
+const addonText = strings.catalog.addon
 
 export interface CatalogPageLabels {
   /** The "all" entry of the category list, e.g. "Tüm Kanallar". */
@@ -45,6 +47,8 @@ interface CatalogPageProps {
   detail?: { label: string; content: ReactNode } | null
   /** A panel beside the list (the channel in focus); left out below 1280 px. */
   side?: ReactNode
+  /** An add-on without catalogues of this type: what to say instead of the grid. */
+  noCategories?: { title: string; hint: string }
 }
 
 /**
@@ -54,12 +58,16 @@ interface CatalogPageProps {
  * going back keeps its scroll position and focus. No frames around frames:
  * the parts sit on the ground and the content carries the colour.
  */
-export function CatalogPage({ page, labels, tone, layout, renderCard, onOpen, empty, detail, side }: CatalogPageProps) {
+export function CatalogPage({ page, labels, tone, layout, renderCard, onOpen, empty, detail, side, noCategories }: CatalogPageProps) {
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
   const detailRef = useRef<HTMLDivElement | null>(null)
   const { scrollRef, gridRef, pendingScrollRef, pendingFocusRef, items, isSearchPending, closeDetail } = page
   const detailOpen = !!detail
   const detailKey = page.detail?.itemId ?? null
+  const { pager } = page
+
+  // An add-on category: the next page when the grid nears its end.
+  useNearEnd(scrollElement, !detailOpen && !!pager?.canLoadMore, () => pager?.loadMore(), items.length)
 
   const attachScroll = useCallback(
     (node: HTMLDivElement | null) => {
@@ -122,6 +130,8 @@ export function CatalogPage({ page, labels, tone, layout, renderCard, onOpen, em
             error={page.categoriesError}
             onRetry={page.retryCategories}
             loading={page.categoriesLoading}
+            showAll={!page.isAddon}
+            showCounts={!page.isAddon}
           />
         </div>
       </aside>
@@ -135,9 +145,11 @@ export function CatalogPage({ page, labels, tone, layout, renderCard, onOpen, em
             placeholder={labels.searchPlaceholder}
           />
           {page.appliedQuery.trim() && (
-            <p className="flex items-center gap-2 px-2 text-sm text-surface-400" aria-live="polite">
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 text-sm text-surface-400" aria-live="polite">
               {strings.common.resultCount(page.matchCount)}
               {isSearchPending && <Spinner size={12} />}
+              {/* The box filters what is loaded; it does not search the add-on. */}
+              {pager && !pager.ended && <span className="text-surface-500">{addonText.searchLoadedOnly(page.loadedCount)}</span>}
             </p>
           )}
           <div className="flex flex-col gap-2 empty:hidden">
@@ -160,6 +172,11 @@ export function CatalogPage({ page, labels, tone, layout, renderCard, onOpen, em
                 <p className="text-base text-surface-400">{page.loadingMessage || labels.loading}</p>
               </div>
             </div>
+          ) : page.noCategories && noCategories ? (
+            <div className="flex flex-col items-center justify-center gap-2 rounded-tile bg-raised px-8 py-16 text-center">
+              <p className="font-title text-[28px]">{noCategories.title}</p>
+              <p className="max-w-md text-base text-surface-400">{noCategories.hint}</p>
+            </div>
           ) : (
             <div className={showInlineLoader ? 'pointer-events-none opacity-60 transition-opacity' : 'transition-opacity'}>
               <VirtualCardGrid<Channel>
@@ -172,6 +189,7 @@ export function CatalogPage({ page, labels, tone, layout, renderCard, onOpen, em
                 empty={empty}
                 handleRef={gridRef}
               />
+              {pager && <PagerFooter pager={pager} searching={!!page.appliedQuery.trim()} hasItems={items.length > 0} />}
             </div>
           )}
         </div>
@@ -202,6 +220,47 @@ export function CatalogPage({ page, labels, tone, layout, renderCard, onOpen, em
       )}
     </div>
   )
+}
+
+/**
+ * Under an add-on category's grid: quiet while the next page loads, a retry
+ * when it failed, a line at the end. While a query filters the grid nothing
+ * loads by itself (each page could add a match or none); a button asks for
+ * the next page instead.
+ */
+function PagerFooter({ pager, searching, hasItems }: { pager: CatalogPagerModel; searching: boolean; hasItems: boolean }) {
+  let content: ReactNode = null
+  if (pager.loadingMore) {
+    content = (
+      <p role="status" className="flex items-center gap-2.5 text-[15px] text-surface-400">
+        <Spinner size={16} />
+        {addonText.loadingMore}
+      </p>
+    )
+  } else if (pager.error) {
+    content = (
+      <div role="alert" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[15px]">
+        <span className="flex items-center gap-2 text-white">
+          <AlertTriangle size={16} className="shrink-0 text-coral" aria-hidden="true" />
+          {addonText.pageFailed}
+        </span>
+        <span className="text-surface-400">{pager.error}</span>
+        <Button size="sm" variant="secondary" onClick={pager.retry}>
+          {strings.common.retry}
+        </Button>
+      </div>
+    )
+  } else if (pager.ended) {
+    content = hasItems ? <p className="text-[15px] text-surface-500">{addonText.end}</p> : null
+  } else if (searching) {
+    content = (
+      <Button size="sm" variant="secondary" onClick={pager.loadMore}>
+        {addonText.loadMore}
+      </Button>
+    )
+  }
+  if (!content) return null
+  return <div className="flex min-h-14 items-center justify-center px-4 pb-2 pt-4 text-center">{content}</div>
 }
 
 /** A status row: a raised card with a round mark in the colour of what it says. */
