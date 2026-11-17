@@ -1,6 +1,6 @@
 {
   "name": "abi-player",
-  "version": "0.5.1-beta",
+  "version": "0.5.2-beta",
   "description": "Abi Player - beta IPTV player with Xtream Codes API + M3U support",
   "license": "MIT",
   "main": "./out/main/index.js",
