@@ -2,6 +2,7 @@ import type { Channel } from '@/types/playlist'
 import type { XtreamAuthResponse, XtreamCredentials, XtreamLiveFormat } from '@/types/xtream'
 import { xtreamApi } from './xtream-api'
 import { getAllowedLiveFormats, pickLiveFormat } from './xtream-normalize'
+import { chosenAddonStreamUrl } from '@/addons/stream-registry'
 import {
   isPlayableTarget,
   m3uEntryId,
@@ -28,7 +29,8 @@ export function targetFromChannel(channel: Channel): PlaybackTarget | null {
 /**
  * Whether clicking the item starts playback. Xtream items only need their
  * provider id (the URL is built from the source's credentials when played); an
- * M3U entry needs its own URL. A series container never plays.
+ * M3U entry needs its own URL. An add-on film plays once a stream was chosen
+ * for it among the add-ons' candidates. A series container never plays.
  */
 export function isPlayableChannel(channel: Channel): boolean {
   const target = targetFromChannel(channel)
@@ -46,6 +48,8 @@ export interface StreamUrlContext {
   liveFormat?: { allowed: readonly XtreamLiveFormat[]; preferred: XtreamLiveFormat }
   /** An M3U entry's own URL, from the catalog or the history entry. */
   entryUrl?: string | null
+  /** The stream chosen for an add-on target in this session (the stream registry). */
+  addonStreamUrl?: string | null
   /**
    * The URL the catalog item still carries (`Channel.streamUrl`). Used only
    * when nothing better can be derived; goes away with that field.
@@ -57,7 +61,8 @@ export interface StreamUrlContext {
  * The single place a target becomes a URL. Call it only at the edges: when the
  * URL is handed to mpv, to the `<video>` element or hls.js, or to the subtitle
  * probe and extraction. Returns null when the target cannot be played with what
- * is known (no credentials and no stored URL, or a series container).
+ * is known (no credentials and no stored URL, an add-on item whose stream was
+ * not chosen in this session, or a series container).
  */
 export function resolveStreamUrl(target: PlaybackTarget, context: StreamUrlContext): string | null {
   const fallback = isHttpUrl(context.fallbackUrl) ? context.fallbackUrl.trim() : null
@@ -67,6 +72,9 @@ export function resolveStreamUrl(target: PlaybackTarget, context: StreamUrlConte
       return null
     case 'm3u':
       return isHttpUrl(context.entryUrl) ? context.entryUrl.trim() : fallback
+    case 'addon':
+      // Never the catalog item's URL (it has none): only the chosen stream.
+      return isHttpUrl(context.addonStreamUrl) ? context.addonStreamUrl.trim() : null
     case 'live': {
       if (!context.credentials) return fallback
       const allowed = context.liveFormat?.allowed ?? getAllowedLiveFormats(null)
@@ -211,6 +219,7 @@ export function streamUrlContextFor(
       preferred: preferredLiveFormat
     },
     entryUrl: urls.entryUrl,
+    addonStreamUrl: target.kind === 'addon' ? chosenAddonStreamUrl(target) : null,
     fallbackUrl: urls.fallbackUrl
   }
 }

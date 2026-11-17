@@ -45,8 +45,18 @@ export interface SecureM3uSourceSecret {
   url: string
 }
 
-/** What the secure store keeps per source: Xtream credentials or an M3U URL. */
-export type SecureSourceSecret = SecureXtreamCredentials | SecureM3uSourceSecret
+/**
+ * The base address of an `addon` source (a Stremio add-on protocol server).
+ * An add-on's settings, which can include a personal key, are a path segment
+ * of that address, so it is kept like an M3U URL.
+ */
+export interface SecureAddonSourceSecret {
+  kind: 'addon'
+  url: string
+}
+
+/** What the secure store keeps per source: Xtream credentials, an M3U URL or an add-on address. */
+export type SecureSourceSecret = SecureXtreamCredentials | SecureM3uSourceSecret | SecureAddonSourceSecret
 
 export type SecureCredentialMap = Record<string, SecureSourceSecret>
 

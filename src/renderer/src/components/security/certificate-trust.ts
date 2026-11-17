@@ -65,6 +65,9 @@ export function noticeOwner(notice: UntrustedCertificateNotice, context: OwnerCo
     return { kind: 'playback', source: playbackSource }
   }
 
+  // Every source but a playlist file has a host: the Xtream server, the M3U
+  // playlist's, or the add-on's (its address is in memory once the secure
+  // store was read, like an M3U URL).
   const source = context.sources.find((entry) => entry.type !== 'm3u_file' && hostOf(entry.url) === notice.host)
   if (source) return { kind: 'source', source }
 

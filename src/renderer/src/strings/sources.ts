@@ -5,7 +5,8 @@ export const sources = {
   typeLabels: {
     xtream: 'Xtream Codes',
     m3u_url: 'M3U Adresi',
-    m3u_file: 'M3U Dosyası'
+    m3u_file: 'M3U Dosyası',
+    addon: 'Eklenti'
   },
 
   fields: {
@@ -132,6 +133,7 @@ export const sources = {
     secretsUnavailable: 'Kayıtlı giriş bilgileri şu an okunamıyor; uygulama yeniden deneyecek.',
     missingXtreamSecret: `Kayıtlı kullanıcı adı ve şifre bulunamadı. ${settingsPath('sources')} bölümünden bu kaynağın bilgilerini yeniden gir.`,
     missingM3uUrl: `Kayıtlı liste adresi bulunamadı. ${settingsPath('sources')} bölümünden bu kaynağın adresini yeniden gir.`,
+    missingAddonUrl: `Kayıtlı eklenti adresi bulunamadı. ${settingsPath('sources')} bölümünden bu eklentinin adresini yeniden gir.`,
     missingCredentials: 'Kayıtlı giriş bilgileri bulunamadı.',
     missingUrl: 'Kayıtlı liste adresi bulunamadı.',
     missingFilePath: 'Liste dosyasının yolu kayıtlı değil. Dosyayı yeniden seç.',

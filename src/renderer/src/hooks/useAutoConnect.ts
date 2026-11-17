@@ -12,7 +12,9 @@ import { isCatalogCacheSettled, refreshCatalogCacheKey, watchCatalogCache } from
 import { ingestDropped, ingestM3uText, ingestM3uUrl, type IngestOutcome } from '@/catalog/worker-ingest'
 import { CATALOG_TYPES } from '@/catalog/types'
 import type { CatalogStatusMap } from '@/store/playlist-slice'
-import { plainSecretOf, type SourceConnectionError } from '@/store/auth-slice'
+import { plainSecretOf, type AddonSessionState, type SourceConnectionError } from '@/store/auth-slice'
+import { refreshAddonSource, type AddonConnectDeps } from '@/addons/connect'
+import { canBeActiveSource } from '@/addons/manifest'
 import type { PlaylistSource } from '@/types/playlist'
 import type { XtreamAuthResponse } from '@/types/xtream'
 import { perfMark } from '@/services/perf'
@@ -66,6 +68,10 @@ function authedSourcesKey(auth: Record<string, XtreamAuthResponse>): string {
   return Object.keys(auth).sort().join('\n')
 }
 
+function connectedAddonsKey(sessions: Record<string, AddonSessionState>): string {
+  return Object.keys(sessions).sort().join('\n')
+}
+
 /** A connection attempt that will fail again the same way until the user acts. */
 export class SourceConnectError extends Error {
   constructor(
@@ -78,10 +84,27 @@ export class SourceConnectError extends Error {
   }
 }
 
-/** The source still has to be connected: signed in, or its playlist loaded. */
-export function needsConnection(source: PlaylistSource, authed: ReadonlySet<string>, withCatalog: ReadonlySet<string>): boolean {
-  if (source.type === 'xtream') return !authed.has(source.id)
-  return !withCatalog.has(source.id)
+/**
+ * The source still has to be connected: signed in, its playlist loaded, or
+ * (an add-on) its manifest checked in this session.
+ */
+export function needsConnection(
+  source: PlaylistSource,
+  authed: ReadonlySet<string>,
+  withCatalog: ReadonlySet<string>,
+  connectedAddons: ReadonlySet<string> = new Set()
+): boolean {
+  switch (source.type) {
+    case 'xtream':
+      return !authed.has(source.id)
+    case 'addon':
+      // An add-on has no catalog of its own to load: its pages are fetched
+      // when a category is opened.
+      return !connectedAddons.has(source.id)
+    case 'm3u_url':
+    case 'm3u_file':
+      return !withCatalog.has(source.id)
+  }
 }
 
 /**
@@ -124,6 +147,12 @@ export function connectionSummary(
 
 export interface ConnectDeps {
   setXtreamAuth: (sourceId: string, auth: XtreamAuthResponse) => void
+  /** Records a connected add-on (default: the store's `setAddonSession`). */
+  setAddonSession?: (sourceId: string, session: AddonSessionState) => void
+  /** Stores an add-on's refreshed manifest summary (default: the store's `updateSource`). */
+  updateAddonSummary?: AddonConnectDeps['updateSummary']
+  /** The add-on manifest request (tests replace it). */
+  fetchAddonManifest?: AddonConnectDeps['fetchManifest']
   /** The secure store could not be read (it is read again): a missing secret is not gone. */
   secretsUnavailable?: boolean
   authenticate?: typeof xtreamApi.authenticate
@@ -138,6 +167,7 @@ export interface ConnectDeps {
 export const SECRETS_UNAVAILABLE_MESSAGE = text.secretsUnavailable
 export const MISSING_XTREAM_SECRET_MESSAGE = text.missingXtreamSecret
 export const MISSING_M3U_URL_MESSAGE = text.missingM3uUrl
+export const MISSING_ADDON_URL_MESSAGE = text.missingAddonUrl
 
 function missingSecret(message: string, deps: ConnectDeps): SourceConnectError {
   return new SourceConnectError('missing-secret', deps.secretsUnavailable ? SECRETS_UNAVAILABLE_MESSAGE : message)
@@ -189,7 +219,9 @@ async function ingestUntilKept(source: PlaylistSource, deps: ConnectDeps, run: (
 
 /**
  * One connection attempt for a saved source: sign in to an Xtream panel,
- * download an M3U playlist, or read a local playlist file again. Playlists
+ * download an M3U playlist, read a local playlist file again, or check an
+ * add-on's manifest (never fatal: an add-on that cannot be reached connects
+ * with its stored manifest summary, see addons/connect.ts). Playlists
  * are parsed in the catalog worker and replace the cached copy shown in the
  * meantime once complete. Main only re-reads paths the user once picked in
  * its dialog; when the file is gone, the cached copy stays and the error
@@ -211,6 +243,16 @@ export async function connectSource(source: PlaylistSource, deps: ConnectDeps): 
       throw new XtreamRequestError('auth', strings.requests.xtream.authRejected)
     }
     deps.setXtreamAuth(source.id, auth)
+    return
+  }
+
+  if (source.type === 'addon') {
+    if (!source.url) throw missingSecret(MISSING_ADDON_URL_MESSAGE, deps)
+    const { session } = await refreshAddonSource(source, {
+      fetchManifest: deps.fetchAddonManifest,
+      updateSummary: deps.updateAddonSummary ?? ((sourceId, summary) => useStore.getState().updateSource(sourceId, { addon: summary }))
+    })
+    ;(deps.setAddonSession ?? useStore.getState().setAddonSession)(source.id, session)
     return
   }
 
@@ -271,7 +313,12 @@ export function planSecretMigration(
     if (!legacy.has(source.id)) continue
     const secret = plainSecretOf(source)
     if (!secret) continue
-    const known = source.type === 'xtream' ? stored.xtream[source.id] : stored.m3uUrls[source.id]
+    const known =
+      source.type === 'xtream'
+        ? stored.xtream[source.id]
+        : source.type === 'addon'
+          ? stored.addonUrls?.[source.id]
+          : stored.m3uUrls[source.id]
     if (known) plan.alreadyStored.push(source.id)
     else plan.writes.push({ sourceId: source.id, secret })
   }
@@ -346,7 +393,11 @@ export async function hydrateSecrets(): Promise<boolean> {
   if (recovering) void refreshCatalogCacheKey()
 
   const plan = planSecretMigration(useStore.getState().sources, useStore.getState().legacySecretSourceIds, stored)
-  const secrets: SourceSecrets = { xtream: { ...stored.xtream }, m3uUrls: { ...stored.m3uUrls } }
+  const secrets: Required<SourceSecrets> = {
+    xtream: { ...stored.xtream },
+    m3uUrls: { ...stored.m3uUrls },
+    addonUrls: { ...stored.addonUrls }
+  }
   const migrated = [...plan.alreadyStored]
   let failed = 0
   await Promise.all(
@@ -355,6 +406,9 @@ export async function hydrateSecrets(): Promise<boolean> {
         if ('m3uUrl' in secret) {
           await secureCredentialService.setM3uUrl(sourceId, secret.m3uUrl)
           secrets.m3uUrls[sourceId] = secret.m3uUrl
+        } else if ('addonUrl' in secret) {
+          await secureCredentialService.setAddonUrl(sourceId, secret.addonUrl)
+          secrets.addonUrls[sourceId] = secret.addonUrl
         } else {
           await secureCredentialService.set(sourceId, secret)
           secrets.xtream[sourceId] = secret
@@ -387,7 +441,8 @@ interface SourceAttempt {
 
 /**
  * On app startup, connects every saved source: Xtream sources sign in, M3U
- * URL sources download their playlist, M3U file sources read their file again.
+ * URL sources download their playlist, M3U file sources read their file again,
+ * add-ons have their manifest checked.
  *
  * A source that fails is retried on a timer with backoff (3 s, 6 s, 12 s ...
  * up to a minute), so a provider that was down at startup is picked up once it
@@ -406,6 +461,7 @@ export function useAutoConnect() {
   const sources = useStore((s) => s.sources)
   const activeSourceId = useStore((s) => s.activeSourceId)
   const authedKey = useStore((s) => authedSourcesKey(s.xtreamAuth))
+  const connectedAddonKey = useStore((s) => connectedAddonsKey(s.addonSessions))
   const sourcesWithCatalog = useStore((s) => sourcesWithCatalogKey(s.catalogStatus))
   const credentialsHydrated = useStore((s) => s.credentialsHydrated)
   const connectRetryToken = useStore((s) => s.connectRetryToken)
@@ -450,7 +506,8 @@ export function useAutoConnect() {
   }, [connectRetryToken, runHydration])
 
   useEffect(() => {
-    const first = sources[0]
+    // A stream-only add-on has no catalogue to show: it is never the active source.
+    const first = sources.find(canBeActiveSource)
     if (!activeSourceId && first) useStore.getState().setActiveSource(first.id)
   }, [activeSourceId, sources])
 
@@ -459,6 +516,7 @@ export function useAutoConnect() {
     const attempts = attemptsRef.current
     const authed = new Set(authedKey ? authedKey.split('\n') : [])
     const withCatalog = new Set(sourcesWithCatalog ? sourcesWithCatalog.split('\n') : [])
+    const connectedAddons = new Set(connectedAddonKey ? connectedAddonKey.split('\n') : [])
     const known = new Map(sources.map((source) => [source.id, source]))
 
     const forget = (sourceId: string) => {
@@ -525,7 +583,7 @@ export function useAutoConnect() {
 
     for (const sourceId of [...attempts.keys()]) if (!known.has(sourceId)) forget(sourceId)
     for (const source of sources) {
-      if (!needsConnection(source, authed, withCatalog)) {
+      if (!needsConnection(source, authed, withCatalog, connectedAddons)) {
         // Connected some other way meanwhile (the source manager's refresh).
         forget(source.id)
         useStore.getState().setSourceError(source.id, null)
@@ -534,7 +592,7 @@ export function useAutoConnect() {
       if (!attempts.has(source.id)) start(source.id, true)
     }
     publishSummary()
-  }, [credentialsHydrated, sources, authedKey, sourcesWithCatalog, connectRetryToken])
+  }, [credentialsHydrated, sources, authedKey, connectedAddonKey, sourcesWithCatalog, connectRetryToken])
 
   useEffect(() => {
     const attempts = attemptsRef.current

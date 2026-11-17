@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand'
 import type {
+  AddonPlaybackRequest,
   AudioTrack,
   CurrentPlayback,
   EpisodePlaybackRequest,
@@ -26,6 +27,7 @@ import {
   type PlayableTarget,
   type PlaybackId
 } from '../../../shared/playback'
+import { chooseAddonStream } from '@/addons/stream-registry'
 import { EXTERNAL_SUBTITLE_ID } from '@/player/track-ids'
 import { strings } from '@/strings'
 
@@ -230,6 +232,13 @@ export interface PlayerSlice {
   playChannel: (channel: Channel) => void
   /** Starts one series episode with a real episode target. */
   playEpisode: (request: EpisodePlaybackRequest) => void
+  /**
+   * Starts an add-on film or episode with the candidate the viewer picked:
+   * the candidate's URL becomes the target's stream for this session (a
+   * reload or the return from the mini card plays it again), then the target
+   * starts like any other. An unknown handle fails like an unplayable item.
+   */
+  playAddonStream: (request: AddonPlaybackRequest) => void
   stopPlayback: () => void
   reloadPlayback: () => void
   suspendPlayback: () => void
@@ -414,6 +423,13 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
         }),
         channel: episodeDisplayChannel(request)
       })
+    ),
+
+  playAddonStream: (request) =>
+    set((state) =>
+      chooseAddonStream(request.target, request.handle)
+        ? startState(state, { target: request.target, channel: request.channel })
+        : failedStart()
     ),
 
   stopPlayback: () =>

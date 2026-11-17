@@ -413,8 +413,10 @@ export interface ContinueWatchingItem {
 /**
  * The playable part of the history, newest first. An Xtream item needs its
  * source's credentials (the URL is rebuilt from them); an M3U item needs its
- * source to still exist, its playlist may still be loading. A legacy entry is
- * shown when the catalog still has the item it was keyed by.
+ * source to still exist, its playlist may still be loading; an add-on item
+ * needs its catalogue source to still exist (its stream is chosen again when
+ * none was chosen in this session). A legacy entry is shown when the catalog
+ * still has the item it was keyed by.
  */
 export function selectContinueWatching(
   entries: WatchProgressEntry[],
@@ -438,7 +440,7 @@ export function selectContinueWatching(
     }
 
     if (!isPlayableTarget(entry.target)) continue
-    if (entry.target.kind === 'm3u') {
+    if (entry.target.kind === 'm3u' || entry.target.kind === 'addon') {
       if (options.hasSource && !options.hasSource(entry.target.sourceId)) continue
     } else if (!options.hasCredentials(entry.target.sourceId)) {
       continue

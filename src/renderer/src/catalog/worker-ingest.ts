@@ -173,11 +173,22 @@ export async function ingestM3uText(
   return outcome
 }
 
-/** What the cache knows a source by, or null when it cannot be told yet (secret not loaded). */
+/**
+ * What the cache knows a source by, or null when it cannot be told yet
+ * (secret not loaded) or the source is never cached (an add-on).
+ */
 export function sourceIdentity(source: PlaylistSource): SourceIdentity | null {
-  if (source.type === 'xtream') return source.url && source.username ? { kind: 'xtream', url: source.url, username: source.username } : null
-  if (source.type === 'm3u_url') return source.url ? { kind: 'm3u_url', url: source.url } : null
-  return source.filePath ? { kind: 'm3u_file', path: source.filePath } : null
+  switch (source.type) {
+    case 'xtream':
+      return source.url && source.username ? { kind: 'xtream', url: source.url, username: source.username } : null
+    case 'm3u_url':
+      return source.url ? { kind: 'm3u_url', url: source.url } : null
+    case 'm3u_file':
+      return source.filePath ? { kind: 'm3u_file', path: source.filePath } : null
+    case 'addon':
+      // Add-on catalogues are paged in on demand and never written to disk.
+      return null
+  }
 }
 
 /**

@@ -1,5 +1,5 @@
 import type { Channel } from './playlist'
-import type { PlayableTarget, PlaybackId, PlaybackTarget } from '../../../shared/playback'
+import type { AddonPlaybackTarget, PlayableTarget, PlaybackId, PlaybackTarget } from '../../../shared/playback'
 
 /** One playback intent, as the player store records it. */
 export interface CurrentPlayback {
@@ -46,6 +46,18 @@ export interface EpisodePlaybackRequest {
   coverUrl?: string
   /** URL the series page already built; used only if none can be derived. */
   fallbackStreamUrl?: string
+}
+
+/**
+ * An add-on film or episode to play with the stream the viewer picked. The
+ * stream is named by its candidate handle (`AddonStreamCandidate.handle`),
+ * never by its URL, which stays in the session's stream registry.
+ */
+export interface AddonPlaybackRequest {
+  target: AddonPlaybackTarget
+  /** Display data; its `streamUrl` is empty. */
+  channel: Channel
+  handle: string
 }
 
 export interface AudioTrack {

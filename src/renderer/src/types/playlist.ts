@@ -1,13 +1,22 @@
-export type SourceType = 'xtream' | 'm3u_url' | 'm3u_file'
+import type { AddonManifestSummary } from './addon'
+
+export type SourceType = 'xtream' | 'm3u_url' | 'm3u_file' | 'addon'
 
 export interface PlaylistSource {
   id: string
   name: string
   type: SourceType
+  /**
+   * Xtream server URL, M3U playlist URL, or an add-on's base address. Only the
+   * Xtream server URL is persisted; the other two are secrets kept in the
+   * secure store and put here in memory.
+   */
   url?: string
   username?: string
   password?: string
   filePath?: string
+  /** `addon` sources: the persisted summary of the add-on's manifest. */
+  addon?: AddonManifestSummary
   addedAt: number
   lastRefresh?: number
 }
@@ -32,7 +41,8 @@ export interface Channel {
   /**
    * The M3U entry URL, which is that entry's identity. Empty for Xtream
    * items: their URL holds the account credentials and is built at playback
-   * time from `streamId` / `seriesId` and the source.
+   * time from `streamId` / `seriesId` and the source. Empty for add-on items:
+   * their stream is chosen among candidates when played.
    */
   streamUrl: string
   /** Xtream live and film id. Never set on M3U entries. */
@@ -52,9 +62,12 @@ export interface Channel {
   coverUrl?: string
   /** Xtream series id. */
   seriesId?: number
+  /** Add-on catalogue items: the add-on's meta id (also the stream id of a film). */
+  addonMetaId?: string
 }
 
 export interface SeriesDetail {
+  /** Xtream series id; 0 for an add-on series (its meta id identifies it). */
   seriesId: number
   name: string
   cover: string
@@ -77,6 +90,7 @@ export interface SeasonInfo {
 }
 
 export interface EpisodeInfo {
+  /** Xtream episode id, or an add-on episode's video id. */
   id: string
   episodeNum: number
   title: string
@@ -87,5 +101,6 @@ export interface EpisodeInfo {
   rating: number
   season: number
   coverUrl: string
+  /** Empty for add-on episodes: their stream is chosen when played. */
   streamUrl: string
 }

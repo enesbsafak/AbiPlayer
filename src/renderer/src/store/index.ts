@@ -24,6 +24,7 @@ import { PERSIST_VERSION, runPersistMigrations } from './persist-migrations'
 import { redactStoredCopy } from './stored-copy-redaction'
 import { sanitizeProgressEntries, type WatchProgressEntry } from '@/services/watch-progress'
 import type { PlaylistSource } from '@/types/playlist'
+import { emptyAddonManifestSummary, sanitizeAddonManifestSummary } from '@/addons/manifest'
 import { perfMark, perfWatchStore } from '@/services/perf'
 
 export type AppStore =
@@ -67,10 +68,20 @@ function isPersistedSource(source: unknown): source is PlaylistSource {
   )
 }
 
+/**
+ * An add-on's stored manifest summary is checked like any other stored data;
+ * an unreadable one is replaced by an empty summary (the source stays, and
+ * its next connection fetches the manifest again).
+ */
+function sanitizePersistedSource(source: PlaylistSource): PlaylistSource {
+  if (source.type !== 'addon') return source
+  return { ...source, addon: sanitizeAddonManifestSummary(source.addon) ?? emptyAddonManifestSummary(source.name) }
+}
+
 function sanitizePersistedSources(input: unknown, fallback: PlaylistSource[]): PlaylistSource[] {
   if (!Array.isArray(input)) return fallback
 
-  return input.filter(isPersistedSource)
+  return input.filter(isPersistedSource).map(sanitizePersistedSource)
 }
 
 function safeLocalGet(name: string): string | null {

@@ -21,6 +21,9 @@ export interface UserSettings {
   // Experimental (plan F2-15): mpv keeps playing in a corner of the window
   // while the user browses, instead of the "paused, continue" card.
   keepPlayingInCorner: boolean
+  // Experimental: add-on sources (Stremio add-on protocol) can be added and
+  // browsed. Off by default.
+  addonSourcesEnabled: boolean
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -37,5 +40,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   hardwareAcceleration: true,
   audioPassthrough: false,
   liveStreamFormat: 'auto',
-  keepPlayingInCorner: false
+  keepPlayingInCorner: false,
+  addonSourcesEnabled: false
 }

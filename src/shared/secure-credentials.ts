@@ -1,8 +1,16 @@
 import type { SecureXtreamCredentials } from './types/electron-ipc'
-import type { SecureCredentialMap, SecureM3uSourceSecret, SecureSourceSecret } from './ipc/contract'
+import type {
+  SecureAddonSourceSecret,
+  SecureCredentialMap,
+  SecureM3uSourceSecret,
+  SecureSourceSecret
+} from './ipc/contract'
 
 /** Longest M3U URL the store accepts; real ones are a few hundred characters. */
 export const MAX_SECURE_M3U_URL_LENGTH = 8192
+
+/** Longest add-on base address the store accepts (its settings segment can be long). */
+export const MAX_SECURE_ADDON_URL_LENGTH = 8192
 
 export function isValidSourceId(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= 256
@@ -33,6 +41,22 @@ export function isValidM3uSecret(value: unknown): value is SecureM3uSourceSecret
   )
 }
 
+/**
+ * An add-on base address as the renderer normalises it: http(s), no
+ * whitespace, no query or fragment (`/manifest.json` and the query are cut
+ * off before it is stored).
+ */
+export function isValidAddonSecret(value: unknown): value is SecureAddonSourceSecret {
+  if (!value || typeof value !== 'object') return false
+  const secret = value as SecureAddonSourceSecret
+  return (
+    secret.kind === 'addon' &&
+    typeof secret.url === 'string' &&
+    secret.url.length <= MAX_SECURE_ADDON_URL_LENGTH &&
+    /^https?:\/\/[^\s?#]+$/i.test(secret.url)
+  )
+}
+
 /** Longest TMDB key the store accepts (v4 read tokens are a few hundred characters). */
 export const MAX_SECURE_TMDB_API_KEY_LENGTH = 512
 
@@ -47,21 +71,28 @@ export function isValidTmdbApiKey(value: unknown): value is string {
 }
 
 export function isM3uSecret(value: SecureSourceSecret): value is SecureM3uSourceSecret {
-  return (value as SecureM3uSourceSecret).kind === 'm3u_url'
+  return 'kind' in value && value.kind === 'm3u_url'
+}
+
+export function isAddonSecret(value: SecureSourceSecret): value is SecureAddonSourceSecret {
+  return 'kind' in value && value.kind === 'addon'
 }
 
 /**
- * Either shape, checked strictly. An object that says it is an M3U secret is
- * judged only as one, so a malformed one never passes as Xtream credentials.
+ * Any shape, checked strictly. An object that names its kind is judged only
+ * as that kind, so a malformed one never passes as Xtream credentials.
  */
 export function isValidSourceSecret(value: unknown): value is SecureSourceSecret {
-  if (value && typeof value === 'object' && 'kind' in value) return isValidM3uSecret(value)
+  if (value && typeof value === 'object' && 'kind' in value) {
+    return (value as { kind: unknown }).kind === 'addon' ? isValidAddonSecret(value) : isValidM3uSecret(value)
+  }
   return isValidCredential(value)
 }
 
 /** A copy holding only the fields of its shape. */
 export function copySourceSecret(value: SecureSourceSecret): SecureSourceSecret {
   if (isM3uSecret(value)) return { kind: 'm3u_url', url: value.url }
+  if (isAddonSecret(value)) return { kind: 'addon', url: value.url }
   return { url: value.url, username: value.username, password: value.password }
 }
 

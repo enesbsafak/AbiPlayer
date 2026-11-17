@@ -5,13 +5,22 @@ import { credentialsInUrl, maskCredentials } from '../../../shared/mask-credenti
  * it cannot be read) are for recovering favourites, history and settings.
  * They must not keep what the app otherwise keeps out of localStorage: Xtream
  * passwords and account names, M3U playlist URLs (they usually carry the
- * account), entry URLs and the TMDB key.
+ * account), add-on addresses (they carry the add-on's settings), entry URLs
+ * and the TMDB key.
  */
+
+/** Source types whose `url` is a secret. */
+const SECRET_URL_TYPES: ReadonlySet<unknown> = new Set(['m3u_url', 'addon'])
 
 const MASK = '***'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function pathSegments(url: string): string[] {
+  const path = url.match(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*(\/[^?#]*)/i)?.[1] ?? ''
+  return path.split('/').filter(Boolean)
 }
 
 /** Secret values found in the payload, for masking wherever else they appear. */
@@ -25,9 +34,12 @@ function collectSecrets(state: Record<string, unknown>): string[] {
       if (!isRecord(source)) continue
       add(source.username)
       add(source.password)
-      if (source.type === 'm3u_url' && typeof source.url === 'string') {
+      if (SECRET_URL_TYPES.has(source.type) && typeof source.url === 'string') {
         add(source.url)
         for (const part of credentialsInUrl(source.url)) add(part)
+        // An add-on's settings (a personal key among them) are a path
+        // segment of its address; long segments are masked wherever they appear.
+        if (source.type === 'addon') for (const segment of pathSegments(source.url)) if (segment.length >= 16) add(segment)
       }
     }
   }
@@ -40,7 +52,7 @@ function redactSources(sources: unknown): unknown {
   return sources.map((source) => {
     if (!isRecord(source)) return source
     const { username: _username, password: _password, ...rest } = source
-    if (rest.type === 'm3u_url') delete rest.url
+    if (SECRET_URL_TYPES.has(rest.type)) delete rest.url
     return rest
   })
 }

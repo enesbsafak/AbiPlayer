@@ -1,6 +1,6 @@
 import type { XtreamCredentials } from '@/types/xtream'
 import type { SecureCredentialMap, SecureCredentialsLossNotice } from '../../../shared/ipc/contract'
-import { isM3uSecret, sanitizeCredentialMap } from '../../../shared/secure-credentials'
+import { isAddonSecret, isM3uSecret, sanitizeCredentialMap } from '../../../shared/secure-credentials'
 
 export type { SecureCredentialsLossNotice }
 
@@ -11,12 +11,19 @@ export interface SourceSecrets {
   xtream: CredentialMap
   /** Playlist URL per `m3u_url` source. */
   m3uUrls: Record<string, string>
+  /** Base address per `addon` source (always set by `splitSourceSecrets`). */
+  addonUrls?: Record<string, string>
+}
+
+export function emptySourceSecrets(): Required<SourceSecrets> {
+  return { xtream: {}, m3uUrls: {}, addonUrls: {} }
 }
 
 export function splitSourceSecrets(map: SecureCredentialMap): SourceSecrets {
-  const secrets: SourceSecrets = { xtream: {}, m3uUrls: {} }
+  const secrets = emptySourceSecrets()
   for (const [sourceId, secret] of Object.entries(map)) {
     if (isM3uSecret(secret)) secrets.m3uUrls[sourceId] = secret.url
+    else if (isAddonSecret(secret)) secrets.addonUrls[sourceId] = secret.url
     else secrets.xtream[sourceId] = secret
   }
   return secrets
@@ -24,7 +31,7 @@ export function splitSourceSecrets(map: SecureCredentialMap): SourceSecrets {
 
 export const secureCredentialService = {
   async getAllSecrets(): Promise<SourceSecrets> {
-    if (!window.electron?.getSecureCredentials) return { xtream: {}, m3uUrls: {} }
+    if (!window.electron?.getSecureCredentials) return emptySourceSecrets()
     const raw = await window.electron.getSecureCredentials()
     return splitSourceSecrets(sanitizeCredentialMap(raw))
   },
@@ -38,6 +45,12 @@ export const secureCredentialService = {
   async setM3uUrl(sourceId: string, url: string): Promise<void> {
     if (!window.electron?.setSecureCredential) return
     await window.electron.setSecureCredential(sourceId, { kind: 'm3u_url', url })
+  },
+
+  /** Stores the base address of an `addon` source (its settings segment may hold a personal key). */
+  async setAddonUrl(sourceId: string, url: string): Promise<void> {
+    if (!window.electron?.setSecureCredential) return
+    await window.electron.setSecureCredential(sourceId, { kind: 'addon', url })
   },
 
   /** The stored TMDB API key, or null when there is none (or no Electron). */

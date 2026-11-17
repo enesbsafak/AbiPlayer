@@ -1,8 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import {
+  copySourceSecret,
+  isValidAddonSecret,
   isValidCredential,
   isValidM3uSecret,
+  MAX_SECURE_ADDON_URL_LENGTH,
   isValidSourceSecret,
   isValidTmdbApiKey,
   MAX_SECURE_M3U_URL_LENGTH,
@@ -42,6 +45,32 @@ describe('secure source secrets (F3-02)', () => {
     expect(isValidSourceSecret(XTREAM)).toBe(true)
     expect(isValidSourceSecret(M3U)).toBe(true)
     expect(isValidSourceSecret(null)).toBe(false)
+  })
+})
+
+describe('add-on address secret', () => {
+  const ADDON = { kind: 'addon', url: 'https://addon.example/gizli-ayar-0123456789abcdef' }
+
+  it('is kept on its own, with only its own fields', () => {
+    expect(sanitizeCredentialMap({ ad: { ...ADDON, username: 'x' }, xt: XTREAM })).toEqual({ ad: ADDON, xt: XTREAM })
+    expect(copySourceSecret({ kind: 'addon', url: ADDON.url })).toEqual(ADDON)
+  })
+
+  it('accepts only an http(s) base without spaces, query or fragment', () => {
+    expect(isValidAddonSecret(ADDON)).toBe(true)
+    expect(isValidAddonSecret({ kind: 'addon', url: 'http://127.0.0.1:7000' })).toBe(true)
+    expect(isValidAddonSecret({ kind: 'addon', url: 'stremio://addon.example/a' })).toBe(false)
+    expect(isValidAddonSecret({ kind: 'addon', url: 'https://addon.example/a b' })).toBe(false)
+    expect(isValidAddonSecret({ kind: 'addon', url: 'https://addon.example/a?x=1' })).toBe(false)
+    expect(isValidAddonSecret({ kind: 'addon', url: `https://addon.example/${'a'.repeat(MAX_SECURE_ADDON_URL_LENGTH)}` })).toBe(false)
+  })
+
+  it('never passes as another shape, and no other shape passes as it', () => {
+    expect(isValidSourceSecret(ADDON)).toBe(true)
+    expect(isValidSourceSecret({ kind: 'addon', ...XTREAM })).toBe(true)
+    expect(isValidSourceSecret({ kind: 'addon', url: 'javascript:alert(1)' })).toBe(false)
+    expect(isValidM3uSecret(ADDON)).toBe(false)
+    expect(isValidAddonSecret(M3U)).toBe(false)
   })
 })
 

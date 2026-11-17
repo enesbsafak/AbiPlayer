@@ -10,7 +10,7 @@ import { toUserMessage } from '@/services/user-error'
 import { catalog } from '@/catalog/catalog-store'
 import { reloadSourceCatalog } from '@/catalog/cache-lifecycle'
 import { ingestDropped, ingestM3uText } from '@/catalog/worker-ingest'
-import { needsStoredSecret } from '@/store/auth-slice'
+import { keepsSecretInStore, needsStoredSecret } from '@/store/auth-slice'
 import type { PlaylistSource } from '@/types/playlist'
 import { strings } from '@/strings'
 import { SourceSecretForm } from './SourceSecretForm'
@@ -72,7 +72,7 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
 
   const handleRemove = async (source: PlaylistSource) => {
     setRemovalError(null)
-    if (source.type === 'xtream' || source.type === 'm3u_url') {
+    if (keepsSecretInStore(source)) {
       try {
         await secureCredentialService.delete(source.id)
       } catch (err) {

@@ -1,4 +1,5 @@
 import type { StateCreator } from 'zustand'
+import { canBeActiveSource } from '@/addons/manifest'
 import type { PlaylistSource } from '@/types/playlist'
 import type { XtreamCredentials, XtreamAuthResponse } from '@/types/xtream'
 
@@ -25,12 +26,24 @@ export interface SourceConnectionError {
 export interface HydratedSourceSecrets {
   xtream: Record<string, XtreamCredentials>
   m3uUrls: Record<string, string>
+  addonUrls?: Record<string, string>
+}
+
+/**
+ * An `addon` source connected in this session (session state, not
+ * persisted). `manifestFresh` is false when the add-on could not be reached
+ * and its stored manifest summary is in use.
+ */
+export interface AddonSessionState {
+  manifestFresh: boolean
 }
 
 export interface AuthSlice {
   sources: PlaylistSource[]
   activeSourceId: string | null
   xtreamAuth: Record<string, XtreamAuthResponse>
+  /** Add-on sources connected in this session; what `xtreamAuth` is to Xtream sources. */
+  addonSessions: Record<string, AddonSessionState>
   credentialsHydrated: boolean
   isLoading: boolean
   error: string | null
@@ -59,6 +72,7 @@ export interface AuthSlice {
   removeSource: (id: string) => void
   setActiveSource: (id: string | null) => void
   setXtreamAuth: (sourceId: string, auth: XtreamAuthResponse) => void
+  setAddonSession: (sourceId: string, session: AddonSessionState | null) => void
   /** Puts the stored secrets on the sources and marks the credentials hydrated. */
   hydrateSourceSecrets: (secrets: HydratedSourceSecrets) => void
   setCredentialsHydrated: (hydrated: boolean) => void
@@ -74,36 +88,54 @@ export interface AuthSlice {
 }
 
 /** The secret a source carries in memory, if any. */
-export function plainSecretOf(source: PlaylistSource): XtreamCredentials | { m3uUrl: string } | null {
-  if (source.type === 'xtream') {
-    if (!source.url || !source.username || !source.password) return null
-    return { url: source.url, username: source.username, password: source.password }
+export function plainSecretOf(
+  source: PlaylistSource
+): XtreamCredentials | { m3uUrl: string } | { addonUrl: string } | null {
+  switch (source.type) {
+    case 'xtream':
+      if (!source.url || !source.username || !source.password) return null
+      return { url: source.url, username: source.username, password: source.password }
+    case 'm3u_url':
+      return source.url ? { m3uUrl: source.url } : null
+    case 'addon':
+      return source.url ? { addonUrl: source.url } : null
+    case 'm3u_file':
+      // A file path is not a secret: it is persisted as it is.
+      return null
   }
-  if (source.type === 'm3u_url') return source.url ? { m3uUrl: source.url } : null
-  return null
+}
+
+/** The source's secret lives in the secure store (and goes from there with it). */
+export function keepsSecretInStore(source: Pick<PlaylistSource, 'type'>): boolean {
+  return source.type !== 'm3u_file'
 }
 
 /** The source needs a secret from the secure store before it can connect. */
 export function needsStoredSecret(source: PlaylistSource): boolean {
-  return (source.type === 'xtream' || source.type === 'm3u_url') && plainSecretOf(source) === null
+  return keepsSecretInStore(source) && plainSecretOf(source) === null
 }
 
 /**
  * The source as written to localStorage: no Xtream username or password, no
- * M3U playlist URL (both live in the secure store), unless the source still
- * waits for its secret to be migrated there.
+ * M3U playlist URL and no add-on address (all live in the secure store),
+ * unless the source still waits for its secret to be migrated there. An
+ * add-on keeps its manifest summary, which holds nothing secret.
  */
 export function persistableSource(source: PlaylistSource, keepPlainSecret: boolean): PlaylistSource {
   if (keepPlainSecret) return source
-  if (source.type === 'xtream') {
-    const { username: _username, password: _password, ...safe } = source
-    return safe
+  switch (source.type) {
+    case 'xtream': {
+      const { username: _username, password: _password, ...safe } = source
+      return safe
+    }
+    case 'm3u_url':
+    case 'addon': {
+      const { url: _url, ...safe } = source
+      return safe
+    }
+    case 'm3u_file':
+      return source
   }
-  if (source.type === 'm3u_url') {
-    const { url: _url, ...safe } = source
-    return safe
-  }
-  return source
 }
 
 function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
@@ -117,6 +149,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
   sources: [],
   activeSourceId: null,
   xtreamAuth: {},
+  addonSessions: {},
   credentialsHydrated: false,
   isLoading: false,
   error: null,
@@ -142,7 +175,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     set((state) => {
       const nextSources = state.sources.filter((s) => s.id !== id)
       const nextActiveSourceId =
-        state.activeSourceId === id ? (nextSources[0]?.id ?? null) : state.activeSourceId
+        state.activeSourceId === id ? (nextSources.find(canBeActiveSource)?.id ?? null) : state.activeSourceId
 
       const auth = { ...state.xtreamAuth }
       delete auth[id]
@@ -151,6 +184,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
         sources: nextSources,
         activeSourceId: nextActiveSourceId,
         xtreamAuth: auth,
+        addonSessions: withoutKey(state.addonSessions, id),
         sourceErrors: withoutKey(state.sourceErrors, id),
         legacySecretSourceIds: state.legacySecretSourceIds.includes(id)
           ? state.legacySecretSourceIds.filter((sourceId) => sourceId !== id)
@@ -160,25 +194,41 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
 
   setActiveSource: (id) => set({ activeSourceId: id }),
 
+  setAddonSession: (sourceId, session) =>
+    set((state) => {
+      if (!session) return sourceId in state.addonSessions ? { addonSessions: withoutKey(state.addonSessions, sourceId) } : state
+      return {
+        addonSessions: { ...state.addonSessions, [sourceId]: session },
+        sourceErrors: withoutKey(state.sourceErrors, sourceId)
+      }
+    }),
+
   setXtreamAuth: (sourceId, auth) =>
     set((state) => ({
       xtreamAuth: { ...state.xtreamAuth, [sourceId]: auth },
       sourceErrors: withoutKey(state.sourceErrors, sourceId)
     })),
 
-  hydrateSourceSecrets: ({ xtream, m3uUrls }) =>
+  hydrateSourceSecrets: ({ xtream, m3uUrls, addonUrls = {} }) =>
     set((state) => ({
       sources: state.sources.map((source) => {
-        if (source.type === 'xtream') {
-          const creds = xtream[source.id]
-          if (!creds) return source
-          return { ...source, url: creds.url, username: creds.username, password: creds.password }
+        switch (source.type) {
+          case 'xtream': {
+            const creds = xtream[source.id]
+            if (!creds) return source
+            return { ...source, url: creds.url, username: creds.username, password: creds.password }
+          }
+          case 'm3u_url': {
+            const url = m3uUrls[source.id]
+            return url ? { ...source, url } : source
+          }
+          case 'addon': {
+            const url = addonUrls[source.id]
+            return url ? { ...source, url } : source
+          }
+          case 'm3u_file':
+            return source
         }
-        if (source.type === 'm3u_url') {
-          const url = m3uUrls[source.id]
-          return url ? { ...source, url } : source
-        }
-        return source
       }),
       credentialsHydrated: true
     })),

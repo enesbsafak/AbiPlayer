@@ -55,12 +55,31 @@ export interface M3uPlaybackTarget {
   mediaType: M3uMediaType
 }
 
+/** The content types of an add-on's catalogue the app shows (films and series). */
+export type AddonContentType = 'movie' | 'series'
+
+/**
+ * A film or one series episode from an add-on (Stremio add-on protocol).
+ * `sourceId` is the catalogue add-on the item came from; the stream itself may
+ * come from any installed add-on. `videoId` is what the stream request takes:
+ * the meta id for a film, the episode's video id for a series. No URL: the
+ * chosen stream's URL lives only in the session's stream registry.
+ */
+export interface AddonPlaybackTarget {
+  kind: 'addon'
+  sourceId: string
+  contentType: AddonContentType
+  metaId: string
+  videoId: string
+}
+
 export type PlaybackTarget =
   | LivePlaybackTarget
   | MoviePlaybackTarget
   | EpisodePlaybackTarget
   | SeriesPlaybackTarget
   | M3uPlaybackTarget
+  | AddonPlaybackTarget
 
 export type PlayableTarget = Exclude<PlaybackTarget, SeriesPlaybackTarget>
 
@@ -75,12 +94,12 @@ export function isLiveTarget(target: PlaybackTarget): boolean {
   return target.kind === 'live' || (target.kind === 'm3u' && target.mediaType === 'live')
 }
 
-/** Films and episodes (Xtream or M3U) get watch progress and resume. */
+/** Films and episodes (Xtream, M3U or add-on) get watch progress and resume. */
 export function isTrackableTarget(target: PlaybackTarget): target is PlayableTarget {
   return isPlayableTarget(target) && !isLiveTarget(target)
 }
 
-const MEDIA_KEY_PATTERN = /^(live|movie|episode|series|m3u):[^:]*:[^:]+$/
+const MEDIA_KEY_PATTERN = /^(live|movie|episode|series|m3u|addon):[^:]*:[^:]+$/
 
 /**
  * Stable identity for history and resume: `<kind>:<sourceId>:<item id>`.
@@ -88,6 +107,7 @@ const MEDIA_KEY_PATTERN = /^(live|movie|episode|series|m3u):[^:]*:[^:]+$/
  * The source is part of the key, so two accounts on the same host never share
  * an entry. The container extension is not: the same film stays the same film
  * if the panel starts serving it as mkv instead of mp4. No URL, no credential.
+ * An add-on's video id is encoded like the source id (it commonly holds ':').
  */
 export function mediaKey(target: PlaybackTarget): string {
   const source = encodeURIComponent(target.sourceId)
@@ -100,6 +120,8 @@ export function mediaKey(target: PlaybackTarget): string {
       return `series:${source}:${target.seriesId}`
     case 'm3u':
       return `m3u:${source}:${target.entryId}`
+    case 'addon':
+      return `addon:${source}:${encodeURIComponent(target.videoId)}`
   }
 }
 
@@ -141,6 +163,8 @@ export interface CatalogItemIdentity {
   seriesId?: number
   containerExtension?: string
   streamUrl?: string
+  /** The meta id of an add-on catalogue item. */
+  addonMetaId?: string
 }
 
 function isUsableId(value: unknown): value is number {
@@ -153,12 +177,18 @@ function normalizeExtension(value: string | undefined): string {
 }
 
 /**
- * The target a catalog item plays. Xtream items are recognised by their
+ * The target a catalog item plays. Add-on items are recognised by their meta
+ * id: a film plays its meta id; an add-on series has no target of its own (its
+ * episodes come from its detail page). Xtream items are recognised by their
  * provider id (`streamId` for live and films, `seriesId` for a series); an item
  * without one is an M3U entry identified by its URL. Null when the item carries
- * neither.
+ * none of these.
  */
 export function targetFromCatalogItem(item: CatalogItemIdentity): PlaybackTarget | null {
+  if (item.addonMetaId !== undefined) {
+    if (item.type !== 'vod' || !isAddonId(item.addonMetaId)) return null
+    return addonTarget({ sourceId: item.sourceId, contentType: 'movie', metaId: item.addonMetaId })
+  }
   if (isUsableId(item.streamId)) {
     if (item.type === 'live') return { kind: 'live', sourceId: item.sourceId, streamId: item.streamId }
     if (item.type === 'vod') {
@@ -201,6 +231,38 @@ export function episodeTarget(input: EpisodeIdentity): EpisodePlaybackTarget {
     seriesId: optionalNumber(input.seriesId),
     season: optionalNumber(input.season),
     episode: optionalNumber(input.episode)
+  }
+}
+
+/** Longest add-on meta or video id accepted; real ones are short (`tt1234567:1:2`). */
+export const MAX_ADDON_ID_LENGTH = 512
+
+/** A non-empty add-on id without control characters and of sane length. */
+export function isAddonId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.trim().length > 0 &&
+    value.length <= MAX_ADDON_ID_LENGTH &&
+    // eslint-disable-next-line no-control-regex
+    !/[\u0000-\u001f\u007f]/.test(value)
+  )
+}
+
+export interface AddonTargetInput {
+  sourceId: string
+  contentType: AddonContentType
+  metaId: string
+  /** Defaults to the meta id (a film). */
+  videoId?: string
+}
+
+export function addonTarget(input: AddonTargetInput): AddonPlaybackTarget {
+  return {
+    kind: 'addon',
+    sourceId: input.sourceId,
+    contentType: input.contentType,
+    metaId: input.metaId,
+    videoId: input.videoId ?? input.metaId
   }
 }
 
@@ -254,6 +316,12 @@ export function sanitizePlaybackTarget(raw: unknown): PlaybackTarget | null {
       if (typeof raw.entryId !== 'string' || !/^[0-9a-f]{6,32}$/.test(raw.entryId)) return null
       if (mediaType !== 'live' && mediaType !== 'vod' && mediaType !== 'series') return null
       return { kind: 'm3u', sourceId, entryId: raw.entryId, mediaType }
+    }
+    case 'addon': {
+      const contentType = raw.contentType
+      if (contentType !== 'movie' && contentType !== 'series') return null
+      if (!isAddonId(raw.metaId) || !isAddonId(raw.videoId)) return null
+      return addonTarget({ sourceId, contentType, metaId: raw.metaId, videoId: raw.videoId })
     }
     default:
       return null

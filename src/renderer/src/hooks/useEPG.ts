@@ -23,11 +23,17 @@ export function epgRefreshMs(minutes: number | undefined): number {
 
 /** Where a source's guide comes from: the panel's XMLTV, or the playlist header's `url-tvg`. */
 export function epgUrlFor(source: PlaylistSource): string | null {
-  if (source.type === 'xtream') {
-    if (!source.url || !source.username || !source.password) return null
-    return xtreamApi.buildEpgUrl({ url: source.url, username: source.username, password: source.password })
+  switch (source.type) {
+    case 'xtream':
+      if (!source.url || !source.username || !source.password) return null
+      return xtreamApi.buildEpgUrl({ url: source.url, username: source.username, password: source.password })
+    case 'm3u_url':
+    case 'm3u_file':
+      return sourceEpgUrl(source.id)
+    case 'addon':
+      // Add-ons carry no TV guide (live TV from add-ons is not offered).
+      return null
   }
-  return sourceEpgUrl(source.id)
 }
 
 export interface EpgLoaderDeps {

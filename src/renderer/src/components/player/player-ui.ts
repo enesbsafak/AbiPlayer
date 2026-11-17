@@ -105,7 +105,13 @@ export function playerTone(playback: CurrentPlayback | null, channel: Channel | 
   const target = playback?.target
   if (target) {
     if (target.kind === 'live' || (target.kind === 'm3u' && target.mediaType === 'live')) return 'coral'
-    if (target.kind === 'episode' || (target.kind === 'm3u' && target.mediaType === 'series')) return 'sky'
+    if (
+      target.kind === 'episode' ||
+      (target.kind === 'm3u' && target.mediaType === 'series') ||
+      (target.kind === 'addon' && target.contentType === 'series')
+    ) {
+      return 'sky'
+    }
     return 'mint'
   }
   if (channel?.type === 'live') return 'coral'

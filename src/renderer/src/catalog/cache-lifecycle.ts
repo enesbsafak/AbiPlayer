@@ -11,6 +11,9 @@ import { setCacheKeyPending } from './cache-key'
 import { CATALOG_TYPES } from './types'
 import { ingestDropped, ingestFromCache, ingestM3uText, ingestM3uUrl, sourceIdentity, type IngestOutcome } from './worker-ingest'
 import { strings } from '@/strings'
+import { refreshAddonSource } from '@/addons/connect'
+import { addonCatalogPager } from '@/addons/pager'
+import { forgetAddonStreams } from '@/addons/stream-registry'
 
 /*
  * The disk cache's place in the app's life:
@@ -25,6 +28,10 @@ import { strings } from '@/strings'
  * - A removed source is dropped from disk (and late writes for it are
  *   refused); with no source left the database is emptied.
  * - Lists older than `catalogMaxAgeMs` are refreshed while the app is open.
+ * - Add-on sources have no disk cache and no complete lists: their catalogue
+ *   pages are fetched when a category is opened and live in memory only
+ *   (`hasDiskCache`). A removed add-on's paging and chosen streams are
+ *   forgotten here.
  * - The cache key lives in the encrypted credential file. When that file
  *   could not be read at start (no key then) or was lost and replaced (a new
  *   key: what the old one sealed is unreadable and dropped on read), the key
@@ -74,6 +81,11 @@ export function useCatalogCacheSettled(sourceId: string | null): boolean {
 
 function worker(): CatalogWorkerClient {
   return catalogWorker()
+}
+
+/** Whether the source's lists are kept in the disk cache: every source but an add-on. */
+export function hasDiskCache(source: PlaylistSource): boolean {
+  return source.type !== 'addon'
 }
 
 async function loadSourceCache(source: PlaylistSource, store: CatalogStore = catalog): Promise<IngestOutcome | null> {
@@ -136,7 +148,7 @@ function start(): void {
 
   // Mark first, synchronously: the home page must not start a preview for a
   // source whose cache is about to be read.
-  const toLoad = sources.filter((source) => source.type !== 'xtream' || source.id === activeSourceId)
+  const toLoad = sources.filter((source) => hasDiskCache(source) && (source.type !== 'xtream' || source.id === activeSourceId))
   for (const source of toLoad) if (sourceIdentity(source)) setLoadState(source.id, 'loading')
 
   const keyHandedOver = handOverCacheKey(client)
@@ -165,6 +177,8 @@ function refreshOldLists(): void {
   const now = Date.now()
   const state = useStore.getState()
   for (const source of state.sources) {
+    // Add-on pages are never complete lists: nothing of theirs ages.
+    if (!hasDiskCache(source)) continue
     const statuses = CATALOG_TYPES.map((type) => catalog.getStatus(source.id, type))
     const old = statuses.some((status) => status?.complete && !status.syncing && status.fetchedAt && now - status.fetchedAt > catalogMaxAgeMs)
     if (!old) continue
@@ -197,6 +211,10 @@ export function watchCatalogCache(): void {
         if (remaining.has(source.id)) continue
         loadStates.delete(source.id)
         forgetSourceMeta(source.id)
+        if (source.type === 'addon') {
+          addonCatalogPager.reset(source.id)
+          forgetAddonStreams(source.id)
+        }
         // Writes fetched at this revision or before are refused from now on.
         void worker()
           .run({ kind: 'cache-drop', sourceId: source.id, revision: catalog.getSourceRevision(source.id) })
@@ -212,6 +230,7 @@ export function watchCatalogCache(): void {
       const before = new Map(previous.sources.map((source) => [source.id, source]))
       for (const source of previous.credentialsHydrated ? state.sources : []) {
         const earlier = before.get(source.id)
+        // `sourceIdentity` is null for an add-on: it never has a cache to read.
         if (!earlier || sourceIdentity(earlier) || !sourceIdentity(source)) continue
         if (source.type === 'xtream' && source.id !== state.activeSourceId) continue
         loadStates.delete(source.id)
@@ -229,8 +248,10 @@ export function watchCatalogCache(): void {
 /**
  * Reloads a source's catalog from the provider, keeping what is shown until
  * the fresh lists are complete: Xtream lists are downloaded again, an M3U
- * playlist is fetched (or its file read) again. For the certificate-trust
- * flow and the catalog banners. Rejects with a user-facing error.
+ * playlist is fetched (or its file read) again, an add-on's manifest is
+ * fetched again (its categories follow it; pages that failed may be asked
+ * for again). For the certificate-trust flow and the catalog banners.
+ * Rejects with a user-facing error.
  */
 export async function reloadSourceCatalog(sourceId: string, options: { onlyStale?: boolean } = {}): Promise<void> {
   const state = useStore.getState()
@@ -241,6 +262,17 @@ export async function reloadSourceCatalog(sourceId: string, options: { onlyStale
     if (!creds) throw new Error(strings.sources.connect.missingCredentials)
     // `onlyStale`: lists that are complete and fresh from the provider stay.
     await ensureStagedSync(sourceId, 'live', creds, { refresh: !options.onlyStale })
+    return
+  }
+  if (source.type === 'addon') {
+    if (!source.url) throw new Error(strings.sources.connect.missingAddonUrl)
+    const { session } = await refreshAddonSource(
+      source,
+      { updateSummary: (id, summary) => useStore.getState().updateSource(id, { addon: summary }) },
+      { strict: true }
+    )
+    addonCatalogPager.clearErrors(sourceId)
+    useStore.getState().setAddonSession(sourceId, session)
     return
   }
   let outcome: IngestOutcome
@@ -282,7 +314,9 @@ export function discardSourceCatalog(sourceId: string): void {
 export function reloadAfterCertificateTrust(sourceId: string): Promise<void> {
   const source = useStore.getState().sources.find((item) => item.id === sourceId)
   if (!source) return Promise.resolve()
-  if (source.type !== 'xtream') {
+  // An add-on not connected yet is connected by the reconnect itself.
+  if (source.type === 'addon' && !useStore.getState().addonSessions[sourceId]) return Promise.resolve()
+  if (source.type === 'm3u_url' || source.type === 'm3u_file') {
     const connected = CATALOG_TYPES.some((type) => {
       const status = catalog.getStatus(sourceId, type)
       return !!status?.loaded && !status.fromCache
