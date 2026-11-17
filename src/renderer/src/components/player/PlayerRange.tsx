@@ -4,9 +4,11 @@ interface PlayerRangeProps extends Omit<InputHTMLAttributes<HTMLInputElement>, '
   value: number
   min: number
   max: number
-  /** Height of the bar in px: 12 for the seek bar, 8 for volume and settings. */
-  thickness?: number
-  /** Classes of the outer box (its width, its flex share). */
+  /**
+   * Classes of the outer box (its width, its flex share). The box is 28 px
+   * tall around an 8 px bar; negative vertical margins let a bar take only its
+   * own height in a layout while keeping the 28 px to grab.
+   */
   className?: string
   /** The fill: sun (progress, volume) or a section colour class. */
   fillClassName?: string
@@ -15,14 +17,13 @@ interface PlayerRangeProps extends Omit<InputHTMLAttributes<HTMLInputElement>, '
 /**
  * A thick, fully rounded bar with a flat fill, drawn behind a native range
  * input that keeps the slider role, the keyboard, the pointer handling and
- * the focus ring. The input spans the whole bar, so a click lands where it
+ * the focus ring. The input spans the whole box, so a click lands where it
  * looks like it does.
  */
 export function PlayerRange({
   value,
   min,
   max,
-  thickness = 8,
   className = '',
   fillClassName = 'bg-sun',
   ...inputProps
@@ -34,8 +35,7 @@ export function PlayerRange({
     <div className={`relative flex h-7 min-w-0 items-center ${className}`}>
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 overflow-hidden rounded-full bg-white/20"
-        style={{ height: thickness }}
+        className="pointer-events-none absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full bg-white/20"
       >
         <div className={`h-full rounded-full ${fillClassName}`} style={{ width: `${share * 100}%` }} />
       </div>

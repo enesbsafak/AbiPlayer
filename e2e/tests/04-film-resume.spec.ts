@@ -96,6 +96,7 @@ test.describe('film ve kaldığı yerden devam', () => {
     // F1-08: clicking the seek bar focuses a range input; shortcuts must keep working.
     // Clicked where its thumb already is, so the click is a seek to about here.
     await revealPlayerControls(page)
+    await app.shot('film-dock')
     const scrubber = page.getByRole('slider', { name: 'Oynatma ilerlemesi' })
     const box = (await scrubber.boundingBox())!
     const now = Number(await scrubber.getAttribute('aria-valuenow'))

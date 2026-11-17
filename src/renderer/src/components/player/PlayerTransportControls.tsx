@@ -11,12 +11,12 @@ const text = strings.player.transport
 const SEEK_BACK_LABEL = text.seekBack
 const SEEK_FORWARD_LABEL = text.seekForward
 
-/** The one white control of the player: play / pause. */
-const PLAY_SIZE: Record<DockSize, string> = {
-  l: 'size-16',
-  m: 'size-16',
-  s: 'size-14',
-  xs: 'size-[52px]'
+/** The one white control of the player: play / pause, a step larger than the round buttons beside it. */
+const PLAY_SIZE: Record<DockSize, { round: string; glyph: number }> = {
+  l: { round: 'size-[52px]', glyph: 24 },
+  m: { round: 'size-[52px]', glyph: 24 },
+  s: { round: 'size-[52px]', glyph: 24 },
+  xs: { round: 'size-12', glyph: 22 }
 }
 
 function PauseGlyph({ size }: { size: number }) {
@@ -49,9 +49,9 @@ function VolumeControl({ isMuted, volume, onToggleMute, onVolumeChange }: Volume
         aria-label={muteLabel}
       >
         {isMuted || volume === 0 ? (
-          <VolumeX size={22} strokeWidth={2.4} aria-hidden="true" />
+          <VolumeX size={CONTROL_SIZE[size].icon} strokeWidth={2.4} aria-hidden="true" />
         ) : (
-          <Volume2 size={22} strokeWidth={2.4} aria-hidden="true" />
+          <Volume2 size={CONTROL_SIZE[size].icon} strokeWidth={2.4} aria-hidden="true" />
         )}
       </button>
       {/* In the narrowest dock the mute button (and the arrow keys) stay; the slider goes. */}
@@ -151,11 +151,11 @@ export function PlayerTransportControls({
       <button
         type="button"
         onClick={onTogglePlay}
-        className={`mx-1 flex ${PLAY_SIZE[size]} shrink-0 items-center justify-center rounded-full bg-white text-ink transition-colors hover:bg-surface-300`}
+        className={`mx-1 flex ${PLAY_SIZE[size].round} shrink-0 items-center justify-center rounded-full bg-white text-ink transition-colors hover:bg-surface-300`}
         title={text.playPauseTitle}
         aria-label={playLabel}
       >
-        {showsPlay ? <PlayIcon size={26} /> : <PauseGlyph size={26} />}
+        {showsPlay ? <PlayIcon size={PLAY_SIZE[size].glyph} /> : <PauseGlyph size={PLAY_SIZE[size].glyph} />}
       </button>
 
       {!isLive && (

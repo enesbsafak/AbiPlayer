@@ -12,26 +12,30 @@ import { minutesLeft, onAirFor, programmeShare, useChannelNumber, useSourceGuide
 const text = strings.player
 const dock = strings.player.dock
 
-/** The number fits its 72 px tile at any length: longer numbers get a smaller face. */
+/** The number fits its 48 px tile at any length: longer numbers get a smaller face. */
 function numberSize(digits: number): string {
-  if (digits <= 2) return 'text-[44px] short:text-[34px]'
-  if (digits === 3) return 'text-[34px] short:text-[26px]'
-  if (digits === 4) return 'text-[26px] short:text-[20px]'
-  return 'text-[21px] short:text-[16px]'
+  if (digits <= 2) return 'text-[28px]'
+  if (digits === 3) return 'text-[22px]'
+  if (digits === 4) return 'text-[17px]'
+  return 'text-[14px]'
 }
 
-/** The title line of the banner: the display face, one line. */
-const BANNER_TITLE = 'font-title min-w-0 truncate pb-0.5 text-[40px] leading-[1.1] short:text-[28px]'
+/** The title of the banner: the display face, one 30 px line. */
+const BANNER_TITLE = 'font-title min-w-0 truncate text-[24px] leading-[30px]'
+
+/** The smaller text beside the title and on the line under it. */
+const DETAIL = 'text-[15px]'
 
 interface LiveBannerProps {
   onJumpToLive: () => void
 }
 
 /**
- * Live TV: the channel's number in a coral tile, its name and the "Canlı"
- * mark (which takes you back to the live edge once you have fallen behind),
- * and, when the guide knows the channel, the programme on air with its times,
- * a thick progress bar, and what comes next.
+ * Live TV: the channel's number in a coral tile; beside it the programme on
+ * air (else the channel's name) with what comes next at the far end, and
+ * under it the channel, the "Canlı" mark (which takes you back to the live
+ * edge once you have fallen behind) and, when the guide knows the channel,
+ * the programme's times with a progress bar.
  */
 export function LiveBanner({ onJumpToLive }: LiveBannerProps) {
   const channel = useStore((s) => s.currentChannel)
@@ -53,24 +57,35 @@ export function LiveBanner({ onJumpToLive }: LiveBannerProps) {
   const share = onAir ? programmeShare(onAir, now) : 0
   const percent = Math.round(share * 100)
   const smallLine = onAir ? channel.name : channel.categoryName
+  const title = onAir ? onAir.title : channel.name
 
   return (
-    <div className="flex min-w-0 items-center gap-[18px] short:gap-3.5">
-      <div className="flex h-[72px] min-w-[72px] shrink-0 items-center justify-center rounded-[22px] bg-coral px-2 text-ink short:h-14 short:min-w-14 short:rounded-[18px]">
+    <div className="flex min-w-0 items-center gap-3.5">
+      <div className="flex h-12 min-w-12 shrink-0 items-center justify-center rounded-2xl bg-coral px-1.5 text-ink">
         {number !== null ? (
           <span className={`font-title tabular-nums ${numberSize(String(number).length)}`}>{number}</span>
         ) : (
-          <LiveIcon size={34} />
+          <LiveIcon size={24} />
         )}
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-1 short:gap-0.5">
-        <div className="flex min-w-0 items-center gap-2.5">
-          {smallLine && <p className="min-w-0 truncate text-[17px] font-bold short:text-[15px]">{smallLine}</p>}
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex min-w-0 items-baseline gap-4">
+          <p className={`${BANNER_TITLE} flex-1`} title={title}>
+            {title}
+          </p>
+          {next && (size === 'l' || size === 'm') && (
+            <p className={`max-w-[320px] shrink-0 truncate text-surface-500 ${DETAIL}`} title={next.title}>
+              {dock.upNext(formatClockTime(next.start), next.title)}
+            </p>
+          )}
+        </div>
+        <div className={`flex min-w-0 items-center gap-3 ${DETAIL}`}>
+          {smallLine && <p className="min-w-0 truncate font-bold">{smallLine}</p>}
           <button
             type="button"
             onClick={onJumpToLive}
-            className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full pl-2.5 pr-3 text-[14px] font-bold transition-colors ${
+            className={`flex h-7 shrink-0 items-center gap-1.5 rounded-full pl-2.5 pr-3 text-[14px] font-bold transition-colors ${
               isBehindLive ? 'border-2 border-white/50 text-white hover:border-white' : 'bg-coral text-ink'
             }`}
             title={liveLabel}
@@ -79,44 +94,39 @@ export function LiveBanner({ onJumpToLive }: LiveBannerProps) {
             <span aria-hidden="true" className={`size-2 rounded-full ${isBehindLive ? 'bg-white' : 'bg-ink'}`} />
             {isBehindLive ? text.transport.jumpToLive : text.transport.liveBadge}
           </button>
+          {onAir && (
+            <>
+              <span className="shrink-0 font-bold tabular-nums">{formatClockTime(onAir.start)}</span>
+              <div
+                role="img"
+                aria-label={dock.programmeProgress(percent)}
+                className="h-2 min-w-[48px] max-w-[460px] flex-1 overflow-hidden rounded-full bg-white/20"
+              >
+                <div className="h-full rounded-full bg-coral" style={{ width: `${percent}%` }} />
+              </div>
+              <span className="shrink-0 font-bold tabular-nums">{formatClockTime(onAir.end)}</span>
+              <span className="min-w-0 truncate tabular-nums text-surface-500">{dock.minutesLeft(minutesLeft(onAir, now))}</span>
+            </>
+          )}
         </div>
-        <p className={BANNER_TITLE} title={onAir ? onAir.title : channel.name}>
-          {onAir ? onAir.title : channel.name}
-        </p>
-        {onAir && (
-          <div className="mt-0.5 flex min-w-0 items-center gap-3 text-[15px] tabular-nums">
-            <span className="shrink-0 font-bold">{formatClockTime(onAir.start)}</span>
-            <div
-              role="img"
-              aria-label={dock.programmeProgress(percent)}
-              className="h-3 min-w-[48px] max-w-[460px] flex-1 overflow-hidden rounded-full bg-white/20"
-            >
-              <div className="h-full rounded-full bg-coral" style={{ width: `${percent}%` }} />
-            </div>
-            <span className="shrink-0 font-bold">{formatClockTime(onAir.end)}</span>
-            <span className="min-w-0 truncate text-surface-500">{dock.minutesLeft(minutesLeft(onAir, now))}</span>
-          </div>
-        )}
       </div>
-
-      {next && (size === 'l' || size === 'm') && (
-        <div className="flex w-60 shrink-0 flex-col gap-1 rounded-card bg-raised px-[18px] py-3.5 short:py-2.5">
-          <p className="text-[14px] font-medium tabular-nums text-surface-500">{dock.upNext(formatClockTime(next.start))}</p>
-          <p className="truncate text-[17px] font-bold" title={next.title}>{next.title}</p>
-        </div>
-      )}
     </div>
   )
 }
 
 interface ProgressScrubberProps {
+  name: string
   currentTime: number
   duration: number
   playbackEngine: string
   video: HTMLVideoElement | null
 }
 
-function ProgressScrubber({ currentTime, duration, playbackEngine, video }: ProgressScrubberProps) {
+/**
+ * The title line with the position, the length and the time left at its end
+ * (the dragged time while the bar is held), then the seek bar.
+ */
+function ProgressScrubber({ name, currentTime, duration, playbackEngine, video }: ProgressScrubberProps) {
   const scrubber = useSeekScrubber(currentTime, (t) => {
     if (playbackEngine === 'mpv') {
       void mpvSeekTo(t).catch(() => undefined)
@@ -128,14 +138,24 @@ function ProgressScrubber({ currentTime, duration, playbackEngine, video }: Prog
   const remainingTime = Math.max(0, duration - shownTime)
 
   return (
-    <div className="flex min-w-0 items-center gap-3 text-[15px] tabular-nums">
-      <span className="shrink-0 font-bold">{formatTime(shownTime)}</span>
+    <>
+      <div className="flex min-w-0 items-baseline gap-3">
+        <p className={`${BANNER_TITLE} flex-1 pr-1`} title={name}>
+          {name}
+        </p>
+        <span className={`shrink-0 font-bold tabular-nums ${DETAIL}`}>
+          {formatTime(shownTime)} / {formatTime(duration)}
+        </span>
+        {isFinite(remainingTime) && (
+          <span className={`shrink-0 tabular-nums text-surface-500 ${DETAIL}`}>{dock.minutesLeft(Math.ceil(remainingTime / 60))}</span>
+        )}
+      </div>
+      {/* The bar takes only its 8 px in the dock; the input reaches 10 px into the gaps either side, so it is still 28 px to grab. */}
       <PlayerRange
         min={0}
         max={duration}
         value={shownTime}
-        thickness={12}
-        className="flex-1"
+        className="-my-2.5"
         onChange={(e) => scrubber.update(parseFloat(e.target.value))}
         onPointerUp={scrubber.commit}
         onPointerCancel={scrubber.commit}
@@ -146,9 +166,7 @@ function ProgressScrubber({ currentTime, duration, playbackEngine, video }: Prog
         aria-valuemax={Math.round(duration)}
         aria-valuenow={Math.round(shownTime)}
       />
-      <span className="shrink-0 font-bold">{formatTime(duration)}</span>
-      <span className="min-w-[92px] shrink-0 text-right text-surface-500">{dock.timeLeft(formatTime(remainingTime))}</span>
-    </div>
+    </>
   )
 }
 
@@ -156,7 +174,7 @@ interface MediaBannerProps {
   video: HTMLVideoElement | null
 }
 
-/** Films and episodes: the title, then position, the seek bar, the length and the time left. */
+/** Films and episodes: the title with the position, the length and the time left, then the seek bar. */
 export function MediaBanner({ video }: MediaBannerProps) {
   const channel = useStore((s) => s.currentChannel)
   const currentTime = useStore((s) => s.currentTime)
@@ -166,12 +184,19 @@ export function MediaBanner({ video }: MediaBannerProps) {
   if (!channel) return null
 
   return (
-    <div className="flex min-w-0 flex-col gap-1.5 px-1">
-      <p className={BANNER_TITLE} title={channel.name}>
-        {channel.name}
-      </p>
-      {duration > 0 && (
-        <ProgressScrubber currentTime={currentTime} duration={duration} playbackEngine={playbackEngine} video={video} />
+    <div className="flex min-w-0 flex-col gap-2 px-1">
+      {duration > 0 ? (
+        <ProgressScrubber
+          name={channel.name}
+          currentTime={currentTime}
+          duration={duration}
+          playbackEngine={playbackEngine}
+          video={video}
+        />
+      ) : (
+        <p className={BANNER_TITLE} title={channel.name}>
+          {channel.name}
+        </p>
       )}
     </div>
   )

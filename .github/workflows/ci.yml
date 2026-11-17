@@ -101,6 +101,19 @@ jobs:
           # e2e/.output is a dot folder, which upload-artifact v4 skips unless told.
           include-hidden-files: true
 
+      # The screenshots the scenarios take along the way, on every run: the
+      # way to look at a change in the real app without running it locally.
+      # They show the page only; mpv draws the picture in a layer underneath.
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-shots
+          path: e2e/.output/test-results/**/*.png
+          retention-days: 7
+          include-hidden-files: true
+          if-no-files-found: ignore
+
   packaged:
     name: Packaged app (smoke and end-to-end)
     needs: check

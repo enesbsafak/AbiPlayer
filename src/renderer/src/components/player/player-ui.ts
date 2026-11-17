@@ -30,15 +30,19 @@ export interface DockParts {
 }
 
 const GAP = 8
-/** Widths as the classes draw them; a picker pill at a typical value, not its cap. */
+/**
+ * Widths as the classes draw them; a picker pill at a typical value, not its
+ * cap. Play counts its 4 px margins, volume its 4 px margin, the gap and the slider.
+ */
 const PART_WIDTH: Record<DockSize, { step: number; play: number; volume: number; picker: number; list: number; round: number }> = {
-  l: { step: 128, play: 72, volume: 166, picker: 150, list: 176, round: 52 },
-  m: { step: 52, play: 72, volume: 166, picker: 132, list: 52, round: 52 },
-  s: { step: 48, play: 64, volume: 146, picker: 48, list: 48, round: 48 },
-  xs: { step: 44, play: 60, volume: 48, picker: 44, list: 44, round: 44 }
+  l: { step: 128, play: 60, volume: 158, picker: 150, list: 176, round: 44 },
+  m: { step: 44, play: 60, volume: 158, picker: 132, list: 44, round: 44 },
+  s: { step: 44, play: 60, volume: 142, picker: 44, list: 44, round: 44 },
+  xs: { step: 40, play: 56, volume: 44, picker: 40, list: 40, round: 40 }
 }
 
-function rowWidth(size: DockSize, parts: DockParts): number {
+/** The controls row's width at `size`, gaps included. Exported for its tests. */
+export function rowWidth(size: DockSize, parts: DockParts): number {
   const w = PART_WIDTH[size]
   const left = [w.step, w.step, w.play, w.volume, ...(parts.seeks ? [w.round, w.round] : [])]
   const right = [...Array<number>(parts.pickers).fill(w.picker), w.list, w.round, ...(parts.pip ? [w.round] : [])]
@@ -72,12 +76,12 @@ export function useDockLayout(): DockLayout {
   return useContext(DockLayoutContext)
 }
 
-/** Round buttons and pills share one height per dock size. */
+/** Round buttons and pills share one height per dock size: 44 px, 40 in the narrowest dock. */
 export const CONTROL_SIZE: Record<DockSize, { round: string; height: string; icon: number }> = {
-  l: { round: 'size-[52px]', height: 'h-[52px]', icon: 20 },
-  m: { round: 'size-[52px]', height: 'h-[52px]', icon: 20 },
-  s: { round: 'size-12', height: 'h-12', icon: 20 },
-  xs: { round: 'size-11', height: 'h-11', icon: 18 }
+  l: { round: 'size-11', height: 'h-11', icon: 20 },
+  m: { round: 'size-11', height: 'h-11', icon: 20 },
+  s: { round: 'size-11', height: 'h-11', icon: 20 },
+  xs: { round: 'size-10', height: 'h-10', icon: 18 }
 }
 
 /** The fill and text of something open, pressed or current: the section colour with ink. */

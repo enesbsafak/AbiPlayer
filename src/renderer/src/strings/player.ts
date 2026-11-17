@@ -30,9 +30,7 @@ export const player = {
   dock: {
     label: 'Oynatma',
     streamInfo: 'Yayın bilgisi',
-    /** Time left of a film or episode: "12:34 kaldı". */
-    timeLeft: (time: string) => `${time} kaldı`,
-    /** Time left of the programme on air, in whole minutes. */
+    /** Time left of a film, an episode or the programme on air, in whole minutes: "1 sa 15 dk kaldı". */
     minutesLeft: (minutes: number) => {
       if (minutes < 60) return `${minutes} dk kaldı`
       const hours = Math.floor(minutes / 60)
@@ -40,24 +38,8 @@ export const player = {
       return rest === 0 ? `${hours} sa kaldı` : `${hours} sa ${rest} dk kaldı`
     },
     programmeProgress: (percent: number) => `Programın yüzde ${percent} kadarı geçti`,
-    /** Over what is next in the guide: "Sırada · 21:00". */
-    upNext: (time: string) => `Sırada · ${time}`,
-    hintsLabel: 'Klavye ipuçları',
-    hints: {
-      spaceKey: 'Boşluk',
-      pause: 'duraklat',
-      seekKeys: 'Sol / Sağ',
-      seek: '10 saniye sar',
-      volumeKeys: 'Yukarı / Aşağı',
-      volume: 'ses',
-      listKey: 'L',
-      list: 'liste',
-      fullscreenKey: 'F',
-      fullscreen: 'tam ekran',
-      backKey: 'Esc',
-      back: 'geri dön',
-      autoHide: 'Fareyi oynatmazsan bu panel 3 saniyede gizlenir'
-    }
+    /** What is next in the guide, at the end of the title line: "Sırada 21:00 · Ana Haber". */
+    upNext: (time: string, title: string) => `Sırada ${time} · ${title}`
   },
 
   actions: {

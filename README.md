@@ -137,7 +137,7 @@ Hata bildirimleri bu aşamada kritik önemde. [Issue açarken](https://github.co
 | `M`                    | Sessize al                   |
 | `↑` / `↓`              | Ses seviyesi                 |
 | `←` / `→`              | Geri / ileri sarma           |
-| `L`                    | Canlı yayına dön             |
+| `L`                    | Kanal listesini aç / kapat   |
 | `Esc`                  | Tam ekrandan veya oynatıcıdan çık |
 | `Ctrl+K`               | Arama                        |
 

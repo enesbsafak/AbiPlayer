@@ -282,7 +282,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
 
       {/* Below the top row of the controls, centred over the picture (left of the list when it is open). */}
       <div
-        className="pointer-events-none absolute left-4 top-[84px] flex flex-col items-center gap-2 short:top-[76px]"
+        className="pointer-events-none absolute left-4 top-[76px] flex flex-col items-center gap-2 short:top-[68px]"
         style={{ right: (isPlayerSidebarOpen ? SIDEBAR_WIDTH : 0) + 16 }}
       >
         {resumedFrom !== null && (

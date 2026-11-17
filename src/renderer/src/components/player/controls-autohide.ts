@@ -5,7 +5,7 @@
  * nothing has happened for `CONTROLS_HIDE_DELAY_MS`. A hold keeps them up for
  * as long as it lasts (the pointer resting on them, a menu open, keyboard
  * focus inside them, the channel list open); the delay starts over when the
- * last hold ends. The strings promise this delay ("3 saniyede gizlenir").
+ * last hold ends.
  */
 
 export const CONTROLS_HIDE_DELAY_MS = 3000

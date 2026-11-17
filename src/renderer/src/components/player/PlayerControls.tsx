@@ -51,40 +51,6 @@ function useStreamBadge(): string | null {
   return inferContentQualityLabel(currentChannel)
 }
 
-function KeyHint({ keys, children }: { keys: string; children: string }) {
-  return (
-    <div className="flex items-center gap-2 whitespace-nowrap">
-      <kbd className="flex h-7 items-center rounded-[10px] border-b-[3px] border-deep bg-raised px-2.5 font-sans text-[13px] font-bold text-white">
-        {keys}
-      </kbd>
-      {children}
-    </div>
-  )
-}
-
-/**
- * Only in tall windows: below that the picture needs the room more than the
- * reminder. Every key listed is one the player's shortcut handler serves.
- */
-function KeyboardHints({ isLive, autoHides }: { isLive: boolean; autoHides: boolean }) {
-  const hints = dockText.hints
-  return (
-    <footer
-      aria-label={dockText.hintsLabel}
-      className="hidden flex-wrap items-center gap-x-3.5 gap-y-2 px-1 text-[14px] text-surface-500 [@media(min-height:1000px)]:flex"
-    >
-      <KeyHint keys={hints.spaceKey}>{hints.pause}</KeyHint>
-      {!isLive && <KeyHint keys={hints.seekKeys}>{hints.seek}</KeyHint>}
-      <KeyHint keys={hints.volumeKeys}>{hints.volume}</KeyHint>
-      <KeyHint keys={hints.listKey}>{hints.list}</KeyHint>
-      <KeyHint keys={hints.fullscreenKey}>{hints.fullscreen}</KeyHint>
-      <KeyHint keys={hints.backKey}>{hints.back}</KeyHint>
-      <div className="flex-1" />
-      {autoHides && <p className="whitespace-nowrap">{hints.autoHide}</p>}
-    </footer>
-  )
-}
-
 export function PlayerControls({ videoRef, onToggleFullscreen, onDockChange }: PlayerControlsProps) {
   const navigate = useNavigate()
   // Select individually — a bare `useStore()` re-renders these controls on
@@ -114,8 +80,8 @@ export function PlayerControls({ videoRef, onToggleFullscreen, onDockChange }: P
     onDockChange(dock)
     return () => onDockChange(null)
   }, [dock, onDockChange])
-  // The dock's padding is 16 px a side (12 in a short window): its inner width, rounded down.
-  const dockInnerWidth = Math.max(0, useElementWidth(dock) - 32)
+  // The dock's padding is 14 px a side: its inner width, rounded down.
+  const dockInnerWidth = Math.max(0, useElementWidth(dock) - 28)
   const isLive = currentChannel?.type === 'live'
   const isMpv = playbackEngine === 'mpv'
   const size = dockSizeFor(dockInnerWidth, {
@@ -250,10 +216,10 @@ export function PlayerControls({ videoRef, onToggleFullscreen, onDockChange }: P
           <button
             type="button"
             onClick={() => void leavePlayer()}
-            className={`pointer-events-auto flex h-[52px] shrink-0 items-center gap-2.5 rounded-full pl-[18px] pr-[22px] text-[16px] font-bold text-white transition-colors hover:bg-raised ${OVER_VIDEO}`}
+            className={`pointer-events-auto flex h-11 shrink-0 items-center gap-2 rounded-full pl-4 pr-5 text-[16px] font-bold text-white transition-colors hover:bg-raised ${OVER_VIDEO}`}
             title={text.actions.leaveTitle}
           >
-            <ArrowLeftIcon size={22} />
+            <ArrowLeftIcon size={20} />
             {text.actions.leaveLabel}
           </button>
           <div className="flex-1" />
@@ -273,7 +239,7 @@ export function PlayerControls({ videoRef, onToggleFullscreen, onDockChange }: P
           ref={setDock}
           data-player-controls
           aria-label={dockText.label}
-          className={`${COLUMN} flex flex-col gap-3 rounded-tile p-4 pb-3.5 short:gap-2.5 short:p-3 ${OVER_VIDEO}`}
+          className={`${COLUMN} flex flex-col gap-2 rounded-tile px-3.5 py-3 ${OVER_VIDEO}`}
           onDoubleClick={(event) => event.stopPropagation()}
         >
           {isLive ? <LiveBanner onJumpToLive={jumpToLive} /> : <MediaBanner video={video} />}
@@ -291,8 +257,6 @@ export function PlayerControls({ videoRef, onToggleFullscreen, onDockChange }: P
               onToggleFullscreen={onToggleFullscreen}
             />
           </div>
-
-          <KeyboardHints isLive={isLive} autoHides={!isPlayerSidebarOpen} />
         </section>
       </div>
     </DockLayoutContext.Provider>
