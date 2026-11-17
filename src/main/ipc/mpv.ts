@@ -7,6 +7,7 @@ import { sendEvent, type EventTarget } from './events'
 import type { IpcRegistrar } from './register'
 import { isValidFilePathArgument, type PickedFileRegistry } from './files'
 import { isValidVideoRect, videoMarginRatiosForRect } from '../mpv/video-rect'
+import { subtitleInsetRatio } from '../mpv/subtitle-position'
 import {
   clampNormalizedVolume,
   isValidMpvSubtitleStyle,
@@ -40,6 +41,7 @@ export type MpvControllerApi = Pick<
   | 'setPlaybackTuning'
   | 'setSubtitleStyle'
   | 'setVideoMarginRatio'
+  | 'setSubtitleInsetRatio'
   | 'setVideoRect'
   | 'getState'
   | 'subscribe'
@@ -339,6 +341,15 @@ export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDep
     const windowWidth = deps.getWindow(event.sender)?.getContentBounds().width ?? 0
     const ratio = windowWidth > 0 ? Math.max(0, pixels) / windowWidth : 0
     await controller.setVideoMarginRatio(ratio)
+  })
+
+  // Subtitles clear the player's controls: the renderer gives their height
+  // above the window's bottom edge in CSS pixels (0 while they are hidden),
+  // mpv wants a share of the window that hosts the video.
+  registrar.handle('mpv-set-subtitle-inset', async (event, bottom) => {
+    const pixels = requireFiniteNumber(bottom, mainStrings.invalid.subtitleInset)
+    const windowHeight = deps.getWindow(event.sender)?.getContentBounds().height ?? 0
+    await controller.setSubtitleInsetRatio(subtitleInsetRatio(pixels, windowHeight))
   })
 
   // The experimental corner player: the picture goes into a rectangle of the

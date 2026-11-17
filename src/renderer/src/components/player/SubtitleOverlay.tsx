@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useStore } from '@/store'
+import { overlaySubtitleBottom } from './subtitle-clearance'
 
 interface PlayerSize {
   width: number
@@ -8,9 +9,11 @@ interface PlayerSize {
 
 interface SubtitleOverlayProps {
   playerSize: PlayerSize
+  /** How far the shown controls reach above the player's bottom edge (CSS px); 0 while they are hidden. */
+  dockClearance: number
 }
 
-export function SubtitleOverlay({ playerSize }: SubtitleOverlayProps) {
+export function SubtitleOverlay({ playerSize, dockClearance }: SubtitleOverlayProps) {
   const activeSubtitleCues = useStore((s) => s.activeSubtitleCues)
   const currentSubtitleTrack = useStore((s) => s.currentSubtitleTrack)
   const subtitleFontSizeSetting = useStore((s) => s.settings.subtitleFontSize)
@@ -25,7 +28,7 @@ export function SubtitleOverlay({ playerSize }: SubtitleOverlayProps) {
   }, [playerSize.height, playerSize.width])
 
   const subtitleFontSize = Math.max(10, Math.round(subtitleFontSizeSetting * subtitleScale))
-  const subtitleBottomOffset = Math.max(44, Math.round(playerSize.height * 0.085))
+  const subtitleBottomOffset = overlaySubtitleBottom(playerSize.height, dockClearance)
   const subtitleHorizontalPadding = Math.max(12, Math.round(playerSize.width * 0.03))
 
   if (!currentSubtitleTrack) return null

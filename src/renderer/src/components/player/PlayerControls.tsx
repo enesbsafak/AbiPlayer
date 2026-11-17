@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { useMemo, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useState, type RefObject } from 'react'
 import { ArrowLeftIcon } from '@/components/ui/icons'
 import { useStore } from '@/store'
 import { PlayerActionControls } from './PlayerActionControls'
@@ -29,6 +29,8 @@ const dockText = strings.player.dock
 interface PlayerControlsProps {
   videoRef: RefObject<HTMLVideoElement | null>
   onToggleFullscreen: () => void
+  /** The dock element as it mounts and unmounts: subtitles are kept clear of it. */
+  onDockChange?: (dock: HTMLElement | null) => void
 }
 
 /** The dock is centred and stops growing past this: about 1.2 × its designed width. */
@@ -83,7 +85,7 @@ function KeyboardHints({ isLive, autoHides }: { isLive: boolean; autoHides: bool
   )
 }
 
-export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsProps) {
+export function PlayerControls({ videoRef, onToggleFullscreen, onDockChange }: PlayerControlsProps) {
   const navigate = useNavigate()
   // Select individually — a bare `useStore()` re-renders these controls on
   // every store write, and playback pushes time updates several times a second.
@@ -107,6 +109,11 @@ export function PlayerControls({ videoRef, onToggleFullscreen }: PlayerControlsP
   const hasQualityPicker = useStore((s) => s.videoQualityOptions.length > 0)
 
   const [dock, setDock] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    if (!onDockChange) return
+    onDockChange(dock)
+    return () => onDockChange(null)
+  }, [dock, onDockChange])
   // The dock's padding is 16 px a side (12 in a short window): its inner width, rounded down.
   const dockInnerWidth = Math.max(0, useElementWidth(dock) - 32)
   const isLive = currentChannel?.type === 'live'

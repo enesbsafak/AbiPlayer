@@ -249,30 +249,53 @@ function parseCssColor(input: string): { r: number; g: number; b: number; a: num
   return { r, g, b, a }
 }
 
+/**
+ * A CSS colour as mpv writes one: `#RRGGBB`, or with alpha `#AARRGGBB`. The
+ * alpha comes first; written last (`#000000BF`), mpv read a 75 % black as a
+ * fully transparent blue.
+ */
 export function toMpvColor(input: string, includeAlpha: boolean, fallback: string): string {
   const color = parseCssColor(input)
   if (!color) return fallback
 
   const toHex = (value: number) => value.toString(16).padStart(2, '0').toUpperCase()
-  const base = `#${toHex(color.r)}${toHex(color.g)}${toHex(color.b)}`
-  if (!includeAlpha) return base
-  return `${base}${toHex(Math.round(color.a * 255))}`
+  const rgb = `${toHex(color.r)}${toHex(color.g)}${toHex(color.b)}`
+  if (!includeAlpha) return `#${rgb}`
+  return `#${toHex(Math.round(color.a * 255))}${rgb}`
 }
 
-/** The mpv properties that render the app's subtitle style. */
+/** Space between the text and the edge of its background box, in mpv's scaled pixels. */
+const SUBTITLE_BOX_PADDING = 6
+/** Outline of subtitles drawn without a background, in mpv's scaled pixels. */
+const SUBTITLE_OUTLINE_SIZE = 2.4
+
+/**
+ * The mpv properties that render the app's subtitle style.
+ *
+ * mpv draws the background only with `sub-border-style=background-box`; in the
+ * default style `sub-back-color` is the colour of a shadow, which at offset 0
+ * is not drawn at all. With the box, `sub-shadow-offset` is its padding. A
+ * fully transparent background gets a black outline instead, so the text stays
+ * readable over a bright picture.
+ *
+ * The size is one number: `sub-font-size` follows the setting and `sub-scale`
+ * stays 1. Both used to grow with the setting, so the largest size came out
+ * four times the default instead of twice.
+ */
 export function subtitleStyleProperties(style: MpvSubtitleStyle): Array<[string, unknown]> {
   const fontSize = Math.max(10, Math.min(96, Math.round(style.fontSize)))
-  const subtitleScale = Math.max(0.5, Math.min(3, fontSize / 24))
   const mpvFontSize = Math.max(14, Math.round(fontSize * 2.2))
+  const hasBackground = (parseCssColor(style.background)?.a ?? 0.75) > 0.01
 
   return [
     ['sub-ass-override', 'force'],
-    ['sub-scale', subtitleScale],
+    ['sub-scale', 1],
     ['sub-font-size', mpvFontSize],
     ['sub-color', toMpvColor(style.color, false, '#FFFFFF')],
-    ['sub-back-color', toMpvColor(style.background, true, '#000000BF')],
-    ['sub-border-size', 0],
-    ['sub-shadow-offset', 0],
-    ['sub-border-color', '#00000000']
+    ['sub-border-style', hasBackground ? 'background-box' : 'outline-and-shadow'],
+    ['sub-back-color', toMpvColor(style.background, true, '#BF000000')],
+    ['sub-shadow-offset', hasBackground ? SUBTITLE_BOX_PADDING : 0],
+    ['sub-border-size', hasBackground ? 0 : SUBTITLE_OUTLINE_SIZE],
+    ['sub-border-color', hasBackground ? '#00000000' : '#FF000000']
   ]
 }

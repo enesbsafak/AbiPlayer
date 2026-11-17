@@ -13,6 +13,7 @@ import { buildMpvLaunchArgs, createMpvSocketPath, hwdecValue } from './mpv/args'
 import { resolveMpvBinary } from './mpv/binary'
 import { perfMark } from './perf'
 import { NO_VIDEO_MARGINS, type VideoMarginRatios } from './mpv/video-rect'
+import { MAX_SUBTITLE_INSET_RATIO, subtitlePositionProperties } from './mpv/subtitle-position'
 import {
   connectMpvSocket,
   spawnMpvProcess,
@@ -157,6 +158,8 @@ export class MpvController {
   private videoMarginRatio = 0
   /** The picture is confined to a rectangle (corner player); overrides the right margin. */
   private videoRect: VideoMarginRatios | null = null
+  /** How far subtitles are lifted (fraction of the window height): the player's controls are up. */
+  private subtitleInsetRatio = 0
 
   private playback: Playback | null = null
   private loadSeq = 0
@@ -483,6 +486,15 @@ export class MpvController {
     await this.syncDurable()
   }
 
+  /**
+   * Lifts subtitles by `ratio` of the window height, so they sit above the
+   * player's controls while those are shown; 0 puts them back.
+   */
+  async setSubtitleInsetRatio(ratio: number): Promise<void> {
+    this.subtitleInsetRatio = Number.isFinite(ratio) ? Math.max(0, Math.min(MAX_SUBTITLE_INSET_RATIO, ratio)) : 0
+    await this.syncDurable()
+  }
+
   async setAudioPassthrough(enabled: boolean): Promise<void> {
     if (this.audioPassthrough === enabled) return
     this.audioPassthrough = enabled
@@ -583,6 +595,7 @@ export class MpvController {
         ['video-margin-ratio-right', 0],
         ['video-margin-ratio-top', 0],
         ['video-margin-ratio-bottom', 0],
+        ...subtitlePositionProperties(0),
         ...tuningProperties(DEFAULT_TUNING)
       ],
       spawn: this.deps.spawn,
@@ -700,7 +713,8 @@ export class MpvController {
       ['video-margin-ratio-right', rect.right],
       ['video-margin-ratio-top', rect.top],
       ['video-margin-ratio-bottom', rect.bottom],
-      ...subtitleStyleProperties(this.subtitleStyle)
+      ...subtitleStyleProperties(this.subtitleStyle),
+      ...subtitlePositionProperties(this.subtitleInsetRatio)
     ]
     if (this.volume !== null) properties.push(['volume', this.volume])
     if (this.muted !== null) properties.push(['mute', this.muted])

@@ -70,7 +70,35 @@ describe('subtitleStyleProperties', () => {
       subtitleStyleProperties({ fontSize: 24, color: '#fff', background: 'rgba(0,0,0,0.5)' })
     )
     expect(properties.get('sub-color')).toBe('#FFFFFF')
-    expect(properties.get('sub-back-color')).toBe('#00000080')
+    // mpv's order: alpha first.
+    expect(properties.get('sub-back-color')).toBe('#80000000')
     expect(properties.get('sub-scale')).toBe(1)
+  })
+
+  it('draws the background as a box, which is the only style mpv fills it in', () => {
+    const properties = new Map(
+      subtitleStyleProperties({ fontSize: 24, color: '#ffffff', background: 'rgba(0,0,0,0.75)' })
+    )
+    expect(properties.get('sub-border-style')).toBe('background-box')
+    expect(properties.get('sub-back-color')).toBe('#BF000000')
+    expect(properties.get('sub-shadow-offset')).toBeGreaterThan(0)
+    expect(properties.get('sub-border-size')).toBe(0)
+  })
+
+  it('outlines the text in black when the background is fully transparent', () => {
+    const properties = new Map(
+      subtitleStyleProperties({ fontSize: 24, color: '#ffffff', background: 'rgba(0,0,0,0.00)' })
+    )
+    expect(properties.get('sub-border-style')).toBe('outline-and-shadow')
+    expect(properties.get('sub-border-size')).toBeGreaterThan(0)
+    expect(properties.get('sub-border-color')).toBe('#FF000000')
+    expect(properties.get('sub-shadow-offset')).toBe(0)
+  })
+
+  it('grows with the size setting once: the font size follows it, the scale stays 1', () => {
+    const at = (fontSize: number) =>
+      new Map(subtitleStyleProperties({ fontSize, color: '#ffffff', background: 'rgba(0,0,0,0.75)' }))
+    expect(at(48).get('sub-scale')).toBe(1)
+    expect(at(48).get('sub-font-size')).toBe(2 * (at(24).get('sub-font-size') as number))
   })
 })

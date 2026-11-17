@@ -4,6 +4,8 @@ import { usePlayer } from '@/hooks/usePlayer'
 import { useMpvPlayer, type MpvPlayerOptions } from '@/hooks/useMpvPlayer'
 import { shouldKeepPlayingInCorner } from '@/store/player-slice'
 import { useKeepDisplayAwake } from '@/hooks/useKeepDisplayAwake'
+import { useControlsAutoHide } from '@/hooks/useControlsAutoHide'
+import { useDockClearance } from '@/hooks/useDockClearance'
 import { useResumePlayback } from '@/hooks/useResumePlayback'
 import { PlayerControls, formatTime } from './PlayerControls'
 import { PlayerSidebar, SIDEBAR_WIDTH } from './PlayerSidebar'
@@ -12,7 +14,7 @@ import { OVER_VIDEO } from './player-ui'
 import { Spinner } from '@/components/ui/Spinner'
 import { CloseIcon } from '@/components/ui/icons'
 import { AlertCircle, Info, RefreshCw, RotateCcw } from 'lucide-react'
-import { mpvIsAvailable, mpvSetFullscreen, windowSetFullscreen } from '@/services/platform'
+import { mpvIsAvailable, mpvSetFullscreen, mpvSetSubtitleInset, windowSetFullscreen } from '@/services/platform'
 import { GENERATED_CAPTIONS_TRACK_LABEL, GENERATED_CAPTIONS_TRACK_LANGUAGE } from '@/constants/captions'
 import type { SubtitleCue } from '@/types/player'
 import { perfMark, usePerfTransition } from '@/services/perf'
@@ -60,7 +62,8 @@ function buildCaptionsTrackSrc(cues: SubtitleCue[]): string {
 export function VideoPlayer({ className = '' }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const [container, setContainer] = useState<HTMLDivElement | null>(null)
+  const [dock, setDock] = useState<HTMLElement | null>(null)
   // `null` = detection still running. Neither engine may touch the stream until
   // this settles, otherwise HTML5 opens the URL and MPV immediately opens it a
   // second time — providers count that against their max-connection limit.
@@ -125,6 +128,7 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
 
   const setContainerNode = useCallback((node: HTMLDivElement | null) => {
     containerRef.current = node
+    setContainer(node)
     if (node) syncContainerSize(node)
   }, [syncContainerSize])
 
@@ -149,15 +153,27 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
     }
   }, [syncContainerSize])
 
-  const handleMouseMove = useCallback(() => {
-    setShowControls(true)
-    clearTimeout(hideTimerRef.current)
-    if (!isPlayerSidebarOpen) {
-      hideTimerRef.current = setTimeout(() => setShowControls(false), 3000)
-    }
-  }, [setShowControls, isPlayerSidebarOpen])
+  const autoHide = useControlsAutoHide({
+    setVisible: setShowControls,
+    isSidebarOpen: isPlayerSidebarOpen,
+    hasError: playerError !== null
+  })
+  const controlsVisible = showControls || isPlayerSidebarOpen
 
-  useEffect(() => () => clearTimeout(hideTimerRef.current), [])
+  // Subtitles sit above the controls while those are shown. The page's own
+  // subtitles are placed here; mpv's are lifted in main, against the window.
+  const dockClearance = useDockClearance(container, dock)
+  const mpvSubtitleInset = mpvEnabled && controlsVisible ? dockClearance.inWindow : 0
+  useEffect(() => {
+    if (!mpvEnabled) return
+    void mpvSetSubtitleInset(mpvSubtitleInset).catch(() => undefined)
+    // The window height is a dependency: main turns the inset into a share of it.
+  }, [mpvEnabled, mpvSubtitleInset, dockClearance.windowHeight])
+  useEffect(() => {
+    if (!mpvEnabled) return
+    // Leaving the player (or mpv) puts them back; the corner player has no controls.
+    return () => void mpvSetSubtitleInset(0).catch(() => undefined)
+  }, [mpvEnabled])
 
   useEffect(() => {
     if (!playerNotice) return
@@ -208,9 +224,9 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
     <div
       ref={setContainerNode}
       data-player-container
-      className={`relative overflow-hidden ${mpvEnabled ? '' : 'bg-black'} ${className}`}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={() => { if (!isPlayerSidebarOpen) setShowControls(false) }}
+      className={`relative overflow-hidden ${mpvEnabled ? '' : 'bg-black'} ${controlsVisible ? '' : 'cursor-none'} ${className}`}
+      onMouseMove={autoHide.onMouseMove}
+      onMouseLeave={autoHide.onMouseLeave}
       onDoubleClick={handleContainerDoubleClick}
     >
       {mpvEnabled ? (
@@ -312,14 +328,23 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
         )}
       </div>
 
-      <SubtitleOverlay playerSize={playerSize} />
+      <SubtitleOverlay playerSize={playerSize} dockClearance={controlsVisible ? dockClearance.inPlayer : 0} />
 
       <PlayerSidebar />
 
-      <div className={`pointer-events-none absolute inset-0 transition-opacity duration-300 ${showControls || isPlayerSidebarOpen ? 'opacity-100' : 'opacity-0'}`}>
+      {/* Hidden, the controls take no clicks (they fall through to the picture)
+          but stay focusable: focus moving into them by keyboard shows them. */}
+      <div
+        ref={autoHide.controlsRef}
+        data-controls-visible={controlsVisible}
+        onFocus={autoHide.onControlsFocus}
+        onBlur={autoHide.onControlsBlur}
+        className={`pointer-events-none absolute inset-0 transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 [&_*]:!pointer-events-none'}`}
+      >
         <PlayerControls
           videoRef={videoRef}
           onToggleFullscreen={toggleFullscreenDetached}
+          onDockChange={setDock}
         />
       </div>
     </div>

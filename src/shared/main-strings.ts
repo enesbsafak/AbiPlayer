@@ -120,6 +120,7 @@ export const mainStrings = {
     hardwareDecoding: 'Geçersiz donanım hızlandırma değeri',
     passthrough: 'Geçersiz doğrudan ses aktarımı değeri',
     subtitleStyle: 'Geçersiz altyazı stili',
+    subtitleInset: 'Geçersiz altyazı konumu',
     margin: 'Geçersiz kenar boşluğu değeri',
     videoRect: 'Geçersiz görüntü alanı',
     trustRequest: 'Geçersiz sertifika onayı',

@@ -362,6 +362,29 @@ describe('MpvController intent and reconciliation', () => {
     expect(writes.has('audio-delay')).toBe(false)
   })
 
+  it('lifts subtitles for the controls and keeps them lifted in a new process', async () => {
+    const { mpv, controller } = setup()
+    const first = await play(controller, mpv, URL_A)
+    // A fresh process already has them in place: nothing to send.
+    expect(propertyWrites(first, 'sub-pos')).toEqual([])
+
+    await controller.setSubtitleInsetRatio(150 / 720)
+    expect(propertyWrites(first, 'sub-pos')).toEqual([78.13])
+    // A reload of the stream keeps the process and its properties.
+    await controller.open(URL_B, '100')
+    expect(propertyWrites(first, 'sub-pos')).toEqual([78.13])
+
+    first.exit(1)
+    await settle()
+    await controller.open(URL_A, '100')
+    const second = mpv.last
+    expect(second).not.toBe(first)
+    expect(propertyWrites(second, 'sub-pos')).toEqual([78.13])
+
+    await controller.setSubtitleInsetRatio(0)
+    expect(propertyWrites(second, 'sub-pos')).toEqual([78.13, 100])
+  })
+
   it('resets the previous load tuning when the next load brings none', async () => {
     const { mpv, controller } = setup()
     const fake = await play(controller, mpv, URL_A)

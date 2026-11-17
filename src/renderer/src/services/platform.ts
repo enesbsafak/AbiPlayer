@@ -188,6 +188,12 @@ export async function mpvSetVideoMargin(right: number): Promise<void> {
   await window.electron.mpvSetVideoMargin(right)
 }
 
+/** Lifts mpv's subtitles `bottom` CSS pixels above their usual place; 0 puts them back. */
+export async function mpvSetSubtitleInset(bottom: number): Promise<void> {
+  if (!isElectron() || !window.electron?.mpvSetSubtitleInset) return
+  await window.electron.mpvSetSubtitleInset(bottom)
+}
+
 export async function mpvSetVideoRect(rect: MpvVideoRect | null): Promise<void> {
   if (!isElectron() || !window.electron?.mpvSetVideoRect) return
   await window.electron.mpvSetVideoRect(rect)

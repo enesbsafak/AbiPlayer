@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test'
 import { test, expect } from '../support/fixtures.ts'
 import { KNOWN } from '../mock-provider/catalog.ts'
 import { helpersOf } from '../support/processes.ts'
-import { addXtreamSource, expectHomeWithContent, miniPlayer, mpvState, playLiveChannel, waitForMpvProgress } from '../support/flows.ts'
+import { addXtreamSource, expectHomeWithContent, miniPlayer, mpvState, playLiveChannel, revealPlayerControls, waitForMpvProgress } from '../support/flows.ts'
 import type { AbiApp } from '../support/app.ts'
 import { itemAt } from '../../src/shared/checked.ts'
 
@@ -122,7 +122,7 @@ async function turnOnCornerSetting(page: Page) {
 }
 
 async function backFromPlayer(page: Page) {
-  await page.mouse.move(400, 300)
+  await revealPlayerControls(page)
   await page.getByRole('button', { name: 'Geri dön', exact: true }).click()
   await expect(page).not.toHaveURL(/#\/player/)
 }

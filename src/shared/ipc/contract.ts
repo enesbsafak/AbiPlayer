@@ -209,6 +209,8 @@ export interface IpcInvokeContract {
   'mpv-set-subtitle-style': Invoke<[style: MpvSubtitleStyle], void>
   'mpv-set-playback-tuning': Invoke<[tuning: MpvPlaybackTuning], void>
   'mpv-set-video-margin': Invoke<[right: number], void>
+  /** Lifts subtitles `bottom` CSS pixels (the controls' height above the window's bottom edge); 0 puts them back. */
+  'mpv-set-subtitle-inset': Invoke<[bottom: number], void>
   /** Confines the picture to `rect`; null gives it the whole window again. */
   'mpv-set-video-rect': Invoke<[rect: MpvVideoRect | null], void>
   'mpv-get-state': Invoke<[], MpvStateSnapshot>

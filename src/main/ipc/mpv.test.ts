@@ -78,6 +78,39 @@ describe('mpv handlers', () => {
     expect(setup().handlers.has('mpv-set-pause')).toBe(true)
   })
 
+  it('turns the subtitle inset into a share of the window that hosts the video', async () => {
+    const handlers = new Map<string, AnyHandler>()
+    const setSubtitleInsetRatio = vi.fn().mockResolvedValue(undefined)
+    let window: { getContentBounds: () => { height: number } } | null = { getContentBounds: () => ({ height: 800 }) }
+    registerMpvHandlers(
+      {
+        handle<C extends IpcInvokeChannel>(channel: C, handler: IpcHandler<C>) {
+          handlers.set(channel, handler as unknown as AnyHandler)
+        }
+      },
+      {
+        controller: { setSubtitleInsetRatio } as unknown as MpvControllerApi,
+        registry: { wasPickedThisSession: () => false },
+        getWindow: () => window as unknown as Electron.BrowserWindow | null
+      }
+    )
+    const event = { sender: { id: 1 } } as unknown as IpcMainInvokeEvent
+    const call = (bottom: unknown) => handlers.get('mpv-set-subtitle-inset')!(event, bottom)
+
+    await call(200)
+    expect(setSubtitleInsetRatio).toHaveBeenLastCalledWith(0.25)
+    await call(-40)
+    expect(setSubtitleInsetRatio).toHaveBeenLastCalledWith(0)
+    await expect(call('high')).rejects.toThrow(mainStrings.invalid.subtitleInset)
+    await expect(call(Number.NaN)).rejects.toThrow(mainStrings.invalid.subtitleInset)
+    expect(setSubtitleInsetRatio).toHaveBeenCalledTimes(2)
+
+    // Without a window to measure against, subtitles go back to their place.
+    window = null
+    await call(200)
+    expect(setSubtitleInsetRatio).toHaveBeenLastCalledWith(0)
+  })
+
   it('hands the renderer playback id and tuning to the controller', async () => {
     const { controller, call } = setup()
     const tuning = { audioDelay: 0.5, subDelay: 0, speed: 1, aspectRatio: 'auto' as const }

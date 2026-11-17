@@ -11,6 +11,7 @@ import {
   leavePlayer,
   miniPlayerResume,
   playLiveChannel,
+  revealPlayerControls,
   waitForMpvProgress
 } from '../support/flows.ts'
 import { defined, itemAt } from '../../src/shared/checked.ts'
@@ -36,7 +37,7 @@ test.describe('canlı yayın mpv ile', () => {
     await app.shot('first-channel')
 
     // Switch with the "next channel" control.
-    await page.mouse.move(500, 400)
+    await revealPlayerControls(page)
     await page.getByRole('button', { name: `Sonraki: ${KNOWN.liveChannels[1]}` }).click()
     const second = await waitForMpvProgress(page, { pathIncludes: '/2.m3u8', advanceBy: 2, timeout: 45_000 })
     expect(second.last.path).toContain('/2.m3u8')

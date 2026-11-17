@@ -23,7 +23,7 @@ import { CATALOG_PRESETS, KNOWN, type CatalogPreset } from '../mock-provider/cat
 import { ensureMedia } from '../mock-provider/media.ts'
 import { startMockProvider } from '../mock-provider/server.ts'
 import { launchApp, newProfileDir, removeProfileDir, type AbiApp } from '../support/app.ts'
-import { addM3uSource, addXtreamSource, cardButton, closeMiniPlayer, expectHomeWithContent, leavePlayer, openRoute, timeToMpvProgress } from '../support/flows.ts'
+import { addM3uSource, addXtreamSource, cardButton, closeMiniPlayer, expectHomeWithContent, leavePlayer, openRoute, revealPlayerControls, timeToMpvProgress } from '../support/flows.ts'
 import { helpersOf } from '../support/processes.ts'
 import { E2E_CACHE_DIR, E2E_OUTPUT_DIR, MPV_PATH, REPO_ROOT } from '../support/paths.ts'
 import type { MergedPerfMark, MergedPerfTimeline } from '../../src/shared/perf.ts'
@@ -290,12 +290,12 @@ async function playbackRuns(link: LinkProfile, runs: number): Promise<PlaybackSa
           const coldName = args['wait-prewarm'] ? 'ilk kanal, mpv önceden ısıtılmış' : 'soğuk ilk kanal'
           samples.push(await clickAndTime(app, `${protocol}: ${coldName}`, link.name, `/1.${ext}`, () => cardButton(page, KNOWN.liveChannels[0]).click()))
           await page.waitForTimeout(1500)
-          await page.mouse.move(500, 400)
+          await revealPlayerControls(page)
           samples.push(await clickAndTime(app, `${protocol}: sıcak kanal değişimi`, link.name, `/2.${ext}`, () =>
             page.getByRole('button', { name: `Sonraki: ${KNOWN.liveChannels[1]}` }).click()
           ))
           await page.waitForTimeout(1500)
-          await page.mouse.move(500, 410)
+          await revealPlayerControls(page)
           samples.push(await clickAndTime(app, `${protocol}: sıcak kanal değişimi`, link.name, `/3.${ext}`, () =>
             page.getByRole('button', { name: `Sonraki: ${KNOWN.liveChannels[2]}` }).click()
           ))

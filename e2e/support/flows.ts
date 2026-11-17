@@ -151,8 +151,19 @@ export async function waitForMpvProgress(
   throw new Error(`mpv did not advance ${advanceBy}s on ${options.pathIncludes ?? 'any path'}; last state: ${JSON.stringify(last)}`)
 }
 
-export async function leavePlayer(page: Page): Promise<void> {
+/**
+ * Brings the player's controls back. They hide 3 s after the last real
+ * pointer move (or after the player opened) and take no clicks while hidden,
+ * and a move of a few pixels does not count: two moves well apart over the
+ * picture always do, wherever the pointer was.
+ */
+export async function revealPlayerControls(page: Page): Promise<void> {
   await page.mouse.move(400, 300)
+  await page.mouse.move(430, 320)
+}
+
+export async function leavePlayer(page: Page): Promise<void> {
+  await revealPlayerControls(page)
   await page.getByRole('button', { name: 'Geri dön', exact: true }).click()
   await expect(page).not.toHaveURL(/#\/player/)
 }
