@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useStore } from '@/store'
 import { CatalogPage, type CatalogPageLabels } from '@/components/catalog/CatalogPage'
 import { POSTER_GRID_LAYOUT, PosterGridEmpty, renderPosterCard } from '@/components/vod/VODGrid'
@@ -40,11 +40,15 @@ export default function SeriesPage() {
   const { detail, openDetail, closeDetail, updateDetail, openPlayer } = page
   const addonPlayback = useAddonPlayback()
   const { play: playAddon } = addonPlayback
-  const addonItem = useAddonDetailItem(detail?.addonMetaId !== undefined ? detail : null, 'series', null)
+  // The record as it was clicked: a search result of the source is in no
+  // category of the catalog, and its card already knows its name and poster.
+  const [opened, setOpened] = useState<Channel | null>(null)
+  const addonItem = useAddonDetailItem(detail?.addonMetaId !== undefined ? detail : null, 'series', opened)
 
   const handleOpen = useCallback(
     (series: Channel) => {
       if (series.addonMetaId !== undefined) {
+        setOpened(series)
         openDetail({ itemId: series.id, sourceId: series.sourceId, addonMetaId: series.addonMetaId })
         return
       }

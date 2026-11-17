@@ -6,8 +6,9 @@ import type { CatalogCategory, CatalogItem, CatalogSyncError, CatalogType } from
 import { isAdultLabel } from '@/services/adult-content'
 import type { AddonCatalogSummary, AddonManifestSummary } from '@/types/addon'
 import type { PlaylistSource } from '@/types/playlist'
-import { fetchAddonCatalogPage, type AddonCatalogPage, type AddonFetchOptions, type AddonMetaPreview } from './client'
+import type { AddonCatalogPage, AddonFetchOptions, AddonMetaPreview } from './client'
 import { browsableCatalogs, catalogSupportsSkip } from './manifest'
+import { remoteCatalogProvider, type AddonCatalogProvider } from './provider'
 
 /*
  * An add-on's catalogues in the catalog store. Each film catalogue is a
@@ -129,6 +130,12 @@ export interface AddonPagerDeps {
   store?: CatalogStore
   /** The source as configured now (with its base address in memory), or undefined. */
   getSource: (sourceId: string) => PlaylistSource | undefined
+  /**
+   * Where the source's pages come from (provider.ts), or null while it cannot
+   * ask (no address in memory, no TMDB key). Default: an add-on's own, at its
+   * address, through `fetchPage`.
+   */
+  getProvider?: (source: PlaylistSource) => AddonCatalogProvider | null
   fetchPage?: (
     base: string,
     catalog: AddonCatalogSummary,
@@ -175,7 +182,8 @@ function publicPaging(state: PagingState): AddonCategoryPaging {
 
 export function createAddonCatalogPager(deps: AddonPagerDeps): AddonCatalogPager {
   const store = deps.store ?? defaultCatalog
-  const fetchPage = deps.fetchPage ?? fetchAddonCatalogPage
+  const providerOf =
+    deps.getProvider ?? ((source: PlaylistSource) => remoteCatalogProvider(source, deps.fetchPage ? { fetchPage: deps.fetchPage } : {}))
   const states = new Map<string, PagingState>()
   const snapshots = new Map<string, AddonCategoryPaging>()
   const listeners = new Set<() => void>()
@@ -214,10 +222,10 @@ export function createAddonCatalogPager(deps: AddonPagerDeps): AddonCatalogPager
     const source = deps.getSource(sourceId)
     const summary = source?.type === 'addon' ? source.addon : undefined
     const entry = summary ? findAddonCatalog(sourceId, summary, type, categoryId) : null
-    const base = source?.url
-    // Not an add-on catalogue of this source (any more), or its address is
-    // not loaded yet: there is nothing to ask.
-    if (!summary || !entry || !base) return
+    const provider = source && summary ? providerOf(source) : null
+    // Not an add-on catalogue of this source (any more), or it cannot ask
+    // yet (its address is not loaded, no TMDB key): there is nothing to ask.
+    if (!summary || !entry || !provider) return
 
     const state: PagingState = existing ?? {
       pages: 0,
@@ -243,7 +251,7 @@ export function createAddonCatalogPager(deps: AddonPagerDeps): AddonCatalogPager
     const token = store.beginGeneration(sourceId, type)
     const skip = state.nextSkip
     try {
-      const page = await fetchPage(base, entry, skip, { signal: controller.signal })
+      const page = await provider.catalogPage(entry, { skip }, { signal: controller.signal })
       if (states.get(key) !== state) return
       if (controller.signal.aborted) {
         // The source was removed or refreshed while the page was on its way.
@@ -258,6 +266,7 @@ export function createAddonCatalogPager(deps: AddonPagerDeps): AddonCatalogPager
       const total = store.getCategoryItems(sourceId, type, categoryId).length + fresh
       if (state.pages === 0) state.pageSize = page.received
       const ended =
+        page.ended === true ||
         page.received === 0 ||
         page.received < state.pageSize ||
         (state.pages > 0 && fresh === 0) ||

@@ -21,7 +21,7 @@ import { BackPill, DETAIL_PRIMARY, DetailPoster, DetailTitle, FactPill, MoreInCa
 import { episodeKey, watchShareOf } from '@/components/vod/watch-share'
 import type { WatchProgressEntry } from '@/services/watch-progress'
 import type { EpisodePlaybackRequest } from '@/types/player'
-import { strings } from '@/strings'
+import { LOCALE, strings } from '@/strings'
 
 const text = strings.catalog.detail
 
@@ -522,6 +522,14 @@ export function SeriesDetailFailure({ message, onRetry, onBack }: { message: str
   )
 }
 
+/** A calendar date ("2024-03-12") as the interface writes dates ("12.03.2024"); other text as it is. */
+function formatAirDate(date: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
+  if (!match) return date
+  const [, year, month, day] = match
+  return new Date(Number(year), Number(month) - 1, Number(day)).toLocaleDateString(LOCALE)
+}
+
 /** A season's pill: its own name, else "Sezon n"; season 0 holds the specials. */
 export function seasonLabel(season: Pick<SeasonInfo, 'seasonNumber' | 'name'>): string {
   if (season.name) return season.name
@@ -550,6 +558,10 @@ export interface SeriesDetailViewProps {
   onOpenSeries?: (series: Channel) => void
   /** What stands where the episodes would be, when there are none to show and the reason is known. */
   episodesNotice?: ReactNode
+  /** What stands in the selected season's list while it has no episodes yet (loading, or failed). */
+  seasonNotice?: ReactNode
+  /** A line under the primary action (why an episode cannot be played, say). */
+  playNotice?: ReactNode
 }
 
 /**
@@ -567,7 +579,9 @@ export function SeriesDetailView({
   favorite,
   moreItem,
   onOpenSeries,
-  episodesNotice
+  episodesNotice,
+  seasonNotice,
+  playNotice
 }: SeriesDetailViewProps) {
   const episodes = detail.episodes[selectedSeason] || []
   const allEpisodes = detail.seasons.flatMap((season) => detail.episodes[season.seasonNumber] ?? [])
@@ -629,6 +643,14 @@ export function SeriesDetailView({
               {primaryEpisode.title ? ` · ${primaryEpisode.title}` : ''}
             </p>
           )}
+          <div aria-live="polite" className="empty:hidden">
+            {playNotice && (
+              <p role="status" className="flex max-w-[68ch] items-start gap-2.5 text-[15px] text-surface-300">
+                <span aria-hidden="true" className="mt-[7px] size-2 shrink-0 rounded-full bg-sun" />
+                <span>{playNotice}</span>
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -676,6 +698,11 @@ export function SeriesDetailView({
             </h2>
             <span className="text-[15px] font-bold tabular-nums text-surface-500">{episodes.length}</span>
           </div>
+          {seasonNotice && episodes.length === 0 && (
+            <div role="status" className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-card bg-raised px-5 py-4 text-[15px] text-surface-300">
+              {seasonNotice}
+            </div>
+          )}
           <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,560px),1fr))] gap-2.5">
             {episodes.map((ep) => {
               const qualityLabel = inferContentQualityLabel(ep)
@@ -696,6 +723,7 @@ export function SeriesDetailView({
                       {qualityLabel && <QualityBadge label={qualityLabel} className="shrink-0" />}
                     </span>
                     {ep.plot && <span className="truncate text-[15px] text-surface-400">{ep.plot}</span>}
+                    {ep.airDate && <span className="text-sm text-surface-500">{strings.catalog.tmdb.airDate(formatAirDate(ep.airDate))}</span>}
                     {share && (
                       <span className="mt-1 block max-w-[320px]">
                         <WatchLine share={share} label={text.watched(share.percent)} />

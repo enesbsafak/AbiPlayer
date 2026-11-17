@@ -11,7 +11,8 @@ import {
 } from '@/store/favorites-slice'
 import { resolveFavoriteChannels } from '@/components/favorites/favorite-channels'
 import { seasonLabel } from '@/components/series/SeriesDetail'
-import { initialSeasonOf, seriesDetailFromCard, withCardFallback } from '@/components/series/AddonSeriesDetail'
+import { initialSeasonOf, lastWatchedSeason, seriesDetailFromCard, withCardFallback } from '@/components/series/AddonSeriesDetail'
+import type { WatchProgressEntry } from '@/services/watch-progress'
 import { addonMetaToSeriesDetail } from '@/addons/detail'
 import type { AddonMeta } from '@/addons/client'
 import type { Channel } from '@/types/playlist'
@@ -126,6 +127,32 @@ describe('an add-on series detail', () => {
     expect(initialSeasonOf(detail, 0)).toBe(0)
     expect(initialSeasonOf(detail, 7)).toBe(1)
     expect(initialSeasonOf(seriesDetailFromCard(series), undefined)).toBe(1)
+  })
+
+  it('opens on the season last watched when none was asked for (the TMDB catalogue loads one season at a time)', () => {
+    const detail = addonMetaToSeriesDetail(meta)
+    const entry = (videoId: string, updatedAt: number, metaId = meta.id) =>
+      ({
+        key: `addon:s:${encodeURIComponent(videoId)}`,
+        updatedAt,
+        target: addonTarget({ sourceId: 's', contentType: 'series', metaId, videoId })
+      }) as unknown as WatchProgressEntry
+    const history = [entry('tt0000002:1:1', 10), entry('tt0000002:2:1', 30), entry('tt9:1:1', 50, 'tt9')]
+    expect(lastWatchedSeason(history, 's', meta.id)).toBe(2)
+    expect(lastWatchedSeason(history, 'other', meta.id)).toBeNull()
+    expect(initialSeasonOf(detail, undefined, 2)).toBe(2)
+    expect(initialSeasonOf(detail, 0, 2)).toBe(0)
+    expect(initialSeasonOf(detail, undefined, 9)).toBe(1)
+  })
+
+  it('lists the seasons of a meta that gives them without episodes, specials last, episodes to come', () => {
+    const detail = addonMetaToSeriesDetail({ ...meta, videos: [], seasons: [{ season: 0, episodeCount: 1 }, { season: 2, episodeCount: 8 }, { season: 1, episodeCount: 10 }] })
+    expect(detail.seasons.map((season) => [seasonLabel(season), season.episodeCount])).toEqual([
+      ['Sezon 1', 10],
+      ['Sezon 2', 8],
+      ['Özel bölümler', 1]
+    ])
+    expect(detail.episodes).toEqual({})
   })
 
   it('keeps what the card knows where the meta says nothing', () => {

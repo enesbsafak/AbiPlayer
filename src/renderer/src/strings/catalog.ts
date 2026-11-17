@@ -78,7 +78,22 @@ export const catalog = {
     specials: 'Özel bölümler',
     specialEpisodeLabel: (episode: number) => `Özel bölüm ${episode}`,
     episodesUnavailable: 'Bu eklenti dizinin bölüm listesini vermiyor; bölümler gösterilemiyor.',
-    episodesFailed: 'Bölüm listesi alınamadı.'
+    episodesFailed: 'Bölüm listesi alınamadı.',
+    /** In place of the result count while the box asks the source (the TMDB catalogue, an add-on that searches). */
+    searching: 'Aranıyor…'
+  },
+
+  /** The built-in TMDB catalogue's pages and details. */
+  tmdb: {
+    /** "İzle" on a title TMDB has no IMDb id for. */
+    noStreamId:
+      "TMDB'de bu başlığın IMDb kimliği yok. Yayın eklentileri başlıkları IMDb kimliğiyle sorduğundan bu başlık için yayın aranamıyor.",
+    seasonLoading: 'Bölümler yükleniyor…',
+    seasonFailed: 'Bu sezonun bölümleri alınamadı.',
+    airDate: (date: string) => `Yayın: ${date}`,
+    idleHint: "Yarım kalan bir şey yok. TMDB Kataloğu'na göz at.",
+    noLiveHint:
+      'TMDB Kataloğu film ve dizi sunar. Canlı kanallar ve yayın akışı için Xtream ya da M3U kaynaklarından birine geç.',
   },
 
   /** Canlı TV: the channel rows and the panel of the channel in focus. */

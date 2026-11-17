@@ -12,7 +12,8 @@ import { CATALOG_TYPES } from './types'
 import { ingestDropped, ingestFromCache, ingestM3uText, ingestM3uUrl, sourceIdentity, type IngestOutcome } from './worker-ingest'
 import { strings } from '@/strings'
 import { refreshAddonSource } from '@/addons/connect'
-import { addonCatalogPager } from '@/addons/pager'
+import { addonCatalogPager, currentTmdbApiKey } from '@/addons/pager'
+import { isTmdbCatalogSource } from '@/addons/builtin'
 import { forgetAddonStreams } from '@/addons/stream-registry'
 
 /*
@@ -265,10 +266,14 @@ export async function reloadSourceCatalog(sourceId: string, options: { onlyStale
     return
   }
   if (source.type === 'addon') {
-    if (!source.url) throw new Error(strings.sources.connect.missingAddonUrl)
+    const builtin = isTmdbCatalogSource(source)
+    if (!builtin && !source.url) throw new Error(strings.sources.connect.missingAddonUrl)
     const { session } = await refreshAddonSource(
       source,
-      { updateSummary: (id, summary) => useStore.getState().updateSource(id, { addon: summary }) },
+      {
+        updateSummary: (id, summary) => useStore.getState().updateSource(id, { addon: summary }),
+        ...(builtin ? { tmdbApiKey: currentTmdbApiKey() } : {})
+      },
       { strict: true }
     )
     addonCatalogPager.clearErrors(sourceId)

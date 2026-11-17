@@ -15,6 +15,8 @@ import {
   SourceConnectError
 } from '@/hooks/useAutoConnect'
 import { splitSourceSecrets } from '@/services/secure-credentials'
+import { tmdbCatalogSourceFor } from './builtin'
+import { tmdbCatalogSummary } from './tmdb'
 import { XtreamRequestError } from '@/services/xtream-errors'
 import {
   planProgressUpdate,
@@ -122,6 +124,20 @@ describe('what is persisted of an add-on', () => {
     expect(merged.sources[1]?.addon).toMatchObject({ name: 'Bozuk', catalogs: [], resources: [] })
     expect(merged.credentialsHydrated).toBe(false)
     expect(merged.legacySecretSourceIds).toEqual([])
+  })
+
+  it('reads the built-in TMDB catalogue back as one, with nothing to hydrate or move', () => {
+    const current = useStore.getState()
+    const stored = tmdbCatalogSourceFor(tmdbCatalogSummary({ movie: [], series: [] }), 1)
+    const merged = mergePersistedState(
+      { sources: [stored, { ...stored, id: 'gelecek', builtin: 'yeni-bir-tur' }] },
+      { ...current, credentialsHydrated: true }
+    )
+    expect(merged.sources[0]).toEqual(stored)
+    // A mark this version does not know is dropped.
+    expect(merged.sources[1]?.builtin).toBeUndefined()
+    expect(merged.legacySecretSourceIds).toEqual([])
+    expect(createPartialize()({ ...merged, sources: [stored] } as AppStore).sources).toEqual([stored])
   })
 
   it('treats a stored plain address (hand edited) as a secret to move', () => {

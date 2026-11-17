@@ -25,6 +25,7 @@ import { redactStoredCopy } from './stored-copy-redaction'
 import { sanitizeProgressEntries, type WatchProgressEntry } from '@/services/watch-progress'
 import type { PlaylistSource } from '@/types/playlist'
 import { emptyAddonManifestSummary, sanitizeAddonManifestSummary } from '@/addons/manifest'
+import { sanitizeBuiltinCatalogId } from '@/addons/builtin'
 import { perfMark, perfWatchStore } from '@/services/perf'
 
 export type AppStore =
@@ -75,7 +76,14 @@ function isPersistedSource(source: unknown): source is PlaylistSource {
  */
 function sanitizePersistedSource(source: PlaylistSource): PlaylistSource {
   if (source.type !== 'addon') return source
-  return { ...source, addon: sanitizeAddonManifestSummary(source.addon) ?? emptyAddonManifestSummary(source.name) }
+  const { builtin: storedBuiltin, ...rest } = source
+  // A built-in catalogue keeps its mark only when it is one this version knows.
+  const builtin = sanitizeBuiltinCatalogId(storedBuiltin)
+  return {
+    ...rest,
+    ...(builtin ? { builtin } : {}),
+    addon: sanitizeAddonManifestSummary(source.addon) ?? emptyAddonManifestSummary(source.name)
+  }
 }
 
 function sanitizePersistedSources(input: unknown, fallback: PlaylistSource[]): PlaylistSource[] {

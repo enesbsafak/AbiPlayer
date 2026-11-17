@@ -1,4 +1,5 @@
 import { useStore } from '@/store'
+import { isTmdbCatalogSource } from '@/addons/builtin'
 import { secureCredentialService } from '@/services/secure-credentials'
 import { isValidTmdbApiKey } from '../../../../shared/secure-credentials'
 import { strings } from '@/strings'
@@ -20,5 +21,10 @@ export async function saveTmdbApiKey(
   const state = useStore.getState()
   state.updateSettings({ tmdbApiKey: apiKey })
   state.setTmdbKeyPlainPending(false)
+  // The TMDB catalogue stopped for want of a key (or a refused one) connects again with this one.
+  const catalogue = state.sources.find((source) => isTmdbCatalogSource(source))
+  if (apiKey && catalogue && (state.sourceErrors[catalogue.id] || !state.addonSessions[catalogue.id])) {
+    state.requestSourceReconnect()
+  }
   return apiKey
 }

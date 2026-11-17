@@ -9,6 +9,7 @@ import type { Tone } from '@/components/layout/sections'
 import { isTextEntryTarget } from '@/hooks/useKeyboard'
 import type { CatalogPageModel, CatalogPagerModel } from '@/hooks/useCatalogPage'
 import { offlineCopyBannerText, type CatalogBanner } from '@/hooks/catalog-page-state'
+import { TmdbAttribution, useOpenTmdbKeyField } from '@/components/addons/TmdbAttribution'
 import type { Channel } from '@/types/playlist'
 import { strings } from '@/strings'
 import { SectionHeading } from './SectionHeading'
@@ -134,6 +135,8 @@ export function CatalogPage({ page, labels, tone, layout, renderCard, onOpen, em
             showCounts={!page.isAddon}
           />
         </div>
+        {/* TMDB's credit where its lists are shown: small, under the categories. */}
+        {page.attribution === 'tmdb' && <TmdbAttribution className="shrink-0 px-2 pb-1" />}
       </aside>
 
       <div className={`flex min-w-0 flex-1 flex-col gap-3 ${hiddenWhileDetail}`} aria-hidden={detailOpen || undefined}>
@@ -146,10 +149,12 @@ export function CatalogPage({ page, labels, tone, layout, renderCard, onOpen, em
           />
           {page.appliedQuery.trim() && (
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 text-sm text-surface-400" aria-live="polite">
-              {strings.common.resultCount(page.matchCount)}
+              {page.searchStatus ?? strings.common.resultCount(page.matchCount)}
               {isSearchPending && <Spinner size={12} />}
-              {/* The box filters what is loaded; it does not search the add-on. */}
-              {pager && !pager.ended && <span className="text-surface-500">{addonText.searchLoadedOnly(page.loadedCount)}</span>}
+              {/* The box filters what is loaded; it does not search the add-on (unless the source searches itself). */}
+              {pager && !pager.ended && !page.searchesRemotely && (
+                <span className="text-surface-500">{addonText.searchLoadedOnly(page.loadedCount)}</span>
+              )}
             </p>
           )}
           <div className="flex flex-col gap-2 empty:hidden">
@@ -189,7 +194,9 @@ export function CatalogPage({ page, labels, tone, layout, renderCard, onOpen, em
                 empty={empty}
                 handleRef={gridRef}
               />
-              {pager && <PagerFooter pager={pager} searching={!!page.appliedQuery.trim()} hasItems={items.length > 0} />}
+              {pager && (
+                <PagerFooter pager={pager} searching={!page.searchesRemotely && !!page.appliedQuery.trim()} hasItems={items.length > 0} />
+              )}
             </div>
           )}
         </div>
@@ -311,7 +318,7 @@ function Banner({
   foregroundLoading: boolean
 }) {
   const navigate = useNavigate()
-  const onOpenSourceSettings = () => void navigate('/settings')
+  const openKeyField = useOpenTmdbKeyField()
   if (!banner) return null
 
   if (banner.kind === 'offline') {
@@ -333,14 +340,20 @@ function Banner({
   }
 
   if (banner.kind === 'source-error') {
+    // The TMDB key is under Genel; every other secret in the source settings.
+    const toKey = banner.settingsTab === 'general'
     return (
       <StatusRow
         role="alert"
         mark="coral"
         title={banner.message}
         action={
-          <Button size="sm" variant="secondary" onClick={onOpenSourceSettings}>
-            {strings.common.sourceSettings}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={toKey ? openKeyField : () => void navigate('/settings')}
+          >
+            {toKey ? strings.sources.tmdbCatalog.enterKey : strings.common.sourceSettings}
           </Button>
         }
       />

@@ -108,6 +108,41 @@ export const sources = {
     added: (name: string) => `"${name}" eklendi.`
   },
 
+  /**
+   * The built-in TMDB catalogue: a source the app builds itself from TMDB,
+   * with the user's own TMDB key, added under Deneysel.
+   */
+  tmdbCatalog: {
+    name: 'TMDB Kataloğu',
+    /** Its type in the source list, where an add-on would say "Eklenti". */
+    typeLabel: 'Yerleşik katalog',
+    hint:
+      "Filmleri ve dizileri TMDB'den, kendi TMDB anahtarınla listeler. Açtığın film ve bölümlerin yayınlarını eklediğin yayın eklentilerine sorar.",
+    needsKey: `Eklemek için önce ${settingsPath('general')} → ${settings.general.tmdbGroup} bölümüne bir TMDB anahtarı gir.`,
+    enterKey: 'Anahtarı gir',
+    add: 'Kataloğu ekle',
+    adding: 'Ekleniyor…',
+    /** The add action once it is in the source list. */
+    alreadyAdded: 'Kaynaklarında',
+    addFailed: 'TMDB Kataloğu eklenemedi.',
+    /** Status suffix when the catalogue list could not be refreshed in this session. */
+    unreachable: "TMDB'ye ulaşılamadı, kayıtlı katalog listesi kullanılıyor",
+    refresh: (name: string) => `${name} katalog listesini yenile`,
+    /** The catalogues, as categories on Filmler and Diziler; the genres follow with TMDB's own names. */
+    catalogs: {
+      trending: 'Bu hafta trend',
+      popular: 'Popüler',
+      nowPlaying: 'Vizyondakiler',
+      upcoming: 'Yakında',
+      topRated: 'En yüksek puanlı',
+      onTheAir: 'Yayında',
+      search: 'Arama'
+    },
+    /** Beside TMDB's logo where its data is shown (TMDB's terms ask for the credit). */
+    attribution: "Film ve dizi bilgileri TMDB'den alınır",
+    logoAlt: 'TMDB'
+  },
+
   xtream: {
     title: 'Xtream Codes',
     subtitle: 'Xtream Codes sunucusuna bağlan',

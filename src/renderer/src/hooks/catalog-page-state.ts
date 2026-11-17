@@ -10,8 +10,12 @@ import { isAddonId } from '../../../shared/playback'
  */
 
 export type CatalogBanner =
-  /** The source cannot load anything: its secret is missing. Says why; the fix is in the source settings. */
-  | { kind: 'source-error'; message: string }
+  /**
+   * The source cannot load anything: its secret is missing (or, for the
+   * built-in TMDB catalogue, the TMDB key). Says why; the fix is in the
+   * source settings, or in `settingsTab` when it is elsewhere.
+   */
+  | { kind: 'source-error'; message: string; settingsTab?: 'general' }
   /** A foreground load (preview list or the selected category) failed. */
   | { kind: 'load-error'; message: string }
   /** A copy from the disk cache is shown and the provider could not be reached. */
@@ -32,6 +36,8 @@ export interface CatalogBannerInput {
   loadError: string | null
   /** Why the source cannot load at all (its secret is missing), or null. */
   sourceError?: string | null
+  /** Where that is fixed when not in the source settings: the TMDB key is under Genel. */
+  sourceErrorTab?: 'general'
   /** The source failed to connect (an M3U playlist could not be fetched, a sign-in failed). */
   connectionFailed?: boolean
 }
@@ -51,7 +57,9 @@ export function offlineCopyBannerText(since: number): string {
  */
 export function catalogBanner(input: CatalogBannerInput): CatalogBanner | null {
   const { isXtream, hasCategory, categoryLoaded, status, loadError } = input
-  if (input.sourceError) return { kind: 'source-error', message: input.sourceError }
+  if (input.sourceError) {
+    return { kind: 'source-error', message: input.sourceError, ...(input.sourceErrorTab ? { settingsTab: input.sourceErrorTab } : {}) }
+  }
   if (loadError) return { kind: 'load-error', message: loadError }
   if (status?.fromCache && status.fetchedAt && (status.error || input.connectionFailed)) {
     return { kind: 'offline', since: status.fetchedAt, retryable: status.error ? status.error.retryable : true }
@@ -191,7 +199,7 @@ export function effectiveAddonCategoryId(
 
 export interface AddonPagerViewInput {
   isAddon: boolean
-  /** The add-on's address is in memory (read from the secure store). */
+  /** The add-on can ask for pages: its address is in memory (or, for the TMDB catalogue, a key is saved). */
   addressLoaded: boolean
   /** Its catalogues are in the store as categories (it has connected). */
   categoriesLoaded: boolean

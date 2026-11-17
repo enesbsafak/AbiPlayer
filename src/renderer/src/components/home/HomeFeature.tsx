@@ -217,7 +217,7 @@ export function IdleTile() {
  * add-on, or its film page still on its way): a way into its catalogues.
  * An add-on has no live TV, so the idle tile's "Canlı TV" would lead nowhere.
  */
-export function AddonIdleTile({ section }: { section: 'vod' | 'series' }) {
+export function AddonIdleTile({ section, builtin = false }: { section: 'vod' | 'series'; builtin?: boolean }) {
   const Icon = section === 'series' ? SeriesIcon : FilmIcon
   return (
     <Feature
@@ -228,7 +228,8 @@ export function AddonIdleTile({ section }: { section: 'vod' | 'series' }) {
       }
     >
       <h2 className={FEATURE_TITLE}>{text.addonIdleTitle}</h2>
-      <p className="max-w-md text-lg text-surface-400">{text.addonIdleHint}</p>
+      {/* The built-in TMDB catalogue is no add-on: its own wording. */}
+      <p className="max-w-md text-lg text-surface-400">{builtin ? strings.catalog.tmdb.idleHint : text.addonIdleHint}</p>
       <Link to={section === 'series' ? '/series' : '/vod'} {...spatial} className={`${TILE_PRIMARY} mt-2 self-start`}>
         {section === 'series' ? text.browseSeries : text.browseFilms}
       </Link>

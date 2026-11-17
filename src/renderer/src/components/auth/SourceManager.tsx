@@ -14,6 +14,11 @@ import { keepsSecretInStore, needsStoredSecret } from '@/store/auth-slice'
 import { addonHost } from '@/addons/address'
 import { refreshAddonSource } from '@/addons/connect'
 import { fetchAddonManifest } from '@/addons/client'
+import { isTmdbCatalogSource } from '@/addons/builtin'
+import { addonErrorMessage } from '@/addons/messages'
+import { currentTmdbApiKey } from '@/addons/pager'
+import { resolveTmdbApiKey } from '@/services/tmdb-api'
+import { EnterTmdbKeyButton, TmdbAttribution } from '@/components/addons/TmdbAttribution'
 import type { PlaylistSource } from '@/types/playlist'
 import { strings } from '@/strings'
 import { SourceSecretForm } from './SourceSecretForm'
@@ -55,6 +60,7 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
   const addonSessions = useStore((s) => s.addonSessions)
   const setAddonSession = useStore((s) => s.setAddonSession)
   const addonsEnabled = useStore((s) => s.settings.addonSourcesEnabled)
+  const hasTmdbKey = useStore((s) => !!resolveTmdbApiKey(s.settings.tmdbApiKey))
   const [removalError, setRemovalError] = useState<string | null>(null)
 
   // A set, not one id: two refreshes can overlap, and the first to finish
@@ -143,9 +149,10 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
         // The file may have been picked from a new place: the next start reads it from there.
         if (result.path !== source.filePath) updateSource(sourceId, { filePath: result.path })
         setSourceError(sourceId, null)
-      } else if (source.type === 'addon' && source.url) {
+      } else if (source.type === 'addon' && (source.url || isTmdbCatalogSource(source))) {
         // The manifest again: what the add-on provides now, and its catalogues
-        // as categories. A failure says so and keeps the stored summary.
+        // as categories (the TMDB catalogue: its genres, asked of TMDB). A
+        // failure says so and keeps the stored summary.
         const { session } = await refreshAddonSource(
           source,
           {
@@ -154,16 +161,25 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
               if (!sourceStillExists(sourceId)) throw new SourceGone()
               return summary
             },
-            updateSummary: (id, summary) => updateSource(id, { addon: summary })
+            tmdbApiKey: currentTmdbApiKey(),
+            updateSummary: (id, summary) => {
+              if (sourceStillExists(id)) updateSource(id, { addon: summary })
+            }
           },
           { strict: true }
         )
+        if (!sourceStillExists(sourceId)) return
         setAddonSession(sourceId, session)
+        // A TMDB catalogue stopped for want of a key is connected now.
+        if (isTmdbCatalogSource(source)) setSourceError(sourceId, null)
       }
     } catch (err) {
       if (err instanceof SourceGone) return
-      const message =
-        source.type === 'addon' ? placeAddonError(err, text.refreshFailed).message : toUserMessage(err, text.refreshFailed)
+      const message = isTmdbCatalogSource(source)
+        ? addonErrorMessage(err, text.refreshFailed)
+        : source.type === 'addon'
+          ? placeAddonError(err, text.refreshFailed).message
+          : toUserMessage(err, text.refreshFailed)
       setRefreshError((prev) => ({ ...prev, [sourceId]: message }))
     } finally {
       setRefreshing(sourceId, false)
@@ -180,6 +196,8 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
     const failure = sourceErrors[source.id]?.kind
     if (source.type === 'xtream') return needsStoredSecret(source) || failure === 'missing-secret' || failure === 'auth'
     if (source.type === 'm3u_url') return needsStoredSecret(source) || failure === 'missing-secret'
+    // The TMDB catalogue has no secret of its own: its key is entered under Genel.
+    if (isTmdbCatalogSource(source)) return false
     // An add-on that refused its address (a personal key changed, say) gets
     // a new one in place, keeping its id.
     if (source.type === 'addon') {
@@ -189,8 +207,14 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
     return false
   }
 
-  /** Refreshing applies: an add-on's manifest is fetched again (it needs its address and the setting on). */
-  const refreshOffered = (source: PlaylistSource): boolean => source.type !== 'addon' || (addonsEnabled && !!source.url)
+  /**
+   * Refreshing applies: an add-on's manifest is fetched again (it needs its
+   * address and the setting on); the TMDB catalogue's genres (it needs a key).
+   */
+  const refreshOffered = (source: PlaylistSource): boolean => {
+    if (source.type !== 'addon') return true
+    return addonsEnabled && (isTmdbCatalogSource(source) ? hasTmdbKey : !!source.url)
+  }
 
   const isConnected = (sourceId: string, type: string) => {
     if (type === 'xtream') return !!xtreamAuth[sourceId]
@@ -202,7 +226,11 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
     const failure = sourceErrors[source.id]
     if (failure?.retryAt != null) return text.reconnecting
     if ((source.type === 'xtream' || source.type === 'addon') && !connected && !failure) return text.connecting
-    if (source.type === 'addon' && addonSessions[source.id]?.manifestFresh === false) return text.addonUnreachable
+    if (source.type === 'addon' && addonSessions[source.id]?.manifestFresh === false) {
+      if (!isTmdbCatalogSource(source)) return text.addonUnreachable
+      // Without a key the line under the row says what is needed.
+      return hasTmdbKey ? strings.sources.tmdbCatalog.unreachable : null
+    }
     return null
   }
 
@@ -244,8 +272,12 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
           const status = statusText(source, connected)
           const problem = refreshError[source.id] ?? sourceErrors[source.id]?.message
           const notChoosable = notChoosableReason(source, addonsEnabled)
-          const host = source.type === 'addon' ? addonHost(source.url) : null
+          const tmdbCatalog = isTmdbCatalogSource(source)
+          const host = source.type === 'addon' && !tmdbCatalog ? addonHost(source.url) : null
           const labels = source.type === 'addon' && source.addon ? addonOfferLabels(describeAddonOffer(source.addon)) : []
+          // The TMDB catalogue without a key: said under the row, with the way to the key's field.
+          const needsTmdbKey = tmdbCatalog && !hasTmdbKey
+          const shownProblem = needsTmdbKey ? strings.errors.tmdb.noKey : problem
 
           const rowClass = `flex min-h-[60px] min-w-[min(100%,260px)] flex-1 items-center gap-4 rounded-[14px] px-4 py-2.5 text-left transition-colors ${
             isActive ? 'bg-sky text-ink' : 'text-white'
@@ -261,7 +293,7 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-base font-bold">{source.name}</span>
                 <span className={`block truncate text-sm ${isActive ? 'text-ink/75' : 'text-surface-400'}`}>
-                  {SOURCE_TYPE_LABELS[source.type]}
+                  {tmdbCatalog ? strings.sources.tmdbCatalog.typeLabel : SOURCE_TYPE_LABELS[source.type]}
                   {host && ` · ${host}`}
                   {' · '}
                   {connected ? text.connected : text.disconnected}
@@ -285,6 +317,7 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
                 {notChoosable && (
                   <span className={`mt-1.5 block text-sm ${isActive ? 'text-ink/75' : 'text-surface-400'}`}>{notChoosable}</span>
                 )}
+                {tmdbCatalog && <TmdbAttribution className="mt-1.5" tone={isActive ? 'ink' : 'quiet'} />}
               </span>
               {(!notChoosable || isActive) && (
                 <span className={`shrink-0 text-sm max-sm:hidden ${isActive ? 'font-bold' : 'font-medium text-surface-500'}`}>
@@ -315,6 +348,7 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
                   </button>
                 )}
                 <div className="flex shrink-0 items-center gap-2 pr-1">
+                  {needsTmdbKey && <EnterTmdbKeyButton className={ACTION.secondary} />}
                   {offerSecret && editingSecret !== source.id && (
                     <button type="button" className={ACTION.secondary} onClick={() => setEditingSecret(source.id)}>
                       {source.type === 'xtream' ? text.enterCredentials : text.enterAddress}
@@ -340,7 +374,13 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
                       onClick={() => {
                         void handleRefresh(source.id)
                       }}
-                      aria-label={source.type === 'addon' ? text.refreshAddon(source.name) : text.refresh(source.name)}
+                      aria-label={
+                        tmdbCatalog
+                          ? strings.sources.tmdbCatalog.refresh(source.name)
+                          : source.type === 'addon'
+                            ? text.refreshAddon(source.name)
+                            : text.refresh(source.name)
+                      }
                       title={strings.common.refresh}
                     >
                       {isRefreshing ? (
@@ -363,9 +403,9 @@ export function SourceManager({ onEditingChange }: { onEditingChange?: (editing:
                   </button>
                 </div>
               </div>
-              {problem && (
+              {shownProblem && (
                 <div className="px-4 pb-2 pt-2.5">
-                  <FieldError>{problem}</FieldError>
+                  <FieldError>{shownProblem}</FieldError>
                 </div>
               )}
               {editingSecret === source.id && (

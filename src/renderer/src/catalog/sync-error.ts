@@ -23,7 +23,8 @@ export function toCatalogSyncError(error: unknown): CatalogSyncError | null {
       kind: error.kind,
       message: error.message,
       retryable: error.retryable,
-      ...(error.status !== undefined ? { status: error.status } : {})
+      ...(error.status !== undefined ? { status: error.status } : {}),
+      ...((error as { origin?: unknown }).origin === 'tmdb' ? { origin: 'tmdb' as const } : {})
     }
   }
   return {

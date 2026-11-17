@@ -198,6 +198,25 @@ export function browsableCatalogs(summary: AddonManifestSummary, type?: CatalogT
   )
 }
 
+/** Extra properties a search request can send besides the query. */
+const SEARCH_EXTRAS: ReadonlySet<string> = new Set(['search', 'skip'])
+
+/**
+ * The catalogue a page's search box asks for `type` (`vod` or `series`): the
+ * first of that type that declares the `search` extra and needs nothing else
+ * the app does not send. Null when the add-on cannot search that type.
+ */
+export function searchCatalogFor(summary: AddonManifestSummary, type: CatalogType): AddonCatalogSummary | null {
+  return (
+    summary.catalogs.find(
+      (catalog) =>
+        catalogTypeOfAddon(catalog.type) === type &&
+        catalog.extra.some((extra) => extra.name === 'search') &&
+        catalog.extra.every((extra) => !extra.isRequired || SEARCH_EXTRAS.has(extra.name))
+    ) ?? null
+  )
+}
+
 export interface AddonCapabilities {
   /** Has film or series catalogues the app shows: can be the active source. */
   catalogue: boolean

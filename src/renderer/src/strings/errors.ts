@@ -1,4 +1,4 @@
-import { settingsPath } from './settings'
+import { settings, settingsPath } from './settings'
 
 /** What a failure is called once it reaches the user, and failures of the TMDB and GitHub requests. */
 export const errors = {
@@ -34,7 +34,14 @@ export const errors = {
 
   tmdb: {
     badResponse: 'TMDB geçersiz bir yanıt döndürdü',
-    requestFailed: (status: number) => `TMDB isteği başarısız oldu (HTTP ${status})`
+    requestFailed: (status: number) => `TMDB isteği başarısız oldu (HTTP ${status})`,
+    // The built-in TMDB catalogue (Ayarlar → Kaynaklar → TMDB Kataloğu).
+    noKey: `TMDB Kataloğu için bir TMDB anahtarı gerekiyor. Anahtarını ${settingsPath('general')} → ${settings.general.tmdbGroup} bölümüne gir.`,
+    keyRefused: `TMDB anahtarını kabul etmedi. Anahtarı ${settingsPath('general')} → ${settings.general.tmdbGroup} bölümünden kontrol et.`,
+    rateLimited: 'TMDB şu an çok fazla istek alıyor. Biraz bekleyip tekrar dene.',
+    offline: "TMDB'ye ulaşılamadı. İnternet bağlantını kontrol et.",
+    timeout: 'TMDB zamanında yanıt vermedi. Biraz sonra tekrar dene.',
+    notFound: "Bu başlık TMDB'de bulunamadı."
   },
 
   github: {

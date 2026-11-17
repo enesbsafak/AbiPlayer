@@ -165,6 +165,8 @@ export interface CatalogItemIdentity {
   streamUrl?: string
   /** The meta id of an add-on catalogue item. */
   addonMetaId?: string
+  /** An add-on film's stream id when it is not its meta id (the built-in TMDB catalogue's IMDb id). */
+  addonVideoId?: string
 }
 
 function isUsableId(value: unknown): value is number {
@@ -178,7 +180,8 @@ function normalizeExtension(value: string | undefined): string {
 
 /**
  * The target a catalog item plays. Add-on items are recognised by their meta
- * id: a film plays its meta id; an add-on series has no target of its own (its
+ * id: a film plays its meta id (or its `addonVideoId`, when its catalogue
+ * names streams by another id); an add-on series has no target of its own (its
  * episodes come from its detail page). Xtream items are recognised by their
  * provider id (`streamId` for live and films, `seriesId` for a series); an item
  * without one is an M3U entry identified by its URL. Null when the item carries
@@ -187,7 +190,12 @@ function normalizeExtension(value: string | undefined): string {
 export function targetFromCatalogItem(item: CatalogItemIdentity): PlaybackTarget | null {
   if (item.addonMetaId !== undefined) {
     if (item.type !== 'vod' || !isAddonId(item.addonMetaId)) return null
-    return addonTarget({ sourceId: item.sourceId, contentType: 'movie', metaId: item.addonMetaId })
+    return addonTarget({
+      sourceId: item.sourceId,
+      contentType: 'movie',
+      metaId: item.addonMetaId,
+      ...(isAddonId(item.addonVideoId) ? { videoId: item.addonVideoId } : {})
+    })
   }
   if (isUsableId(item.streamId)) {
     if (item.type === 'live') return { kind: 'live', sourceId: item.sourceId, streamId: item.streamId }

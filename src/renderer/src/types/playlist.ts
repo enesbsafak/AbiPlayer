@@ -2,6 +2,9 @@ import type { AddonManifestSummary } from './addon'
 
 export type SourceType = 'xtream' | 'm3u_url' | 'm3u_file' | 'addon'
 
+/** The catalogues the app builds itself (see `PlaylistSource.builtin`). */
+export type BuiltinCatalogId = 'tmdb'
+
 export interface PlaylistSource {
   id: string
   name: string
@@ -17,6 +20,12 @@ export interface PlaylistSource {
   filePath?: string
   /** `addon` sources: the persisted summary of the add-on's manifest. */
   addon?: AddonManifestSummary
+  /**
+   * `addon` sources the app provides itself instead of an add-on at an
+   * address: `tmdb`, the film and series catalogue built from TMDB with the
+   * user's own TMDB key. No address, no secret of its own (addons/builtin.ts).
+   */
+  builtin?: BuiltinCatalogId
   addedAt: number
   lastRefresh?: number
 }
@@ -64,6 +73,12 @@ export interface Channel {
   seriesId?: number
   /** Add-on catalogue items: the add-on's meta id (also the stream id of a film). */
   addonMetaId?: string
+  /**
+   * A film's stream id when it is not its meta id: the IMDb id the built-in
+   * TMDB catalogue looks up when the film's detail opens. Never persisted
+   * with the catalogue; the detail and the player's channel carry it.
+   */
+  addonVideoId?: string
 }
 
 export interface SeriesDetail {
@@ -103,4 +118,6 @@ export interface EpisodeInfo {
   coverUrl: string
   /** Empty for add-on episodes: their stream is chosen when played. */
   streamUrl: string
+  /** When it first aired, as a date to show; only the built-in TMDB catalogue gives it. */
+  airDate?: string
 }

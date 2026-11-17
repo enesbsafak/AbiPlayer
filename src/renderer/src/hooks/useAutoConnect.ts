@@ -15,6 +15,8 @@ import type { CatalogStatusMap } from '@/store/playlist-slice'
 import { plainSecretOf, type AddonSessionState, type SourceConnectionError } from '@/store/auth-slice'
 import { refreshAddonSource, type AddonConnectDeps } from '@/addons/connect'
 import { canBeActiveSource } from '@/addons/manifest'
+import { isTmdbCatalogSource } from '@/addons/builtin'
+import { currentTmdbApiKey } from '@/addons/pager'
 import type { PlaylistSource } from '@/types/playlist'
 import type { XtreamAuthResponse } from '@/types/xtream'
 import { perfMark } from '@/services/perf'
@@ -153,6 +155,10 @@ export interface ConnectDeps {
   updateAddonSummary?: AddonConnectDeps['updateSummary']
   /** The add-on manifest request (tests replace it). */
   fetchAddonManifest?: AddonConnectDeps['fetchManifest']
+  /** The TMDB key the built-in TMDB catalogue connects with (default: the one saved in the settings). */
+  tmdbApiKey?: string | null
+  /** The TMDB requests (tests replace the network). */
+  tmdb?: AddonConnectDeps['tmdb']
   /** The secure store could not be read (it is read again): a missing secret is not gone. */
   secretsUnavailable?: boolean
   authenticate?: typeof xtreamApi.authenticate
@@ -168,6 +174,7 @@ export const SECRETS_UNAVAILABLE_MESSAGE = text.secretsUnavailable
 export const MISSING_XTREAM_SECRET_MESSAGE = text.missingXtreamSecret
 export const MISSING_M3U_URL_MESSAGE = text.missingM3uUrl
 export const MISSING_ADDON_URL_MESSAGE = text.missingAddonUrl
+export const MISSING_TMDB_KEY_MESSAGE = strings.errors.tmdb.noKey
 
 function missingSecret(message: string, deps: ConnectDeps): SourceConnectError {
   return new SourceConnectError('missing-secret', deps.secretsUnavailable ? SECRETS_UNAVAILABLE_MESSAGE : message)
@@ -247,9 +254,17 @@ export async function connectSource(source: PlaylistSource, deps: ConnectDeps): 
   }
 
   if (source.type === 'addon') {
-    if (!source.url) throw missingSecret(MISSING_ADDON_URL_MESSAGE, deps)
+    // The TMDB catalogue's "secret" is the TMDB key of the settings: without
+    // one it stops like a source whose secret is missing, and saving a key
+    // connects it again (settings/tmdb-api-key.ts).
+    const tmdbApiKey = deps.tmdbApiKey !== undefined ? deps.tmdbApiKey : currentTmdbApiKey()
+    if (isTmdbCatalogSource(source)) {
+      if (!tmdbApiKey) throw new SourceConnectError('missing-secret', MISSING_TMDB_KEY_MESSAGE)
+    } else if (!source.url) throw missingSecret(MISSING_ADDON_URL_MESSAGE, deps)
     const { session } = await refreshAddonSource(source, {
       fetchManifest: deps.fetchAddonManifest,
+      tmdbApiKey,
+      tmdb: deps.tmdb,
       updateSummary: deps.updateAddonSummary ?? ((sourceId, summary) => useStore.getState().updateSource(sourceId, { addon: summary }))
     })
     ;(deps.setAddonSession ?? useStore.getState().setAddonSession)(source.id, session)

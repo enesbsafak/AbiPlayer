@@ -14,6 +14,8 @@ import { Spinner } from '@/components/ui/Spinner'
 import { inferContentQualityLabel } from '@/services/quality'
 import { loadAddonMeta, addonMetaToVodInfo } from '@/addons/detail'
 import { addonErrorMessage } from '@/addons/messages'
+import { isTmdbCatalogSource } from '@/addons/builtin'
+import { appCatalogProvider, useCatalogSourceReady } from '@/addons/pager'
 import type { Channel } from '@/types/playlist'
 import { strings } from '@/strings'
 import { BackPill, DETAIL_PRIMARY, DetailPoster, DetailTitle, FactPill, MoreInCategory, WatchLine } from './DetailParts'
@@ -47,14 +49,25 @@ interface VODInfo {
 
 export function VODDetail({ item, onBack, onPlay, onOpen }: VODDetailProps) {
   const [info, setInfo] = useState<VODInfo | null>(null)
-  const share = watchShareOf(useItemProgress(item))
+  /**
+   * A film of the built-in TMDB catalogue: the IMDb id its streams are asked
+   * by (looked up with its detail), null when TMDB has none. Undefined for
+   * every other film: it plays as it is.
+   */
+  const [streamId, setStreamId] = useState<string | null | undefined>(undefined)
+  const [playNotice, setPlayNotice] = useState<string | null>(null)
+  const [loadFailure, setLoadFailure] = useState<string | null>(null)
+  const isTmdbCatalog = useStore((s) => isTmdbCatalogSource(s.sources.find((source) => source.id === item.sourceId)))
+  // What plays (and whose watch history shows): the card, with the stream id when it differs.
+  const playable = streamId ? { ...item, addonVideoId: streamId } : item
+  const share = watchShareOf(useItemProgress(playable))
   const [loading, setLoading] = useState(true)
   const getXtreamCredentials = useStore((s) => s.getXtreamCredentials)
   const tmdbApiKeySetting = useStore((s) => s.settings.tmdbApiKey)
-  // An add-on film's detail comes from its add-on, once the add-on's address is in memory.
-  const addonReady = useStore(
-    (s) => item.addonMetaId !== undefined && !!s.sources.find((source) => source.id === item.sourceId)?.url
-  )
+  // An add-on film's detail comes from its add-on, once the add-on's address
+  // is in memory (the TMDB catalogue's, while a key is saved).
+  const catalogReady = useCatalogSourceReady(item.addonMetaId !== undefined ? item.sourceId : null)
+  const addonReady = item.addonMetaId !== undefined && catalogReady
   // Loaded per film id: the catalog replaces the record object on a full
   // sync, and that must not reload the detail on screen.
   const itemRef = useRef(item)
@@ -70,8 +83,13 @@ export function VODDetail({ item, onBack, onPlay, onOpen }: VODDetailProps) {
     const load = async () => {
       setLoading(true)
       setInfo(null)
+      setStreamId(undefined)
+      setPlayNotice(null)
+      setLoadFailure(null)
       const creds = getXtreamCredentials(item.sourceId)
       let tmdbId: string | undefined
+      // The TMDB catalogue's detail is TMDB's text already: no second lookup by name.
+      let skipTmdbEnrichment = false
       // List records carry no detail text; it comes from get_vod_info below.
       let baseInfo: VODInfo = {
         name: item.name,
@@ -91,8 +109,12 @@ export function VODDetail({ item, onBack, onPlay, onOpen }: VODDetailProps) {
           // The add-on's meta, or (no meta resource, the add-on did not
           // answer) what the card knows: the film can be played either way.
           const source = useStore.getState().sources.find((entry) => entry.id === item.sourceId)
-          const meta = source ? await loadAddonMeta(source, 'movie', item.addonMetaId, { signal: controller.signal }) : null
+          skipTmdbEnrichment = isTmdbCatalogSource(source)
+          const meta = source
+            ? await loadAddonMeta(source, 'movie', item.addonMetaId, { signal: controller.signal }, appCatalogProvider(source))
+            : null
           if (cancelled) return
+          if (meta?.streamId !== undefined) setStreamId(meta.streamId)
           if (meta) {
             const addonInfo = addonMetaToVodInfo(meta)
             baseInfo = {
@@ -121,13 +143,18 @@ export function VODDetail({ item, onBack, onPlay, onOpen }: VODDetailProps) {
           }
         }
       } catch (err) {
-        // An add-on's message holds no address (addons/request.ts); its error object is not logged.
-        if (!cancelled && item.addonMetaId !== undefined) console.warn('[addon] film detail not loaded:', addonErrorMessage(err))
-        else if (!cancelled) console.error('Failed to load VOD info:', err)
+        // An add-on's message holds no address (addons/request.ts) and no
+        // TMDB key (addons/tmdb.ts); its error object is not logged.
+        if (!cancelled && item.addonMetaId !== undefined) {
+          const message = addonErrorMessage(err)
+          console.warn('[addon] film detail not loaded:', message)
+          // The TMDB catalogue's stream id is unknown now: "İzle" says why.
+          if (skipTmdbEnrichment) setLoadFailure(message)
+        } else if (!cancelled) console.error('Failed to load VOD info:', err)
       }
 
       const tmdbApiKey = resolveTmdbApiKey(tmdbApiKeySetting)
-      if (tmdbApiKey) {
+      if (tmdbApiKey && !skipTmdbEnrichment) {
         try {
           const tmdbDetails = await resolveTmdbMovieDetails({
             apiKey: tmdbApiKey,
@@ -224,11 +251,30 @@ export function VODDetail({ item, onBack, onPlay, onOpen }: VODDetailProps) {
           )}
 
           <div className="mt-2 flex flex-wrap items-center gap-3">
-            <button type="button" onClick={() => onPlay(item)} className={DETAIL_PRIMARY}>
+            <button
+              type="button"
+              onClick={() => {
+                // TMDB has no IMDb id for it (or its detail could not be
+                // asked): no stream add-on can be asked, and the page says so.
+                if (streamId === null) setPlayNotice(strings.catalog.tmdb.noStreamId)
+                else if (isTmdbCatalog && item.addonMetaId !== undefined && streamId === undefined) {
+                  setPlayNotice(loadFailure ?? strings.errors.tmdb.noKey)
+                } else onPlay(playable)
+              }}
+              className={DETAIL_PRIMARY}
+            >
               <PlayIcon size={22} />
               {share ? text.resume : text.playFilm}
             </button>
             <FavoriteToggle channelId={item.id} item={item} variant="button" className="h-[60px]" />
+          </div>
+          <div aria-live="polite" className="empty:hidden">
+            {playNotice && (
+              <p role="status" className="flex max-w-[68ch] items-start gap-2.5 text-[15px] text-surface-300">
+                <span aria-hidden="true" className="mt-[7px] size-2 shrink-0 rounded-full bg-sun" />
+                <span>{playNotice}</span>
+              </p>
+            )}
           </div>
         </div>
       </div>

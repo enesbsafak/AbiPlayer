@@ -16,6 +16,12 @@ const MESSAGES = { previewLoading: 'Ön izleme yükleniyor', loadFailed: 'Yükle
 const FIRST_PAGE = addonResourceUrl(CATALOG_BASE, 'catalog', 'movie', 'populer')
 const SECOND_PAGE = addonResourceUrl(CATALOG_BASE, 'catalog', 'movie', 'populer', [['skip', 50]])
 
+/** The fixture add-on without its search catalogue: its box can only filter what is loaded. */
+function sourceWithoutSearch() {
+  const source = catalogSource()
+  return { ...source, addon: { ...source.addon!, catalogs: source.addon!.catalogs.filter((entry) => entry.id !== 'ara') } }
+}
+
 function wrapper({ children }: { children: ReactNode }) {
   return <MemoryRouter initialEntries={['/vod']}>{children}</MemoryRouter>
 }
@@ -70,14 +76,41 @@ describe('an add-on as the source of the Filmler page', () => {
   })
 
   it('does not load more by scrolling while a query filters what is loaded', async () => {
+    useStore.setState({ sources: [sourceWithoutSearch()] })
     vi.stubGlobal('fetch', routeFetch({ [FIRST_PAGE]: () => jsonResponse({ metas: metas('tt', 1, 50) }) }))
     const { result } = renderHook(() => useCatalogPage('vod', MESSAGES), { wrapper })
     await waitFor(() => expect(result.current.items).toHaveLength(50))
 
     act(() => result.current.setSearchQuery('Örnek 1'))
     await waitFor(() => expect(result.current.appliedQuery).toBe('Örnek 1'))
+    expect(result.current.searchesRemotely).toBe(false)
     expect(result.current.pager?.canLoadMore).toBe(false)
     expect(result.current.loadedCount).toBe(50)
+  })
+
+  it('asks the add-on when it has a search catalogue for the type, instead of filtering what is loaded', async () => {
+    const search = addonResourceUrl(CATALOG_BASE, 'catalog', 'movie', 'ara', [['search', 'deniz']])
+    const fetch = routeFetch({
+      [FIRST_PAGE]: () => jsonResponse({ metas: metas('tt', 1, 50) }),
+      [search]: () => jsonResponse({ metas: metas('tt', 900, 3) })
+    })
+    vi.stubGlobal('fetch', fetch)
+    const { result } = renderHook(() => useCatalogPage('vod', MESSAGES), { wrapper })
+    await waitFor(() => expect(result.current.items).toHaveLength(50))
+
+    act(() => result.current.setSearchQuery('deniz'))
+    expect(result.current.searchesRemotely).toBe(true)
+    await waitFor(() => expect(result.current.items.map((item) => item.name)).toEqual(['Örnek 900', 'Örnek 901', 'Örnek 902']))
+    expect(result.current.matchCount).toBe(3)
+    expect(result.current.searchStatus).toBeNull()
+    // The search catalogue has no `skip`: its one page is all there is.
+    expect(result.current.pager).toMatchObject({ ended: true, canLoadMore: false })
+    expect(fetch.calls.filter((url) => url === search)).toHaveLength(1)
+
+    // Clearing the box shows the category again, without asking anything.
+    act(() => result.current.setSearchQuery(''))
+    await waitFor(() => expect(result.current.items).toHaveLength(50))
+    expect(result.current.searchesRemotely).toBe(false)
   })
 
   it('words a refused first page for an add-on, without its address, and retries it', async () => {

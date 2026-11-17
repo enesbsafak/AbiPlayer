@@ -1,5 +1,6 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useStore } from '@/store'
+import { takeTmdbKeyFocusRequest } from '@/components/addons/TmdbAttribution'
 import {
   clampEpgRefreshInterval,
   MAX_EPG_REFRESH_MINUTES,
@@ -77,6 +78,12 @@ export function TmdbApiKeyInput() {
   const tmdbApiKey = useStore((s) => s.settings.tmdbApiKey)
   const [draft, setDraft] = useState(tmdbApiKey)
   const [status, setStatus] = useState<{ kind: 'saving' | 'saved' | 'error'; message: string } | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  // Sent here to enter the key (the TMDB catalogue needs one): the field takes the focus.
+  useEffect(() => {
+    if (takeTmdbKeyFocusRequest()) inputRef.current?.focus()
+  }, [])
 
   // Follow outside changes (read from the secure store at start) while not being edited.
   useEffect(() => {
@@ -97,6 +104,7 @@ export function TmdbApiKeyInput() {
   return (
     <SettingRow label={text.tmdbKey} htmlFor="tmdb-api-key" help={text.tmdbKeyHint} helpId="tmdb-api-key-help">
       <input
+        ref={inputRef}
         id="tmdb-api-key"
         type="password"
         value={draft}

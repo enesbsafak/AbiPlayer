@@ -31,7 +31,8 @@ function badResponse(host: string | undefined): XtreamRequestError {
   return new XtreamRequestError('bad-response', USER_ERROR_MESSAGES['bad-response'], { host })
 }
 
-async function readCapped(res: Response, maxBytes: number, host: string | undefined): Promise<string> {
+/** The body as text, refused (`bad-response`, no URL in it) past `maxBytes`. */
+export async function readCapped(res: Response, maxBytes: number, host: string | undefined): Promise<string> {
   const declared = Number(res.headers.get('content-length'))
   if (Number.isFinite(declared) && declared > maxBytes) {
     await res.body?.cancel().catch(() => undefined)

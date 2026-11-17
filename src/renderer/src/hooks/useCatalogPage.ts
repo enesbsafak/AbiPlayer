@@ -10,13 +10,17 @@ import { toUserMessage } from '@/services/user-error'
 import { certificateAwareError } from '@/catalog/certificate-errors'
 import { useRetainedListWhileLoading } from '@/hooks/useRetainedListWhileLoading'
 import type { VirtualCardGridHandle } from '@/components/catalog/VirtualCardGrid'
-import { addonCatalogPager, useAddonCategoryPaging } from '@/addons/pager'
+import { addonCatalogPager, appCatalogProvider, useAddonCategoryPaging, useCatalogSourceReady } from '@/addons/pager'
 import { addonErrorMessage } from '@/addons/messages'
+import { isTmdbCatalogSource } from '@/addons/builtin'
+import { searchCatalogFor } from '@/addons/manifest'
+import { useAddonSearch, type AddonSearchTarget } from '@/addons/search'
 import {
   catalog,
   filterBySearch,
   useCatalogCategories,
   useCatalogStatus,
+  useCatalogViewSettings,
   useVisibleCatalogCategories,
   useVisibleCatalogItems,
   xtreamCategoriesToRecords,
@@ -148,6 +152,16 @@ export interface CatalogPageModel {
   setSearchQuery: (query: string) => void
   /** The list still shows the previous query's results. */
   isSearchPending: boolean
+  /**
+   * The box asks the source (the built-in TMDB catalogue, or an add-on whose
+   * catalogue searches) instead of filtering what is loaded: the grid shows
+   * its results, paged like a category.
+   */
+  searchesRemotely: boolean
+  /** Shown in place of the result count while the source is being asked, or null. */
+  searchStatus: string | null
+  /** The source's data comes from TMDB: the page shows its credit. */
+  attribution: 'tmdb' | null
   /** What the grid shows: the selected category, filtered by the (deferred) query. */
   items: readonly CatalogItem[]
   /** Every match of the query, not capped. */
@@ -226,10 +240,14 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
   const source = useMemo(() => sources.find((item) => item.id === sourceId) ?? null, [sources, sourceId])
   const isXtream = source?.type === 'xtream'
   const isAddon = source?.type === 'addon'
-  const addonAddressLoaded = isAddon && !!source?.url
+  const isTmdbCatalog = isTmdbCatalogSource(source)
+  // An add-on asks once its address is in memory, the TMDB catalogue while a key is saved.
+  const catalogReady = useCatalogSourceReady(isAddon ? sourceId : null)
+  const addonAddressLoaded = isAddon && catalogReady
   // Without its secret an Xtream source loads nothing: its page says so
   // instead of waiting for a preview and a category list that never come.
-  // An add-on without its address cannot ask for a page either.
+  // An add-on without its address cannot ask for a page either, nor the
+  // TMDB catalogue without a key.
   const missingSecret =
     credentialsHydrated &&
     !!sourceId &&
@@ -395,19 +413,40 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
   const visibleItems = useVisibleCatalogItems(sourceId, type, selectedCategoryId)
   // Typing updates the box at once; the filter over a large list follows as
   // a deferred render that the next keystroke can interrupt.
-  const appliedQuery = useDeferredValue(searchQuery)
-  const filtered = useMemo(() => filterBySearch(visibleItems, appliedQuery), [visibleItems, appliedQuery])
+  const deferredQuery = useDeferredValue(searchQuery)
+
+  // A source that can search (the TMDB catalogue, an add-on with a search
+  // catalogue of this type) is asked instead: its results replace the grid.
+  const searchCatalog = isAddon && addonAddressLoaded && source?.addon ? searchCatalogFor(source.addon, type) : null
+  const searchTarget = useMemo<AddonSearchTarget | null>(
+    () => (source && searchCatalog ? { source, type, catalog: searchCatalog } : null),
+    [source, type, searchCatalog]
+  )
+  const search = useAddonSearch(searchTarget, searchQuery, appCatalogProvider)
+  const { state: searchState, loadMore: loadMoreResults, retry: retrySearch } = search
+  const searchesRemotely = search.active
+  const { showAdultContent } = useCatalogViewSettings()
+  const searchItems = useMemo(
+    () => (showAdultContent ? searchState.items : searchState.items.filter((item) => !item.isAdult)),
+    [searchState.items, showAdultContent]
+  )
+  const searchFirstPageLoading = searchesRemotely && searchState.loading && searchState.pages === 0
+  const searchFirstPageError = searchesRemotely && searchState.pages === 0 && !searchState.loading ? searchState.error : null
+
+  const appliedQuery = searchesRemotely ? searchQuery : deferredQuery
+  const filtered = useMemo(() => filterBySearch(visibleItems, deferredQuery), [visibleItems, deferredQuery])
   // Per query too: a query that matches nothing must not show the previous,
   // unfiltered cards next to "0 sonuç" while a load runs.
-  const retainKey = `${buildCatalogRetainResetKey(sourceId, selectedCategoryId)}\n${appliedQuery}`
-  const items = useRetainedListWhileLoading(filtered, foreground.active, retainKey)
+  const retainKey = `${buildCatalogRetainResetKey(sourceId, selectedCategoryId)}\n${deferredQuery}`
+  const retained = useRetainedListWhileLoading(filtered, foreground.active, retainKey)
+  const items = searchesRemotely ? searchItems : retained
   const addonView = addonPagerView({
     isAddon,
     addressLoaded: addonAddressLoaded,
     categoriesLoaded,
     hasCategory: !!selectedCategoryId,
     paging,
-    searching: appliedQuery.trim().length > 0,
+    searching: deferredQuery.trim().length > 0,
     sourceFailed: missingSecret || !!sourceError
   })
 
@@ -419,18 +458,26 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
     categoryLoaded,
     status,
     // An error of another category (or of "all") does not belong here.
-    loadError: isAddon
-      ? addonView.firstPageError && addonErrorMessage(addonView.firstPageError, messages.loadFailed)
-      : foreground.errorScope === selectionScope(sourceId, selectedCategoryId)
-        ? foreground.error
-        : null,
-    sourceError: missingSecret ? (sourceError?.message ?? strings.sources.connect.secretsLoadFailed) : null,
+    loadError: searchFirstPageError
+      ? addonErrorMessage(searchFirstPageError, messages.loadFailed)
+      : isAddon
+        ? addonView.firstPageError && addonErrorMessage(addonView.firstPageError, messages.loadFailed)
+        : foreground.errorScope === selectionScope(sourceId, selectedCategoryId)
+          ? foreground.error
+          : null,
+    sourceError: missingSecret
+      ? isTmdbCatalog
+        ? strings.errors.tmdb.noKey
+        : (sourceError?.message ?? strings.sources.connect.secretsLoadFailed)
+      : null,
+    ...(missingSecret && isTmdbCatalog ? { sourceErrorTab: 'general' as const } : {}),
     connectionFailed: !!sourceError
   })
 
   const retry = useCallback(() => {
     if (isAddon) {
       if (banner?.kind === 'source-error') requestSourceReconnect()
+      else if (searchFirstPageError) retrySearch()
       else if (sourceId && selectedCategoryId) void addonCatalogPager.retry(sourceId, type, selectedCategoryId)
       return
     }
@@ -443,7 +490,18 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
     }
     dispatch({ type: 'reset' })
     bumpReload()
-  }, [banner?.kind, getXtreamCredentials, isAddon, requestSourceReconnect, selectedCategoryId, sourceError, sourceId, type])
+  }, [
+    banner?.kind,
+    getXtreamCredentials,
+    isAddon,
+    requestSourceReconnect,
+    retrySearch,
+    searchFirstPageError,
+    selectedCategoryId,
+    sourceError,
+    sourceId,
+    type
+  ])
 
   const loadMore = useCallback(() => {
     if (sourceId && selectedCategoryId) void addonCatalogPager.loadNextPage(sourceId, type, selectedCategoryId)
@@ -452,7 +510,7 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
     if (sourceId && selectedCategoryId) void addonCatalogPager.retry(sourceId, type, selectedCategoryId)
   }, [sourceId, selectedCategoryId, type])
   const pagerError = addonView.laterPageError
-  const pager = useMemo<CatalogPagerModel | null>(
+  const categoryPager = useMemo<CatalogPagerModel | null>(
     () =>
       isAddon && addonView.started
         ? {
@@ -466,6 +524,20 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
         : null,
     [isAddon, addonView.started, addonView.loadingMore, addonView.ended, addonView.canLoadMore, pagerError, loadMore, retryPage]
   )
+  // The results of a search the source answers page through the same footer.
+  const searchPager = useMemo<CatalogPagerModel | null>(() => {
+    if (!searchesRemotely || searchState.pages === 0) return null
+    const laterError = searchState.loading ? null : searchState.error
+    return {
+      loadingMore: searchState.loading,
+      ended: searchState.ended,
+      error: laterError ? addonErrorMessage(laterError, strings.catalog.addon.pageFailed) : null,
+      canLoadMore: !searchState.ended && !searchState.loading && !searchState.error,
+      loadMore: loadMoreResults,
+      retry: retrySearch
+    }
+  }, [searchesRemotely, searchState, loadMoreResults, retrySearch])
+  const pager = searchesRemotely ? searchPager : categoryPager
 
   const retryCategories = useCallback(() => {
     setCategoriesError(null)
@@ -521,13 +593,24 @@ export function useCatalogPage(type: CatalogType, messages: CatalogPageMessages)
     retryCategories,
     searchQuery,
     setSearchQuery,
-    isSearchPending: searchQuery !== appliedQuery,
+    isSearchPending: searchesRemotely ? search.pending || searchState.loading : searchQuery !== deferredQuery,
+    searchesRemotely,
+    searchStatus: searchesRemotely && (search.pending || searchFirstPageLoading) ? strings.catalog.addon.searching : null,
+    attribution: isTmdbCatalog ? 'tmdb' : null,
     items,
-    matchCount: filtered.length,
+    matchCount: searchesRemotely ? (searchState.total ?? searchItems.length) : filtered.length,
     loadedCount: visibleItems.length,
     appliedQuery,
-    loading: isAddon ? addonView.firstPageLoading : foreground.active,
-    loadingMessage: isAddon ? (addonView.firstPageLoading ? strings.catalog.addon.pageLoading : null) : foreground.message,
+    loading: searchesRemotely ? searchFirstPageLoading : isAddon ? addonView.firstPageLoading : foreground.active,
+    loadingMessage: searchesRemotely
+      ? searchFirstPageLoading
+        ? strings.catalog.addon.searching
+        : null
+      : isAddon
+        ? addonView.firstPageLoading
+          ? strings.catalog.addon.pageLoading
+          : null
+        : foreground.message,
     banner,
     retry,
     detail,

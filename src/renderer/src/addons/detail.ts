@@ -1,8 +1,8 @@
 import type { Channel, EpisodeInfo, PlaylistSource, SeasonInfo, SeriesDetail } from '@/types/playlist'
 import { strings } from '@/strings'
 import { addonTarget, type AddonContentType, type AddonPlaybackTarget } from '../../../shared/playback'
-import { fetchAddonMeta, type AddonFetchOptions, type AddonMeta, type AddonVideo } from './client'
-import { addonSupports } from './manifest'
+import type { AddonFetchOptions, AddonMeta, AddonVideo } from './client'
+import { remoteCatalogProvider, type AddonCatalogProvider } from './provider'
 
 /*
  * An add-on's meta mapped onto the detail shapes the film and series pages
@@ -54,30 +54,15 @@ function releasedAt(video: AddonVideo): number {
 }
 
 /**
- * A series meta as the series page's detail. Episodes are the meta's videos,
- * grouped by season: seasons ascending with season 0 (specials) last,
- * episodes by number, then release date, then the add-on's order. A video
- * without a season number counts as season 1 when no video has one, and is
- * left out otherwise. An episode without a number gets its place in the
+ * The videos of one season as its episodes: by number, then release date,
+ * then the add-on's order. An episode without a number gets its place in the
  * season. `EpisodeInfo.id` is the video id (what the stream request takes);
  * `streamUrl` stays empty.
  */
-export function addonMetaToSeriesDetail(meta: AddonMeta): SeriesDetail {
-  const anySeason = meta.videos.some((video) => video.season !== null)
-  const bySeason = new Map<number, Array<{ video: AddonVideo; index: number }>>()
-  meta.videos.forEach((video, index) => {
-    const season = video.season ?? (anySeason ? null : 1)
-    if (season === null) return
-    const list = bySeason.get(season)
-    if (list) list.push({ video, index })
-    else bySeason.set(season, [{ video, index }])
-  })
-
-  const seasonNumbers = [...bySeason.keys()].sort((a, b) => seasonOrder(a) - seasonOrder(b))
-  const seasons: SeasonInfo[] = []
-  const episodes: Record<number, EpisodeInfo[]> = {}
-  for (const seasonNumber of seasonNumbers) {
-    const entries = (bySeason.get(seasonNumber) ?? []).slice().sort((a, b) => {
+export function addonVideosToEpisodes(videos: readonly AddonVideo[], seasonNumber: number): EpisodeInfo[] {
+  const entries = videos
+    .map((video, index) => ({ video, index }))
+    .sort((a, b) => {
       const numberA = a.video.episode
       const numberB = b.video.episode
       if (numberA !== null && numberB !== null && numberA !== numberB) return numberA - numberB
@@ -87,26 +72,68 @@ export function addonMetaToSeriesDetail(meta: AddonMeta): SeriesDetail {
       if (timeA !== timeB) return timeA < timeB ? -1 : 1
       return a.index - b.index
     })
-    episodes[seasonNumber] = entries.map(({ video }, position) => ({
-      id: video.id,
-      episodeNum: video.episode ?? position + 1,
-      title: video.title ?? '',
-      containerExtension: '',
-      plot: video.overview ?? '',
-      duration: '',
-      durationSecs: 0,
-      rating: 0,
-      season: seasonNumber,
-      coverUrl: video.thumbnail ?? '',
-      streamUrl: ''
-    }))
-    seasons.push({
-      seasonNumber,
-      // Season 0 is left unnamed: the page names its specials.
-      name: seasonNumber > 0 ? strings.catalog.detail.season(seasonNumber) : '',
-      episodeCount: entries.length,
-      cover: ''
-    })
+  return entries.map(({ video }, position) => ({
+    id: video.id,
+    episodeNum: video.episode ?? position + 1,
+    title: video.title ?? '',
+    containerExtension: '',
+    plot: video.overview ?? '',
+    duration: video.runtime ?? '',
+    durationSecs: 0,
+    rating: 0,
+    season: seasonNumber,
+    coverUrl: video.thumbnail ?? '',
+    streamUrl: '',
+    ...(video.airDate ? { airDate: video.airDate } : {})
+  }))
+}
+
+function seasonInfo(seasonNumber: number, episodeCount: number): SeasonInfo {
+  return {
+    seasonNumber,
+    // Season 0 is left unnamed: the page names its specials.
+    name: seasonNumber > 0 ? strings.catalog.detail.season(seasonNumber) : '',
+    episodeCount,
+    cover: ''
+  }
+}
+
+/**
+ * A series meta as the series page's detail. Episodes are the meta's videos,
+ * grouped by season: seasons ascending with season 0 (specials) last,
+ * episodes as `addonVideosToEpisodes` orders them. A video without a season
+ * number counts as season 1 when no video has one, and is left out
+ * otherwise. A meta that lists its `seasons` without their episodes (the
+ * built-in TMDB catalogue) gives those seasons with no episodes yet: each is
+ * filled when it is opened.
+ */
+export function addonMetaToSeriesDetail(meta: AddonMeta): SeriesDetail {
+  const anySeason = meta.videos.some((video) => video.season !== null)
+  const bySeason = new Map<number, AddonVideo[]>()
+  for (const video of meta.videos) {
+    const season = video.season ?? (anySeason ? null : 1)
+    if (season === null) continue
+    const list = bySeason.get(season)
+    if (list) list.push(video)
+    else bySeason.set(season, [video])
+  }
+
+  const seasons: SeasonInfo[] = []
+  const episodes: Record<number, EpisodeInfo[]> = {}
+  if (meta.seasons) {
+    const listed = [...meta.seasons].sort((a, b) => seasonOrder(a.season) - seasonOrder(b.season))
+    for (const entry of listed) {
+      seasons.push(seasonInfo(entry.season, entry.episodeCount))
+      const videos = bySeason.get(entry.season)
+      if (videos) episodes[entry.season] = addonVideosToEpisodes(videos, entry.season)
+    }
+  } else {
+    const seasonNumbers = [...bySeason.keys()].sort((a, b) => seasonOrder(a) - seasonOrder(b))
+    for (const seasonNumber of seasonNumbers) {
+      const list = addonVideosToEpisodes(bySeason.get(seasonNumber) ?? [], seasonNumber)
+      episodes[seasonNumber] = list
+      seasons.push(seasonInfo(seasonNumber, list.length))
+    }
   }
 
   const vod = addonMetaToVodInfo(meta)
@@ -155,17 +182,34 @@ export function addonEpisodeChannel(input: {
 }
 
 /**
- * The meta of an item from its catalogue add-on, or null when that add-on
- * has no `meta` resource for it (the page then shows what the card knows).
- * Rejects like the client (`XtreamRequestError` kinds, no address in it).
+ * The meta of an item from its catalogue source, or null when that source
+ * has none for it (an add-on without a `meta` resource for it; the page then
+ * shows what the card knows) or cannot ask now. `provider` defaults to an
+ * add-on's own (provider.ts); the screens pass the app's, which also knows
+ * the built-in TMDB catalogue. Rejects like the client (`XtreamRequestError`
+ * kinds, no address or key in it).
  */
 export async function loadAddonMeta(
   source: PlaylistSource,
   contentType: AddonContentType,
   metaId: string,
-  options: AddonFetchOptions = {}
+  options: AddonFetchOptions = {},
+  provider: AddonCatalogProvider | null = remoteCatalogProvider(source)
 ): Promise<AddonMeta | null> {
-  if (source.type !== 'addon' || !source.url || !source.addon) return null
-  if (!addonSupports(source.addon, 'meta', contentType, metaId)) return null
-  return fetchAddonMeta(source.url, contentType, metaId, options)
+  if (source.type !== 'addon' || !source.addon || !provider) return null
+  return provider.meta(contentType, metaId, options)
+}
+
+/** The episodes of one season of a meta that lists its `seasons` without them. */
+export async function loadAddonSeasonEpisodes(
+  provider: AddonCatalogProvider,
+  meta: AddonMeta,
+  seasonNumber: number,
+  options: AddonFetchOptions = {}
+): Promise<EpisodeInfo[]> {
+  const videos = await provider.seasonVideos(meta, seasonNumber, options)
+  return addonVideosToEpisodes(
+    videos.filter((video) => video.season === null || video.season === seasonNumber),
+    seasonNumber
+  )
 }

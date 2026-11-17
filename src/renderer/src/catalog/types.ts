@@ -99,6 +99,8 @@ export interface CatalogSyncError {
   status?: number
   /** Host of the request that failed (lower case), when the failure came from a request. */
   host?: string
+  /** A TMDB request failed (the built-in catalogue): `message` already names TMDB and what to do. */
+  origin?: 'tmdb'
 }
 
 /** Small per-(source, type) status. Mirrored into the zustand store as `catalogStatus`. */

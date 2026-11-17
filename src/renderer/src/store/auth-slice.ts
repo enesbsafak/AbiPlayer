@@ -105,9 +105,13 @@ export function plainSecretOf(
   }
 }
 
-/** The source's secret lives in the secure store (and goes from there with it). */
-export function keepsSecretInStore(source: Pick<PlaylistSource, 'type'>): boolean {
-  return source.type !== 'm3u_file'
+/**
+ * The source's secret lives in the secure store (and goes from there with
+ * it). A built-in catalogue has none: it asks with the TMDB key of the
+ * settings.
+ */
+export function keepsSecretInStore(source: Pick<PlaylistSource, 'type' | 'builtin'>): boolean {
+  return source.type !== 'm3u_file' && !(source.type === 'addon' && source.builtin !== undefined)
 }
 
 /** The source needs a secret from the secure store before it can connect. */

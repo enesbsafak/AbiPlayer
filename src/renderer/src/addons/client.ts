@@ -71,6 +71,16 @@ export interface AddonVideo {
   released: string | null
   thumbnail: string | null
   overview: string | null
+  /** Running time as text ("45 dk"); only the built-in TMDB catalogue gives it. */
+  runtime?: string | null
+  /** The air date to show; only the built-in TMDB catalogue gives it. */
+  airDate?: string | null
+}
+
+/** A season of a series whose episodes are fetched one season at a time (the built-in TMDB catalogue). */
+export interface AddonSeason {
+  season: number
+  episodeCount: number
 }
 
 export interface AddonMeta extends AddonMetaPreview {
@@ -79,6 +89,19 @@ export interface AddonMeta extends AddonMetaPreview {
   /** As the add-on wrote it, e.g. "112 min". */
   runtime: string | null
   videos: AddonVideo[]
+  /**
+   * What the streams of this film (or of the series' episodes, as
+   * `<id>:<season>:<episode>`) are asked by, when it is not the meta id: the
+   * built-in TMDB catalogue's IMDb id; null when there is none, so no stream
+   * add-on can be asked. Absent for an add-on's own meta.
+   */
+  streamId?: string | null
+  /**
+   * The series' seasons when `videos` does not list the episodes: each
+   * season's episodes are fetched when it is opened
+   * (`AddonCatalogProvider.seasonVideos`). Absent for an add-on's own meta.
+   */
+  seasons?: AddonSeason[]
 }
 
 /**
@@ -103,6 +126,10 @@ export interface AddonCatalogPage {
   metas: AddonMetaPreview[]
   /** Entries in the answer before validation: what `skip` advances by. */
   received: number
+  /** The answer says it is the last page (the built-in TMDB catalogue knows its page count). */
+  ended?: boolean
+  /** Entries in every page together, when the answer says (TMDB's `total_results`). */
+  total?: number
 }
 
 function badResponse(base: string): XtreamRequestError {
@@ -227,14 +254,19 @@ export async function fetchAddonManifest(base: string, options: AddonFetchOption
   return summary
 }
 
-/** One page of a catalogue; `skip` is the number of entries already received (0 for the first page). */
+/**
+ * One page of a catalogue; `skip` is the number of entries already received
+ * (0 for the first page). With `search`, the page of a search catalogue's
+ * answer to that query (the `search` extra property).
+ */
 export async function fetchAddonCatalogPage(
   base: string,
   catalog: Pick<AddonCatalogSummary, 'type' | 'id'>,
   skip: number,
-  options: AddonFetchOptions = {}
+  options: AddonFetchOptions = {},
+  search?: string
 ): Promise<AddonCatalogPage> {
-  const extra = skip > 0 ? [['skip', skip] as const] : []
+  const extra = [...(search !== undefined ? [['search', search] as const] : []), ...(skip > 0 ? [['skip', skip] as const] : [])]
   const data = await fetchAddonJson(addonResourceUrl(base, 'catalog', catalog.type, catalog.id, extra), {
     ...options,
     maxBytes: ADDON_MAX_BYTES.catalog

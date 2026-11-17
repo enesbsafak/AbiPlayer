@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useStore } from '@/store'
+import { isTmdbCatalogSource } from '@/addons/builtin'
 import { GuideIcon, LiveIcon } from '@/components/ui/icons'
 import { PRIMARY_PILL } from '@/components/home/home-ui'
 import { strings } from '@/strings'
@@ -13,6 +14,8 @@ const text = strings.catalog.addon
  */
 export function NoLiveTv({ section }: { section: 'live' | 'epg' }) {
   const Icon = section === 'live' ? LiveIcon : GuideIcon
+  // The built-in TMDB catalogue is no add-on: its own wording.
+  const builtin = useStore((s) => isTmdbCatalogSource(s.sources.find((source) => source.id === s.activeSourceId)))
   return (
     <div className="flex h-full min-h-0 flex-col p-3">
       <section
@@ -24,7 +27,7 @@ export function NoLiveTv({ section }: { section: 'live' | 'epg' }) {
           <h2 id="no-live-title" className="font-title text-[clamp(26px,2.6vw,34px)] leading-[1.15]">
             {text.noLive}
           </h2>
-          <p className="text-base leading-relaxed text-surface-400">{text.noLiveHint}</p>
+          <p className="text-base leading-relaxed text-surface-400">{builtin ? strings.catalog.tmdb.noLiveHint : text.noLiveHint}</p>
           <Link to="/vod" className={`${PRIMARY_PILL} mt-3`}>
             {text.openFilms}
           </Link>

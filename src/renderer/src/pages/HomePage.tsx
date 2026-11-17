@@ -9,9 +9,11 @@ import { useSpatialArrowKeys } from '@/components/home/spatial-focus'
 import { useHomeBootstrap } from '@/hooks/useHomeBootstrap'
 import { useOpenCatalogItem, useOpenPlayback, useOpenPlayerRoute } from '@/hooks/useOpenCatalogItem'
 import { useAddonPlayback } from '@/components/addons/useAddonPlayback'
-import { addonCatalogPager, useAddonCategoryPaging } from '@/addons/pager'
+import { addonCatalogPager, appCatalogProvider, useAddonCategoryPaging, useCatalogSourceReady } from '@/addons/pager'
 import type { AddonCategoryPaging } from '@/addons/catalog'
 import { addonErrorMessage } from '@/addons/messages'
+import { isTmdbCatalogSource } from '@/addons/builtin'
+import { loadAddonMeta } from '@/addons/detail'
 import { useDeferredPlayback } from '@/hooks/useDeferredPlayback'
 import { formatClockTime, useMinuteClock } from '@/hooks/useMinuteClock'
 import type { Channel } from '@/types/playlist'
@@ -100,7 +102,10 @@ export default function HomePage() {
   // An add-on as the active source: no live TV, catalogues instead of
   // counts, the first page of its first film and series catalogue as rows.
   const isAddonSource = activeSource?.type === 'addon'
-  const addonAddressLoaded = isAddonSource && !!activeSource?.url
+  // The built-in TMDB catalogue is such a source too; it asks with the TMDB key instead of an address.
+  const isTmdbCatalog = isTmdbCatalogSource(activeSource)
+  const catalogReady = useCatalogSourceReady(isAddonSource ? activeSourceId : null)
+  const addonAddressLoaded = isAddonSource && catalogReady
   const addonPlayback = useAddonPlayback()
   const { play: playAddon } = addonPlayback
   const openPlayerHere = useOpenPlayerRoute()
@@ -275,16 +280,20 @@ export default function HomePage() {
   }, [catalogVersion, activeSourceId, viewSettings, addonFirstVodId, addonFirstSeriesId])
   // Waiting for a first page (or the address it needs), never for a page nobody asks for.
   const pageOnItsWay = (paging: AddonCategoryPaging | null) => paging === null || (paging.pages === 0 && !paging.error)
-  const addonVodLoading = isAddonSource && !activeSourceFailed && !!addonFirstVod && pageOnItsWay(addonVodPaging)
-  const addonSeriesLoading = isAddonSource && !activeSourceFailed && !!addonFirstSeries && pageOnItsWay(addonSeriesPaging)
+  // The TMDB catalogue whose key was removed asks nothing: no spinner for it.
+  const addonCanAsk = !(isTmdbCatalog && !catalogReady)
+  const addonVodLoading = isAddonSource && addonCanAsk && !activeSourceFailed && !!addonFirstVod && pageOnItsWay(addonVodPaging)
+  const addonSeriesLoading = isAddonSource && addonCanAsk && !activeSourceFailed && !!addonFirstSeries && pageOnItsWay(addonSeriesPaging)
   const addonLoading = addonVodLoading || addonSeriesLoading
   const addonPageErrors = [addonVodPaging, addonSeriesPaging].flatMap((paging) =>
     paging && paging.pages === 0 && !paging.loading && paging.error ? [paging.error] : []
   )
   const addonHomeError =
-    isAddonSource && !addonLoading && addonPageErrors.length > 0 && addonRows.vod.length === 0 && addonRows.series.length === 0
-      ? addonErrorMessage(addonPageErrors[0], text.loadFailed)
-      : null
+    isAddonSource && !addonCanAsk && !activeSourceFailed
+      ? strings.errors.tmdb.noKey
+      : isAddonSource && !addonLoading && addonPageErrors.length > 0 && addonRows.vod.length === 0 && addonRows.series.length === 0
+        ? addonErrorMessage(addonPageErrors[0], text.loadFailed)
+        : null
   const retryAddonHome = useCallback(() => {
     if (!activeSourceId) return
     if (addonFirstVodId) void addonCatalogPager.retry(activeSourceId, 'vod', addonFirstVodId)
@@ -292,10 +301,31 @@ export default function HomePage() {
   }, [activeSourceId, addonFirstVodId, addonFirstSeriesId])
   const playAddonFilm = useCallback(
     (film: CatalogItem) => {
+      const source = useStore.getState().sources.find((entry) => entry.id === film.sourceId)
+      if (isTmdbCatalogSource(source) && film.addonMetaId !== undefined) {
+        // The TMDB catalogue's film is asked for by its IMDb id, which its
+        // detail gives (kept for a while, so the detail opens at once after).
+        // Without one, or when TMDB cannot be asked, its detail opens and
+        // says why on "İzle".
+        const provider = appCatalogProvider(source)
+        void (source && provider ? loadAddonMeta(source, 'movie', film.addonMetaId, {}, provider) : Promise.resolve(null)).then(
+          (meta) => {
+            if (!meta?.streamId) {
+              handlePlay(film)
+              return
+            }
+            const channel = { ...film, addonVideoId: meta.streamId }
+            const target = targetFromChannel(channel)
+            if (target?.kind === 'addon') playAddon({ target, channel, onStarted: () => openPlayerHere() })
+          },
+          () => handlePlay(film)
+        )
+        return
+      }
       const target = targetFromChannel(film)
       if (target?.kind === 'addon') playAddon({ target, channel: film, onStarted: () => openPlayerHere() })
     },
-    [playAddon, openPlayerHere]
+    [playAddon, openPlayerHere, handlePlay]
   )
 
   const continueItem = continueItems[0] ?? null
@@ -390,7 +420,7 @@ export default function HomePage() {
     feature = film ? (
       <NewestFilmTile film={film} dated={false} onPlay={playAddonFilm} />
     ) : (
-      <AddonIdleTile section={addonFirstVod || !addonFirstSeries ? 'vod' : 'series'} />
+      <AddonIdleTile section={addonFirstVod || !addonFirstSeries ? 'vod' : 'series'} builtin={isTmdbCatalog} />
     )
   } else if (home.films.items[0]) {
     feature = <NewestFilmTile film={home.films.items[0]} dated={home.films.dated} onPlay={handlePlay} />

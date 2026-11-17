@@ -13,6 +13,7 @@ interface FailureLike {
   kind?: unknown
   status?: unknown
   message?: unknown
+  origin?: unknown
 }
 
 function asFailure(error: unknown): FailureLike | null {
@@ -32,6 +33,10 @@ export function isAddonRefusal(error: unknown): boolean {
  * client, or a `CatalogSyncError` the pager or the stream collection left.
  */
 export function addonErrorMessage(error: unknown, fallback?: string): string {
+  // The built-in TMDB catalogue's failures (addons/tmdb.ts) say themselves
+  // what went wrong: a refused key is not an add-on's address.
+  const failure = asFailure(error)
+  if (failure?.origin === 'tmdb' && typeof failure.message === 'string' && failure.message) return failure.message
   if (isAddonRefusal(error)) return errors.addonRefused
   return toUserMessage(error, fallback)
 }
