@@ -1,6 +1,7 @@
 import { test as base, expect } from '@playwright/test'
 import { ensureMedia, type MediaSet } from '../mock-provider/media.ts'
 import { startMockProvider, type MockOptions, type MockProvider } from '../mock-provider/server.ts'
+import { startMockAddons, type MockAddons } from '../mock-provider/addons.ts'
 import { launchApp, newProfileDir, removeProfileDir, type AbiApp, type CloseReport } from './app.ts'
 import { E2E_CACHE_DIR } from './paths.ts'
 
@@ -14,6 +15,12 @@ export interface LaunchRequest {
 interface TestFixtures {
   mockOptions: Omit<MockOptions, 'media'>
   mock: MockProvider
+  /**
+   * The fake catalogue and stream add-ons (mock-provider/addons.ts). Started
+   * only by the scenarios that ask for it; their stream URLs redirect to the
+   * mock provider's film file.
+   */
+  addons: MockAddons
   profileDir: string
   launch: (request?: LaunchRequest) => Promise<AbiApp>
   /** Close reports of every app this test launched, filled in during teardown or by `closeApp`. */
@@ -39,6 +46,16 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     const provider = await startMockProvider({ ...mockOptions, media })
     await use(provider)
     await provider.close()
+  },
+
+  addons: async ({ mock }, use) => {
+    const credentials = `${encodeURIComponent(mock.username)}/${encodeURIComponent(mock.password)}`
+    const addons = await startMockAddons({
+      // Any film id plays the mock provider's film clip.
+      mediaUrl: (token) => `${mock.url}/movie/${credentials}/100001.mp4?t=${encodeURIComponent(token)}`
+    })
+    await use(addons)
+    await addons.close()
   },
 
   profileDir: async ({}, use) => {
