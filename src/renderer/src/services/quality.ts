@@ -83,6 +83,10 @@ export function inferContentQualityLabel(
 ): string | null {
   if (!source) return null
 
+  // An item of an add-on or of the TMDB catalogue is named by its real title,
+  // not by a release name: a film called "Cam" is not a cam rip.
+  if ('addonMetaId' in source && source.addonMetaId) return null
+
   // Only the title: group/categoryName often carry marketing labels like "2K"
   // or "HD" that don't reflect actual resolution, and the container extension
   // must stay out because "ts" (MPEG-TS) is also the telesync marker, which
