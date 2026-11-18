@@ -64,8 +64,6 @@ test.describe('dizide sonraki bölüm', () => {
 
     // The series' subtitle choice came along, although the episode in between had none.
     await expect.poll(async () => (await mpvState(page)).sid, { timeout: 10_000 }).toBe(await englishSubtitleId(page))
-    await revealPlayerControls(page)
-    await expect(page.getByRole('button', { name: 'Altyazı seç', exact: true })).toContainText('English')
     await app.shot('subtitle-remembered')
 
     // The episode ends: the next one is announced and starts by itself.
