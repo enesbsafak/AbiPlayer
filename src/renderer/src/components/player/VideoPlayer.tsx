@@ -7,13 +7,14 @@ import { useKeepDisplayAwake } from '@/hooks/useKeepDisplayAwake'
 import { useControlsAutoHide } from '@/hooks/useControlsAutoHide'
 import { useDockClearance } from '@/hooks/useDockClearance'
 import { useResumePlayback } from '@/hooks/useResumePlayback'
+import { useEpisodeQueueLoader, useNextEpisodeCountdown } from '@/hooks/useNextEpisode'
 import { PlayerControls, formatTime } from './PlayerControls'
 import { PlayerSidebar, SIDEBAR_WIDTH } from './PlayerSidebar'
 import { SubtitleOverlay } from './SubtitleOverlay'
 import { OVER_VIDEO } from './player-ui'
 import { Spinner } from '@/components/ui/Spinner'
 import { CloseIcon } from '@/components/ui/icons'
-import { AlertCircle, Info, RefreshCw, RotateCcw } from 'lucide-react'
+import { AlertCircle, Info, RefreshCw, RotateCcw, SkipForward } from 'lucide-react'
 import { mpvIsAvailable, mpvSetFullscreen, mpvSetSubtitleInset, windowSetFullscreen } from '@/services/platform'
 import { GENERATED_CAPTIONS_TRACK_LABEL, GENERATED_CAPTIONS_TRACK_LANGUAGE } from '@/constants/captions'
 import type { SubtitleCue } from '@/types/player'
@@ -94,6 +95,8 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
     mpvEnabled,
     isEngineResolved
   )
+  useEpisodeQueueLoader()
+  const nextEpisode = useNextEpisodeCountdown()
   // MPV handles buffering natively — only show overlay on initial startup or HTML5 buffering
   const showLoadingOverlay = !isEngineResolved || (mpvEnabled ? isMpvStarting : isBuffering)
   usePerfTransition('player:overlay-hidden', !showLoadingOverlay)
@@ -304,6 +307,35 @@ export function VideoPlayer({ className = '' }: VideoPlayerProps) {
                 className="flex size-11 items-center justify-center rounded-full bg-raised transition-colors hover:bg-surface-800"
               >
                 <CloseIcon size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {nextEpisode && (
+          <div
+            role="status"
+            className={`pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-[30px] py-2 pl-5 pr-2 text-[16px] font-medium text-white ${OVER_VIDEO}`}
+          >
+            <span className="flex min-w-0 flex-col">
+              <span>{strings.player.nextEpisode.countdown(nextEpisode.secondsLeft)}</span>
+              <span className="truncate text-[14px] text-surface-300">{nextEpisode.title}</span>
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={nextEpisode.playNow}
+                className="flex h-11 items-center gap-2 rounded-full bg-white px-4 text-[15px] font-bold text-ink transition-colors hover:bg-surface-300"
+              >
+                <SkipForward size={16} strokeWidth={2.6} aria-hidden="true" />
+                {strings.player.nextEpisode.playNow}
+              </button>
+              <button
+                type="button"
+                onClick={nextEpisode.cancel}
+                className="flex h-11 items-center rounded-full border-2 border-white/50 px-4 text-[15px] font-bold transition-colors hover:border-white"
+              >
+                {strings.player.nextEpisode.cancel}
               </button>
             </div>
           </div>

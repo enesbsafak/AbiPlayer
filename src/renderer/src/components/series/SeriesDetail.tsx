@@ -15,6 +15,7 @@ import { QualityBadge } from '@/components/ui/QualityBadge'
 import { Spinner } from '@/components/ui/Spinner'
 import { inferContentQualityLabel } from '@/services/quality'
 import { toUserMessage } from '@/services/user-error'
+import { episodeQueueOf, episodeRequestOf, parseEpisodeId, seriesDetailFromInfo } from '@/services/xtream-series'
 import { useCatalogItem, xtreamItemId } from '@/catalog'
 import type { Channel, EpisodeInfo, SeriesDetail as SeriesDetailType } from '@/types/playlist'
 import { BackPill, DETAIL_PRIMARY, DetailPoster, DetailTitle, FactPill, MoreInCategory, WatchLine } from '@/components/vod/DetailParts'
@@ -35,68 +36,9 @@ interface SeriesDetailProps {
   onBack: () => void
   onSeasonChange?: (seasonNumber: number) => void
   /** The episode to play, identified by its own id rather than by a URL. */
-  onPlayEpisode: (episode: EpisodePlaybackRequest) => void
+  onPlayEpisode: (episode: EpisodePlaybackRequest, queue: EpisodePlaybackRequest[]) => void
   /** Opens another series' detail, from the row under the episodes. */
   onOpenSeries?: (series: Channel) => void
-}
-
-type SeasonRaw = { season_number?: number; name?: string; episode_count?: number; cover?: string }
-type EpisodeRaw = {
-  id?: string | number
-  episode_num?: number
-  title?: string
-  container_extension?: string
-  season?: number
-  info?: {
-    plot?: string
-    duration?: string
-    duration_secs?: number
-    rating?: number
-    movie_image?: string
-  }
-}
-
-function normalizeSeasons(raw: unknown): SeasonRaw[] {
-  // Some Xtream servers return `seasons` as an object keyed by season number,
-  // others as an array, others omit it entirely. Normalize to an array.
-  if (Array.isArray(raw)) return raw as SeasonRaw[]
-  if (raw && typeof raw === 'object') return Object.values(raw as Record<string, SeasonRaw>)
-  return []
-}
-
-function normalizeEpisodeMap(raw: unknown): Record<string, EpisodeRaw[]> {
-  // PHP-backed servers return `episodes: []` (empty array) instead of `{}`
-  // when the series has no episodes. Also some return episode lists as
-  // objects keyed by episode_num. Normalize each season to an array.
-  if (!raw || typeof raw !== 'object') return {}
-  const result: Record<string, EpisodeRaw[]> = {}
-  const entries = Array.isArray(raw)
-    ? raw.map((v, i) => [String(i + 1), v] as const)
-    : Object.entries(raw as Record<string, unknown>)
-  for (const [key, value] of entries) {
-    if (Array.isArray(value)) {
-      result[key] = value as EpisodeRaw[]
-    } else if (value && typeof value === 'object') {
-      result[key] = Object.values(value as Record<string, EpisodeRaw>)
-    }
-  }
-  return result
-}
-
-function normalizeInfoObject(raw: unknown): Record<string, unknown> {
-  // `info.info` is sometimes serialized as `[]` (empty array) by PHP when the
-  // upstream record has no metadata. Treat anything non-object-like as empty.
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-  return raw as Record<string, unknown>
-}
-
-function parseEpisodeId(id: unknown): number | null {
-  if (typeof id === 'number' && Number.isFinite(id)) return id
-  if (typeof id === 'string') {
-    const n = parseInt(id, 10)
-    if (Number.isFinite(n)) return n
-  }
-  return null
 }
 
 interface LoadStatus {
@@ -177,94 +119,11 @@ function useSeriesDetailData({
         const info = await xtreamApi.getSeriesInfo(creds, seriesId, { signal: controller.signal })
         if (cancelled) return
 
-        const rawInfo = normalizeInfoObject((info as { info?: unknown }).info)
-        const rawSeasons = normalizeSeasons((info as { seasons?: unknown }).seasons)
-        const rawEpisodes = normalizeEpisodeMap((info as { episodes?: unknown }).episodes)
-
-        const seasons = rawSeasons.flatMap((season) => {
-          if (typeof season.season_number !== 'number') return []
-          return [{
-            seasonNumber: season.season_number,
-            name: season.name || '',
-            episodeCount: season.episode_count || 0,
-            cover: season.cover || ''
-          }]
-        })
-
-        const episodes: Record<number, SeriesDetailType['episodes'][number]> = {}
-        for (const [seasonNum, eps] of Object.entries(rawEpisodes)) {
-          const seasonKey = parseInt(seasonNum, 10)
-          if (!Number.isFinite(seasonKey)) continue
-          episodes[seasonKey] = eps
-            .map((ep) => {
-              const streamId = parseEpisodeId(ep.id)
-              if (streamId === null) return null
-              return {
-                id: typeof ep.id === 'string' ? ep.id : String(ep.id ?? streamId),
-                episodeNum: ep.episode_num ?? 0,
-                title: ep.title || '',
-                containerExtension: ep.container_extension || 'mp4',
-                plot: ep.info?.plot || '',
-                duration: ep.info?.duration || '',
-                durationSecs: ep.info?.duration_secs || 0,
-                rating: ep.info?.rating || 0,
-                season: ep.season ?? seasonKey,
-                coverUrl: ep.info?.movie_image || '',
-                streamUrl: xtreamApi.buildSeriesUrl(creds, streamId, ep.container_extension || 'mp4')
-              }
-            })
-            .filter((e): e is NonNullable<typeof e> => e !== null)
-        }
-
-        // If seasons array is empty but episodes were returned, synthesize
-        // seasons from the episode map so the UI still has something to show.
-        const seasonsFromEpisodes =
-          seasons.length === 0
-            ? Object.keys(episodes)
-                .flatMap((key) => {
-                  const seasonNumber = parseInt(key, 10)
-                  return Number.isFinite(seasonNumber) ? [seasonNumber] : []
-                })
-                .sort((a, b) => a - b)
-                .map((seasonNumber) => ({
-                  seasonNumber,
-                  name: text.season(seasonNumber),
-                  episodeCount: episodes[seasonNumber]?.length ?? 0,
-                  cover: ''
-                }))
-            : seasons
-
-        const rawName = typeof rawInfo.name === 'string' ? rawInfo.name : ''
-        const rawCover = typeof rawInfo.cover === 'string' ? rawInfo.cover : ''
-        const rawPlot = typeof rawInfo.plot === 'string' ? rawInfo.plot : ''
-        const rawCast = typeof rawInfo.cast === 'string' ? rawInfo.cast : ''
-        const rawDirector = typeof rawInfo.director === 'string' ? rawInfo.director : ''
-        const rawGenre = typeof rawInfo.genre === 'string' ? rawInfo.genre : ''
-        const rawReleaseDate = typeof rawInfo.release_date === 'string' ? rawInfo.release_date : ''
-        const rawRating =
-          typeof rawInfo.rating === 'string'
-            ? rawInfo.rating
-            : typeof rawInfo.rating === 'number'
-              ? String(rawInfo.rating)
-              : ''
-        const rawBackdrop = Array.isArray(rawInfo.backdrop_path)
-          ? (rawInfo.backdrop_path as unknown[]).filter((x): x is string => typeof x === 'string')
-          : []
-
-        let nextDetail: SeriesDetailType = {
-          seriesId,
-          name: rawName,
-          cover: rawCover,
-          plot: rawPlot,
-          cast: rawCast,
-          director: rawDirector,
-          genre: rawGenre,
-          releaseDate: rawReleaseDate,
-          rating: rawRating,
-          backdropPath: rawBackdrop,
-          seasons: seasonsFromEpisodes,
-          episodes
-        }
+        const record = seriesDetailFromInfo(info, seriesId, (episodeId, extension) =>
+          xtreamApi.buildSeriesUrl(creds, episodeId, extension)
+        )
+        const { rawInfo } = record
+        let nextDetail: SeriesDetailType = record.detail
 
         const tmdbApiKey = resolveTmdbApiKey(tmdbApiKeySetting)
         if (tmdbApiKey) {
@@ -499,19 +358,8 @@ export function SeriesDetail({
   const primaryEpisode = resumeEpisode ?? firstEpisode
 
   const play = (ep: EpisodeInfo) => {
-    const episodeId = parseEpisodeId(ep.id)
-    if (episodeId === null) return
-    onPlayEpisode({
-      sourceId,
-      seriesId,
-      season: ep.season,
-      episodeNum: ep.episodeNum,
-      episodeId,
-      containerExtension: ep.containerExtension,
-      title: text.episodeTitle(detail.name, ep.season, ep.episodeNum, ep.title),
-      ...(ep.coverUrl ? { coverUrl: ep.coverUrl } : {}),
-      fallbackStreamUrl: ep.streamUrl
-    })
+    const request = episodeRequestOf(sourceId, seriesId, detail.name, ep)
+    if (request) onPlayEpisode(request, episodeQueueOf(sourceId, detail))
   }
   const genres = detail.genre ? detail.genre.split(',').map((genre) => genre.trim()).filter(Boolean) : []
 

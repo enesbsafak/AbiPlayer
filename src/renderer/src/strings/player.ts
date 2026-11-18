@@ -4,6 +4,14 @@ export const player = {
   resumedFrom: (time: string) => `${time} konumundan devam ediliyor`,
   restartFromStart: 'Baştan başla',
 
+  /** Shown when an episode ends and the series has another one. */
+  nextEpisode: {
+    /** "Sıradaki bölüm 5 sn sonra başlıyor". */
+    countdown: (seconds: number) => `Sıradaki bölüm ${seconds} sn sonra başlıyor`,
+    playNow: 'Şimdi oynat',
+    cancel: 'Vazgeç'
+  },
+
   transport: {
     previous: (name: string) => `Önceki: ${name}`,
     noPrevious: 'Önceki içerik yok',

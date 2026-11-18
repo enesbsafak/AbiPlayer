@@ -42,10 +42,11 @@ export default function SeriesPage() {
   const handleSeasonChange = useCallback((season: number) => updateDetail({ season }), [updateDetail])
 
   const handlePlayEpisode = useCallback(
-    (episode: EpisodePlaybackRequest) => {
+    (episode: EpisodePlaybackRequest, queue: EpisodePlaybackRequest[]) => {
       // A real episode target: history and resume are keyed by the episode's
-      // own id and source, not by a throwaway channel id or its URL.
-      playEpisode(episode)
+      // own id and source, not by a throwaway channel id or its URL. The
+      // series' episodes go along: what "next" means in the player.
+      playEpisode(episode, queue)
       if (!useStore.getState().currentPlayback) return
       openPlayer(detail?.itemId ?? null, { season: episode.season })
     },

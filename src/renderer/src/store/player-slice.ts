@@ -27,6 +27,13 @@ import {
   type PlaybackId
 } from '../../../shared/playback'
 import { EXTERNAL_SUBTITLE_ID } from '@/player/track-ids'
+import {
+  findTrackMemory,
+  rememberedTrackOf,
+  rememberTracks,
+  type RememberedTracks,
+  type TrackMemoryEntry
+} from '@/services/track-memory'
 import { strings } from '@/strings'
 
 export const DEFAULT_PLAYBACK_TUNING: MpvPlaybackTuning = {
@@ -58,6 +65,7 @@ export type PlayerPatch = Partial<{
   activeSubtitleCues: SubtitleCue[]
   playerNotice: string | null
   loadedPlaybackId: PlaybackId | null
+  endedPlaybackId: PlaybackId | null
   externalSubtitle: ExternalSubtitleFile | null
 }>
 
@@ -108,6 +116,7 @@ const EMPTY_STREAM_STATE = {
   activeSubtitleCues: [],
   playerNotice: null,
   loadedPlaybackId: null,
+  endedPlaybackId: null,
   externalSubtitle: null
 } satisfies Partial<PlayerSlice>
 
@@ -169,6 +178,24 @@ export interface PlayerSlice {
    * seek (a snapshot of that playback reports it loaded, the `<video>` has metadata).
    */
   loadedPlaybackId: PlaybackId | null
+  /**
+   * Set by the engine while a film or episode of that playback stands at its
+   * end (mpv holds the last frame); cleared when the viewer seeks back.
+   */
+  endedPlaybackId: PlaybackId | null
+  /**
+   * The episodes of the series being watched, in watching order: what
+   * "previous" and "next" mean while one of them plays. Null for anything
+   * else, and until the list is known for an episode started without it.
+   */
+  episodeQueue: EpisodePlaybackRequest[] | null
+  /**
+   * What the viewer last chose (subtitle or "off", audio) for each series,
+   * film and channel; persisted. See services/track-memory.ts.
+   */
+  trackMemory: TrackMemoryEntry[]
+  /** The entry of `trackMemory` for the current playback, if there is one. */
+  rememberedTracks: RememberedTracks | null
   isPlaying: boolean
   isPaused: boolean
   isBuffering: boolean
@@ -228,8 +255,14 @@ export interface PlayerSlice {
   startPlayback: (request: PlaybackRequest) => void
   /** Starts a catalog item; the target is derived from the channel. */
   playChannel: (channel: Channel) => void
-  /** Starts one series episode with a real episode target. */
-  playEpisode: (request: EpisodePlaybackRequest) => void
+  /**
+   * Starts one series episode with a real episode target. `queue` is the
+   * series' episodes in order; without it the queue already held is kept when
+   * the episode is one of its entries.
+   */
+  playEpisode: (request: EpisodePlaybackRequest, queue?: EpisodePlaybackRequest[]) => void
+  /** The episode list of a series, loaded after one of its episodes was started without it. */
+  setEpisodeQueue: (sourceId: string, seriesId: number, queue: EpisodePlaybackRequest[]) => void
   stopPlayback: () => void
   reloadPlayback: () => void
   suspendPlayback: () => void
@@ -253,6 +286,7 @@ export interface PlayerSlice {
   setFullscreen: (fullscreen: boolean) => void
   setPiP: (pip: boolean) => void
   setPlayerError: (error: string | null) => void
+  /** An audio choice made by the viewer; remembered for the series or item. */
   setCurrentAudioTrack: (id: string | null) => void
   /** A subtitle choice made by the viewer; engines must not override it. */
   selectSubtitleTrack: (id: string | null) => void
@@ -279,6 +313,14 @@ export function shouldKeepPlayingInCorner(
     state.currentPlayback !== null &&
     !state.isPlaybackSuspended
   )
+}
+
+/** The viewer's track choice recorded for the series or item being played. */
+function remembering(state: PlayerSliceState, choice: RememberedTracks): Partial<PlayerSlice> {
+  const target = state.currentPlayback?.target
+  if (!target) return {}
+  const trackMemory = rememberTracks(state.trackMemory, target, choice)
+  return { trackMemory, rememberedTracks: findTrackMemory(trackMemory, target) }
 }
 
 function failedStart(): Partial<PlayerSlice> {
@@ -308,6 +350,27 @@ function resolveFor(
   )
 }
 
+function isQueuedEpisode(queue: readonly EpisodePlaybackRequest[], target: PlayableTarget): boolean {
+  return (
+    target.kind === 'episode' &&
+    queue.some((entry) => entry.sourceId === target.sourceId && entry.episodeId === target.streamId)
+  )
+}
+
+/**
+ * The episodes before and after the one being played, from the queue. Both
+ * null for anything that is not a queued episode.
+ */
+export function adjacentEpisodes(
+  queue: readonly EpisodePlaybackRequest[] | null,
+  target: PlayableTarget | null
+): { previous: EpisodePlaybackRequest | null; next: EpisodePlaybackRequest | null } {
+  if (!queue || !target || target.kind !== 'episode') return { previous: null, next: null }
+  const index = queue.findIndex((entry) => entry.sourceId === target.sourceId && entry.episodeId === target.streamId)
+  if (index < 0) return { previous: null, next: null }
+  return { previous: queue[index - 1] ?? null, next: queue[index + 1] ?? null }
+}
+
 function startState(state: PlayerSliceState, request: PlaybackRequest): Partial<PlayerSlice> {
   const { target, channel } = request
   if (!isPlayableTarget(target)) return failedStart()
@@ -328,6 +391,9 @@ function startState(state: PlayerSliceState, request: PlaybackRequest): Partial<
     isPaused: false,
     isPlaybackSuspended: false,
     isCornerPlayback: false,
+    // The next episode of the same series keeps the series' queue.
+    episodeQueue: state.episodeQueue && isQueuedEpisode(state.episodeQueue, target) ? state.episodeQueue : null,
+    rememberedTracks: findTrackMemory(state.trackMemory, target),
     // Live has no position to return to; everything else may.
     pendingResume: armResume(playback),
     // A lip-sync offset that fixed the previous broadcast is wrong for this
@@ -356,6 +422,10 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
   currentChannel: null,
   currentPlayback: null,
   loadedPlaybackId: null,
+  endedPlaybackId: null,
+  episodeQueue: null,
+  trackMemory: [],
+  rememberedTracks: null,
   isPlaying: false,
   isPaused: false,
   isBuffering: false,
@@ -401,26 +471,34 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
       return target ? startState(state, { target, channel }) : failedStart()
     }),
 
-  playEpisode: (request) =>
-    set((state) =>
-      startState(state, {
-        target: episodeTarget({
-          sourceId: request.sourceId,
-          episodeId: request.episodeId,
-          containerExtension: request.containerExtension,
-          seriesId: request.seriesId,
-          season: request.season,
-          episode: request.episodeNum
-        }),
-        channel: episodeDisplayChannel(request)
+  playEpisode: (request, queue) =>
+    set((state) => {
+      const target = episodeTarget({
+        sourceId: request.sourceId,
+        episodeId: request.episodeId,
+        containerExtension: request.containerExtension,
+        seriesId: request.seriesId,
+        season: request.season,
+        episode: request.episodeNum
       })
-    ),
+      const next = startState(state, { target, channel: episodeDisplayChannel(request) })
+      return queue && next.currentPlayback && isQueuedEpisode(queue, target) ? { ...next, episodeQueue: queue } : next
+    }),
+
+  setEpisodeQueue: (sourceId, seriesId, queue) =>
+    set((state) => {
+      const target = state.currentPlayback?.target
+      if (!target || target.kind !== 'episode' || target.sourceId !== sourceId || target.seriesId !== seriesId) return state
+      return isQueuedEpisode(queue, target) ? { episodeQueue: queue } : state
+    }),
 
   stopPlayback: () =>
     set({
       ...EMPTY_STREAM_STATE,
       currentChannel: null,
       currentPlayback: null,
+      episodeQueue: null,
+      rememberedTracks: null,
       isPlaying: false,
       isPaused: false,
       playbackTuning: DEFAULT_PLAYBACK_TUNING,
@@ -506,8 +584,22 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
   setFullscreen: (fullscreen) => set({ isFullscreen: fullscreen }),
   setPiP: (pip) => set({ isPiP: pip }),
   setPlayerError: (error) => set({ playerError: error }),
-  setCurrentAudioTrack: (id) => set({ currentAudioTrack: id }),
-  selectSubtitleTrack: (id) => set({ currentSubtitleTrack: id, isSubtitleTrackUserChoice: true }),
+  setCurrentAudioTrack: (id) =>
+    set((state) => {
+      const track = state.audioTracks.find((candidate) => candidate.id === id)
+      return { currentAudioTrack: id, ...(track ? remembering(state, { audio: rememberedTrackOf(track) }) : {}) }
+    }),
+  selectSubtitleTrack: (id) =>
+    set((state) => {
+      // A subtitle file the viewer loaded belongs to this one item: not remembered.
+      const track = state.subtitleTracks.find((candidate) => String(candidate.id) === id && candidate.type !== 'external')
+      const choice = id === null ? ('off' as const) : track ? rememberedTrackOf(track) : null
+      return {
+        currentSubtitleTrack: id,
+        isSubtitleTrackUserChoice: true,
+        ...(choice ? remembering(state, { subtitle: choice }) : {})
+      }
+    }),
   setPlayerNotice: (notice) => set({ playerNotice: notice }),
   setCurrentVideoQuality: (id) => set({ currentVideoQuality: id }),
   // Called on every cue tick (up to 10x/s); an identical list must not wake

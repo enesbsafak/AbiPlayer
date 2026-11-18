@@ -131,6 +131,8 @@ export function useMpvPlayer(enabled: boolean, options: MpvPlayerOptions = {}) {
   const assertedLoadRef = useRef<number | null>(null)
   /** Load the viewer's subtitle file was last added back to. */
   const restoringLoadRef = useRef<number | null>(null)
+  /** Corrections sent for a subtitle selection mpv did not hold, per load. */
+  const subtitleRepairRef = useRef<SubtitleRepair | null>(null)
   const windowFullscreenRef = useRef(false)
   const reconnectRef = useRef<ReconnectDriver | null>(null)
   const startupStartedAtRef = useRef<number | null>(null)
@@ -260,8 +262,16 @@ export function useMpvPlayer(enabled: boolean, options: MpvPlayerOptions = {}) {
         reassertSelections(snapshot, preferencesRef.current.subtitlesOffByDefault)
       }
 
+      repairSubtitleSelection(snapshot, subtitleRepairRef)
+
       // mpv has this load's file open: a resume seek can run.
       if (isSnapshotLoaded(snapshot)) store.markPlaybackLoaded(playback.playbackId)
+
+      // A film or episode standing at its end (mpv holds the last frame).
+      const ended = snapshot.phase === 'ended' && !isLiveTarget(playback.target)
+      if (ended !== (store.endedPlaybackId === playback.playbackId)) {
+        applyPlayerPatch({ endedPlaybackId: ended ? playback.playbackId : null })
+      }
 
       reconnectRef.current?.observe(mpvReconnectObservation(snapshot, isLiveTarget(playback.target)))
     }
@@ -470,6 +480,32 @@ function reassertSelections(snapshot: MpvStateSnapshot, subtitlesOffByDefault: b
     // Subtitles were turned off (by the viewer or the setting); keep them off.
     void mpvSetSubtitleTrack(null).catch(() => undefined)
   }
+}
+
+/** How often one load gets a subtitle selection sent again before it is left alone. */
+const MAX_SUBTITLE_REPAIRS = 3
+
+interface SubtitleRepair {
+  loadId: number
+  track: number
+  sent: number
+}
+
+/**
+ * The store's subtitle is a track of this load, but mpv plays another one or
+ * none: the command that selected it was lost (sent while mpv had no file
+ * open, or overtaken by the load). Sent again, a few times at most per load
+ * and track, so a track mpv cannot select does not loop.
+ */
+function repairSubtitleSelection(snapshot: MpvStateSnapshot, repairRef: { current: SubtitleRepair | null }): void {
+  if (snapshot.loadId === null || !isSnapshotLoaded(snapshot)) return
+  const wanted = trackIndex(useStore.getState().currentSubtitleTrack, MPV_SUBTITLE_PREFIX)
+  if (wanted === null || wanted === snapshot.sid || !hasTrack(snapshot, 'sub', wanted)) return
+  const previous = repairRef.current
+  const sent = previous && previous.loadId === snapshot.loadId && previous.track === wanted ? previous.sent : 0
+  if (sent >= MAX_SUBTITLE_REPAIRS) return
+  repairRef.current = { loadId: snapshot.loadId, track: wanted, sent: sent + 1 }
+  void mpvSetSubtitleTrack(wanted).catch(() => undefined)
 }
 
 /**

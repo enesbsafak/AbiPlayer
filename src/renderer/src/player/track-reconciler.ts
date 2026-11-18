@@ -2,6 +2,7 @@ import { itemAt } from '../../../shared/checked'
 import type { AudioTrack, SubtitleTrack, VideoQualityOption } from '@/types/player'
 import { AUTO_VIDEO_QUALITY_ID } from '@/services/quality'
 import { pickPreferredAudioTrackId, pickPreferredSubtitleTrackId } from '@/services/track-preferences'
+import { matchRememberedTrack, type RememberedTracks } from '@/services/track-memory'
 import { EXTERNAL_SUBTITLE_ID } from './track-ids'
 
 /**
@@ -11,7 +12,11 @@ import { EXTERNAL_SUBTITLE_ID } from './track-ids'
 export interface TrackPreferenceState {
   audioPreferenceApplied: boolean
   subtitlePreferenceApplied: boolean
-  /** The "subtitles on by default" setting is off and was applied to this item. */
+  /**
+   * Subtitles were turned off for this item without the viewer doing it now:
+   * by the "subtitles on by default" setting, or by the "off" remembered for
+   * its series.
+   */
   subtitlesOffByDefault: boolean
 }
 
@@ -26,6 +31,8 @@ export interface TrackSelectionContext {
   currentSubtitleTrack: string | null
   /** The viewer picked the subtitle (or "off") for this stream. */
   isSubtitleTrackUserChoice: boolean
+  /** What the viewer last chose for this series or item; goes before the settings. */
+  rememberedTracks?: RememberedTracks | null
   settings: {
     preferredAudioLanguage: string
     preferredSubtitleLanguage: string
@@ -53,7 +60,8 @@ function has(tracks: Array<{ id: string | number }>, id: string | null): id is s
 /**
  * The store's audio selection for one engine track list (both engines).
  *
- * A valid selection is kept. Otherwise the preferred language is applied once
+ * A valid selection is kept. Otherwise the track remembered for the series or
+ * item, else the preferred language, is applied once
  * per item; after that an invalid or missing selection falls back to what the
  * engine itself plays (`engineSelected`), then the default track, then the
  * first. Call it only once the engine knows the stream's tracks: an empty list
@@ -73,7 +81,10 @@ export function reconcileAudioSelection(
   }
 
   if (!state.audioPreferenceApplied) {
-    const preferred = pickPreferredAudioTrackId(tracks, context.settings.preferredAudioLanguage)
+    const remembered = context.rememberedTracks?.audio
+    const preferred =
+      (remembered ? matchRememberedTrack(tracks, remembered) : null) ??
+      pickPreferredAudioTrackId(tracks, context.settings.preferredAudioLanguage)
     const next = { ...state, audioPreferenceApplied: true }
     return preferred !== current ? { track: preferred, state: next } : { state: next }
   }
@@ -89,10 +100,13 @@ export function reconcileAudioSelection(
  *
  * A loaded subtitle file and a valid selection are kept. An empty list clears
  * the selection but keeps the preference for a list that arrives later. The
- * preference is applied once per item, never over a choice the viewer made;
- * with "subtitles on by default" off it turns subtitles off, including one the
- * engine picked on its own. After that, a subtitle the engine picked is only
- * mirrored while nobody decided anything, and an invalid selection is cleared.
+ * preference is applied once per item, never over a choice the viewer made:
+ * what the viewer last chose for this series or item (a track of the same
+ * language, or "off") goes first, then the settings; with "subtitles on by
+ * default" off they turn subtitles off. After that, a subtitle the engine
+ * picked is only mirrored while nobody decided anything, an invalid selection
+ * is cleared, and a subtitle the engine shows although they are off (it keeps
+ * its own selection from the item before) is turned off again.
  */
 export function reconcileSubtitleSelection(
   tracks: SubtitleTrack[],
@@ -116,7 +130,16 @@ export function reconcileSubtitleSelection(
     // The viewer already decided for this stream; nothing left to prefer.
     if (context.isSubtitleTrackUserChoice) return { disableEngineSubtitles: false, state: next }
 
-    if (!context.settings.defaultSubtitleEnabled) {
+    const remembered = context.rememberedTracks?.subtitle
+    const rememberedTrack = remembered && remembered !== 'off' ? matchRememberedTrack(tracks, remembered) : null
+    if (rememberedTrack !== null) {
+      return rememberedTrack !== current
+        ? { track: rememberedTrack, disableEngineSubtitles: false, state: next }
+        : { disableEngineSubtitles: false, state: next }
+    }
+
+    // A remembered language this item does not have falls back to the settings.
+    if (remembered === 'off' || !context.settings.defaultSubtitleEnabled) {
       return {
         ...(current !== null ? { track: null } : {}),
         disableEngineSubtitles: engineSelected !== null,
@@ -138,7 +161,9 @@ export function reconcileSubtitleSelection(
   ) {
     return { ...keep, track: engineSelected }
   }
-  return current !== null ? { ...keep, track: null } : keep
+  if (current !== null) return { ...keep, track: null }
+  const off = context.isSubtitleTrackUserChoice || state.subtitlesOffByDefault
+  return off && engineSelected !== null ? { ...keep, disableEngineSubtitles: true } : keep
 }
 
 /**

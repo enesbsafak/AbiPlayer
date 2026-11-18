@@ -82,6 +82,7 @@ describe('partialize', () => {
         'isMuted',
         'settings',
         'sources',
+        'trackMemory',
         'volume',
         'watchProgress'
       ].sort()

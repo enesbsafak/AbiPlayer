@@ -2,6 +2,7 @@ import { ChevronDown, ChevronUp, FastForward, Rewind, SkipBack, SkipForward, Vol
 import { PlayIcon } from '@/components/ui/icons'
 import { useStore } from '@/store'
 import { useAdjacentChannels } from '@/hooks/useAdjacentChannels'
+import { adjacentEpisodes } from '@/store/player-slice'
 import { strings } from '@/strings'
 import { PlayerRange } from './PlayerRange'
 import { CONTROL_SIZE, roundButton, useDockLayout, type DockSize } from './player-ui'
@@ -102,19 +103,31 @@ export function PlayerTransportControls({
   const isMuted = useStore((s) => s.isMuted)
   const volume = useStore((s) => s.volume)
   const playChannel = useStore((s) => s.playChannel)
+  const playEpisode = useStore((s) => s.playEpisode)
+  const episodeTarget = useStore((s) => (s.currentPlayback?.target.kind === 'episode' ? s.currentPlayback.target : null))
+  const episodeQueue = useStore((s) => s.episodeQueue)
   const { size } = useDockLayout()
 
-  const { previous: previousChannel, next: nextChannel } = useAdjacentChannels(currentChannel)
+  const channels = useAdjacentChannels(currentChannel)
+  // An episode steps through its series, not through the film list it is shown as.
+  const episodes = adjacentEpisodes(episodeQueue, episodeTarget)
+  const previous = episodeTarget ? episodes.previous : channels.previous
+  const next = episodeTarget ? episodes.next : channels.next
 
   const isLive = currentChannel?.type === 'live'
 
   const playAdjacent = (direction: 'prev' | 'next') => {
-    const target = direction === 'prev' ? previousChannel : nextChannel
+    if (episodeTarget) {
+      const episode = direction === 'prev' ? episodes.previous : episodes.next
+      if (episode) playEpisode(episode)
+      return
+    }
+    const target = direction === 'prev' ? channels.previous : channels.next
     if (target) playChannel(target)
   }
 
-  const previousLabel = previousChannel ? text.previous(previousChannel.name) : text.noPrevious
-  const nextLabel = nextChannel ? text.next(nextChannel.name) : text.noNext
+  const previousLabel = previous ? text.previous('title' in previous ? previous.title : previous.name) : text.noPrevious
+  const nextLabel = next ? text.next('title' in next ? next.title : next.name) : text.noNext
   const showsPlay = isPaused || !isPlaying
   const playLabel = showsPlay ? text.play : text.pause
   const icon = CONTROL_SIZE[size].icon
@@ -133,7 +146,7 @@ export function PlayerTransportControls({
       <button
         type="button"
         onClick={() => playAdjacent('prev')}
-        disabled={!previousChannel}
+        disabled={!previous}
         className={stepClass}
         title={previousLabel}
         aria-label={previousLabel}
@@ -167,7 +180,7 @@ export function PlayerTransportControls({
       <button
         type="button"
         onClick={() => playAdjacent('next')}
-        disabled={!nextChannel}
+        disabled={!next}
         className={stepClass}
         title={nextLabel}
         aria-label={nextLabel}

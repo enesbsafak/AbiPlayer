@@ -23,6 +23,7 @@ import { createPersistController, type PersistBackend, type SideStorage } from '
 import { PERSIST_VERSION, runPersistMigrations } from './persist-migrations'
 import { redactStoredCopy } from './stored-copy-redaction'
 import { sanitizeProgressEntries, type WatchProgressEntry } from '@/services/watch-progress'
+import { sanitizeTrackMemory, type TrackMemoryEntry } from '@/services/track-memory'
 import type { PlaylistSource } from '@/types/playlist'
 import { perfMark, perfWatchStore } from '@/services/perf'
 
@@ -54,6 +55,8 @@ export interface PersistedStoreState {
   favoriteSnapshots: FavoriteSnapshot[]
   hiddenCategoryIds: string[]
   watchProgress: WatchProgressEntry[]
+  /** The viewer's last subtitle and audio choice per series, film and channel. */
+  trackMemory: TrackMemoryEntry[]
 }
 
 function isPersistedSource(source: unknown): source is PlaylistSource {
@@ -176,6 +179,7 @@ export function createPartialize(): (state: AppStore) => PersistedStoreState {
       state.favoriteSnapshots,
       state.hiddenCategoryIds,
       state.watchProgress,
+      state.trackMemory,
       state.legacySecretSourceIds,
       state.tmdbKeyPlainPending
     ]
@@ -194,7 +198,8 @@ export function createPartialize(): (state: AppStore) => PersistedStoreState {
         (snapshot): snapshot is FavoriteSnapshot => !!snapshot
       ),
       hiddenCategoryIds: Array.from(state.hiddenCategoryIds),
-      watchProgress: state.watchProgress
+      watchProgress: state.watchProgress,
+      trackMemory: state.trackMemory
     }
     return last
   }
@@ -277,6 +282,7 @@ export function mergePersistedState(persisted: unknown, current: AppStore): AppS
     favoriteSnapshots,
     hiddenCategoryIds,
     watchProgress: sanitizeProgressEntries(p.watchProgress),
+    trackMemory: sanitizeTrackMemory(p.trackMemory),
     credentialsHydrated,
     legacySecretSourceIds,
     tmdbKeyPlainPending

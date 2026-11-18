@@ -434,7 +434,11 @@ export function usePlayer(
       play: () => applyPlayerPatch({ isPlaying: true, isPaused: false }),
       pause: () => applyPlayerPatch({ isPaused: true }),
       waiting: () => applyPlayerPatch({ isBuffering: true }),
-      playing: () => applyPlayerPatch({ isBuffering: false, playerError: null }),
+      playing: () => applyPlayerPatch({ isBuffering: false, playerError: null, endedPlaybackId: null }),
+      // A film or episode played to its end (a live stream has none).
+      ended: () => {
+        if (playbackId && !isLive) applyPlayerPatch({ endedPlaybackId: playbackId })
+      },
       timeupdate: () => applyPlayerPatch({ currentTime: video.currentTime }),
       durationchange: () => {
         applyPlayerPatch({ duration: video.duration })
@@ -478,7 +482,7 @@ export function usePlayer(
         video.load()
       }
     }))
-  }, [videoRef, playbackId, streamUrl, applyPlayerPatch, markPlaybackLoaded, disabled])
+  }, [videoRef, playbackId, streamUrl, isLive, applyPlayerPatch, markPlaybackLoaded, disabled])
 
   // Live streams: the shared reconnect policy recovers a frozen stream.
   useEffect(() => {
