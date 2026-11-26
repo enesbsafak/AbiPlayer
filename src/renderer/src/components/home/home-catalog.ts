@@ -238,7 +238,9 @@ export function describeContinue(item: ContinueWatchingItem): ContinueDetails {
   const { entry, channel } = item
   const duration = entry.duration > 0 ? entry.duration : 0
   const percent = duration > 0 ? Math.min(100, Math.max(0, Math.round((entry.position / duration) * 100))) : 0
-  const parts = [channel.type === 'series' ? text.kindEpisode : text.kindFilm]
+  // An episode is shown as a film-like item (seekable, resumable); its target says what it is.
+  const isEpisode = item.target.kind === 'episode' || channel.type === 'series'
+  const parts = [isEpisode ? text.kindEpisode : text.kindFilm]
   if (channel.year) parts.push(channel.year)
   if (duration > 0) parts.push(text.duration(Math.round(duration / 60)))
   return {
