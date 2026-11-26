@@ -119,7 +119,15 @@ test.describe('dizide sonraki bölüm', () => {
     await openRoute(page, '/')
     await expect(continueTile(page)).toBeVisible()
 
-    // The tile's poster opens the series with all its episodes.
+    // The tile's poster opens the series with all its episodes. (The poster
+    // gives way in a window of 720 px or less, the tests' usual size.)
+    await app.electron.evaluate(({ BrowserWindow }) => {
+      const [window] = BrowserWindow.getAllWindows()
+      if (!window) throw new Error('the app has no window')
+      window.setContentSize(1280, 800)
+    })
+    await expect.poll(() => page.evaluate(() => window.innerHeight)).toBe(800)
+    await app.shot('continue-tile-with-poster')
     await continueTile(page).getByRole('button', { name: / — tüm bölümleri göster$/ }).click()
     await expect(page).toHaveURL(/#\/series/)
     await expect(page.getByRole('heading', { name: KNOWN.series })).toBeVisible()
