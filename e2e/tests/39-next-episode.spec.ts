@@ -47,6 +47,29 @@ test.describe('dizide sonraki bölüm', () => {
     await expect(page).toHaveURL(/#\/player/)
     await waitForMpvProgress(page, { pathIncludes: EPISODE(1, 2), advanceBy: 1, timeout: 45_000 })
 
+    // The seek bar, dragged to the middle and let go below the bar: the
+    // picture and the bar both end up there, and stay there once the bar
+    // loses the focus (it used to fall back to the old position, and the next
+    // click anywhere sought back to it).
+    await revealPlayerControls(page)
+    const bar = page.getByRole('slider', { name: 'Oynatma ilerlemesi', exact: true })
+    const box = (await bar.boundingBox())!
+    const y = box.y + box.height / 2
+    await page.mouse.move(box.x + box.width * 0.2, y)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width * 0.5, y, { steps: 5 })
+    await page.mouse.move(box.x + box.width * 0.5, y + 90, { steps: 3 })
+    await page.mouse.up()
+    const middle = MKV_SECONDS / 2
+    await expect.poll(async () => (await mpvState(page)).timePos, { timeout: 20_000 }).toBeGreaterThan(middle - 15)
+    await expect.poll(async () => Number(await bar.getAttribute('aria-valuenow')), { timeout: 10_000 }).toBeGreaterThan(middle - 15)
+    await page.keyboard.press('Tab')
+    await page.waitForTimeout(1500)
+    const afterBlur = await mpvState(page)
+    expect(afterBlur.timePos, 'the position after the bar lost the focus').toBeGreaterThan(middle - 15)
+    expect(afterBlur.timePos).toBeLessThan(middle + 30)
+    expect(Number(await bar.getAttribute('aria-valuenow')), 'what the bar shows').toBeGreaterThan(middle - 15)
+
     // Subtitles are off by default; the viewer turns the English ones on.
     await expect.poll(async () => (await mpvState(page)).sid, { message: 'subtitles start off', timeout: 10_000 }).toBeNull()
     await revealPlayerControls(page)
@@ -84,6 +107,15 @@ test.describe('dizide sonraki bölüm', () => {
     // (the first episode of the second season).
     await openRoute(page, '/')
     await expect(continueTile(page)).toBeVisible()
+
+    // The tile's poster opens the series with all its episodes.
+    await continueTile(page).getByRole('button', { name: / — tüm bölümleri göster$/ }).click()
+    await expect(page).toHaveURL(/#\/series/)
+    await expect(page.getByRole('heading', { name: KNOWN.series })).toBeVisible()
+    await expect(page.getByRole('button', { name: /S01E05/ }).first()).toBeVisible()
+    await app.shot('series-from-continue-tile')
+    await openRoute(page, '/')
+
     await continueTile(page).getByRole('button', { name: / — kaldığın yerden devam et$/ }).click()
     await expect(page).toHaveURL(/#\/player/)
     await waitForMpvProgress(page, { pathIncludes: EPISODE(1, 5), advanceBy: 1, timeout: 45_000 })

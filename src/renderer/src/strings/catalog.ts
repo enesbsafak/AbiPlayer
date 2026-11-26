@@ -153,6 +153,9 @@ export const catalog = {
     resume: (name: string) => `${name} — kaldığın yerden devam et`,
     restartAction: 'Baştan başlat',
     restart: (name: string) => `${name} — baştan başlat`,
+    /** The tile's poster, for an episode: opens its series with every episode. */
+    allEpisodes: (name: string) => `${name} — tüm bölümleri göster`,
+    allEpisodesTitle: 'Tüm bölümler',
     removeFromList: (name: string) => `${name} içeriğini listeden kaldır`,
     removeFromListTitle: 'Listeden kaldır',
     watchedShare: (percent: number) => `Yüzde ${percent} kadarı izlendi`,

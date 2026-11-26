@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { ContinueTile, IdleTile, NewestFilmTile } from '@/components/home/HomeFeature'
 import { HomeStage, useMediaQuery, type HomeRow, type SourceTone } from '@/components/home/HomeRows'
@@ -35,6 +36,7 @@ import {
   indexChannelsByLegacyKey,
   legacyIndexKey,
   selectContinueWatching,
+  seriesRouteStateOf,
   type ContinueWatchingItem
 } from '@/services/watch-progress'
 import { perfMark, usePerfMarkOnce } from '@/services/perf'
@@ -90,6 +92,7 @@ export default function HomePage() {
   const onArrowKey = useSpatialArrowKeys()
 
   const handlePlay = useOpenCatalogItem()
+  const navigate = useNavigate()
   const openPlayback = useOpenPlayback()
   const deferred = useDeferredPlayback()
   const { playWhenReady } = deferred
@@ -115,6 +118,14 @@ export default function HomePage() {
       )
     },
     [openPlayback, playWhenReady]
+  )
+  // The poster of an episode's tile: its series' page, on the season being watched.
+  const handleOpenSeries = useCallback(
+    (item: ContinueWatchingItem) => {
+      const state = seriesRouteStateOf(item)
+      if (state) void navigate('/series', { state })
+    },
+    [navigate]
   )
   // Starting over: without a saved position the player has nothing to resume
   // from, and the recorder writes a new entry as the film plays.
@@ -294,7 +305,13 @@ export default function HomePage() {
     )
   } else if (continueItem) {
     feature = (
-      <ContinueTile item={continueItem} onResume={handleContinue} onRestart={handleRestart} onRemove={removeWatchProgress} />
+      <ContinueTile
+        item={continueItem}
+        onResume={handleContinue}
+        onRestart={handleRestart}
+        onRemove={removeWatchProgress}
+        onOpenSeries={seriesRouteStateOf(continueItem) ? handleOpenSeries : undefined}
+      />
     )
   } else if (home.films.items[0]) {
     feature = <NewestFilmTile film={home.films.items[0]} dated={home.films.dated} onPlay={handlePlay} />

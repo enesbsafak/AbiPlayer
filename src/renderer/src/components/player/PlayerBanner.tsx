@@ -156,6 +156,8 @@ function ProgressScrubber({ name, currentTime, duration, playbackEngine, video }
         max={duration}
         value={shownTime}
         className="-my-2.5"
+        onPointerDown={scrubber.hold}
+        onKeyDown={scrubber.hold}
         onChange={(e) => scrubber.update(parseFloat(e.target.value))}
         onPointerUp={scrubber.commit}
         onPointerCancel={scrubber.commit}

@@ -411,6 +411,26 @@ export interface ContinueWatchingItem {
 }
 
 /**
+ * The route state that opens the series of an episode on /series, on the
+ * season the episode is in (the series page reads `restoreSelectedSeries`).
+ * Null for anything that is not an episode of a known series: a film, or an
+ * episode from the history of a version that did not record its series.
+ */
+export function seriesRouteStateOf(
+  item: Pick<ContinueWatchingItem, 'target'>
+): { restoreSelectedSeries: { seriesId: number; sourceId: string; seasonNumber?: number } } | null {
+  const { target } = item
+  if (target.kind !== 'episode' || target.seriesId === null) return null
+  return {
+    restoreSelectedSeries: {
+      seriesId: target.seriesId,
+      sourceId: target.sourceId,
+      ...(target.season !== null ? { seasonNumber: target.season } : {})
+    }
+  }
+}
+
+/**
  * The playable part of the history, newest first. An Xtream item needs its
  * source's credentials (the URL is rebuilt from them); an M3U item needs its
  * source to still exist, its playlist may still be loading. A legacy entry is

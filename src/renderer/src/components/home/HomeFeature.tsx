@@ -53,18 +53,36 @@ function Backdrop({ src }: { src: string }) {
  * line, beside the text. Gives way in a short window, where the text needs
  * the width.
  */
-function PosterCard({ src }: { src: string }) {
+function PosterCard({ src, action }: { src: string; action?: ArtAction }) {
+  const box = 'aspect-[2/3] h-full max-w-[45%] shrink-0 overflow-hidden rounded-card short:hidden'
+  const image = <LazyImage src={src} alt="" eager fit="contain" className="h-full w-full" fallbackClassName="h-full w-full bg-raised" />
+  if (!action) return <div className={box}>{image}</div>
   return (
-    <div className="aspect-[2/3] h-full max-w-[45%] shrink-0 overflow-hidden rounded-card short:hidden">
-      <LazyImage src={src} alt="" eager fit="contain" className="h-full w-full" fallbackClassName="h-full w-full bg-raised" />
-    </div>
+    <button
+      type="button"
+      onClick={action.onClick}
+      aria-label={action.label}
+      title={action.title}
+      className={`${box} block p-0 ring-white transition-shadow hover:ring-2`}
+    >
+      {image}
+    </button>
   )
+}
+
+/** What clicking the tile's poster does, when it does something. */
+interface ArtAction {
+  label: string
+  title: string
+  onClick: () => void
 }
 
 interface FeatureProps {
   labelId: string
   badge: string
   art?: string
+  /** Makes the poster a button (the continue tile: the episode's series). */
+  artAction?: ArtAction
   /** The top line's right end (the remove button). */
   corner?: ReactNode
   /** Decoration in the poster's place when there is no artwork. */
@@ -78,7 +96,7 @@ interface FeatureProps {
  * right), and under that line the poster at full height with the text beside
  * it, centred against the poster as one group. Equal padding on every side.
  */
-function Feature({ labelId, badge, art, corner, emblem, children }: FeatureProps) {
+function Feature({ labelId, badge, art, artAction, corner, emblem, children }: FeatureProps) {
   return (
     <section aria-labelledby={labelId} className={`${FEATURE_TILE} flex flex-col gap-4 p-6 short:gap-3 short:p-5`}>
       {art && <Backdrop src={art} />}
@@ -89,7 +107,7 @@ function Feature({ labelId, badge, art, corner, emblem, children }: FeatureProps
         {corner}
       </div>
       <div className="relative flex min-h-0 flex-1 items-center gap-6">
-        {art ? <PosterCard src={art} /> : emblem}
+        {art ? <PosterCard src={art} action={artAction} /> : emblem}
         <div className="flex min-w-0 flex-1 flex-col gap-2.5 short:gap-1.5">{children}</div>
       </div>
     </section>
@@ -101,9 +119,11 @@ interface ContinueTileProps {
   onResume: (item: ContinueWatchingItem) => void
   onRestart: (item: ContinueWatchingItem) => void
   onRemove: (key: string) => void
+  /** Opens the series of an episode, with all its episodes; absent for anything else. */
+  onOpenSeries?: (item: ContinueWatchingItem) => void
 }
 
-export function ContinueTile({ item, onResume, onRestart, onRemove }: ContinueTileProps) {
+export function ContinueTile({ item, onResume, onRestart, onRemove, onOpenSeries }: ContinueTileProps) {
   const { entry, channel } = item
   const { meta, percent, remaining } = describeContinue(item)
   const name = channel.name
@@ -113,6 +133,11 @@ export function ContinueTile({ item, onResume, onRestart, onRemove }: ContinueTi
       labelId="home-continue"
       badge={text.continueWatching}
       art={channel.coverUrl || channel.logo}
+      artAction={
+        onOpenSeries
+          ? { label: text.allEpisodes(name), title: text.allEpisodesTitle, onClick: () => onOpenSeries(item) }
+          : undefined
+      }
       corner={
         <button
           type="button"
