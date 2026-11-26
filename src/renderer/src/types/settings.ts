@@ -21,7 +21,12 @@ export interface UserSettings {
   // Experimental (plan F2-15): mpv keeps playing in a corner of the window
   // while the user browses, instead of the "paused, continue" card.
   keepPlayingInCorner: boolean
+  // How far the arrow keys and the player's back/forward buttons seek (seconds).
+  seekStepSeconds: number
 }
+
+export const SEEK_STEP_OPTIONS: readonly number[] = [5, 10, 15, 30]
+export const DEFAULT_SEEK_STEP_SECONDS = 10
 
 export const DEFAULT_SETTINGS: UserSettings = {
   epgRefreshInterval: 60,
@@ -37,5 +42,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   hardwareAcceleration: true,
   audioPassthrough: false,
   liveStreamFormat: 'auto',
-  keepPlayingInCorner: false
+  keepPlayingInCorner: false,
+  seekStepSeconds: DEFAULT_SEEK_STEP_SECONDS
 }

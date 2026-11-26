@@ -345,7 +345,10 @@ export class MpvController {
   async seek(seconds: number): Promise<void> {
     const session = this.readySession()
     if (!session) return
-    await session.request(['seek', seconds, 'relative'])
+    // Exact: mpv's plain relative seek goes to a keyframe, and with keyframes
+    // far apart "10 seconds" moved 25 s forward or 35 s back (measured on the
+    // bundled mpv with keyframes 60 s apart).
+    await session.request(['seek', seconds, 'relative+exact'])
   }
 
   async seekTo(seconds: number): Promise<void> {

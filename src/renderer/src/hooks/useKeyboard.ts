@@ -110,6 +110,7 @@ export function useKeyboard() {
   const togglePlayerSidebar = useStore((s) => s.togglePlayerSidebar)
   const isPlayerSidebarOpen = useStore((s) => s.isPlayerSidebarOpen)
   const setPlayerSidebarOpen = useStore((s) => s.setPlayerSidebarOpen)
+  const seekStep = useStore((s) => s.settings.seekStepSeconds)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -196,20 +197,20 @@ export function useKeyboard() {
         case 'seek-back':
           e.preventDefault()
           if (playbackEngine === 'mpv') {
-            void mpvSeek(-10).catch(() => undefined)
+            void mpvSeek(-seekStep).catch(() => undefined)
           } else {
             const video = document.querySelector('video')
-            if (video && isFinite(video.duration)) video.currentTime = Math.max(0, video.currentTime - 10)
+            if (video && isFinite(video.duration)) video.currentTime = Math.max(0, video.currentTime - seekStep)
           }
           break
 
         case 'seek-forward':
           e.preventDefault()
           if (playbackEngine === 'mpv') {
-            void mpvSeek(10).catch(() => undefined)
+            void mpvSeek(seekStep).catch(() => undefined)
           } else {
             const video = document.querySelector('video')
-            if (video && isFinite(video.duration)) video.currentTime = Math.min(video.duration, video.currentTime + 10)
+            if (video && isFinite(video.duration)) video.currentTime = Math.min(video.duration, video.currentTime + seekStep)
           }
           break
 
@@ -257,6 +258,7 @@ export function useKeyboard() {
     setMiniPlayer,
     togglePlayerSidebar,
     isPlayerSidebarOpen,
-    setPlayerSidebarOpen
+    setPlayerSidebarOpen,
+    seekStep
   ])
 }

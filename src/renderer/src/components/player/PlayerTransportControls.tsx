@@ -9,8 +9,6 @@ import { CONTROL_SIZE, roundButton, useDockLayout, type DockSize } from './playe
 
 const text = strings.player.transport
 
-const SEEK_BACK_LABEL = text.seekBack
-const SEEK_FORWARD_LABEL = text.seekForward
 
 /** The one white control of the player: play / pause, a step larger than the round buttons beside it. */
 const PLAY_SIZE: Record<DockSize, { round: string; glyph: number }> = {
@@ -103,6 +101,9 @@ export function PlayerTransportControls({
   const isMuted = useStore((s) => s.isMuted)
   const volume = useStore((s) => s.volume)
   const playChannel = useStore((s) => s.playChannel)
+  const seekStep = useStore((s) => s.settings.seekStepSeconds)
+  const seekBackLabel = text.seekBack(seekStep)
+  const seekForwardLabel = text.seekForward(seekStep)
   const playEpisode = useStore((s) => s.playEpisode)
   const episodeTarget = useStore((s) => (s.currentPlayback?.target.kind === 'episode' ? s.currentPlayback.target : null))
   const episodeQueue = useStore((s) => s.episodeQueue)
@@ -156,7 +157,7 @@ export function PlayerTransportControls({
       </button>
 
       {!isLive && (
-        <button type="button" onClick={() => onSeek(-10)} className={roundButton(size)} title={SEEK_BACK_LABEL} aria-label={SEEK_BACK_LABEL}>
+        <button type="button" onClick={() => onSeek(-seekStep)} className={roundButton(size)} title={seekBackLabel} aria-label={seekBackLabel}>
           <Rewind size={icon} strokeWidth={2.4} aria-hidden="true" />
         </button>
       )}
@@ -172,7 +173,7 @@ export function PlayerTransportControls({
       </button>
 
       {!isLive && (
-        <button type="button" onClick={() => onSeek(10)} className={roundButton(size)} title={SEEK_FORWARD_LABEL} aria-label={SEEK_FORWARD_LABEL}>
+        <button type="button" onClick={() => onSeek(seekStep)} className={roundButton(size)} title={seekForwardLabel} aria-label={seekForwardLabel}>
           <FastForward size={icon} strokeWidth={2.4} aria-hidden="true" />
         </button>
       )}

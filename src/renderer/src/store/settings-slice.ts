@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand'
 import type { UserSettings } from '@/types/settings'
-import { DEFAULT_SETTINGS } from '@/types/settings'
+import { DEFAULT_SEEK_STEP_SECONDS, DEFAULT_SETTINGS, SEEK_STEP_OPTIONS } from '@/types/settings'
 
 export const MIN_EPG_REFRESH_MINUTES = 5
 export const MAX_EPG_REFRESH_MINUTES = 1440
@@ -85,6 +85,10 @@ function sanitizeSettings(partial: Partial<UserSettings>): Partial<UserSettings>
 
   if (typeof next.preferredSubtitleLanguage === 'string') {
     next.preferredSubtitleLanguage = sanitizeLanguageTag(next.preferredSubtitleLanguage, 'auto')
+  }
+
+  if (typeof next.seekStepSeconds === 'number' && !SEEK_STEP_OPTIONS.includes(next.seekStepSeconds)) {
+    next.seekStepSeconds = DEFAULT_SEEK_STEP_SECONDS
   }
 
   if (typeof next.tmdbApiKey === 'string') {

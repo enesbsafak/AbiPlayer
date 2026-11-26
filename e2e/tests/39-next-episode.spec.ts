@@ -70,6 +70,17 @@ test.describe('dizide sonraki bölüm', () => {
     expect(afterBlur.timePos).toBeLessThan(middle + 30)
     expect(Number(await bar.getAttribute('aria-valuenow')), 'what the bar shows').toBeGreaterThan(middle - 15)
 
+    // The right arrow, with the controls hidden: it seeks the set step (10 s)
+    // exactly, and the controls come up to show it.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    const controls = page.locator('[data-controls-visible]')
+    await expect(controls).toHaveAttribute('data-controls-visible', 'false', { timeout: 10_000 })
+    const beforeKey = (await mpvState(page)).timePos
+    await page.keyboard.press('ArrowRight')
+    await expect(controls).toHaveAttribute('data-controls-visible', 'true')
+    await expect.poll(async () => (await mpvState(page)).timePos, { timeout: 15_000 }).toBeGreaterThan(beforeKey + 9)
+    expect((await mpvState(page)).timePos, 'one press is one step').toBeLessThan(beforeKey + 25)
+
     // Subtitles are off by default; the viewer turns the English ones on.
     await expect.poll(async () => (await mpvState(page)).sid, { message: 'subtitles start off', timeout: 10_000 }).toBeNull()
     await revealPlayerControls(page)

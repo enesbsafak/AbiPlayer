@@ -6,6 +6,8 @@ const CONTROLS_SELECTOR = '[data-player-controls]'
 /** A dock menu or picker that is open (each one's trigger says so). */
 const OPEN_MENU_SELECTOR = '[aria-expanded="true"]'
 
+const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'AltGraph', 'CapsLock'])
+
 interface ControlsAutoHideInput {
   /** Receives every change; the store's `setShowControls`. */
   setVisible: (visible: boolean) => void
@@ -42,8 +44,11 @@ export function useControlsAutoHide({ setVisible, isSidebarOpen, hasError }: Con
   }, [autoHide, hasError])
 
   useEffect(() => {
-    const onKeyDown = () => {
+    const onKeyDown = (event: KeyboardEvent) => {
       keyboardInputRef.current = true
+      // A shortcut (seek, volume, pause) is use like a pointer move: the
+      // controls show what it did. A modifier on its own does nothing yet.
+      if (!MODIFIER_KEYS.has(event.key)) autoHide.activity()
     }
     const onPointerDown = () => {
       keyboardInputRef.current = false
@@ -54,7 +59,7 @@ export function useControlsAutoHide({ setVisible, isSidebarOpen, hasError }: Con
       document.removeEventListener('keydown', onKeyDown, true)
       document.removeEventListener('pointerdown', onPointerDown, true)
     }
-  }, [])
+  }, [autoHide])
 
   useEffect(() => {
     if (!controls) return

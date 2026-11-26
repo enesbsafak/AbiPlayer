@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useStore } from '@/store'
 import { Dropdown } from '@/components/ui/Dropdown'
-import type { UserSettings } from '@/types/settings'
+import { SEEK_STEP_OPTIONS, type UserSettings } from '@/types/settings'
 import { strings } from '@/strings'
 import { formatLanguageLabel, useLanguageCodes } from './language-options'
 import { SettingRow, SettingsCard, SettingsGroup, Switch } from './controls'
@@ -75,6 +75,27 @@ export function PlaybackSettings() {
         </SettingsCard>
       </SettingsGroup>
 
+      <SettingsGroup title={text.controlsGroup}>
+        <SettingsCard>
+          <SettingRow
+            label={text.seekStep}
+            labelId="seek-step-label"
+            help={text.seekStepHint}
+            control={
+              <Dropdown
+                id="seek-step"
+                labelledBy="seek-step-label"
+                items={SEEK_STEP_ITEMS}
+                value={String(settings.seekStepSeconds)}
+                onSelect={(id) => updateSettings({ seekStepSeconds: Number(id) })}
+                placeholder={text.seekStep}
+                className={DROPDOWN_CLASS}
+              />
+            }
+          />
+        </SettingsCard>
+      </SettingsGroup>
+
       <SettingsGroup title={text.videoGroup}>
         <SettingsCard>
           <SettingRow
@@ -129,6 +150,8 @@ export function PlaybackSettings() {
     </div>
   )
 }
+
+const SEEK_STEP_ITEMS = SEEK_STEP_OPTIONS.map((seconds) => ({ id: String(seconds), label: text.seekStepOption(seconds) }))
 
 const LIVE_STREAM_FORMAT_ITEMS: Array<{ id: UserSettings['liveStreamFormat']; label: string }> = [
   { id: 'auto', label: text.liveFormatAuto },

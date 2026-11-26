@@ -25,6 +25,10 @@ export const settings = {
   playback: {
     audioGroup: 'Ses',
     videoGroup: 'Görüntü ve yayın',
+    controlsGroup: 'Oynatıcı denetimleri',
+    seekStep: 'İleri ve geri atlama süresi',
+    seekStepHint: 'Sağ ve sol ok tuşları ile oynatıcıdaki ileri ve geri sarma düğmeleri bu kadar atlar.',
+    seekStepOption: (seconds: number) => `${seconds} saniye`,
     audioLanguage: 'Tercih edilen dublaj dili',
     audioLanguagePlaceholder: 'Tercih edilen dublaj dili',
     audioLanguageAuto: 'Otomatik (yayın varsayılanı)',
