@@ -101,6 +101,13 @@ export interface RequestRecord {
   referer?: string
 }
 
+/** The episodes the M3U list has of its first series, in the order it lists them. */
+export const M3U_FIRST_SERIES_EPISODES = [
+  { season: 1, episode: 2, extension: 'mkv' },
+  { season: 1, episode: 1, extension: 'mp4' },
+  { season: 2, episode: 1, extension: 'mp4' }
+]
+
 /** The request headers the M3U list names for its first live channel. */
 export const M3U_FIRST_CHANNEL_HEADERS = { userAgent: 'AbiTest/1.0 (liste)', referer: 'http://site.example/izle' }
 
@@ -446,9 +453,15 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
     })
     current.series.forEach((item, index) => {
       const group = seriesNames.get(current.seriesCategoryOf[index] ?? '') ?? ''
-      const episodeId = Number(item.series_id) * 100 + 11
-      lines.push(`#EXTINF:-1 tvg-id="" tvg-name="${attr(item.name)} S01 E01" tvg-logo="${attr(item.cover)}" group-title="${attr(group)}",${item.name} S01 E01`)
-      lines.push(`${baseUrl}/series/${credentials}/${episodeId}.mp4`)
+      // The first series has three episodes over two seasons, listed out of
+      // order as lists do; the others one. The second episode is the MKV clip.
+      const episodes = index === 0 ? M3U_FIRST_SERIES_EPISODES : [{ season: 1, episode: 1, extension: 'mp4' }]
+      for (const { season, episode, extension } of episodes) {
+        const episodeId = Number(item.series_id) * 100 + season * 10 + episode
+        const mark = `S${String(season).padStart(2, '0')} E${String(episode).padStart(2, '0')}`
+        lines.push(`#EXTINF:-1 tvg-id="" tvg-name="${attr(item.name)} ${mark}" tvg-logo="${attr(item.cover)}" group-title="${attr(group)}",${item.name} ${mark}`)
+        lines.push(`${baseUrl}/series/${credentials}/${episodeId}.${extension}`)
+      }
     })
     return lines.join('\r\n') + '\r\n'
   }

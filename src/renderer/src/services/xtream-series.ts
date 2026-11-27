@@ -1,5 +1,6 @@
-import type { EpisodeInfo, SeasonInfo, SeriesDetail } from '@/types/playlist'
-import type { EpisodePlaybackRequest } from '@/types/player'
+import type { Channel, EpisodeInfo, SeasonInfo, SeriesDetail } from '@/types/playlist'
+import type { EpisodePlaybackRequest, PlaybackRequest, QueuedEpisode } from '@/types/player'
+import { episodeTarget, mediaKey } from '../../../shared/playback'
 import { strings } from '@/strings'
 
 const text = strings.catalog.detail
@@ -199,26 +200,59 @@ export function episodeRequestOf(
   }
 }
 
+/** The episode as the player UI shows it. Its id is stable, not a timestamp. */
+export function episodeDisplayChannel(request: EpisodePlaybackRequest): Channel {
+  return {
+    id: `${request.sourceId}_episode_${request.episodeId}`,
+    name: request.title,
+    streamUrl: request.fallbackStreamUrl ?? '',
+    sourceId: request.sourceId,
+    // The player treats an episode like a film (seekable, resumable).
+    type: 'vod',
+    ...(request.coverUrl ? { coverUrl: request.coverUrl } : {})
+  }
+}
+
+/** What starts the episode: a real episode target and what the player shows for it. */
+export function episodePlayback(request: EpisodePlaybackRequest): PlaybackRequest {
+  return {
+    target: episodeTarget({
+      sourceId: request.sourceId,
+      episodeId: request.episodeId,
+      containerExtension: request.containerExtension,
+      seriesId: request.seriesId,
+      season: request.season,
+      episode: request.episodeNum
+    }),
+    channel: episodeDisplayChannel(request)
+  }
+}
+
+export function queuedEpisodeOf(request: EpisodePlaybackRequest): QueuedEpisode {
+  const playback = episodePlayback(request)
+  return { mediaKey: mediaKey(playback.target), title: request.title, request: playback }
+}
+
 /**
  * Every episode of the series in the order its page lists them: season by
  * season as the season pills stand, each season's episodes as its list shows
  * them. What "next" and "previous" mean while one of them plays.
  */
-export function episodeQueueOf(sourceId: string, detail: SeriesDetail): EpisodePlaybackRequest[] {
+export function episodeQueueOf(sourceId: string, detail: SeriesDetail): QueuedEpisode[] {
   const listed = detail.seasons.map((season) => season.seasonNumber)
   // A season with episodes but no pill still plays on; it follows the listed ones.
   const unlisted = Object.keys(detail.episodes)
     .map(Number)
     .filter((season) => Number.isFinite(season) && !listed.includes(season))
     .sort((a, b) => a - b)
-  const queue: EpisodePlaybackRequest[] = []
+  const queue: QueuedEpisode[] = []
   const seen = new Set<number>()
   for (const season of [...listed, ...unlisted]) {
     for (const episode of detail.episodes[season] ?? []) {
       const request = episodeRequestOf(sourceId, detail.seriesId, detail.name, episode)
       if (!request || seen.has(request.episodeId)) continue
       seen.add(request.episodeId)
-      queue.push(request)
+      queue.push(queuedEpisodeOf(request))
     }
   }
   return queue

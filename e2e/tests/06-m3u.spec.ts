@@ -6,11 +6,14 @@ import {
   addM3uSource,
   anyCard,
   cardButton,
+  closeMiniPlayer,
   expectHomeWithContent,
+  leavePlayer,
   mpvState,
   continueTile,
   openRoute,
   playLiveChannel,
+  revealPlayerControls,
   waitForMpvProgress
 } from '../support/flows.ts'
 import { observe } from '../support/known-bugs.ts'
@@ -54,6 +57,8 @@ async function expectNoPlaylistCredentials(page: Page, mock: { username: string;
 }
 
 const FILM_PATH = '/100001.mp4'
+/** An episode of the mock's first series (id 500001): its address ends in <series><season><episode>.<ext>. */
+const SERIES_EPISODE = (season: number, episode: number) => `/${500001 * 100 + season * 10 + episode}.`
 const SEEK_TO = 120
 const RESUME_TOLERANCE = 10
 
@@ -93,6 +98,55 @@ test.describe('M3U kaynağı', () => {
     expect(mock.stats().counts.m3u ?? 0).toBeGreaterThan(m3uBefore)
     await expectNoPlaylistCredentials(second.page, mock)
     observe(`M3U downloads on restart: ${(mock.stats().counts.m3u ?? 0) - m3uBefore} (the playlist is fetched again on every start)`)
+  })
+
+  // A playlist has no series: the entries "... S01 E02" of one are gathered
+  // into a series with its own page, and play on from one to the next.
+  test('listedeki bölümler diziye toplanır: dizi sayfası, sonraki bölüm, geçmişten devam', async ({ launch, mock }) => {
+    test.setTimeout(180_000)
+    const app = await launch()
+    const { page } = app
+    await addM3uSource(page, mock.m3uUrl('ts'), 'Sahte M3U')
+    await expectHomeWithContent(page)
+
+    await openRoute(page, '/series')
+    await page.getByRole('textbox', { name: 'Dizi ara', exact: true }).fill('Sessiz Liman')
+    await cardButton(page, KNOWN.series).click()
+    await expect(page.getByRole('heading', { name: KNOWN.series })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Sezon 2', exact: true })).toBeVisible()
+    // The first season's two episodes, in order although the list has them reversed.
+    await expect(page.getByRole('button', { name: /^\d+\. bölüm$/ })).toHaveText(['1. bölüm', '2. bölüm'])
+    await app.shot('m3u-series-detail')
+
+    await page.getByRole('button', { name: '1. bölüm', exact: true }).click()
+    await expect(page).toHaveURL(/#\/player/)
+    await waitForMpvProgress(page, { pathIncludes: SERIES_EPISODE(1, 1), advanceBy: 1, timeout: 45_000 })
+
+    // "Next" steps through the series and across the season boundary.
+    await revealPlayerControls(page)
+    await page.getByRole('button', { name: /^Sonraki: / }).click()
+    await waitForMpvProgress(page, { pathIncludes: SERIES_EPISODE(1, 2), advanceBy: 1, timeout: 45_000 })
+    await revealPlayerControls(page)
+    await page.getByRole('button', { name: /^Sonraki: / }).click()
+    await waitForMpvProgress(page, { pathIncludes: SERIES_EPISODE(2, 1), advanceBy: 1, timeout: 45_000 })
+
+    // Far enough in to be kept in the history, then out of the player.
+    await page.evaluate((seconds) => window.electron!.mpvSeekTo(seconds), SEEK_TO)
+    await expect.poll(async () => (await mpvState(page)).timePos, { timeout: 20_000 }).toBeGreaterThanOrEqual(SEEK_TO)
+    await page.waitForTimeout(12_000)
+    await leavePlayer(page)
+    await closeMiniPlayer(page)
+
+    // The history only knows the episode's address hash: it is found inside
+    // its series, and still knows what comes before it.
+    await openRoute(page, '/')
+    await expect(continueTile(page)).toBeVisible()
+    await continueTile(page).getByRole('button', { name: / — kaldığın yerden devam et$/ }).click()
+    await expect(page).toHaveURL(/#\/player/)
+    await waitForMpvProgress(page, { pathIncludes: SERIES_EPISODE(2, 1), advanceBy: 1, timeout: 45_000 })
+    await revealPlayerControls(page)
+    await expect(page.getByRole('button', { name: /^Önceki: / })).toBeEnabled({ timeout: 15_000 })
+    await expect(page.getByRole('button', { name: 'Sonraki içerik yok', exact: true })).toBeDisabled()
   })
 
   test('F3-02: M3U filminin izleme kaydı adres saklamadan yeniden açılışta kaldığı yerden sürer', async ({ launch, mock, closeApp }) => {

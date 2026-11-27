@@ -4,6 +4,7 @@ import { catalog, useCatalogVersion } from '@/catalog'
 import { channelFromFavoriteSnapshot, isM3uSnapshotChannel, type FavoriteSnapshot } from '@/store/favorites-slice'
 import type { DeferredPlayRequest } from '@/hooks/useDeferredPlayback'
 import type { Channel } from '@/types/playlist'
+import { findM3uEpisode } from '@/services/m3u-series'
 
 /**
  * The cards for the favourites, in the order they were added. The catalog
@@ -59,7 +60,7 @@ export function useOpenFavorite(
         return
       }
       playWhenReady(
-        { sourceId: channel.sourceId, name: channel.name, resolve: () => catalog.getItem(channel.id) ?? null },
+        { sourceId: channel.sourceId, name: channel.name, resolve: () => catalog.getItem(channel.id) ?? findM3uEpisode(catalog, channel.sourceId, (episode) => episode.id === channel.id) },
         open
       )
     },

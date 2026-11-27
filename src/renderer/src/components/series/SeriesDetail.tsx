@@ -21,7 +21,7 @@ import type { Channel, EpisodeInfo, SeriesDetail as SeriesDetailType } from '@/t
 import { BackPill, DETAIL_PRIMARY, DetailPoster, DetailTitle, FactPill, MoreInCategory, WatchLine } from '@/components/vod/DetailParts'
 import { episodeKey, watchShareOf } from '@/components/vod/watch-share'
 import type { WatchProgressEntry } from '@/services/watch-progress'
-import type { EpisodePlaybackRequest } from '@/types/player'
+import type { EpisodePlaybackRequest, QueuedEpisode } from '@/types/player'
 import { strings } from '@/strings'
 
 const text = strings.catalog.detail
@@ -36,7 +36,7 @@ interface SeriesDetailProps {
   onBack: () => void
   onSeasonChange?: (seasonNumber: number) => void
   /** The episode to play, identified by its own id rather than by a URL. */
-  onPlayEpisode: (episode: EpisodePlaybackRequest, queue: EpisodePlaybackRequest[]) => void
+  onPlayEpisode: (episode: EpisodePlaybackRequest, queue: QueuedEpisode[]) => void
   /** Opens another series' detail, from the row under the episodes. */
   onOpenSeries?: (series: Channel) => void
 }
@@ -335,7 +335,6 @@ export function SeriesDetail({
     )
   }
 
-  const episodes = detail.episodes[selectedSeason] || []
   // The history of this series' episodes, by the media key the player keys
   // them with: progress on each row, and where "Devam et" picks up.
   const progressOf = (episode: EpisodeInfo): WatchProgressEntry | null => {
@@ -344,6 +343,62 @@ export function SeriesDetail({
     const key = episodeKey(sourceId, episodeId)
     return watchProgress.find((entry) => entry.key === key) ?? null
   }
+
+  const play = (ep: EpisodeInfo) => {
+    const request = episodeRequestOf(sourceId, seriesId, detail.name, ep)
+    if (request) onPlayEpisode(request, episodeQueueOf(sourceId, detail))
+  }
+
+  return (
+    <SeriesDetailView
+      detail={detail}
+      selectedSeason={selectedSeason}
+      onSelectSeason={(season) => {
+        setSelectedSeason(season)
+        onSeasonChange?.(season)
+      }}
+      onBack={onBack}
+      progressOf={progressOf}
+      onPlay={play}
+      favorite={favoriteChannelId ? { channelId: favoriteChannelId, item: seriesItem } : null}
+      moreItem={seriesItem ?? null}
+      onOpenSeries={onOpenSeries}
+    />
+  )
+}
+
+export interface SeriesDetailViewProps {
+  detail: SeriesDetailType
+  selectedSeason: number
+  onSelectSeason: (seasonNumber: number) => void
+  onBack: () => void
+  /** The history entry of an episode (its progress, and where "Devam et" picks up). */
+  progressOf: (episode: EpisodeInfo) => WatchProgressEntry | null
+  onPlay: (episode: EpisodeInfo) => void
+  /** The favourite star, when the series can be a favourite. */
+  favorite: { channelId: string; item?: Channel } | null
+  /** The series' list record: the row of others from its category. */
+  moreItem: Channel | null
+  onOpenSeries?: (series: Channel) => void
+}
+
+/**
+ * The series page itself: poster and facts, the seasons, the episodes of the
+ * season shown. Where the series comes from (an Xtream account, an M3U list)
+ * is the caller's business.
+ */
+export function SeriesDetailView({
+  detail,
+  selectedSeason,
+  onSelectSeason,
+  onBack,
+  progressOf,
+  onPlay,
+  favorite,
+  moreItem,
+  onOpenSeries
+}: SeriesDetailViewProps) {
+  const episodes = detail.episodes[selectedSeason] || []
   const allEpisodes = detail.seasons.flatMap((season) => detail.episodes[season.seasonNumber] ?? [])
   let resumeEpisode: EpisodeInfo | null = null
   let resumedAt = -1
@@ -356,11 +411,6 @@ export function SeriesDetail({
   }
   const firstEpisode = (detail.episodes[detail.seasons[0]?.seasonNumber ?? selectedSeason] ?? episodes)[0] ?? null
   const primaryEpisode = resumeEpisode ?? firstEpisode
-
-  const play = (ep: EpisodeInfo) => {
-    const request = episodeRequestOf(sourceId, seriesId, detail.name, ep)
-    if (request) onPlayEpisode(request, episodeQueueOf(sourceId, detail))
-  }
   const genres = detail.genre ? detail.genre.split(',').map((genre) => genre.trim()).filter(Boolean) : []
 
   return (
@@ -385,7 +435,7 @@ export function SeriesDetail({
             {primaryEpisode && (
               <button
                 type="button"
-                onClick={() => play(primaryEpisode)}
+                onClick={() => onPlay(primaryEpisode)}
                 aria-describedby="series-primary-episode"
                 className={DETAIL_PRIMARY}
               >
@@ -393,8 +443,8 @@ export function SeriesDetail({
                 {resumeEpisode ? text.resume : text.playFilm}
               </button>
             )}
-            {favoriteChannelId && (
-              <FavoriteToggle channelId={favoriteChannelId} item={seriesItem} variant="button" className="h-[60px]" />
+            {favorite && (
+              <FavoriteToggle channelId={favorite.channelId} item={favorite.item} variant="button" className="h-[60px]" />
             )}
           </div>
           {primaryEpisode && (
@@ -421,10 +471,7 @@ export function SeriesDetail({
                 key={s.seasonNumber}
                 type="button"
                 aria-pressed={selected}
-                onClick={() => {
-                  setSelectedSeason(s.seasonNumber)
-                  onSeasonChange?.(s.seasonNumber)
-                }}
+                onClick={() => onSelectSeason(s.seasonNumber)}
                 className={`flex h-11 items-center rounded-full px-5 text-base ${
                   selected ? 'bg-sky font-bold text-ink' : 'bg-raised font-medium text-white hover:bg-surface-800'
                 }`}
@@ -453,14 +500,14 @@ export function SeriesDetail({
                 key={ep.id}
                 type="button"
                 className="flex min-h-[72px] w-full items-center gap-4 rounded-card bg-raised py-3 pl-3 pr-5 text-left transition-colors hover:bg-surface-800"
-                onClick={() => play(ep)}
+                onClick={() => onPlay(ep)}
               >
                 <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-sky text-ink">
                   <Play size={18} fill="currentColor" aria-hidden="true" />
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col gap-1">
                   <span className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 truncate text-[17px] font-bold">{text.episode(ep.episodeNum, ep.title)}</span>
+                    <span className="min-w-0 truncate text-[17px] font-bold">{ep.title ? text.episode(ep.episodeNum, ep.title) : text.episodeOnly(ep.episodeNum)}</span>
                     {qualityLabel && <QualityBadge label={qualityLabel} className="shrink-0" />}
                   </span>
                   {ep.plot && <span className="truncate text-[15px] text-surface-400">{ep.plot}</span>}
@@ -477,7 +524,7 @@ export function SeriesDetail({
         </div>
       </section>
 
-      {seriesItem && onOpenSeries && <MoreInCategory item={seriesItem} onOpen={onOpenSeries} />}
+      {moreItem && onOpenSeries && <MoreInCategory item={moreItem} onOpen={onOpenSeries} />}
     </div>
   )
 }

@@ -5,6 +5,7 @@ import type {
   EpisodePlaybackRequest,
   PendingResume,
   PlaybackRequest,
+  QueuedEpisode,
   SubtitleTrack,
   SubtitleCue,
   VideoQualityOption
@@ -19,7 +20,6 @@ import {
 } from '@/services/playback'
 import {
   createPlaybackId,
-  episodeTarget,
   isPlayableTarget,
   isTrackableTarget,
   mediaKey,
@@ -31,9 +31,11 @@ import {
   findTrackMemory,
   rememberedTrackOf,
   rememberTracks,
+  trackMemoryKey,
   type RememberedTracks,
   type TrackMemoryEntry
 } from '@/services/track-memory'
+import { episodePlayback } from '@/services/xtream-series'
 import { strings } from '@/strings'
 
 export const DEFAULT_PLAYBACK_TUNING: MpvPlaybackTuning = {
@@ -149,19 +151,6 @@ function armResume(playback: CurrentPlayback): PendingResume | null {
   }
 }
 
-/** The episode as the player UI shows it. Its id is stable, not a timestamp. */
-export function episodeDisplayChannel(request: EpisodePlaybackRequest): Channel {
-  return {
-    id: `${request.sourceId}_episode_${request.episodeId}`,
-    name: request.title,
-    streamUrl: request.fallbackStreamUrl ?? '',
-    sourceId: request.sourceId,
-    // The player treats an episode like a film (seekable, resumable).
-    type: 'vod',
-    ...(request.coverUrl ? { coverUrl: request.coverUrl } : {})
-  }
-}
-
 export interface PlayerSlice {
   playbackEngine: 'html5' | 'mpv'
   /** What the UI shows for the current item. Identity lives in `currentPlayback`. */
@@ -188,7 +177,7 @@ export interface PlayerSlice {
    * "previous" and "next" mean while one of them plays. Null for anything
    * else, and until the list is known for an episode started without it.
    */
-  episodeQueue: EpisodePlaybackRequest[] | null
+  episodeQueue: QueuedEpisode[] | null
   /**
    * What the viewer last chose (subtitle or "off", audio) for each series,
    * film and channel; persisted. See services/track-memory.ts.
@@ -260,9 +249,14 @@ export interface PlayerSlice {
    * series' episodes in order; without it the queue already held is kept when
    * the episode is one of its entries.
    */
-  playEpisode: (request: EpisodePlaybackRequest, queue?: EpisodePlaybackRequest[]) => void
-  /** The episode list of a series, loaded after one of its episodes was started without it. */
-  setEpisodeQueue: (sourceId: string, seriesId: number, queue: EpisodePlaybackRequest[]) => void
+  playEpisode: (request: EpisodePlaybackRequest, queue?: QueuedEpisode[]) => void
+  /** Starts an entry of an episode queue (the next episode, an episode of a series from an M3U list). */
+  playQueued: (entry: QueuedEpisode, queue?: QueuedEpisode[]) => void
+  /**
+   * The episode list of a series, loaded after one of its episodes was
+   * started without it. Taken only when what plays is one of its entries.
+   */
+  setEpisodeQueue: (queue: QueuedEpisode[]) => void
   stopPlayback: () => void
   reloadPlayback: () => void
   suspendPlayback: () => void
@@ -319,8 +313,9 @@ export function shouldKeepPlayingInCorner(
 function remembering(state: PlayerSliceState, choice: RememberedTracks): Partial<PlayerSlice> {
   const target = state.currentPlayback?.target
   if (!target) return {}
-  const trackMemory = rememberTracks(state.trackMemory, target, choice)
-  return { trackMemory, rememberedTracks: findTrackMemory(trackMemory, target) }
+  const key = trackMemoryKey(target, state.currentChannel?.seriesRef)
+  const trackMemory = rememberTracks(state.trackMemory, key, choice)
+  return { trackMemory, rememberedTracks: findTrackMemory(trackMemory, key) }
 }
 
 function failedStart(): Partial<PlayerSlice> {
@@ -350,25 +345,36 @@ function resolveFor(
   )
 }
 
-function isQueuedEpisode(queue: readonly EpisodePlaybackRequest[], target: PlayableTarget): boolean {
-  return (
-    target.kind === 'episode' &&
-    queue.some((entry) => entry.sourceId === target.sourceId && entry.episodeId === target.streamId)
-  )
+function inQueue(queue: readonly QueuedEpisode[], key: string): boolean {
+  return queue.some((entry) => entry.mediaKey === key)
 }
 
 /**
- * The episodes before and after the one being played, from the queue. Both
- * null for anything that is not a queued episode.
+ * The episodes before and after the one being played (found by its media
+ * key), from the queue. Both null for anything that is not a queued episode.
  */
 export function adjacentEpisodes(
-  queue: readonly EpisodePlaybackRequest[] | null,
-  target: PlayableTarget | null
-): { previous: EpisodePlaybackRequest | null; next: EpisodePlaybackRequest | null } {
-  if (!queue || !target || target.kind !== 'episode') return { previous: null, next: null }
-  const index = queue.findIndex((entry) => entry.sourceId === target.sourceId && entry.episodeId === target.streamId)
+  queue: readonly QueuedEpisode[] | null,
+  key: string | null
+): { previous: QueuedEpisode | null; next: QueuedEpisode | null } {
+  if (!queue || key === null) return { previous: null, next: null }
+  const index = queue.findIndex((entry) => entry.mediaKey === key)
   if (index < 0) return { previous: null, next: null }
   return { previous: queue[index - 1] ?? null, next: queue[index + 1] ?? null }
+}
+
+/**
+ * Whether what plays is an episode of a series: its "previous" and "next"
+ * are the series' episodes (the queue), never the list it is shown in.
+ */
+export function isEpisodePlayback(playback: CurrentPlayback | null, channel: Channel | null): boolean {
+  return playback?.target.kind === 'episode' || (playback !== null && channel?.seriesRef !== undefined)
+}
+
+/** Starts a queue entry (or any request); `queue` becomes the queue when the started item is in it. */
+function startQueued(state: PlayerSliceState, request: PlaybackRequest, queue?: QueuedEpisode[]): Partial<PlayerSlice> {
+  const next = startState(state, request)
+  return queue && next.currentPlayback && inQueue(queue, next.currentPlayback.mediaKey) ? { ...next, episodeQueue: queue } : next
 }
 
 function startState(state: PlayerSliceState, request: PlaybackRequest): Partial<PlayerSlice> {
@@ -393,8 +399,8 @@ function startState(state: PlayerSliceState, request: PlaybackRequest): Partial<
     isPlaybackSuspended: false,
     isCornerPlayback: false,
     // The next episode of the same series keeps the series' queue.
-    episodeQueue: state.episodeQueue && isQueuedEpisode(state.episodeQueue, target) ? state.episodeQueue : null,
-    rememberedTracks: findTrackMemory(state.trackMemory, target),
+    episodeQueue: state.episodeQueue && inQueue(state.episodeQueue, playback.mediaKey) ? state.episodeQueue : null,
+    rememberedTracks: findTrackMemory(state.trackMemory, trackMemoryKey(target, channel.seriesRef)),
     // Live has no position to return to; everything else may.
     pendingResume: armResume(playback),
     // A lip-sync offset that fixed the previous broadcast is wrong for this
@@ -472,26 +478,14 @@ export const createPlayerSlice: StateCreator<PlayerSliceState, [], [], PlayerSli
       return target ? startState(state, { target, channel }) : failedStart()
     }),
 
-  playEpisode: (request, queue) =>
-    set((state) => {
-      const target = episodeTarget({
-        sourceId: request.sourceId,
-        episodeId: request.episodeId,
-        containerExtension: request.containerExtension,
-        seriesId: request.seriesId,
-        season: request.season,
-        episode: request.episodeNum
-      })
-      const next = startState(state, { target, channel: episodeDisplayChannel(request) })
-      return queue && next.currentPlayback && isQueuedEpisode(queue, target) ? { ...next, episodeQueue: queue } : next
-    }),
+  playEpisode: (request, queue) => set((state) => startQueued(state, episodePlayback(request), queue)),
 
-  setEpisodeQueue: (sourceId, seriesId, queue) =>
-    set((state) => {
-      const target = state.currentPlayback?.target
-      if (!target || target.kind !== 'episode' || target.sourceId !== sourceId || target.seriesId !== seriesId) return state
-      return isQueuedEpisode(queue, target) ? { episodeQueue: queue } : state
-    }),
+  playQueued: (entry, queue) => set((state) => startQueued(state, entry.request, queue)),
+
+  setEpisodeQueue: (queue) =>
+    set((state) =>
+      state.currentPlayback && inQueue(queue, state.currentPlayback.mediaKey) ? { episodeQueue: queue } : state
+    ),
 
   stopPlayback: () =>
     set({

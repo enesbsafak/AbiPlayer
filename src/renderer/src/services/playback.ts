@@ -1,6 +1,7 @@
 import type { Channel } from '@/types/playlist'
 import type { XtreamAuthResponse, XtreamCredentials, XtreamLiveFormat } from '@/types/xtream'
 import { xtreamApi } from './xtream-api'
+import { findM3uEpisode } from './m3u-series'
 import { getAllowedLiveFormats, pickLiveFormat } from './xtream-normalize'
 import {
   isPlayableTarget,
@@ -116,7 +117,12 @@ export function findM3uEntry(
     const found = lookup.getItems(target.sourceId, type).find(matches)
     if (found) return found
   }
-  return null
+  // An episode of a series gathered from the list is not a list item of its own.
+  return findM3uEpisode(
+    lookup,
+    target.sourceId,
+    (episode) => isHttpUrl(episode.streamUrl) && m3uEntryId(episode.streamUrl) === target.entryId
+  )
 }
 
 // ---------------------------------------------------------------------------

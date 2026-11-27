@@ -112,7 +112,13 @@ export default function HomePage() {
           resolve: () => {
             const entry = findM3uEntry(target, catalog, channel.id)
             if (!entry) return null
-            return { ...channel, streamUrl: entry.streamUrl, ...(entry.httpHeaders ? { httpHeaders: entry.httpHeaders } : {}) }
+            return {
+              ...channel,
+              streamUrl: entry.streamUrl,
+              ...(entry.httpHeaders ? { httpHeaders: entry.httpHeaders } : {}),
+              // An episode of a series gathered from the list: "next" and the subtitle memory go by its series.
+              ...(entry.seriesRef ? { seriesRef: entry.seriesRef } : {})
+            }
           }
         },
         (resolved) => openPlayback({ target, channel: resolved })

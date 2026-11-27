@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { isPlayableChannel } from '@/services/playback'
+import { isM3uSeriesItem } from '@/services/m3u-series'
 import { openPlayerFromRoute } from '@/services/player-navigation'
 import type { Channel } from '@/types/playlist'
 import type { PlaybackRequest } from '@/types/player'
@@ -30,6 +31,16 @@ export function planCatalogItemOpen(
 ): CatalogItemOpenPlan {
   if (isPlayableChannel(channel)) return { kind: 'play' }
   if (channel.type !== 'series') return { kind: 'none' }
+  // A series gathered from an M3U list: its item is the series, opened by its id.
+  if (isM3uSeriesItem(channel)) {
+    return {
+      kind: 'series',
+      state: {
+        ...context.seriesRouteState,
+        restoreDetail: { itemId: channel.id, sourceId: channel.sourceId, m3uSeries: true }
+      }
+    }
+  }
   if (typeof channel.seriesId !== 'number') return { kind: 'series-list' }
 
   return {

@@ -23,7 +23,9 @@ const TURKISH_LETTER = /[çğıöşüÇĞİÖŞÜ]/
 /** Literals that are data, not text for the user: path → literals allowed there. */
 const ALLOWED: Record<string, readonly string[]> = {
   // Release-name tags that title matching strips before asking TMDB.
-  'src/renderer/src/services/tmdb-match.ts': ['türkçe\\s+dublaj', 'dublajlı', 'tr\\s+altyazı', 'altyazılı', 'altyazı']
+  'src/renderer/src/services/tmdb-match.ts': ['türkçe\\s+dublaj', 'dublajlı', 'tr\\s+altyazı', 'altyazılı', 'altyazı'],
+  // The word playlists mark an episode with, as a pattern that matches entry names.
+  'src/renderer/src/services/m3u-series.ts': ['b[öo]l[üu]m']
 }
 
 function isExcluded(path: string): boolean {

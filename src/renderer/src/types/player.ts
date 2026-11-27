@@ -35,6 +35,18 @@ export interface PlaybackRequest {
   channel: Channel
 }
 
+/**
+ * One entry of the episode queue: an episode of the series being watched and
+ * how it is started. The same for an Xtream episode and one gathered from an
+ * M3U list; `mediaKey` is what the current playback is found by.
+ */
+export interface QueuedEpisode {
+  mediaKey: string
+  /** What the player shows for it ("Dizi - S1E2 - Pilot"). */
+  title: string
+  request: PlaybackRequest
+}
+
 /** One series episode to play, as the series page knows it. */
 export interface EpisodePlaybackRequest {
   sourceId: string

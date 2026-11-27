@@ -28,16 +28,20 @@ export interface TrackMemoryEntry extends RememberedTracks {
 export const MAX_TRACK_MEMORY = 200
 const MAX_TEXT_LENGTH = 200
 
-/** Episodes share their series' memory; everything else has its own. */
-export function trackMemoryKey(target: PlaybackTarget): string {
+/**
+ * Episodes share their series' memory; everything else has its own.
+ * `seriesRef` is the series item of an episode gathered from an M3U list
+ * (its target only knows the entry).
+ */
+export function trackMemoryKey(target: PlaybackTarget, seriesRef?: string): string {
+  if (seriesRef) return `series-item:${seriesRef}`
   if (target.kind === 'episode' && target.seriesId !== null) {
     return mediaKey({ kind: 'series', sourceId: target.sourceId, seriesId: target.seriesId })
   }
   return mediaKey(target)
 }
 
-export function findTrackMemory(entries: readonly TrackMemoryEntry[], target: PlaybackTarget): RememberedTracks | null {
-  const key = trackMemoryKey(target)
+export function findTrackMemory(entries: readonly TrackMemoryEntry[], key: string): RememberedTracks | null {
   const entry = entries.find((candidate) => candidate.key === key)
   if (!entry) return null
   return {
@@ -46,14 +50,13 @@ export function findTrackMemory(entries: readonly TrackMemoryEntry[], target: Pl
   }
 }
 
-/** The list with `choice` recorded for the target: newest first, the oldest dropped past the limit. */
+/** The list with `choice` recorded under `key`: newest first, the oldest dropped past the limit. */
 export function rememberTracks(
   entries: readonly TrackMemoryEntry[],
-  target: PlaybackTarget,
+  key: string,
   choice: RememberedTracks,
   now = Date.now()
 ): TrackMemoryEntry[] {
-  const key = trackMemoryKey(target)
   const previous = entries.find((entry) => entry.key === key)
   const next: TrackMemoryEntry = { ...previous, ...choice, key, updatedAt: now }
   return [next, ...entries.filter((entry) => entry.key !== key)].slice(0, MAX_TRACK_MEMORY)

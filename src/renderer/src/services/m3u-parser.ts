@@ -11,6 +11,7 @@ import {
   readHeaderDirective,
   splitUrlHeaders
 } from './m3u-headers'
+import { groupSeriesEntries, looksLikeEpisodeName } from './m3u-series'
 
 // Startup blocks on this: a 2-minute ceiling meant one unreachable playlist URL
 // pinned the "Kaynaklar bağlanıyor..." screen for two minutes with no feedback.
@@ -131,6 +132,8 @@ interface GroupStats {
   vodCount: number
   hasSeriesPath: boolean
   hasMoviePath: boolean
+  /** Entries whose name says which episode they are ("... S01 E02"). */
+  episodeNames: number
 }
 
 function detectCategoryType(groupName: string, stats: GroupStats): ContentType {
@@ -141,6 +144,8 @@ function detectCategoryType(groupName: string, stats: GroupStats): ContentType {
 
   if (stats.hasSeriesPath) return 'series'
   if (stats.hasMoviePath) return 'vod'
+  // Files named like episodes are a series, whatever the group is called.
+  if (stats.episodeNames > stats.count * 0.5) return 'series'
   if (stats.vodCount > stats.count * 0.5) return 'vod'
 
   return 'live'
@@ -213,13 +218,14 @@ export function createM3uParser(sourceId: string): { feed(text: string): void; e
     if (group) {
       let stats = groupStats.get(group)
       if (!stats) {
-        stats = { count: 0, vodCount: 0, hasSeriesPath: false, hasMoviePath: false }
+        stats = { count: 0, vodCount: 0, hasSeriesPath: false, hasMoviePath: false, episodeNames: 0 }
         groupStats.set(group, stats)
       }
       stats.count += 1
       if (!stats.hasSeriesPath && /\/series\//i.test(url)) stats.hasSeriesPath = true
       if (!stats.hasMoviePath && /\/movie\//i.test(url)) stats.hasMoviePath = true
       if (VOD_EXTENSIONS.has(urlExtension(url))) stats.vodCount += 1
+      if (looksLikeEpisodeName(name)) stats.episodeNames += 1
     }
 
     channels.push({
@@ -320,7 +326,8 @@ export function createM3uParser(sourceId: string): { feed(text: string): void; e
         if (info.adult) channel.isAdult = true
       }
 
-      return { channels, categories, epgUrls }
+      // Episodes of a series become one item per series (m3u-series.ts).
+      return { channels: groupSeriesEntries(sourceId, channels), categories, epgUrls }
     }
   }
 }

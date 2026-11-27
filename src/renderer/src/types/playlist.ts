@@ -56,6 +56,26 @@ export interface Channel {
   seriesId?: number
   /** Request headers its M3U list asks for with this entry (user agent, referer, origin). */
   httpHeaders?: StreamHttpHeaders
+  /**
+   * The episodes of a series gathered from an M3U list (services/m3u-series.ts),
+   * in watching order. Such an item has no address of its own.
+   */
+  m3uEpisodes?: M3uEpisode[]
+  /** On an M3U episode being played: the id of the series item it belongs to. */
+  seriesRef?: string
+}
+
+/** One episode of a series gathered from an M3U list. */
+export interface M3uEpisode {
+  /** The id the entry had as a list item of its own (favourites and history may still name it). */
+  id: string
+  season: number
+  episode: number
+  /** What the entry's name says after the episode mark; often empty. */
+  title: string
+  streamUrl: string
+  logo?: string
+  httpHeaders?: StreamHttpHeaders
 }
 
 export interface SeriesDetail {

@@ -74,6 +74,8 @@ export interface CatalogDetailRef {
   sourceId: string
   seriesId?: number
   season?: number
+  /** A series gathered from an M3U list: `itemId` is the series, there is no provider id. */
+  m3uSeries?: boolean
 }
 
 /** What a catalog page hands the player to come back to. */
@@ -109,7 +111,8 @@ function parseDetail(raw: unknown): CatalogDetailRef | undefined {
     itemId: raw.itemId,
     sourceId: raw.sourceId,
     ...(seriesId !== undefined ? { seriesId } : {}),
-    ...(season !== undefined ? { season } : {})
+    ...(season !== undefined ? { season } : {}),
+    ...(raw.m3uSeries === true ? { m3uSeries: true } : {})
   }
 }
 
@@ -142,8 +145,8 @@ export function parseCatalogRouteState(state: unknown, type: CatalogType): Catal
       }
     }
   }
-  // A series detail can only be opened with its provider id.
-  if (detail && type === 'series' && detail.seriesId === undefined) detail = undefined
+  // A series detail can only be opened with its provider id, or as a series gathered from a playlist.
+  if (detail && type === 'series' && detail.seriesId === undefined && !detail.m3uSeries) detail = undefined
   if (detail) restore.detail = detail
 
   return Object.keys(restore).length > 0 ? restore : null

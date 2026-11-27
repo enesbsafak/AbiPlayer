@@ -2,7 +2,7 @@ import { ChevronDown, ChevronUp, FastForward, Rewind, SkipBack, SkipForward, Vol
 import { PlayIcon } from '@/components/ui/icons'
 import { useStore } from '@/store'
 import { useAdjacentChannels } from '@/hooks/useAdjacentChannels'
-import { adjacentEpisodes } from '@/store/player-slice'
+import { adjacentEpisodes, isEpisodePlayback } from '@/store/player-slice'
 import { strings } from '@/strings'
 import { PlayerRange } from './PlayerRange'
 import { CONTROL_SIZE, roundButton, useDockLayout, type DockSize } from './player-ui'
@@ -104,23 +104,24 @@ export function PlayerTransportControls({
   const seekStep = useStore((s) => s.settings.seekStepSeconds)
   const seekBackLabel = text.seekBack(seekStep)
   const seekForwardLabel = text.seekForward(seekStep)
-  const playEpisode = useStore((s) => s.playEpisode)
-  const episodeTarget = useStore((s) => (s.currentPlayback?.target.kind === 'episode' ? s.currentPlayback.target : null))
+  const playQueued = useStore((s) => s.playQueued)
+  const isEpisode = useStore((s) => isEpisodePlayback(s.currentPlayback, s.currentChannel))
+  const playingKey = useStore((s) => s.currentPlayback?.mediaKey ?? null)
   const episodeQueue = useStore((s) => s.episodeQueue)
   const { size } = useDockLayout()
 
   const channels = useAdjacentChannels(currentChannel)
   // An episode steps through its series, not through the film list it is shown as.
-  const episodes = adjacentEpisodes(episodeQueue, episodeTarget)
-  const previous = episodeTarget ? episodes.previous : channels.previous
-  const next = episodeTarget ? episodes.next : channels.next
+  const episodes = adjacentEpisodes(episodeQueue, playingKey)
+  const previous = isEpisode ? episodes.previous : channels.previous
+  const next = isEpisode ? episodes.next : channels.next
 
   const isLive = currentChannel?.type === 'live'
 
   const playAdjacent = (direction: 'prev' | 'next') => {
-    if (episodeTarget) {
+    if (isEpisode) {
       const episode = direction === 'prev' ? episodes.previous : episodes.next
-      if (episode) playEpisode(episode)
+      if (episode) playQueued(episode)
       return
     }
     const target = direction === 'prev' ? channels.previous : channels.next

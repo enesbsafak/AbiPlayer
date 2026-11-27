@@ -264,6 +264,12 @@ export const catalog = {
     seriesCredentialsPending: 'Giriş bilgileri hazırlanıyor, biraz bekle…',
     season: (number: number) => `Sezon ${number}`,
     episode: (number: number, title: string) => `E${number}. ${title}`,
+    /** The player's title for an episode that has no title of its own. */
+    episodeTitleShort: (series: string, season: number, episode: number) => `${series} - S${season}E${episode}`,
+    /** An episode a playlist names by its number alone. */
+    episodeOnly: (number: number) => `${number}. bölüm`,
+    /** A series gathered from a playlist that the refreshed playlist no longer lists. */
+    playlistSeriesMissing: 'Bu dizi artık listede yok.',
     /** The player's title for an episode. */
     episodeTitle: (series: string, season: number, episode: number, title: string) =>
       `${series} - S${season}E${episode} - ${title}`
