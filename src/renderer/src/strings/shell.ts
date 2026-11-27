@@ -47,6 +47,9 @@ export const shell = {
     installTitle: 'Güncellemeyi kurmak için yeniden başlat',
     restarting: 'Yeniden başlatılıyor...',
     install: 'Güncelle',
+    /** The install was tried and did not go through; the pill leads to the explanation. */
+    blocked: 'Güncelleme kurulamadı',
+    blockedTitle: 'Neden kurulamadığını ve ne yapabileceğini gör',
     downloading: (fraction: number) => `%${Math.round(fraction * 100)} indiriliyor`,
     checkTitle: 'Güncellemeleri kontrol et',
     installedOnly: 'Otomatik güncelleme yalnızca kurulu uygulamada çalışır',

@@ -158,6 +158,16 @@ export const settings = {
     restartAndInstall: 'Yeniden Başlat ve Kur',
     checkFailed: 'Güncellemeler kontrol edilemedi.',
     installFailed: 'Güncelleme kurulamadı.',
+    /** An install was started in an earlier run and the app is still the old version. */
+    blockedStatus: 'Güncelleme kurulamadı',
+    blockedTitle: 'Kurulum tamamlanmadı',
+    blockedBody:
+      'Kurulum başlatıldı ama uygulama hâlâ eski sürümde. Windows kurulum dosyasını engellemiş olabilir ' +
+      '(Akıllı Uygulama Denetimi açık bilgisayarlarda imzasız kurulum çalışmaz) ya da kurulum yarıda kesilmiş olabilir. ' +
+      'Kurulum dosyasını tarayıcıdan indirip kendin çalıştırabilirsin; ayarların ve kaynakların korunur.',
+    downloadInstaller: 'Kurulum dosyasını indir',
+    tryAgain: 'Yeniden dene',
+    manualDownload: 'Kurulum dosyasını elle indir',
     releaseDate: (when: string) => `Yeni sürüm tarihi: ${when}`
   },
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Download, Loader2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { AlertCircle, Download, Loader2 } from 'lucide-react'
 import type { AppUpdateState } from '@/services/platform'
 import { useAppUpdate } from '@/hooks/useAppUpdate'
 import { APP_VERSION_LABEL } from '@/constants/app-info'
@@ -47,9 +48,27 @@ const OUTCOME_CLASSES: Record<CheckOutcome['tone'], string> = {
   error: 'bg-coral text-ink'
 }
 
+const UPDATE_SETTINGS_ROUTE = '/settings?tab=updates'
+
 /** "Güncelle" when an update is downloaded and waiting: shown in both top bars. */
 export function UpdateReadyPill() {
+  const navigate = useNavigate()
   const { state, isInstalling, install } = useAppUpdate()
+  // Its install did not go through before: pressing "Güncelle" again would
+  // only close the app once more. The settings page says what to do.
+  if (state?.installBlocked) {
+    return (
+      <button
+        type="button"
+        onClick={() => void navigate(UPDATE_SETTINGS_ROUTE)}
+        title={text.update.blockedTitle}
+        className="no-drag flex h-11 shrink-0 items-center gap-2 rounded-full bg-coral px-4 text-sm font-bold text-ink"
+      >
+        <AlertCircle size={16} aria-hidden="true" />
+        {text.update.blocked}
+      </button>
+    )
+  }
   if (!state?.updateReadyToInstall) return null
   return (
     <button
@@ -71,6 +90,7 @@ export function UpdateReadyPill() {
  * its own; this only exposes the manual path and what it is doing now.
  */
 export function UpdateBadge() {
+  const navigate = useNavigate()
   const { state, isChecking, isInstalling, checkError, check, install } = useAppUpdate()
   const checking = isChecking || state?.status === 'checking'
   const awaitingOutcomeRef = useRef(false)
@@ -87,6 +107,20 @@ export function UpdateBadge() {
     const timer = setTimeout(() => setOutcome(null), OUTCOME_VISIBLE_MS)
     return () => clearTimeout(timer)
   }, [outcome])
+
+  if (state?.installBlocked) {
+    return (
+      <button
+        type="button"
+        onClick={() => void navigate(UPDATE_SETTINGS_ROUTE)}
+        title={text.update.blockedTitle}
+        className={`${PILL} bg-coral text-ink`}
+      >
+        <AlertCircle size={13} aria-hidden="true" />
+        {text.update.blocked}
+      </button>
+    )
+  }
 
   if (state?.updateReadyToInstall) {
     return (

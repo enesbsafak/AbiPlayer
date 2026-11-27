@@ -14,7 +14,10 @@ vi.mock('electron', () => ({
 }))
 vi.mock('@electron-toolkit/utils', () => ({ is: { dev: false } }))
 
-const { autoUpdatesEnabled, createAppUpdater, cleanupStoreBackupIfUnneeded } = await import('./app-updater')
+const { autoUpdatesEnabled, createAppUpdater, cleanupStoreBackupIfUnneeded, resolveBlockedVersion, summarizeError } = await import(
+  './app-updater'
+)
+type InstallRecord = import('./app-updater').UpdateInstallRecord
 type Backend = import('./app-updater').UpdaterBackend
 type UpdateInfo = import('./app-updater').UpdateInfoLike
 
@@ -41,9 +44,10 @@ class FakeBackend implements Backend {
 
 let clock = 0
 
-function setup(options: { confirm?: boolean } = {}) {
+function setup(options: { confirm?: boolean; record?: InstallRecord } = {}) {
   const backend = new FakeBackend()
   const confirmInstall = vi.fn(async () => options.confirm ?? false)
+  const saved: InstallRecord[] = []
   const updater = createAppUpdater({
     currentVersion: '0.4.15-beta',
     canCheck: true,
@@ -52,12 +56,14 @@ function setup(options: { confirm?: boolean } = {}) {
     setProgressBar: vi.fn(),
     confirmInstall,
     backupRendererStore: vi.fn(async () => undefined),
+    loadInstallRecord: () => options.record ?? {},
+    saveInstallRecord: (record) => void saved.push(record),
     onBeforeQuit: vi.fn(),
     now: () => clock,
     startupGraceMs: 60_000
   })
   updater.initialize()
-  return { backend, updater, confirmInstall }
+  return { backend, updater, confirmInstall, saved }
 }
 
 /** Runs a check during which the backend finds `version`. */
@@ -165,6 +171,69 @@ describe('app updater', () => {
   it('refuses to install before anything was downloaded', async () => {
     const { updater } = setup()
     await expect(updater.install()).resolves.toBe(false)
+  })
+
+  it('leaves a note of the install it starts, for the next run to judge', async () => {
+    const { backend, updater, saved } = setup()
+    clock = 120_000
+    await checkFinding(backend, updater, '0.5.0')
+    backend.emit('downloaded', { version: '0.5.0' })
+    await updater.install()
+    expect(saved.at(-1)).toEqual({ attempt: { version: '0.5.0', fromVersion: '0.4.15-beta' } })
+  })
+
+  it('notices an install that did not go through and stops offering it by itself', async () => {
+    // The last run started installing 0.5.0; this run is still 0.4.15.
+    const { backend, updater, confirmInstall, saved } = setup({
+      confirm: true,
+      record: { attempt: { version: '0.5.0', fromVersion: '0.4.15-beta' } }
+    })
+    expect(updater.getState()).toMatchObject({ installBlocked: true, message: '0.5.0 sürümünün kurulumu başlatıldı ama tamamlanmadı.' })
+    expect(saved.at(-1)).toEqual({ blockedVersion: '0.5.0' })
+
+    // The same update is found and downloaded again: no prompt, the app is not closed again.
+    clock = 120_000
+    await checkFinding(backend, updater, '0.5.0')
+    backend.emit('downloaded', { version: '0.5.0' })
+    await Promise.resolve()
+    expect(confirmInstall).not.toHaveBeenCalled()
+    expect(backend.quitAndInstall).not.toHaveBeenCalled()
+    expect(updater.getState()).toMatchObject({ installBlocked: true, updateReadyToInstall: true })
+    // Asked for by hand it is still tried.
+    await updater.install()
+    expect(backend.quitAndInstall).toHaveBeenCalledTimes(1)
+  })
+
+  it('gives a newer version its own try', async () => {
+    const { backend, updater, confirmInstall, saved } = setup({ record: { blockedVersion: '0.5.0' } })
+    expect(updater.getState().installBlocked).toBe(true)
+    clock = 120_000
+    await checkFinding(backend, updater, '0.5.1')
+    expect(updater.getState().installBlocked).toBe(false)
+    expect(saved.at(-1)).toEqual({})
+    backend.emit('downloaded', { version: '0.5.1' })
+    await Promise.resolve()
+    expect(confirmInstall).toHaveBeenCalledTimes(1)
+  })
+
+  it('judges the last install by the version the app is now', () => {
+    const attempt = { version: '0.5.0', fromVersion: '0.4.15-beta' }
+    expect(resolveBlockedVersion({ attempt }, '0.4.15-beta')).toBe('0.5.0')
+    // It went through, or a later version was installed by hand.
+    expect(resolveBlockedVersion({ attempt }, '0.5.0')).toBeNull()
+    expect(resolveBlockedVersion({ blockedVersion: '0.5.0' }, '0.5.1-beta')).toBeNull()
+    expect(resolveBlockedVersion({ blockedVersion: '0.5.0' }, '0.4.15-beta')).toBe('0.5.0')
+    expect(resolveBlockedVersion({ blockedVersion: 'nonsense' }, '0.4.15-beta')).toBeNull()
+    expect(resolveBlockedVersion({}, '0.4.15-beta')).toBeNull()
+  })
+
+  it('says what to do about the usual failures, and shows any other as it is', () => {
+    expect(summarizeError(new Error('net::ERR_INTERNET_DISCONNECTED'))).toBe(mainStrings.updates.network)
+    expect(summarizeError(new Error('getaddrinfo ENOTFOUND github.com'))).toBe(mainStrings.updates.network)
+    expect(summarizeError(new Error('sha512 checksum mismatch, expected abc, got def'))).toBe(mainStrings.updates.corrupt)
+    expect(summarizeError(new Error('HttpError: 403 rate limit, status code 403'))).toBe(mainStrings.updates.serverBusy)
+    expect(summarizeError(new Error('Something else'))).toBe('Something else')
+    expect(summarizeError('not an error')).toBe(mainStrings.updates.unknownError)
   })
 
   it('reports check failures with a Turkish fallback message', async () => {

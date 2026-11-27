@@ -125,6 +125,12 @@ export interface AppUpdateState {
   releaseDate: string | null
   canCheck: boolean
   updateReadyToInstall: boolean
+  /**
+   * An install of this update was started in an earlier run and the app is
+   * still the old version: Windows refused the installer, or it was closed
+   * half way. The update is no longer offered by itself; the user is told.
+   */
+  installBlocked: boolean
   lastCheckedAt: number | null
 }
 

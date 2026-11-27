@@ -9,6 +9,12 @@ export const GITHUB_REPO = 'enesbsafak/AbiPlayer'
 export const GITHUB_REPO_URL = `https://github.com/${GITHUB_REPO}`
 export const GITHUB_RELEASES_URL = `${GITHUB_REPO_URL}/releases`
 
+/** The page the installer of `version` is downloaded from; the list of releases when it is not known. */
+export function releasePageUrl(version: string | null | undefined): string {
+  const clean = version?.trim().replace(/^v/, '')
+  return clean && /^[0-9A-Za-z.-]+$/.test(clean) ? `${GITHUB_RELEASES_URL}/tag/v${clean}` : GITHUB_RELEASES_URL
+}
+
 // Prefills the version so a report never arrives without it.
 export const GITHUB_NEW_ISSUE_URL = `${GITHUB_REPO_URL}/issues/new?body=${encodeURIComponent(
   `\n\n---\n${strings.shell.app.versionLine(APP_VERSION)}`

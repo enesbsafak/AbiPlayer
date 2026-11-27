@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { ACTION, FieldError, SettingsCard, SettingsGroup } from './controls'
 import { useAppUpdate } from '@/hooks/useAppUpdate'
 import type { AppUpdateState } from '@/services/platform'
+import { releasePageUrl } from '@/constants/app-info'
 import { LOCALE, strings } from '@/strings'
 
 const text = strings.settings.updates
@@ -28,6 +29,7 @@ function formatBytes(value: number | null): string | null {
 }
 
 function getUpdateStatusLabel(updateState: AppUpdateState | null): string {
+  if (updateState?.installBlocked) return text.blockedStatus
   switch (updateState?.status) {
     case 'unsupported':
       return text.status.unsupported
@@ -73,10 +75,14 @@ export function UpdateSettings() {
   }, [appUpdateState])
 
   const readyToInstall = appUpdateState?.updateReadyToInstall === true
+  const installBlocked = appUpdateState?.installBlocked === true
+  const installerPage = releasePageUrl(appUpdateState?.downloadedVersion ?? appUpdateState?.availableVersion)
   const status = appUpdateState?.status
   // Mint once there is nothing to do or the update waits; sun while it moves.
   const statusDot =
-    status === 'not-available' || status === 'downloaded'
+    installBlocked
+      ? 'bg-coral'
+      : status === 'not-available' || status === 'downloaded'
       ? 'bg-mint'
       : status === 'error'
         ? 'bg-coral'
@@ -128,22 +134,50 @@ export function UpdateSettings() {
             </div>
           )}
 
-          {/* One white action: installing once it is ready, checking otherwise. */}
+          {installBlocked && (
+            <div role="alert" className="flex flex-col gap-2 rounded-card bg-ground p-5">
+              <p className="font-title text-[22px] leading-[1.15]">{text.blockedTitle}</p>
+              <p className="max-w-[72ch] text-[15px] leading-relaxed text-surface-300">{text.blockedBody}</p>
+            </div>
+          )}
+
+          {/* One white action: the installer's page once an install did not go
+              through, installing once an update is ready, checking otherwise. */}
           <div className="flex flex-wrap items-center gap-3">
+            {installBlocked && (
+              <a href={installerPage} target="_blank" rel="noreferrer" className={ACTION.primary}>
+                {text.downloadInstaller}
+              </a>
+            )}
             {readyToInstall && (
-              <button type="button" className={ACTION.primary} onClick={() => void install()} disabled={isInstallingUpdate}>
-                {isInstallingUpdate ? text.restarting : text.restartAndInstall}
+              <button
+                type="button"
+                className={installBlocked ? ACTION.secondary : ACTION.primary}
+                onClick={() => void install()}
+                disabled={isInstallingUpdate}
+              >
+                {isInstallingUpdate ? text.restarting : installBlocked ? text.tryAgain : text.restartAndInstall}
               </button>
             )}
             <button
               type="button"
-              className={readyToInstall ? ACTION.secondary : ACTION.primary}
+              className={readyToInstall || installBlocked ? ACTION.secondary : ACTION.primary}
               onClick={() => void check()}
               disabled={!appUpdateState?.canCheck || isCheckingUpdates || status === 'downloading'}
             >
               {isCheckingUpdates || status === 'checking' ? text.checking : text.check}
             </button>
           </div>
+          {!installBlocked && (
+            <a
+              href={installerPage}
+              target="_blank"
+              rel="noreferrer"
+              className="self-start text-sm text-surface-400 underline underline-offset-4 transition-colors hover:text-white"
+            >
+              {text.manualDownload}
+            </a>
+          )}
         </div>
       </SettingsCard>
     </SettingsGroup>

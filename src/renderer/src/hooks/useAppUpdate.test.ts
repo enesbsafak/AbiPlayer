@@ -33,6 +33,7 @@ function updateState(overrides: Partial<AppUpdateState> = {}): AppUpdateState {
     releaseDate: null,
     canCheck: true,
     updateReadyToInstall: false,
+    installBlocked: false,
     lastCheckedAt: null,
     ...overrides
   }

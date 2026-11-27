@@ -59,6 +59,9 @@ export interface AppUpdaterDeps {
   /** Shows the "update ready" prompt; resolves true for "restart and install". */
   confirmInstall: (version: string | null) => Promise<boolean>
   backupRendererStore: () => Promise<void>
+  /** What the last run left about installing; absent in tests that do not care. */
+  loadInstallRecord?: () => UpdateInstallRecord
+  saveInstallRecord?: (record: UpdateInstallRecord) => void
   onBeforeQuit: (listener: () => void) => void
   now?: () => number
   autoCheckDelayMs?: number
@@ -66,12 +69,55 @@ export interface AppUpdaterDeps {
   startupGraceMs?: number
 }
 
-function summarizeError(error: unknown): string {
-  if (error instanceof Error) {
-    const message = error.message.trim()
-    return message ? maskCredentials(message) : UNKNOWN_ERROR_MESSAGE
+/**
+ * What the user is told about a failed check or download. The library's own
+ * messages are English and technical; the usual causes get a sentence that
+ * says what to do, anything else is shown as it is.
+ */
+export function summarizeError(error: unknown): string {
+  if (!(error instanceof Error)) return UNKNOWN_ERROR_MESSAGE
+  const message = error.message.trim()
+  if (!message) return UNKNOWN_ERROR_MESSAGE
+  if (/net::ERR_|ENOTFOUND|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|getaddrinfo|socket hang up/i.test(message)) return text.network
+  if (/checksum mismatch/i.test(message)) return text.corrupt
+  if (/(?:status|code|HttpError)\D{0,12}(?:403|429|5\d\d)\b/i.test(message)) return text.serverBusy
+  return maskCredentials(message)
+}
+
+/**
+ * What is kept about installing between runs: an install that was started,
+ * and a version whose install did not go through.
+ */
+export interface UpdateInstallRecord {
+  attempt?: { version: string; fromVersion: string }
+  blockedVersion?: string
+}
+
+function versionNumbers(version: string): [number, number, number] | null {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim())
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null
+}
+
+/** Whether `a` is a later version than `b` (by its three numbers; false when either is unreadable). */
+export function isLaterVersion(a: string, b: string): boolean {
+  const left = versionNumbers(a)
+  const right = versionNumbers(b)
+  if (!left || !right) return false
+  for (let i = 0; i < 3; i += 1) {
+    if (left[i]! !== right[i]!) return left[i]! > right[i]!
   }
-  return UNKNOWN_ERROR_MESSAGE
+  return false
+}
+
+/**
+ * The version whose install did not go through, from what the last run left:
+ * an install was started for it and the app is still the version it was
+ * started from. Null once the app has reached (or passed) that version.
+ */
+export function resolveBlockedVersion(record: UpdateInstallRecord, currentVersion: string): string | null {
+  const candidate =
+    record.attempt && record.attempt.fromVersion === currentVersion ? record.attempt.version : (record.blockedVersion ?? null)
+  return candidate && isLaterVersion(candidate, currentVersion) ? candidate : null
 }
 
 function toReleaseDate(info: UpdateInfoLike): string | null {
@@ -105,6 +151,7 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
     releaseDate: null,
     canCheck: deps.canCheck,
     updateReadyToInstall: false,
+    installBlocked: false,
     lastCheckedAt: null
   }
 
@@ -117,6 +164,16 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
   let installInFlight = false
   let promptVisible = false
   let promptedVersion: string | null = null
+  /** The version whose install was started and did not go through. */
+  let blockedVersion: string | null = null
+
+  const saveInstallRecord = (attempt?: UpdateInstallRecord['attempt']): void => {
+    try {
+      deps.saveInstallRecord?.({ ...(attempt ? { attempt } : {}), ...(blockedVersion ? { blockedVersion } : {}) })
+    } catch (error) {
+      console.warn('[updater] install record not saved:', error)
+    }
+  }
   const timers: Array<ReturnType<typeof setTimeout>> = []
   let periodicTimer: ReturnType<typeof setInterval> | null = null
 
@@ -157,6 +214,9 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
 
   const promptToInstall = async (): Promise<void> => {
     if (promptVisible) return
+    // Its install was tried and did not go through: asking again every start
+    // only closes the app again. The settings page says what to do instead.
+    if (state.installBlocked) return
     if (state.downloadedVersion !== null && promptedVersion === state.downloadedVersion) return
     promptVisible = true
     promptedVersion = state.downloadedVersion
@@ -183,7 +243,13 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
 
     backend.onUpdateAvailable((info) => {
       if (state.updateReadyToInstall) return
+      // A newer version than the one that could not be installed gets its own try.
+      if (blockedVersion && info.version && info.version !== blockedVersion) {
+        blockedVersion = null
+        saveInstallRecord()
+      }
       setState({
+        installBlocked: blockedVersion !== null,
         status: 'available',
         availableVersion: info.version || null,
         downloadedVersion: null,
@@ -221,6 +287,7 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
         ...CLEARED_TRANSFER,
         releaseDate: null,
         updateReadyToInstall: false,
+        installBlocked: false,
         message: text.notAvailable
       })
     })
@@ -237,7 +304,8 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
         bytesPerSecond: null,
         releaseDate: toReleaseDate(info),
         updateReadyToInstall: true,
-        message: text.downloaded
+        installBlocked: blockedVersion !== null,
+        message: blockedVersion ? text.installBlocked(blockedVersion) : text.downloaded
       })
       void promptToInstall()
     })
@@ -274,7 +342,16 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
     if (initialized) return
     initialized = true
     startedAt = now()
-    setState({})
+    let record: UpdateInstallRecord = {}
+    try {
+      record = deps.loadInstallRecord?.() ?? {}
+    } catch (error) {
+      console.warn('[updater] install record not read:', error)
+    }
+    blockedVersion = resolveBlockedVersion(record, deps.currentVersion)
+    // The attempt is spent either way; what stays is whether it went through.
+    if (record.attempt || (record.blockedVersion ?? null) !== blockedVersion) saveInstallRecord()
+    setState(blockedVersion ? { installBlocked: true, message: text.installBlocked(blockedVersion) } : {})
     if (!deps.canCheck) return
 
     timers.push(setTimeout(() => void check(), autoCheckDelayMs))
@@ -332,7 +409,12 @@ export function createAppUpdater(deps: AppUpdaterDeps) {
     try {
       const backend = await ensureBackend()
       await deps.backupRendererStore()
+      // Left for the next run: if the app is still this version then, the
+      // installer never finished (Windows refused it, or it was closed).
+      const version = state.downloadedVersion ?? state.availableVersion
+      if (version) saveInstallRecord({ version, fromVersion: deps.currentVersion })
       if (await backend.quitAndInstall()) return true
+      saveInstallRecord()
       installInFlight = false
       setState({ status: 'error', updateReadyToInstall: true, message: INSTALL_FAILED_MESSAGE })
       return false
@@ -372,6 +454,29 @@ function shouldEnableAutoUpdates(): boolean {
 
 function getStoreBackupPath(): string {
   return join(app.getPath('userData'), 'store-backup.json')
+}
+
+function getInstallRecordPath(): string {
+  return join(app.getPath('userData'), 'update-install.json')
+}
+
+function loadInstallRecord(): UpdateInstallRecord {
+  const path = getInstallRecordPath()
+  if (!existsSync(path)) return {}
+  const raw: unknown = JSON.parse(readFileSync(path, 'utf-8'))
+  if (!raw || typeof raw !== 'object') return {}
+  const { attempt, blockedVersion } = raw as { attempt?: unknown; blockedVersion?: unknown }
+  const record: UpdateInstallRecord = {}
+  if (attempt && typeof attempt === 'object') {
+    const { version, fromVersion } = attempt as { version?: unknown; fromVersion?: unknown }
+    if (typeof version === 'string' && typeof fromVersion === 'string') record.attempt = { version, fromVersion }
+  }
+  if (typeof blockedVersion === 'string') record.blockedVersion = blockedVersion
+  return record
+}
+
+function saveInstallRecord(record: UpdateInstallRecord): void {
+  writeFileSync(getInstallRecordPath(), JSON.stringify(record), 'utf-8')
 }
 
 function getPrimaryWindow(): BrowserWindow | null {
@@ -471,6 +576,8 @@ function getDefaultUpdater(): AppUpdater {
         return result.response === 0
       },
       backupRendererStore,
+      loadInstallRecord,
+      saveInstallRecord,
       onBeforeQuit: (listener) => void app.once('before-quit', listener)
     })
   }
