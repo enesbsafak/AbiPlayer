@@ -65,6 +65,12 @@ export const epg = {
   ended: 'Bitti',
   watch: 'İzle',
   openChannel: 'Kanalı aç',
+  /** A programme that has been on, from the panel's archive. */
+  watchRecording: 'Kaydı izle',
+  /** A programme still on, from its start. */
+  watchFromStart: 'Baştan izle',
+  /** The player's title for a programme from the archive: "Ana Haber · TRT 1". */
+  archiveTitle: (program: string, channel: string) => `${program} · ${channel}`,
   progress: (title: string) => `${title} ilerlemesi`,
   timeLeft: (minutes: number) => `${duration(minutes)} kaldı`,
   startsIn: (minutes: number) => `${duration(minutes)} sonra`,

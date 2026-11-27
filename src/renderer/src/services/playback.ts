@@ -2,6 +2,7 @@ import type { Channel } from '@/types/playlist'
 import type { XtreamAuthResponse, XtreamCredentials, XtreamLiveFormat } from '@/types/xtream'
 import { xtreamApi } from './xtream-api'
 import { findM3uEpisode } from './m3u-series'
+import { formatArchiveStart } from './archive'
 import { getAllowedLiveFormats, pickLiveFormat } from './xtream-normalize'
 import {
   isPlayableTarget,
@@ -45,6 +46,8 @@ export interface StreamUrlContext {
   credentials: XtreamCredentials | null
   /** Live formats the account allows (`getAllowedLiveFormats`) and the one wanted. */
   liveFormat?: { allowed: readonly XtreamLiveFormat[]; preferred: XtreamLiveFormat }
+  /** The panel's time zone (its sign-in answer): an archive address names its start on the panel's clock. */
+  serverTimeZone?: string | null
   /** An M3U entry's own URL, from the catalog or the history entry. */
   entryUrl?: string | null
   /**
@@ -74,6 +77,14 @@ export function resolveStreamUrl(target: PlaybackTarget, context: StreamUrlConte
       const preferred = context.liveFormat?.preferred ?? DEFAULT_LIVE_FORMAT
       return xtreamApi.buildLiveUrl(context.credentials, target.streamId, pickLiveFormat(allowed, preferred))
     }
+    case 'archive':
+      if (!context.credentials) return null
+      return xtreamApi.buildArchiveUrl(
+        context.credentials,
+        target.streamId,
+        formatArchiveStart(target.start, context.serverTimeZone),
+        target.duration
+      )
     case 'movie':
       if (!context.credentials) return fallback
       return xtreamApi.buildVodUrl(context.credentials, target.streamId, target.containerExtension)
@@ -216,6 +227,7 @@ export function streamUrlContextFor(
       allowed: getAllowedLiveFormats(state.xtreamAuth?.[target.sourceId]),
       preferred: preferredLiveFormat
     },
+    serverTimeZone: state.xtreamAuth?.[target.sourceId]?.server_info?.timezone || null,
     entryUrl: urls.entryUrl,
     fallbackUrl: urls.fallbackUrl
   }

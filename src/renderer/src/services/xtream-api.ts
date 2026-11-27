@@ -384,6 +384,18 @@ export const xtreamApi = {
     return buildStreamUrl(creds, 'series', streamId, extension)
   },
 
+  /**
+   * A stretch of a live channel from the panel's archive. `start` is
+   * `YYYY-MM-DD:HH-MM` on the panel's clock (see `formatArchiveStart`),
+   * `minutes` its length.
+   */
+  buildArchiveUrl(creds: XtreamCredentials, streamId: number, start: string, minutes: number): string {
+    const base = creds.url.replace(/\/+$/, '')
+    const user = encodeURIComponent(creds.username)
+    const pass = encodeURIComponent(creds.password)
+    return `${base}/timeshift/${user}/${pass}/${minutes}/${start}/${streamId}.ts`
+  },
+
   buildEpgUrl(creds: XtreamCredentials): string {
     const base = creds.url.replace(/\/+$/, '')
     return `${base}/xmltv.php?username=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`

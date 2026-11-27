@@ -55,7 +55,22 @@ export interface M3uPlaybackTarget {
   mediaType: M3uMediaType
 }
 
+/**
+ * A stretch of an Xtream live channel from the panel's archive: a programme
+ * that has been on, or one still on, from its start. `start` is epoch
+ * seconds, `duration` minutes. Seekable and finite, so not live; not kept in
+ * the watch history either (the panel drops it after a few days).
+ */
+export interface ArchivePlaybackTarget {
+  kind: 'archive'
+  sourceId: string
+  streamId: number
+  start: number
+  duration: number
+}
+
 export type PlaybackTarget =
+  | ArchivePlaybackTarget
   | LivePlaybackTarget
   | MoviePlaybackTarget
   | EpisodePlaybackTarget
@@ -77,10 +92,10 @@ export function isLiveTarget(target: PlaybackTarget): boolean {
 
 /** Films and episodes (Xtream or M3U) get watch progress and resume. */
 export function isTrackableTarget(target: PlaybackTarget): target is PlayableTarget {
-  return isPlayableTarget(target) && !isLiveTarget(target)
+  return isPlayableTarget(target) && !isLiveTarget(target) && target.kind !== 'archive'
 }
 
-const MEDIA_KEY_PATTERN = /^(live|movie|episode|series|m3u):[^:]*:[^:]+$/
+const MEDIA_KEY_PATTERN = /^(live|movie|episode|series|m3u|archive):[^:]*:[^:]+$/
 
 /**
  * Stable identity for history and resume: `<kind>:<sourceId>:<item id>`.
@@ -96,6 +111,8 @@ export function mediaKey(target: PlaybackTarget): string {
     case 'movie':
     case 'episode':
       return `${target.kind}:${source}:${target.streamId}`
+    case 'archive':
+      return `archive:${source}:${target.streamId}@${target.start}`
     case 'series':
       return `series:${source}:${target.seriesId}`
     case 'm3u':
@@ -249,6 +266,9 @@ export function sanitizePlaybackTarget(raw: unknown): PlaybackTarget | null {
       }
     case 'series':
       return isUsableId(raw.seriesId) ? { kind: 'series', sourceId, seriesId: raw.seriesId } : null
+    case 'archive':
+      if (!isUsableId(raw.streamId) || !isUsableId(raw.start) || !isUsableId(raw.duration) || raw.duration === 0) return null
+      return { kind: 'archive', sourceId, streamId: raw.streamId, start: raw.start, duration: raw.duration }
     case 'm3u': {
       const mediaType = raw.mediaType
       if (typeof raw.entryId !== 'string' || !/^[0-9a-f]{6,32}$/.test(raw.entryId)) return null

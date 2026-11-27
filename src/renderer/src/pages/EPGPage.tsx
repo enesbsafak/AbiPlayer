@@ -5,7 +5,8 @@ import { useStore } from '@/store'
 import { channelPrograms } from '@/services/epg-service'
 import { matchesSearch, normalizeSearchKey, useVisibleCatalogCategories, useVisibleCatalogItems } from '@/catalog'
 import { loadEpg } from '@/hooks/useEPG'
-import { useOpenCatalogItem } from '@/hooks/useOpenCatalogItem'
+import { useOpenCatalogItem, useOpenPlayback } from '@/hooks/useOpenCatalogItem'
+import { archivePlayback } from '@/services/archive'
 import { Button } from '@/components/ui/Button'
 import { Dropdown } from '@/components/ui/Dropdown'
 import { Spinner } from '@/components/ui/Spinner'
@@ -128,6 +129,7 @@ export default function EPGPage() {
   const favoriteIds = useStore((s) => s.favoriteIds)
   const toggleFavorite = useStore((s) => s.toggleFavorite)
   const openItem = useOpenCatalogItem()
+  const openPlayback = useOpenPlayback()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
@@ -242,6 +244,9 @@ export default function EPGPage() {
     content = <GuideMessage loading title={text.loading} hint={text.loadingHint} />
   }
 
+  // The focused programme from the panel's archive, when the channel keeps it that far back.
+  const focusedArchive = focusedRow && focusedProgram ? archivePlayback(focusedRow.channel, focusedProgram, now) : null
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 p-3 short:gap-3">
       {focusedRow && focusedProgram && (
@@ -253,6 +258,7 @@ export default function EPGPage() {
           formatTime={formatTime}
           twelveHour={timeFormat === '12h'}
           onPlay={() => openItem(focusedRow.channel)}
+          onPlayArchive={focusedArchive ? () => openPlayback(focusedArchive) : undefined}
         />
       )}
 

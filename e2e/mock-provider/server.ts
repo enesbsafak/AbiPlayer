@@ -99,6 +99,8 @@ export interface RequestRecord {
   /** What the client sent, for the scenarios that check request headers. */
   userAgent?: string
   referer?: string
+  /** An archive request: the stretch that was asked for. */
+  archive?: { streamId: string; start: string; minutes: number }
 }
 
 /** The episodes the M3U list has of its first series, in the order it lists them. */
@@ -673,6 +675,8 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
     if (config.latencyMs > 0) await sleep(config.latencyMs)
 
     const positional = /^\/(live|movie|series)\/([^/]+)\/([^/]+)\/([^/.]+)\.([A-Za-z0-9]+)$/.exec(path)
+    // The panel's archive: /timeshift/<user>/<pass>/<minutes>/<YYYY-MM-DD:HH-MM>/<id>.ts
+    const timeshift = /^\/timeshift\/([^/]+)\/([^/]+)\/(\d+)\/(\d{4}-\d{2}-\d{2}:\d{2}-\d{2})\/(\d+)\.ts$/.exec(path)
     const segment = /^\/hls\/([^/]+)\/(\d+)\.ts$/.exec(path)
     const image = /^\/img\/(logo|poster|backdrop)\/(\d+)\.png$/.exec(path)
     const demoImage = /^\/img\/demo\/([a-z0-9-]+\.jpg)$/.exec(path)
@@ -703,6 +707,20 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
         headers(res, 'application/xml; charset=utf-8')
         record.status = 200
         send(res, Buffer.from(xmltv()), record)
+      } else if (timeshift) {
+        record.route = 'timeshift'
+        record.archive = { streamId: itemAt(timeshift, 5), start: itemAt(timeshift, 4), minutes: Number(timeshift[3]) }
+        const rule = failureFor('timeshift')
+        if (rule && applyFailure(rule, res, record)) return
+        if (!credentialsOk(decodeURIComponent(itemAt(timeshift, 1)), decodeURIComponent(itemAt(timeshift, 2)))) {
+          res.statusCode = 403
+          record.status = 403
+          headers(res, 'text/plain')
+          res.end('Forbidden')
+          return
+        }
+        // A finite file, unlike the endless live stream: the live clip as it is.
+        staticFile(req, res, record, media.liveTs, 'video/mp2t', rule)
       } else if (positional) {
         const [, kind] = positional
         const user = itemAt(positional, 2)

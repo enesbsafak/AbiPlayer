@@ -1,4 +1,4 @@
-import { PRIMARY_PILL } from '@/components/home/home-ui'
+import { PRIMARY_PILL, SECONDARY_PILL } from '@/components/home/home-ui'
 import { ArrowRightIcon, PlayIcon, StarIcon } from '@/components/ui/icons'
 import type { CatalogItem } from '@/catalog/types'
 import type { EPGProgram } from '@/types/epg'
@@ -17,6 +17,11 @@ interface GuideDetailProps {
   /** The 12-hour setting: its times ("9:30 ÖS") are not read with a suffix. */
   twelveHour: boolean
   onPlay: () => void
+  /**
+   * Plays the programme from the panel's archive; absent when the channel
+   * keeps none, or not as far back as this programme.
+   */
+  onPlayArchive?: () => void
 }
 
 const CHIP = 'flex h-[26px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-sm font-bold'
@@ -27,7 +32,7 @@ const CHIP = 'flex h-[26px] shrink-0 items-center gap-1.5 whitespace-nowrap roun
  * action, which plays the channel ("İzle" while the programme is on, "Kanalı
  * aç" otherwise: the channel plays live either way).
  */
-export function GuideDetail({ channel, program, favorite, now, formatTime, twelveHour, onPlay }: GuideDetailProps) {
+export function GuideDetail({ channel, program, favorite, now, formatTime, twelveHour, onPlay, onPlayArchive }: GuideDetailProps) {
   const timing = programTiming(program, now)
   const time = text.timeRange(formatTime(program.start), formatTime(program.end))
   const progress = Math.round(programProgress(program, now))
@@ -93,10 +98,32 @@ export function GuideDetail({ channel, program, favorite, now, formatTime, twelv
         )}
         {program.description && <p className="truncate text-[15px] text-surface-500 short:hidden">{program.description}</p>}
       </div>
-      <button type="button" onClick={onPlay} className={`${PRIMARY_PILL} shrink-0`}>
-        {live ? <PlayIcon size={22} /> : <ArrowRightIcon size={22} />}
-        {live ? text.watch : text.openChannel}
-      </button>
+      {/* One white action. A programme that has been on and is in the archive:
+          watching it; the channel itself becomes the second choice. A programme
+          still on: the channel, with "from the start" beside it. */}
+      {onPlayArchive && timing === 'ended' ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          <button type="button" onClick={onPlayArchive} className={PRIMARY_PILL}>
+            <PlayIcon size={22} />
+            {text.watchRecording}
+          </button>
+          <button type="button" onClick={onPlay} className={SECONDARY_PILL}>
+            {text.openChannel}
+          </button>
+        </div>
+      ) : (
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          <button type="button" onClick={onPlay} className={PRIMARY_PILL}>
+            {live ? <PlayIcon size={22} /> : <ArrowRightIcon size={22} />}
+            {live ? text.watch : text.openChannel}
+          </button>
+          {onPlayArchive && live && (
+            <button type="button" onClick={onPlayArchive} className={SECONDARY_PILL}>
+              {text.watchFromStart}
+            </button>
+          )}
+        </div>
+      )}
     </section>
   )
 }
