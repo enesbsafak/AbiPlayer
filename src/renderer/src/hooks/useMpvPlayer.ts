@@ -418,9 +418,22 @@ export function useMpvPlayer(enabled: boolean, options: MpvPlayerOptions = {}) {
     void mpvSetSubtitleStyle({
       fontSize: settings.subtitleFontSize,
       color: settings.subtitleColor,
-      background: settings.subtitleBackground
+      background: settings.subtitleBackground,
+      font: settings.subtitleFont,
+      bold: settings.subtitleBold,
+      outline: settings.subtitleOutline,
+      position: settings.subtitlePosition
     }).catch(() => undefined)
-  }, [enabled, settings.subtitleBackground, settings.subtitleColor, settings.subtitleFontSize])
+  }, [
+    enabled,
+    settings.subtitleBackground,
+    settings.subtitleColor,
+    settings.subtitleFontSize,
+    settings.subtitleFont,
+    settings.subtitleBold,
+    settings.subtitleOutline,
+    settings.subtitlePosition
+  ])
 
   // A new playback carries its tuning in `mpvOpen`; this follows changes made
   // while it plays.

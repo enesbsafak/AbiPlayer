@@ -3,6 +3,7 @@ import { Captions, Upload } from 'lucide-react'
 import { useStore } from '@/store'
 import { useExternalSubtitleLoader } from '@/hooks/useExternalSubtitleLoader'
 import { strings } from '@/strings'
+import { MAX_SUBTITLE_POSITION } from '../../../../shared/subtitle-style'
 import { DockPill } from './DockPill'
 import { PlayerRange } from './PlayerRange'
 import { CONTROL_SIZE, MENU_HEADING, menuRow, useDockLayout } from './player-ui'
@@ -27,6 +28,7 @@ export function SubtitleSelector() {
   const subtitleFontSize = useStore((s) => s.settings.subtitleFontSize)
   const subtitleColor = useStore((s) => s.settings.subtitleColor)
   const subtitleBackground = useStore((s) => s.settings.subtitleBackground)
+  const subtitlePosition = useStore((s) => s.settings.subtitlePosition)
   const updateSettings = useStore((s) => s.updateSettings)
   const { size, tone } = useDockLayout()
   const [open, setOpen] = useState(false)
@@ -152,6 +154,22 @@ export function SubtitleSelector() {
                   const alpha = Math.max(0, Math.min(100, opacity)) / 100
                   updateSettings({ subtitleBackground: `rgba(0,0,0,${alpha.toFixed(2)})` })
                 }}
+                className="w-full"
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between text-[14px]">
+                <span className="text-surface-500">{text.position}</span>
+                <span className="font-bold tabular-nums">{strings.settings.subtitles.positionValue(subtitlePosition)}</span>
+              </div>
+              <PlayerRange
+                min={0}
+                max={MAX_SUBTITLE_POSITION}
+                step={2}
+                value={subtitlePosition}
+                aria-label={text.positionLabel}
+                onChange={(e) => updateSettings({ subtitlePosition: Number.parseInt(e.target.value, 10) || 0 })}
                 className="w-full"
               />
             </div>

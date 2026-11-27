@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useStore } from '@/store'
-import { overlaySubtitleBottom } from './subtitle-clearance'
+import { overlaySubtitleBottom, overlaySubtitleShadow } from './subtitle-clearance'
 
 interface PlayerSize {
   width: number
@@ -19,6 +19,10 @@ export function SubtitleOverlay({ playerSize, dockClearance }: SubtitleOverlayPr
   const subtitleFontSizeSetting = useStore((s) => s.settings.subtitleFontSize)
   const subtitleColor = useStore((s) => s.settings.subtitleColor)
   const subtitleBackground = useStore((s) => s.settings.subtitleBackground)
+  const subtitleFont = useStore((s) => s.settings.subtitleFont)
+  const subtitleBold = useStore((s) => s.settings.subtitleBold)
+  const subtitleOutline = useStore((s) => s.settings.subtitleOutline)
+  const subtitlePosition = useStore((s) => s.settings.subtitlePosition)
 
   const subtitleScale = useMemo(() => {
     const scaleByHeight = playerSize.height / 720
@@ -28,7 +32,7 @@ export function SubtitleOverlay({ playerSize, dockClearance }: SubtitleOverlayPr
   }, [playerSize.height, playerSize.width])
 
   const subtitleFontSize = Math.max(10, Math.round(subtitleFontSizeSetting * subtitleScale))
-  const subtitleBottomOffset = overlaySubtitleBottom(playerSize.height, dockClearance)
+  const subtitleBottomOffset = overlaySubtitleBottom(playerSize.height, dockClearance, subtitlePosition)
   const subtitleHorizontalPadding = Math.max(12, Math.round(playerSize.width * 0.03))
 
   if (!currentSubtitleTrack) return null
@@ -47,9 +51,10 @@ export function SubtitleOverlay({ playerSize, dockClearance }: SubtitleOverlayPr
             fontSize: `${subtitleFontSize}px`,
             color: cue.style?.color || subtitleColor,
             backgroundColor: subtitleBackground,
-            fontWeight: cue.style?.bold ? 'bold' : 'normal',
+            ...(subtitleFont ? { fontFamily: `"${subtitleFont}", sans-serif` } : {}),
+            fontWeight: subtitleBold || cue.style?.bold ? 'bold' : 'normal',
             fontStyle: cue.style?.italic ? 'italic' : 'normal',
-            textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
+            textShadow: overlaySubtitleShadow(subtitleOutline),
             whiteSpace: 'pre-line'
           }}
         >

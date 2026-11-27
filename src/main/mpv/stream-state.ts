@@ -1,5 +1,6 @@
 import { itemAt } from '../../shared/checked'
 import type { MpvSubtitleStyle, MpvTrackInfo } from '../../shared/types/electron-ipc'
+import { isSubtitleFont } from '../../shared/subtitle-style'
 import { mainStrings } from '../../shared/main-strings'
 
 /** Everything that belongs to the file currently loaded, and to nothing else. */
@@ -268,6 +269,8 @@ export function toMpvColor(input: string, includeAlpha: boolean, fallback: strin
 const SUBTITLE_BOX_PADDING = 6
 /** Outline of subtitles drawn without a background, in mpv's scaled pixels. */
 const SUBTITLE_OUTLINE_SIZE = 2.4
+/** The outline sizes the viewer can ask for by name. */
+const SUBTITLE_OUTLINE_SIZES = { thin: 1.4, thick: 4 } as const
 
 /**
  * The mpv properties that render the app's subtitle style.
@@ -286,8 +289,18 @@ export function subtitleStyleProperties(style: MpvSubtitleStyle): Array<[string,
   const fontSize = Math.max(10, Math.min(96, Math.round(style.fontSize)))
   const mpvFontSize = Math.max(14, Math.round(fontSize * 2.2))
   const hasBackground = (parseCssColor(style.background)?.a ?? 0.75) > 0.01
+  // 'auto': none over a background box, a normal one without it. A size
+  // asked for by name is drawn either way (mpv draws it inside the box).
+  const outline =
+    style.outline === 'thin' || style.outline === 'thick'
+      ? SUBTITLE_OUTLINE_SIZES[style.outline]
+      : hasBackground
+        ? 0
+        : SUBTITLE_OUTLINE_SIZE
 
   return [
+    ['sub-font', isSubtitleFont(style.font) && style.font ? style.font : 'sans-serif'],
+    ['sub-bold', style.bold === true],
     ['sub-ass-override', 'force'],
     ['sub-scale', 1],
     ['sub-font-size', mpvFontSize],
@@ -295,7 +308,7 @@ export function subtitleStyleProperties(style: MpvSubtitleStyle): Array<[string,
     ['sub-border-style', hasBackground ? 'background-box' : 'outline-and-shadow'],
     ['sub-back-color', toMpvColor(style.background, true, '#BF000000')],
     ['sub-shadow-offset', hasBackground ? SUBTITLE_BOX_PADDING : 0],
-    ['sub-border-size', hasBackground ? 0 : SUBTITLE_OUTLINE_SIZE],
-    ['sub-border-color', hasBackground ? '#00000000' : '#FF000000']
+    ['sub-border-size', outline],
+    ['sub-border-color', outline > 0 ? '#FF000000' : '#00000000']
   ]
 }

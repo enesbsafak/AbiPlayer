@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand'
 import type { UserSettings } from '@/types/settings'
+import { clampSubtitlePosition, isSubtitleFont, isSubtitleOutline } from '../../../shared/subtitle-style'
 import { DEFAULT_SEEK_STEP_SECONDS, DEFAULT_SETTINGS, SEEK_STEP_OPTIONS, STREAM_USER_AGENT_SETTINGS } from '@/types/settings'
 
 export const MIN_EPG_REFRESH_MINUTES = 5
@@ -89,6 +90,10 @@ function sanitizeSettings(partial: Partial<UserSettings>): Partial<UserSettings>
   if (typeof next.preferredSubtitleLanguage === 'string') {
     next.preferredSubtitleLanguage = sanitizeLanguageTag(next.preferredSubtitleLanguage, 'auto')
   }
+
+  if (typeof next.subtitleFont === 'string' && !isSubtitleFont(next.subtitleFont)) next.subtitleFont = ''
+  if (typeof next.subtitleOutline === 'string' && !isSubtitleOutline(next.subtitleOutline)) next.subtitleOutline = 'auto'
+  if (typeof next.subtitlePosition === 'number') next.subtitlePosition = clampSubtitlePosition(next.subtitlePosition)
 
   if (typeof next.seekStepSeconds === 'number' && !SEEK_STEP_OPTIONS.includes(next.seekStepSeconds)) {
     next.seekStepSeconds = DEFAULT_SEEK_STEP_SECONDS

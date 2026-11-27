@@ -19,8 +19,26 @@ export function clearanceAbove(bottomEdge: number, dockTop: number): number {
  * place, or just above the controls when those are shown (`dockClearance`
  * is 0 while they are hidden).
  */
-export function overlaySubtitleBottom(playerHeight: number, dockClearance: number): number {
-  const usual = Math.max(44, Math.round(playerHeight * 0.085))
+export function overlaySubtitleBottom(playerHeight: number, dockClearance: number, positionPercent = 0): number {
+  // The viewer's own height (a share of the picture) goes on top of the usual place.
+  const raised = positionPercent > 0 ? Math.round((playerHeight * positionPercent) / 100) : 0
+  const usual = Math.max(44, Math.round(playerHeight * 0.085)) + raised
   if (!(dockClearance > 0)) return usual
   return Math.max(usual, Math.round(dockClearance) + SUBTITLE_DOCK_GAP_PX)
+}
+
+/** The page-drawn subtitle's outline as a text shadow: the nearest thing CSS has to mpv's border. */
+export function overlaySubtitleShadow(outline: 'auto' | 'thin' | 'thick'): string {
+  if (outline === 'auto') return '1px 1px 2px rgba(0,0,0,0.8)'
+  const size = outline === 'thin' ? 1 : 2
+  return [
+    `${size}px 0 0 #000`,
+    `-${size}px 0 0 #000`,
+    `0 ${size}px 0 #000`,
+    `0 -${size}px 0 #000`,
+    `${size}px ${size}px 0 #000`,
+    `-${size}px -${size}px 0 #000`,
+    `${size}px -${size}px 0 #000`,
+    `-${size}px ${size}px 0 #000`
+  ].join(', ')
 }

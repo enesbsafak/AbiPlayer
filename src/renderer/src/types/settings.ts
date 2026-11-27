@@ -1,3 +1,5 @@
+import type { SubtitleOutline } from '../../../shared/subtitle-style'
+
 export interface UserSettings {
   epgRefreshInterval: number // minutes
   preferredAudioLanguage: string // auto | IETF language tag (tr, en, en-us, ...)
@@ -7,6 +9,12 @@ export interface UserSettings {
   subtitleFontSize: number
   subtitleColor: string
   subtitleBackground: string
+  // One of SUBTITLE_FONTS ('' is the default sans-serif).
+  subtitleFont: string
+  subtitleBold: boolean
+  subtitleOutline: SubtitleOutline
+  // How far above their usual place subtitles sit: percent of the picture's height.
+  subtitlePosition: number
   // Kept in memory only: it is stored in the secure credential store, never
   // in localStorage (store/index.ts strips it from the persisted settings).
   tmdbApiKey: string
@@ -55,6 +63,10 @@ export const DEFAULT_SETTINGS: UserSettings = {
   subtitleFontSize: 24,
   subtitleColor: '#ffffff',
   subtitleBackground: 'rgba(0,0,0,0.75)',
+  subtitleFont: '',
+  subtitleBold: false,
+  subtitleOutline: 'auto',
+  subtitlePosition: 0,
   tmdbApiKey: '',
   epgTimeFormat: '24h',
   hardwareAcceleration: true,

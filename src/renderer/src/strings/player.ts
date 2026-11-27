@@ -97,6 +97,8 @@ export const player = {
     colorLabel: 'Altyazı rengi',
     background: 'Arka plan',
     backgroundLabel: 'Altyazı arka plan opaklığı',
+    position: 'Yükseklik',
+    positionLabel: 'Altyazı yüksekliği',
     preview: 'Altyazı ön izlemesi',
     loadExternal: 'Dışarıdan dosya yükle',
     fileFilter: 'Altyazı Dosyaları',

@@ -1,3 +1,4 @@
+import type { SubtitleOutline } from '../subtitle-style'
 export interface MpvTrackInfo {
   id: number
   type: 'audio' | 'sub' | 'video'
@@ -83,6 +84,12 @@ export interface MpvSubtitleStyle {
   fontSize: number
   color: string
   background: string
+  /** One of `SUBTITLE_FONTS`; '' or absent is the default sans-serif. */
+  font?: string
+  bold?: boolean
+  outline?: SubtitleOutline
+  /** How far above their usual place: percent of the picture's height (0 to `MAX_SUBTITLE_POSITION`). */
+  position?: number
 }
 
 /**

@@ -1,3 +1,4 @@
+import { clampSubtitlePosition, isSubtitleFont, isSubtitleOutline } from '../shared/subtitle-style'
 import { app } from 'electron'
 import { existsSync } from 'fs'
 import { unlink } from 'fs/promises'
@@ -484,7 +485,11 @@ export class MpvController {
     this.subtitleStyle = {
       fontSize: Number.isFinite(style.fontSize) ? style.fontSize : this.subtitleStyle.fontSize,
       color: style.color || this.subtitleStyle.color,
-      background: style.background || this.subtitleStyle.background
+      background: style.background || this.subtitleStyle.background,
+      font: isSubtitleFont(style.font) ? style.font : '',
+      bold: style.bold === true,
+      outline: isSubtitleOutline(style.outline) ? style.outline : 'auto',
+      position: clampSubtitlePosition(style.position)
     }
     await this.syncDurable()
   }
@@ -717,7 +722,8 @@ export class MpvController {
       ['video-margin-ratio-top', rect.top],
       ['video-margin-ratio-bottom', rect.bottom],
       ...subtitleStyleProperties(this.subtitleStyle),
-      ...subtitlePositionProperties(this.subtitleInsetRatio)
+      // The viewer's own height, or just above the controls while those are shown: whichever is higher.
+      ...subtitlePositionProperties(Math.max(this.subtitleInsetRatio, (this.subtitleStyle.position ?? 0) / 100))
     ]
     if (this.volume !== null) properties.push(['volume', this.volume])
     if (this.muted !== null) properties.push(['mute', this.muted])

@@ -4,9 +4,20 @@ import { Dropdown } from '@/components/ui/Dropdown'
 import { palette } from '@/theme/palette'
 import { strings } from '@/strings'
 import { formatLanguageLabel, useLanguageCodes } from './language-options'
-import { SettingRow, SettingsCard, SettingsGroup } from './controls'
+import { SettingRow, SettingsCard, SettingsGroup, Switch } from './controls'
+import { overlaySubtitleShadow } from '@/components/player/subtitle-clearance'
+import { MAX_SUBTITLE_POSITION, SUBTITLE_FONTS, type SubtitleOutline } from '../../../../shared/subtitle-style'
 
 const text = strings.settings.subtitles
+
+/** The dropdown needs a non-empty id for "the default font" (stored as ''). */
+const DEFAULT_FONT_ID = 'default'
+const FONT_ITEMS = SUBTITLE_FONTS.map((font) => (font ? { id: font, label: font } : { id: DEFAULT_FONT_ID, label: text.fontDefault }))
+const OUTLINE_ITEMS: Array<{ id: SubtitleOutline; label: string }> = [
+  { id: 'auto', label: text.outlineAuto },
+  { id: 'thin', label: text.outlineThin },
+  { id: 'thick', label: text.outlineThick }
+]
 
 function parseSubtitleBackgroundOpacity(background: string): number {
   const match = background.match(
@@ -146,6 +157,78 @@ export function SubtitleSettings() {
               </div>
             }
           />
+          <SettingRow
+            label={text.font}
+            labelId="subtitle-font-label"
+            help={text.fontHint}
+            control={
+              <Dropdown
+                id="subtitle-font"
+                labelledBy="subtitle-font-label"
+                items={FONT_ITEMS}
+                value={settings.subtitleFont || DEFAULT_FONT_ID}
+                onSelect={(id) => updateSettings({ subtitleFont: id === DEFAULT_FONT_ID ? '' : id })}
+                placeholder={text.font}
+                className="w-[280px] max-w-full"
+              />
+            }
+          />
+          <SettingRow
+            label={text.bold}
+            htmlFor="subtitle-bold"
+            help={text.boldHint}
+            helpId="subtitle-bold-help"
+            control={
+              <Switch
+                id="subtitle-bold"
+                checked={settings.subtitleBold}
+                onChange={(checked) => updateSettings({ subtitleBold: checked })}
+                describedBy="subtitle-bold-help"
+              />
+            }
+          />
+          <SettingRow
+            label={text.outline}
+            labelId="subtitle-outline-label"
+            help={text.outlineHint}
+            control={
+              <Dropdown
+                id="subtitle-outline"
+                labelledBy="subtitle-outline-label"
+                items={OUTLINE_ITEMS}
+                value={settings.subtitleOutline}
+                onSelect={(id) => {
+                  const choice = OUTLINE_ITEMS.find((item) => item.id === id)?.id
+                  if (choice) updateSettings({ subtitleOutline: choice })
+                }}
+                placeholder={text.outline}
+                className="w-[280px] max-w-full"
+              />
+            }
+          />
+          <SettingRow
+            label={text.position}
+            htmlFor="subtitle-position"
+            help={text.positionHint}
+            control={
+              <div className="flex items-center gap-4">
+                <input
+                  id="subtitle-position"
+                  type="range"
+                  min={0}
+                  max={MAX_SUBTITLE_POSITION}
+                  step={2}
+                  value={settings.subtitlePosition}
+                  onChange={(e) => updateSettings({ subtitlePosition: Number.parseInt(e.target.value, 10) || 0 })}
+                  className={RANGE_CLASS}
+                  style={{ background: rangeFill(settings.subtitlePosition, 0, MAX_SUBTITLE_POSITION) }}
+                />
+                <span className="w-28 text-right text-[15px] font-bold tabular-nums">
+                  {text.positionValue(settings.subtitlePosition)}
+                </span>
+              </div>
+            }
+          />
           <SettingRow label={text.preview}>
             <div className="flex min-h-[120px] items-center justify-center rounded-2xl bg-deep p-6 text-center">
               <span
@@ -153,7 +236,10 @@ export function SubtitleSettings() {
                 style={{
                   fontSize: `${settings.subtitleFontSize}px`,
                   color: settings.subtitleColor,
-                  backgroundColor: settings.subtitleBackground
+                  backgroundColor: settings.subtitleBackground,
+                  ...(settings.subtitleFont ? { fontFamily: `"${settings.subtitleFont}", sans-serif` } : {}),
+                  fontWeight: settings.subtitleBold ? 'bold' : 'normal',
+                  textShadow: overlaySubtitleShadow(settings.subtitleOutline)
                 }}
               >
                 {text.previewText}

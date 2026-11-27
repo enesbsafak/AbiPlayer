@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { isValidMpvSubtitleStyle } from '../ipc/validators'
 import { describe, expect, it } from 'vitest'
 import {
   applyStreamProperty,
@@ -61,6 +62,42 @@ describe('describeMpvFileError', () => {
     )
     expect(describeMpvFileError('http 403')).toBe('Yayın açılamadı: http 403')
     expect(describeMpvFileError(undefined)).toBe('Yayın açılamadı.')
+  })
+})
+
+describe('subtitle appearance', () => {
+  const base = { fontSize: 24, color: '#ffffff' }
+
+  it('sets the font, the weight and the outline the viewer chose', () => {
+    const boxed = new Map(
+      subtitleStyleProperties({ ...base, background: 'rgba(0,0,0,0.75)', font: 'Georgia', bold: true, outline: 'thick' })
+    )
+    expect(boxed.get('sub-font')).toBe('Georgia')
+    expect(boxed.get('sub-bold')).toBe(true)
+    // Asked for by name, the outline is drawn over the background box too.
+    expect(boxed.get('sub-border-style')).toBe('background-box')
+    expect(boxed.get('sub-border-size')).toBe(4)
+    expect(boxed.get('sub-border-color')).toBe('#FF000000')
+  })
+
+  it('keeps the look it always had when nothing was chosen', () => {
+    const boxed = new Map(subtitleStyleProperties({ ...base, background: 'rgba(0,0,0,0.75)' }))
+    expect(boxed.get('sub-font')).toBe('sans-serif')
+    expect(boxed.get('sub-bold')).toBe(false)
+    expect(boxed.get('sub-border-size')).toBe(0)
+    const bare = new Map(subtitleStyleProperties({ ...base, background: 'rgba(0,0,0,0)', outline: 'auto' }))
+    expect(bare.get('sub-border-size')).toBe(2.4)
+  })
+
+  it('never hands mpv a font name the settings do not offer', () => {
+    const style = new Map(subtitleStyleProperties({ ...base, background: 'rgba(0,0,0,0.75)', font: 'x,sub-file=C:\\secret' }))
+    expect(style.get('sub-font')).toBe('sans-serif')
+    const ok = { fontSize: 24, color: '#fff', background: 'rgba(0,0,0,0.5)' }
+    expect(isValidMpvSubtitleStyle({ ...ok, font: 'Verdana', bold: true, outline: 'thin', position: 12 })).toBe(true)
+    expect(isValidMpvSubtitleStyle({ ...ok, font: 'Comic Sans MS' })).toBe(false)
+    expect(isValidMpvSubtitleStyle({ ...ok, outline: 'huge' })).toBe(false)
+    expect(isValidMpvSubtitleStyle({ ...ok, position: 80 })).toBe(false)
+    expect(isValidMpvSubtitleStyle({ ...ok, bold: 'yes' })).toBe(false)
   })
 })
 

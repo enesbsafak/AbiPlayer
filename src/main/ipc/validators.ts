@@ -1,4 +1,5 @@
 import type { MpvPlaybackTuning, MpvSubtitleStyle } from '../../shared/types/electron-ipc'
+import { isSubtitleFont, isSubtitleOutline, MAX_SUBTITLE_POSITION } from '../../shared/subtitle-style'
 import { mainStrings } from '../../shared/main-strings'
 
 const ALLOWED_STREAM_PROTOCOLS = new Set(['http:', 'https:'])
@@ -47,7 +48,12 @@ export function isValidMpvSubtitleStyle(value: unknown): value is MpvSubtitleSty
     typeof style.fontSize === 'number' &&
     Number.isFinite(style.fontSize) &&
     isBoundedText(style.color, MAX_COLOR_VALUE_LENGTH) &&
-    isBoundedText(style.background, MAX_COLOR_VALUE_LENGTH)
+    isBoundedText(style.background, MAX_COLOR_VALUE_LENGTH) &&
+    // A font name goes to mpv as it is: only the ones the settings offer.
+    (style.font === undefined || isSubtitleFont(style.font)) &&
+    (style.bold === undefined || typeof style.bold === 'boolean') &&
+    (style.outline === undefined || isSubtitleOutline(style.outline)) &&
+    (style.position === undefined || isFiniteInRange(style.position, 0, MAX_SUBTITLE_POSITION))
   )
 }
 
