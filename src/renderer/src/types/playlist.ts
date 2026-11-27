@@ -61,6 +61,11 @@ export interface Channel {
    * in watching order. Such an item has no address of its own.
    */
   m3uEpisodes?: M3uEpisode[]
+  /**
+   * Hours the guide's times are moved by for this channel (`tvg-shift` of an
+   * M3U list): the guide it names is in another time zone than the channel.
+   */
+  epgShiftHours?: number
   /** On an M3U episode being played: the id of the series item it belongs to. */
   seriesRef?: string
 }

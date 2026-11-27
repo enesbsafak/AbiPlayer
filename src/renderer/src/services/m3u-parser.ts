@@ -26,6 +26,8 @@ const VOD_EXTENSIONS = new Set(['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv'])
 type ContentType = 'live' | 'vod' | 'series'
 
 interface ExtInf {
+  /** `tvg-shift` of the line, in hours; null when it names none. */
+  shift: number | null
   name: string
   logo: string
   group: string
@@ -71,12 +73,27 @@ export function parseExtInf(line: string): ExtInf {
   const separator = findNameSeparator(line)
   const section = separator === -1 ? line : line.slice(0, separator)
   return {
+    shift: parseGuideShift(section),
     name: separator === -1 ? '' : line.slice(separator + 1).trim(),
     tvgId: extractAttribute(section, TVG_ID),
     tvgName: extractAttribute(section, TVG_NAME),
     logo: extractAttribute(section, TVG_LOGO),
     group: extractAttribute(section, GROUP_TITLE)
   }
+}
+
+const GUIDE_SHIFT = /tvg-shift="?([+-]?\d{1,2}(?:[.,]\d+)?)"?/i
+
+/**
+ * `tvg-shift="2"`, `tvg-shift=-1.5`: hours to move the guide's times by, or
+ * null when the text names none (or something that is no time zone offset).
+ */
+export function parseGuideShift(text: string): number | null {
+  if (!text.includes('tvg-shift')) return null
+  const match = GUIDE_SHIFT.exec(text)
+  if (!match?.[1]) return null
+  const hours = Number(match[1].replace(',', '.'))
+  return Number.isFinite(hours) && Math.abs(hours) <= 14 ? hours : null
 }
 
 /** Lowercased extension of the URL's last path segment, without query or fragment. */
@@ -204,6 +221,8 @@ export function createM3uParser(sourceId: string): { feed(text: string): void; e
   // Request headers named for the entry being read (see m3u-headers.ts).
   // Kept until the entry's URL: such lines stand before or after `#EXTINF`.
   const pendingHeaders = emptyPendingHeaders()
+  // `tvg-shift` of the `#EXTM3U` line: for every channel that names none itself.
+  let defaultShift = 0
   let carry = ''
   let sawHeader = false
 
@@ -242,7 +261,8 @@ export function createM3uParser(sourceId: string): { feed(text: string): void; e
       group: group || undefined,
       type: group ? 'live' : detectChannelType(url),
       isAdult: isAdultLabel(name),
-      ...(httpHeaders ? { httpHeaders } : {})
+      ...(httpHeaders ? { httpHeaders } : {}),
+      ...((meta.shift ?? defaultShift) !== 0 ? { epgShiftHours: meta.shift ?? defaultShift } : {})
     })
   }
 
@@ -261,6 +281,7 @@ export function createM3uParser(sourceId: string): { feed(text: string): void; e
       if (!sawHeader) {
         sawHeader = true
         for (const url of parseHeaderEpgUrls(line)) epgUrls.push(url)
+        defaultShift = parseGuideShift(line) ?? 0
       }
     } else if (line.startsWith('#')) {
       readHeaderDirective(line, pendingHeaders)
@@ -278,7 +299,7 @@ export function createM3uParser(sourceId: string): { feed(text: string): void; e
         current = null
       } else {
         // URL without EXTINF: minimal entry named after the file.
-        addChannel({ name: cleanUrlName(url), logo: '', group: pendingGroup || '', tvgId: '', tvgName: '' }, url, httpHeaders)
+        addChannel({ shift: null, name: cleanUrlName(url), logo: '', group: pendingGroup || '', tvgId: '', tvgName: '' }, url, httpHeaders)
       }
       pendingGroup = null
     }

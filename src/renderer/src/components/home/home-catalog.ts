@@ -1,5 +1,5 @@
 import type { CatalogItem } from '@/catalog/types'
-import { findCurrentProgram, normalizeEpgChannelKey } from '@/services/epg-service'
+import { findCurrentProgram, channelPrograms, normalizeEpgChannelKey } from '@/services/epg-service'
 import type { EPGData } from '@/types/epg'
 import type { Channel } from '@/types/playlist'
 import type { ContinueWatchingItem } from '@/services/watch-progress'
@@ -119,8 +119,7 @@ export function findGuideHighlights(
   for (const channel of channels) {
     if (scanned >= GUIDE_SCAN_LIMIT || (current && next)) break
     scanned += 1
-    const key = normalizeEpgChannelKey(channel.epgChannelId)
-    const programs = key ? guide.programs[key] : undefined
+    const programs = channelPrograms(guide.programs, channel)
     if (!programs || programs.length === 0) continue
     if (!current) {
       const onAir = findCurrentProgram(programs, now)

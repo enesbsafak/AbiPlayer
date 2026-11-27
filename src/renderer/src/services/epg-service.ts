@@ -94,6 +94,37 @@ export function normalizeEpgChannelKey(id: string | null | undefined): string | 
   return key
 }
 
+// One shifted copy per programme list and offset: lists and channels are
+// looked up on every clock tick.
+const shiftedPrograms = new WeakMap<EPGProgram[], Map<number, EPGProgram[]>>()
+
+/**
+ * The programmes of a channel from a guide's lists, with the channel's own
+ * time offset applied (`epgShiftHours`, an M3U list's `tvg-shift`).
+ * Undefined when the guide has nothing for the channel.
+ */
+export function channelPrograms(
+  programs: Record<string, EPGProgram[]>,
+  channel: { epgChannelId?: string; epgShiftHours?: number }
+): EPGProgram[] | undefined {
+  const key = normalizeEpgChannelKey(channel.epgChannelId)
+  const list = key ? programs[key] : undefined
+  const hours = channel.epgShiftHours
+  if (!list || !hours) return list
+  let byShift = shiftedPrograms.get(list)
+  if (!byShift) {
+    byShift = new Map()
+    shiftedPrograms.set(list, byShift)
+  }
+  let shifted = byShift.get(hours)
+  if (!shifted) {
+    const offset = hours * 3_600_000
+    shifted = list.map((program) => ({ ...program, start: program.start + offset, end: program.end + offset }))
+    byShift.set(hours, shifted)
+  }
+  return shifted
+}
+
 export function findCurrentProgram(programs: EPGProgram[], now?: number): EPGProgram | null {
   const timestamp = now ?? Date.now()
   if (!programs || programs.length === 0) return null

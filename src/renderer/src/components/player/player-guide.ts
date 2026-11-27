@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useStore } from '@/store'
-import{ findCurrentProgram, getUpcomingPrograms, normalizeEpgChannelKey } from '@/services/epg-service'
+import{ findCurrentProgram, getUpcomingPrograms, channelPrograms } from '@/services/epg-service'
 import { positionInList } from '@/hooks/useAdjacentChannels'
 import { useVisibleCatalogItems } from '@/catalog'
 import type { EPGData, EPGProgram } from '@/types/epg'
@@ -16,8 +16,7 @@ const NOTHING: OnAir = { now: null, next: null }
 /** What `channel` shows at `at`, and what follows it, from the guide in memory. */
 export function onAirFor(guide: EPGData | null, channel: Channel | null, at: number): OnAir {
   if (!guide || !channel || channel.type !== 'live') return NOTHING
-  const key = normalizeEpgChannelKey(channel.epgChannelId)
-  const programmes = key ? guide.programs[key] : undefined
+  const programmes = channelPrograms(guide.programs, channel)
   if (!programmes || programmes.length === 0) return NOTHING
   const now = findCurrentProgram(programmes, at)
   const coming = getUpcomingPrograms(programmes, 3, at)

@@ -1,6 +1,7 @@
 import { itemAt } from '../../../shared/checked'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createM3uParser, fetchM3uStreamed, parseExtInf, parseHeaderEpgUrls, parseM3U } from './m3u-parser'
+import { channelPrograms } from './epg-service'
 
 describe('M3U header guide URL and streamed parsing (C2c)', () => {
   it('reads url-tvg and x-tvg-url, several URLs included, http(s) only', () => {
@@ -263,6 +264,31 @@ https://a.com/series/u/p/1.mkv`
       // Nothing carries over to the next entry.
       ['Kanal E', 'http://example.com/e.m3u8', undefined]
     ])
+  })
+
+  it("moves the guide's times by the offset a list names (tvg-shift)", () => {
+    const playlist = [
+      '#EXTM3U tvg-shift=1',
+      '#EXTINF:-1 tvg-id="a.tr" tvg-shift="-2",Kanal A',
+      'http://example.com/a.ts',
+      '#EXTINF:-1 tvg-id="b.tr",Kanal B',
+      'http://example.com/b.ts',
+      '#EXTINF:-1 tvg-id="c.tr" tvg-shift="0",Kanal C',
+      'http://example.com/c.ts',
+      '#EXTINF:-1 tvg-id="d.tr" tvg-shift="99",Kanal D',
+      'http://example.com/d.ts'
+    ].join('\n')
+    const { channels } = parseM3U(playlist, 's')
+    // The line's own offset, else the list's; "0" switches the list's off; nonsense is not an offset.
+    expect(channels.map((channel) => channel.epgShiftHours)).toEqual([-2, 1, undefined, 1])
+
+    const hour = 3_600_000
+    const programs = { 'a.tr': [{ channelId: 'a.tr', title: 'Haber', start: 10 * hour, end: 11 * hour }] }
+    const shifted = channelPrograms(programs, channels[0]!)
+    expect(shifted?.map((program) => [program.start / hour, program.end / hour])).toEqual([[8, 9]])
+    // The same list and offset give the same array: lookups run on every clock tick.
+    expect(channelPrograms(programs, channels[0]!)).toBe(shifted)
+    expect(channelPrograms(programs, { epgChannelId: 'a.tr' })).toBe(programs['a.tr'])
   })
 
   it('parses a playlist with 100k+ entries', () => {

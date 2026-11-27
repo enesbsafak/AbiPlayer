@@ -133,6 +133,7 @@ export function m3uEntryToRecord(entry: Channel): CatalogItem {
   if (entry.epgChannelId) record.epgChannelId = entry.epgChannelId
   if (entry.httpHeaders) record.httpHeaders = entry.httpHeaders
   if (entry.m3uEpisodes) record.m3uEpisodes = entry.m3uEpisodes
+  if (entry.epgShiftHours) record.epgShiftHours = entry.epgShiftHours
   const group = entry.group || entry.categoryName
   if (group) {
     record.group = group

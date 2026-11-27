@@ -1,5 +1,5 @@
 import { useStore } from '@/store'
-import { findCurrentProgram, normalizeEpgChannelKey } from '@/services/epg-service'
+import { findCurrentProgram, channelPrograms } from '@/services/epg-service'
 import type { EPGData, EPGProgram } from '@/types/epg'
 import type { Channel } from '@/types/playlist'
 import { LOCALE } from '@/strings'
@@ -21,8 +21,7 @@ export function useSourceGuide(sourceId: string | null): EPGData | null {
 
 export function guideFor(guide: EPGData | null, channel: Channel, now: number): ChannelGuide | null {
   if (!guide) return null
-  const key = normalizeEpgChannelKey(channel.epgChannelId)
-  const programs = key ? guide.programs[key] : undefined
+  const programs = channelPrograms(guide.programs, channel)
   if (!programs || programs.length === 0) return null
   const current = findCurrentProgram(programs, now)
   const next = programs.find((program) => program.start > now) ?? null

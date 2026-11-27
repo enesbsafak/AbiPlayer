@@ -31,7 +31,7 @@ import {
 } from '@/catalog'
 import type { CatalogStatusMap } from '@/store/playlist-slice'
 import { findM3uEntry } from '@/services/playback'
-import { findCurrentProgram, normalizeEpgChannelKey } from '@/services/epg-service'
+import { findCurrentProgram, channelPrograms } from '@/services/epg-service'
 import {
   indexChannelsByLegacyKey,
   legacyIndexKey,
@@ -255,8 +255,8 @@ export default function HomePage() {
     const add = (channel: Channel, favorite: boolean) => {
       if (seen.has(channel.id) || result.length >= PANEL_CHANNELS) return
       seen.add(channel.id)
-      const key = epgData ? normalizeEpgChannelKey(channel.epgChannelId) : null
-      const onAir = key && epgData?.programs[key] ? findCurrentProgram(epgData.programs[key]!, now) : null
+      const programs = epgData ? channelPrograms(epgData.programs, channel) : undefined
+      const onAir = programs ? findCurrentProgram(programs, now) : null
       result.push({ channel, favorite, now: onAir?.title ?? null })
     }
     for (const channel of favoriteLive) add(channel, true)

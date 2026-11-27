@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { RefreshCw, X } from 'lucide-react'
 import { useStore } from '@/store'
-import { normalizeEpgChannelKey } from '@/services/epg-service'
+import { channelPrograms } from '@/services/epg-service'
 import { matchesSearch, normalizeSearchKey, useVisibleCatalogCategories, useVisibleCatalogItems } from '@/catalog'
 import { loadEpg } from '@/hooks/useEPG'
 import { useOpenCatalogItem } from '@/hooks/useOpenCatalogItem'
@@ -37,8 +37,7 @@ export function buildEpgRows(channels: readonly CatalogItem[], guide: EPGData | 
   for (const channel of channels) {
     if (!channel.epgChannelId) continue
     if (normalizedQuery && !matchesSearch(channel, normalizedQuery)) continue
-    const key = normalizeEpgChannelKey(channel.epgChannelId)
-    const programs = key ? guide.programs[key] : undefined
+    const programs = channelPrograms(guide.programs, channel)
     if (!programs || programs.length === 0) continue
     rows.push({ channel, programs })
   }
