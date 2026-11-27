@@ -96,7 +96,13 @@ export interface RequestRecord {
   status: number
   at: number
   bytes: number
+  /** What the client sent, for the scenarios that check request headers. */
+  userAgent?: string
+  referer?: string
 }
+
+/** The request headers the M3U list names for its first live channel. */
+export const M3U_FIRST_CHANNEL_HEADERS = { userAgent: 'AbiTest/1.0 (liste)', referer: 'http://site.example/izle' }
 
 export interface MockStats {
   counts: Record<string, number>
@@ -426,6 +432,11 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
     current.live.forEach((item, index) => {
       const group = liveNames.get(current.liveCategoryOf[index] ?? '') ?? ''
       lines.push(`#EXTINF:-1 tvg-id="${attr(item.epg_channel_id)}" tvg-name="${attr(item.name)}" tvg-logo="${attr(item.stream_icon)}" group-title="${attr(group)}",${item.name}`)
+      if (index === 0) {
+        // As lists write them: between the entry's line and its address.
+        lines.push(`#EXTVLCOPT:http-user-agent=${M3U_FIRST_CHANNEL_HEADERS.userAgent}`)
+        lines.push(`#EXTVLCOPT:http-referrer=${M3U_FIRST_CHANNEL_HEADERS.referer}`)
+      }
       lines.push(`${baseUrl}/live/${credentials}/${item.stream_id}.${liveExt}`)
     })
     current.vod.forEach((item, index) => {
@@ -626,6 +637,8 @@ export async function startMockProvider(options: MockOptions): Promise<MockProvi
     }
 
     const record: RequestRecord = { route: 'unknown', status: 0, at: Date.now() - startedAt, bytes: 0 }
+    if (typeof req.headers['user-agent'] === 'string') record.userAgent = req.headers['user-agent']
+    if (typeof req.headers.referer === 'string') record.referer = req.headers.referer
     recent.push(record)
     if (recent.length > 500) recent = recent.slice(-500)
 

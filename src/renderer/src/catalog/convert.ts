@@ -131,6 +131,7 @@ export function m3uEntryToRecord(entry: Channel): CatalogItem {
   if (entry.logo) record.logo = entry.logo
   if (entry.categoryId) record.categoryId = entry.categoryId
   if (entry.epgChannelId) record.epgChannelId = entry.epgChannelId
+  if (entry.httpHeaders) record.httpHeaders = entry.httpHeaders
   const group = entry.group || entry.categoryName
   if (group) {
     record.group = group

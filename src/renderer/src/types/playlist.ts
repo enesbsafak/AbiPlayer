@@ -1,3 +1,5 @@
+import type { StreamHttpHeaders } from '../../../shared/playback'
+
 export type SourceType = 'xtream' | 'm3u_url' | 'm3u_file'
 
 export interface PlaylistSource {
@@ -52,6 +54,8 @@ export interface Channel {
   coverUrl?: string
   /** Xtream series id. */
   seriesId?: number
+  /** Request headers its M3U list asks for with this entry (user agent, referer, origin). */
+  httpHeaders?: StreamHttpHeaders
 }
 
 export interface SeriesDetail {

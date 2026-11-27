@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '../support/fixtures.ts'
 import { KNOWN } from '../mock-provider/catalog.ts'
+import { M3U_FIRST_CHANNEL_HEADERS } from '../mock-provider/server.ts'
 import {
   addM3uSource,
   anyCard,
@@ -77,6 +78,10 @@ test.describe('M3U kaynağı', () => {
     const playing = await waitForMpvProgress(page, { pathIncludes: '/1.ts', advanceBy: 2, timeout: 45_000 })
     expect(playing.last.error).toBeNull()
     expect(mock.stats().counts['live-ts']).toBeGreaterThanOrEqual(1)
+    // The list names a user agent and a referer for this channel: the stream is asked for with them.
+    const streamRequest = mock.stats().recent.filter((request) => request.route === 'live-ts').at(-1)
+    expect(streamRequest?.userAgent).toBe(M3U_FIRST_CHANNEL_HEADERS.userAgent)
+    expect(streamRequest?.referer).toBe(M3U_FIRST_CHANNEL_HEADERS.referer)
     await first.shot('m3u-live-ts')
     await closeApp(first)
 

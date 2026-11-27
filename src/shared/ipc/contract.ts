@@ -7,6 +7,7 @@
  * channel that exists on one side and not the other is a type error.
  */
 import { mainStrings } from '../main-strings'
+import type { StreamHttpHeaders } from '../playback/http-headers'
 import type {
   AppUpdateState,
   EmbeddedSubtitleExtractionResult,
@@ -91,6 +92,12 @@ export interface MpvOpenRequest {
    * which keeps what mpv already has.
    */
   tuning?: MpvPlaybackTuning
+  /**
+   * Request headers for this playback's stream (an M3U entry that names
+   * them). Sent with the first open; main keeps them for the playback, so a
+   * reconnect or a jump to the live edge of the same playback sends them too.
+   */
+  httpHeaders?: StreamHttpHeaders
 }
 
 /** A rectangle of the window's content area in CSS pixels (the corner player's picture). */

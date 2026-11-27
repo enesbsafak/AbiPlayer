@@ -35,6 +35,7 @@ function setup(pickedPaths: string[] = []) {
     setVolume: vi.fn().mockResolvedValue(undefined),
     seekTo: vi.fn().mockResolvedValue(undefined),
     open: vi.fn().mockResolvedValue(undefined),
+    jumpToLive: vi.fn().mockResolvedValue(undefined),
     getState: vi.fn(() => snapshot())
   }
   registerMpvHandlers(
@@ -123,6 +124,36 @@ describe('mpv handlers', () => {
 
     await expect(call('mpv-open', 'https://p.example/a.ts')).rejects.toThrow('Geçersiz oynatma isteği')
     expect(controller.open).toHaveBeenCalledTimes(2)
+  })
+
+  it('sends the request headers of a playback with its loads, and with no other playback', async () => {
+    const { controller, call } = setup()
+    const httpHeaders = { userAgent: 'Liste Oynatıcı', referer: 'https://site.example/izle', origin: 'https://site.example' }
+    // The user agent is not plain ASCII: it is left out, the rest goes along.
+    await call('mpv-open', 'https://p.example/a.m3u8', { playbackId: 'pb-1', httpHeaders })
+    expect(controller.open).toHaveBeenLastCalledWith('https://p.example/a.m3u8', undefined, {
+      playbackId: 'pb-1',
+      fileOptions: { referrer: 'https://site.example/izle', 'http-header-fields': 'Origin: https://site.example' }
+    })
+
+    const safe = { userAgent: 'VLC/3.0.20 LibVLC/3.0.20', referer: 'https://site.example/izle' }
+    const options = { 'user-agent': 'VLC/3.0.20 LibVLC/3.0.20', referrer: 'https://site.example/izle' }
+    await call('mpv-open', 'https://p.example/a.m3u8', { playbackId: 'pb-2', httpHeaders: safe })
+    expect(controller.open).toHaveBeenLastCalledWith('https://p.example/a.m3u8', undefined, { playbackId: 'pb-2', fileOptions: options })
+
+    // A reconnect of the same playback names none: they are kept.
+    await call('mpv-open', 'https://p.example/a.m3u8', { playbackId: 'pb-2' })
+    expect(controller.open).toHaveBeenLastCalledWith('https://p.example/a.m3u8', undefined, { playbackId: 'pb-2', fileOptions: options })
+
+    // So is the jump to the live edge.
+    controller.getState.mockReturnValue(snapshot({ playbackId: 'pb-2' }))
+    await call('mpv-jump-to-live')
+    const decide = controller.jumpToLive.mock.calls.at(-1)?.[0] as (url: string) => Promise<Record<string, string>>
+    await expect(decide('https://p.example/a.m3u8')).resolves.toEqual(options)
+
+    // Another playback starts clean.
+    await call('mpv-open', 'https://p.example/b.ts', { playbackId: 'pb-3' })
+    expect(controller.open).toHaveBeenLastCalledWith('https://p.example/b.ts', undefined, { playbackId: 'pb-3', fileOptions: {} })
   })
 
   // A redirect or segment URL mpv prints has a layout the generic patterns do

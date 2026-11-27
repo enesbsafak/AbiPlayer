@@ -233,6 +233,38 @@ https://a.com/series/u/p/1.mkv`
     expect(channels.map((c) => c.type)).toEqual(['vod', 'vod', 'vod', 'series'])
   })
 
+  it('reads the request headers a list names for an entry, in every form lists use', () => {
+    const playlist = [
+      '#EXTM3U',
+      '#EXTINF:-1 tvg-id="a" http-user-agent="UA Bir" http-referrer="https://site.example/a",Kanal A',
+      'http://example.com/a.m3u8',
+      '#EXTINF:-1,Kanal B',
+      '#EXTVLCOPT:http-user-agent=UA İki olmaz',
+      '#EXTVLCOPT:http-referrer=https://site.example/b',
+      '#EXTVLCOPT:http-origin=https://site.example',
+      'http://example.com/b.m3u8',
+      '#KODIPROP:inputstream.adaptive.stream_headers=User-Agent=UA%20Uc&Referer=https%3A%2F%2Fsite.example%2Fc',
+      '#EXTINF:-1,Kanal C',
+      'http://example.com/c.m3u8',
+      '#EXTINF:-1,Kanal D',
+      '#EXTHTTP:{"User-Agent":"UA Dort","cookie":"gizli=1"}',
+      'http://example.com/d.m3u8|Referer=https://site.example/d&User-Agent=UA%20Bar',
+      '#EXTINF:-1,Kanal E',
+      'http://example.com/e.m3u8'
+    ].join('\n')
+    const { channels } = parseM3U(playlist, 's')
+    expect(channels.map((channel) => [channel.name, channel.streamUrl, channel.httpHeaders])).toEqual([
+      ['Kanal A', 'http://example.com/a.m3u8', { userAgent: 'UA Bir', referer: 'https://site.example/a' }],
+      // The user agent is not plain ASCII and is dropped; the rest stays.
+      ['Kanal B', 'http://example.com/b.m3u8', { referer: 'https://site.example/b', origin: 'https://site.example' }],
+      ['Kanal C', 'http://example.com/c.m3u8', { userAgent: 'UA Uc', referer: 'https://site.example/c' }],
+      // The address ends at the bar; what follows the bar wins; a cookie is not taken.
+      ['Kanal D', 'http://example.com/d.m3u8', { userAgent: 'UA Bar', referer: 'https://site.example/d' }],
+      // Nothing carries over to the next entry.
+      ['Kanal E', 'http://example.com/e.m3u8', undefined]
+    ])
+  })
+
   it('parses a playlist with 100k+ entries', () => {
     const lines = ['#EXTM3U']
     for (let i = 0; i < 120_000; i++) {

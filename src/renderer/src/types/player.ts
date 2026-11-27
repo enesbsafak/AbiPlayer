@@ -1,5 +1,5 @@
 import type { Channel } from './playlist'
-import type { PlayableTarget, PlaybackId, PlaybackTarget } from '../../../shared/playback'
+import type { PlayableTarget, PlaybackId, PlaybackTarget, StreamHttpHeaders } from '../../../shared/playback'
 
 /** One playback intent, as the player store records it. */
 export interface CurrentPlayback {
@@ -9,6 +9,8 @@ export interface CurrentPlayback {
   mediaKey: string
   /** Resolved by `resolveStreamUrl` when the playback started or was reloaded. */
   streamUrl: string
+  /** Request headers the item's M3U list asks for; sent by mpv with every request of the stream. */
+  httpHeaders?: StreamHttpHeaders
 }
 
 /**

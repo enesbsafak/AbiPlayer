@@ -3,6 +3,14 @@ import type { Channel, Category } from '@/types/playlist'
 import { isAdultLabel } from './adult-content'
 import { requestHost } from './xtream-errors'
 import { requests } from '@/strings/requests'
+import type { StreamHttpHeaders } from '../../../shared/playback'
+import {
+  emptyPendingHeaders,
+  finishHeaders,
+  readExtInfHeaders,
+  readHeaderDirective,
+  splitUrlHeaders
+} from './m3u-headers'
 
 // Startup blocks on this: a 2-minute ceiling meant one unreachable playlist URL
 // pinned the "Kaynaklar bağlanıyor..." screen for two minutes with no feedback.
@@ -188,10 +196,13 @@ export function createM3uParser(sourceId: string): { feed(text: string): void; e
   const epgUrls: string[] = []
   let current: ExtInf | null = null
   let pendingGroup: string | null = null
+  // Request headers named for the entry being read (see m3u-headers.ts).
+  // Kept until the entry's URL: such lines stand before or after `#EXTINF`.
+  const pendingHeaders = emptyPendingHeaders()
   let carry = ''
   let sawHeader = false
 
-  const addChannel = (meta: ExtInf, url: string): void => {
+  const addChannel = (meta: ExtInf, url: string, httpHeaders: StreamHttpHeaders | undefined): void => {
     const baseId = stableChannelId(sourceId, url)
     const seen = idCounts.get(baseId) ?? 0
     idCounts.set(baseId, seen + 1)
@@ -224,7 +235,8 @@ export function createM3uParser(sourceId: string): { feed(text: string): void; e
       epgChannelId: meta.tvgId || undefined,
       group: group || undefined,
       type: group ? 'live' : detectChannelType(url),
-      isAdult: isAdultLabel(name)
+      isAdult: isAdultLabel(name),
+      ...(httpHeaders ? { httpHeaders } : {})
     })
   }
 
@@ -235,6 +247,7 @@ export function createM3uParser(sourceId: string): { feed(text: string): void; e
 
     if (line.startsWith('#EXTINF:')) {
       current = parseExtInf(line)
+      readExtInfHeaders(line, pendingHeaders)
     } else if (line.startsWith('#EXTGRP:')) {
       // #EXTGRP provides the group name as an alternative to group-title.
       pendingGroup = line.substring(8).trim()
@@ -244,15 +257,23 @@ export function createM3uParser(sourceId: string): { feed(text: string): void; e
         for (const url of parseHeaderEpgUrls(line)) epgUrls.push(url)
       }
     } else if (line.startsWith('#')) {
+      readHeaderDirective(line, pendingHeaders)
       return
-    } else if (current) {
-      if (!current.group && pendingGroup) current.group = pendingGroup
-      addChannel(current, line)
-      current = null
-      pendingGroup = null
     } else {
-      // URL without EXTINF: minimal entry named after the file.
-      addChannel({ name: cleanUrlName(line), logo: '', group: pendingGroup || '', tvgId: '', tvgName: '' }, line)
+      // `url|User-Agent=...`: the address ends at the bar.
+      const url = splitUrlHeaders(line, pendingHeaders)
+      const httpHeaders = finishHeaders(pendingHeaders)
+      pendingHeaders.userAgent = undefined
+      pendingHeaders.referer = undefined
+      pendingHeaders.origin = undefined
+      if (current) {
+        if (!current.group && pendingGroup) current.group = pendingGroup
+        addChannel(current, url, httpHeaders)
+        current = null
+      } else {
+        // URL without EXTINF: minimal entry named after the file.
+        addChannel({ name: cleanUrlName(url), logo: '', group: pendingGroup || '', tvgId: '', tvgName: '' }, url, httpHeaders)
+      }
       pendingGroup = null
     }
   }

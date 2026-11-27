@@ -3,6 +3,7 @@ import type { MpvController } from '../mpv-controller'
 import type { MpvStateSnapshot } from '../../shared/types/electron-ipc'
 import type { MpvOpenRequest } from '../../shared/ipc/contract'
 import { credentialsInUrl, maskCredentials } from '../../shared/mask-credentials'
+import { mpvHeaderOptions, sanitizeStreamHttpHeaders } from '../../shared/playback/http-headers'
 import { sendEvent, type EventTarget } from './events'
 import type { IpcRegistrar } from './register'
 import { isValidFilePathArgument, type PickedFileRegistry } from './files'
@@ -104,14 +105,20 @@ const PLAYBACK_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 
 export function parseMpvOpenRequest(value: unknown): MpvOpenRequest {
   if (!value || typeof value !== 'object') throw new Error(mainStrings.invalid.playbackRequest)
-  const { playbackId, tuning } = value as Partial<MpvOpenRequest>
+  const { playbackId, tuning, httpHeaders: rawHeaders } = value as Partial<MpvOpenRequest>
   if (typeof playbackId !== 'string' || !PLAYBACK_ID_PATTERN.test(playbackId)) {
     throw new Error(mainStrings.invalid.playbackId)
   }
   if (tuning !== undefined && !isValidPlaybackTuning(tuning)) {
     throw new Error(mainStrings.invalid.playbackTuning)
   }
-  return tuning === undefined ? { playbackId } : { playbackId, tuning }
+  // Read from a playlist file: only what passes the check is kept.
+  const httpHeaders = sanitizeStreamHttpHeaders(rawHeaders)
+  return {
+    playbackId,
+    ...(tuning === undefined ? {} : { tuning }),
+    ...(httpHeaders ? { httpHeaders } : {})
+  }
 }
 
 /** A window that receives `mpv-state` pushes. */
@@ -236,16 +243,25 @@ export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDep
   const subscriptions = new MpvStateSubscriptions(controller, secrets)
   // TLS checks may wait on the network; a newer open or a stop meanwhile wins.
   let tlsOpenSeq = 0
+  // The request headers of the playback mpv has open, as per-file options.
+  let playbackHeaders: { playbackId: string; options: Record<string, string> } | null = null
+  const headerOptionsOf = (playbackId: string | null): Record<string, string> =>
+    playbackHeaders !== null && playbackHeaders.playbackId === playbackId ? playbackHeaders.options : {}
 
   registrar.handle('mpv-is-available', () => controller.isAvailable())
 
   registrar.handle('mpv-open', async (event, streamUrl, request) => {
     if (!isValidStreamUrl(streamUrl)) throw new Error(mainStrings.invalid.streamUrl)
-    const { playbackId, tuning } = parseMpvOpenRequest(request)
+    const { playbackId, tuning, httpHeaders } = parseMpvOpenRequest(request)
     secrets.remember(playbackId, streamUrl)
+    // Headers belong to the playback: a reconnect (the same id, sent without
+    // them) keeps them, another playback starts without any.
+    if (httpHeaders) playbackHeaders = { playbackId, options: mpvHeaderOptions(httpHeaders) }
+    else if (playbackHeaders?.playbackId !== playbackId) playbackHeaders = null
+    const headerOptions = headerOptionsOf(playbackId)
     // TLS (src/main/tls): options for this load only; rejects if the host is refused.
     const tlsSeq = ++tlsOpenSeq
-    const fileOptions = deps.tls ? await deps.tls.mpvLoadOptions(streamUrl) : {}
+    const fileOptions = { ...(deps.tls ? await deps.tls.mpvLoadOptions(streamUrl) : {}), ...headerOptions }
     if (tlsSeq !== tlsOpenSeq) return
     const window = deps.getWindow(event.sender)
     const nativeWindowId = window ? getNativeWindowId(window) : null
@@ -280,7 +296,10 @@ export function registerMpvHandlers(registrar: IpcRegistrar, deps: MpvHandlerDep
   // reused from the load it replaces (a revoked trust, a changed certificate).
   registrar.handle('mpv-jump-to-live', () => {
     const tls = deps.tls
-    return controller.jumpToLive(tls ? (url) => tls.mpvLoadOptions(url) : undefined)
+    // Asked only when a playback named headers: most never do.
+    const headerOptions = playbackHeaders ? headerOptionsOf(controller.getState().playbackId) : {}
+    if (Object.keys(headerOptions).length === 0) return controller.jumpToLive(tls ? (url) => tls.mpvLoadOptions(url) : undefined)
+    return controller.jumpToLive(async (url) => ({ ...(tls ? await tls.mpvLoadOptions(url) : {}), ...headerOptions }))
   })
 
   registrar.handle('mpv-set-volume', (_event, normalizedVolume) =>

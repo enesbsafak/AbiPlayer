@@ -381,7 +381,8 @@ function startState(state: PlayerSliceState, request: PlaybackRequest): Partial<
     playbackId: createPlaybackId(),
     target,
     mediaKey: mediaKey(target),
-    streamUrl
+    streamUrl,
+    ...(target.kind === 'm3u' && channel.httpHeaders ? { httpHeaders: channel.httpHeaders } : {})
   }
   return {
     ...EMPTY_STREAM_STATE,

@@ -377,7 +377,9 @@ export function useMpvPlayer(enabled: boolean, options: MpvPlayerOptions = {}) {
         perfMpvOpen(openUrl)
         await mpvOpen(openUrl, {
           playbackId: playback.playbackId,
-          tuning: useStore.getState().playbackTuning
+          tuning: useStore.getState().playbackTuning,
+          // Main keeps them for the playback: a reconnect sends none.
+          ...(playback.httpHeaders ? { httpHeaders: playback.httpHeaders } : {})
         })
         perfMark('mpv:open-resolved')
       } catch (error) {

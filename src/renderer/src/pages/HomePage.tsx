@@ -111,7 +111,8 @@ export default function HomePage() {
           name: channel.name,
           resolve: () => {
             const entry = findM3uEntry(target, catalog, channel.id)
-            return entry ? { ...channel, streamUrl: entry.streamUrl } : null
+            if (!entry) return null
+            return { ...channel, streamUrl: entry.streamUrl, ...(entry.httpHeaders ? { httpHeaders: entry.httpHeaders } : {}) }
           }
         },
         (resolved) => openPlayback({ target, channel: resolved })
