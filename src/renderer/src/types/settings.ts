@@ -23,6 +23,24 @@ export interface UserSettings {
   keepPlayingInCorner: boolean
   // How far the arrow keys and the player's back/forward buttons seek (seconds).
   seekStepSeconds: number
+  // The user agent mpv asks for streams with, when the playlist names none
+  // for the entry: mpv's own, or that of a player or browser providers know.
+  streamUserAgent: StreamUserAgentSetting
+}
+
+export type StreamUserAgentSetting = 'default' | 'vlc' | 'chrome'
+
+export const STREAM_USER_AGENT_SETTINGS: readonly StreamUserAgentSetting[] = ['default', 'vlc', 'chrome']
+
+/** What each choice sends; null leaves mpv's own. */
+const STREAM_USER_AGENTS: Record<StreamUserAgentSetting, string | null> = {
+  default: null,
+  vlc: 'VLC/3.0.21 LibVLC/3.0.21',
+  chrome: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+}
+
+export function streamUserAgentOf(setting: StreamUserAgentSetting): string | null {
+  return STREAM_USER_AGENTS[setting] ?? null
 }
 
 export const SEEK_STEP_OPTIONS: readonly number[] = [5, 10, 15, 30]
@@ -43,5 +61,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   audioPassthrough: false,
   liveStreamFormat: 'auto',
   keepPlayingInCorner: false,
-  seekStepSeconds: DEFAULT_SEEK_STEP_SECONDS
+  seekStepSeconds: DEFAULT_SEEK_STEP_SECONDS,
+  streamUserAgent: 'default'
 }

@@ -118,6 +118,25 @@ export function PlaybackSettings() {
             }
           />
           <SettingRow
+            label={text.userAgent}
+            labelId="stream-user-agent-label"
+            help={text.userAgentHint}
+            control={
+              <Dropdown
+                id="stream-user-agent"
+                labelledBy="stream-user-agent-label"
+                items={USER_AGENT_ITEMS}
+                value={settings.streamUserAgent}
+                onSelect={(id) => {
+                  const choice = USER_AGENT_ITEMS.find((item) => item.id === id)?.id
+                  if (choice) updateSettings({ streamUserAgent: choice })
+                }}
+                placeholder={text.userAgent}
+                className={DROPDOWN_CLASS}
+              />
+            }
+          />
+          <SettingRow
             label={text.hardwareDecoding}
             htmlFor="hardware-acceleration"
             help={text.hardwareDecodingHint}
@@ -152,6 +171,12 @@ export function PlaybackSettings() {
 }
 
 const SEEK_STEP_ITEMS = SEEK_STEP_OPTIONS.map((seconds) => ({ id: String(seconds), label: text.seekStepOption(seconds) }))
+
+const USER_AGENT_ITEMS: Array<{ id: UserSettings['streamUserAgent']; label: string }> = [
+  { id: 'default', label: text.userAgentDefault },
+  { id: 'vlc', label: text.userAgentVlc },
+  { id: 'chrome', label: text.userAgentChrome }
+]
 
 const LIVE_STREAM_FORMAT_ITEMS: Array<{ id: UserSettings['liveStreamFormat']; label: string }> = [
   { id: 'auto', label: text.liveFormatAuto },

@@ -37,6 +37,13 @@ export const settings = {
     liveFormatHint:
       'Kanallar açılmıyor ya da takılıyorsa diğer biçimi dene. Açılmayan kanal bir kez diğer biçimle denenir; ' +
       'yedek oynatıcı her zaman HLS kullanır.',
+    userAgent: 'Oynatıcı kimliği (User-Agent)',
+    userAgentHint:
+      'Bazı sağlayıcılar tanımadığı oynatıcıya yayın vermez. Kanallar açılmıyorsa başka bir kimlik dene. ' +
+      'Oynatma listesinin bir kayıt için istediği kimlik her zaman önce gelir.',
+    userAgentDefault: 'Varsayılan (mpv)',
+    userAgentVlc: 'VLC',
+    userAgentChrome: 'Tarayıcı (Chrome)',
     liveFormatAuto: 'Otomatik (izin varsa HLS)',
     liveFormatHls: 'HLS',
     liveFormatTs: 'MPEG-TS',

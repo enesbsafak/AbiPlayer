@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand'
 import type { UserSettings } from '@/types/settings'
-import { DEFAULT_SEEK_STEP_SECONDS, DEFAULT_SETTINGS, SEEK_STEP_OPTIONS } from '@/types/settings'
+import { DEFAULT_SEEK_STEP_SECONDS, DEFAULT_SETTINGS, SEEK_STEP_OPTIONS, STREAM_USER_AGENT_SETTINGS } from '@/types/settings'
 
 export const MIN_EPG_REFRESH_MINUTES = 5
 export const MAX_EPG_REFRESH_MINUTES = 1440
@@ -45,6 +45,9 @@ function pickKnownSettings(input: Record<string, unknown>): Partial<UserSettings
     if (typeof value !== typeof DEFAULT_SETTINGS[key]) continue
     if (typeof value === 'number' && !Number.isFinite(value)) continue
     if (key === 'epgTimeFormat' && !EPG_TIME_FORMATS.includes(value as UserSettings['epgTimeFormat'])) {
+      continue
+    }
+    if (key === 'streamUserAgent' && !STREAM_USER_AGENT_SETTINGS.includes(value as UserSettings['streamUserAgent'])) {
       continue
     }
     if (

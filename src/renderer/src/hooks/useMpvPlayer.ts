@@ -26,7 +26,9 @@ import {
 } from '@/services/playback'
 import { useStore } from '@/store'
 import type { XtreamLiveFormat } from '@/types/xtream'
-import { isLiveTarget, type PlaybackId } from '../../../shared/playback'
+import { isLiveTarget, type PlaybackId, type StreamHttpHeaders } from '../../../shared/playback'
+import type { CurrentPlayback } from '@/types/player'
+import { streamUserAgentOf } from '@/types/settings'
 import {
   initialLiveFormatState,
   liveFormatFallbackNotice,
@@ -379,7 +381,7 @@ export function useMpvPlayer(enabled: boolean, options: MpvPlayerOptions = {}) {
           playbackId: playback.playbackId,
           tuning: useStore.getState().playbackTuning,
           // Main keeps them for the playback: a reconnect sends none.
-          ...(playback.httpHeaders ? { httpHeaders: playback.httpHeaders } : {})
+          ...openHeaders(playback)
         })
         perfMark('mpv:open-resolved')
       } catch (error) {
@@ -457,6 +459,16 @@ export function useMpvPlayer(enabled: boolean, options: MpvPlayerOptions = {}) {
   }, [enabled, currentSubtitleTrack, applyPlayerPatch])
 
   return enabled && startupStartedAtRef.current !== null && isStartupVisible
+}
+
+/**
+ * The request headers of a playback's first open: the user agent chosen in
+ * the settings, then what the playlist names for the entry (which wins).
+ */
+function openHeaders(playback: CurrentPlayback): { httpHeaders?: StreamHttpHeaders } {
+  const userAgent = streamUserAgentOf(useStore.getState().settings.streamUserAgent)
+  if (!userAgent && !playback.httpHeaders) return {}
+  return { httpHeaders: { ...(userAgent ? { userAgent } : {}), ...playback.httpHeaders } }
 }
 
 /**
